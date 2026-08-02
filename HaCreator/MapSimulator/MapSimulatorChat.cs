@@ -4,6 +4,8 @@ using Microsoft.Xna.Framework.Input;
 using System;
 using System.Collections.Generic;
 using System.Text;
+using HaCreator.MapSimulator.Interaction;
+using HaCreator.MapSimulator.UI;
 
 namespace HaCreator.MapSimulator
 {
@@ -15,13 +17,70 @@ namespace HaCreator.MapSimulator
         public string Text;
         public Color Color;
         public int Timestamp;
+        public int ChatLogType;
+        public int ChannelId;
+        public string WhisperTargetCandidate;
 
-        public ChatMessage(string text, Color color, int timestamp)
+        public ChatMessage(
+            string text,
+            Color color,
+            int timestamp,
+            int chatLogType = -1,
+            string whisperTargetCandidate = null,
+            int channelId = -1)
         {
             Text = text;
             Color = color;
             Timestamp = timestamp;
+            ChatLogType = chatLogType;
+            ChannelId = channelId;
+            WhisperTargetCandidate = whisperTargetCandidate ?? string.Empty;
         }
+    }
+
+    public enum MapSimulatorChatTargetType
+    {
+        All = 0,
+        Friend = 1,
+        Party = 2,
+        Guild = 3,
+        Association = 4,
+        Expedition = 5
+    }
+
+    public sealed class MapSimulatorChatRenderState
+    {
+        public IReadOnlyList<ChatMessage> Messages { get; init; } = Array.Empty<ChatMessage>();
+        public IReadOnlyList<string> WhisperCandidates { get; init; } = Array.Empty<string>();
+        public bool IsActive { get; init; }
+        public bool IsWhisperTargetPickerActive { get; init; }
+        public MapSimulatorChat.WhisperTargetPickerPresentation WhisperTargetPickerPresentation { get; init; } =
+            MapSimulatorChat.WhisperTargetPickerPresentation.Inline;
+        public string InputText { get; init; } = string.Empty;
+        public int CursorPosition { get; init; }
+        public int SelectionAnchor { get; init; } = -1;
+        public int SelectionStart => SelectionAnchor < 0 ? CursorPosition : Math.Min(CursorPosition, SelectionAnchor);
+        public int SelectionEnd => SelectionAnchor < 0 ? CursorPosition : Math.Max(CursorPosition, SelectionAnchor);
+        public bool HasSelection => SelectionEnd > SelectionStart;
+        public string CompositionText { get; init; } = string.Empty;
+        public int CompositionStart { get; init; } = -1;
+        public int CompositionLength { get; init; }
+        public int CompositionCursorPosition { get; init; } = -1;
+        public IReadOnlyList<int> CompositionClauseOffsets { get; init; } = Array.Empty<int>();
+        public IReadOnlyList<byte> CompositionAttributes { get; init; } = Array.Empty<byte>();
+        public bool HasCompositionText => CompositionLength > 0;
+        public string CompositionPreviewText { get; init; } = string.Empty;
+        public ImeCandidateListState ImeCandidateList { get; init; } = ImeCandidateListState.Empty;
+        public MapSimulatorChatTargetType TargetType { get; init; }
+        public string WhisperTarget { get; init; } = string.Empty;
+        public int WhisperTargetPickerSelectionIndex { get; init; } = -1;
+        public int WhisperTargetPickerFirstVisibleIndex { get; init; }
+        public MapSimulatorChat.WhisperTargetPickerModalButtonFocus WhisperTargetPickerModalButtonFocus { get; init; } =
+            MapSimulatorChat.WhisperTargetPickerModalButtonFocus.Confirm;
+        public MapSimulatorChat.WhisperTargetPickerModalFocusTarget WhisperTargetPickerModalFocusTarget { get; init; } =
+            MapSimulatorChat.WhisperTargetPickerModalFocusTarget.ComboBox;
+        public bool IsWhisperTargetPickerComboDropdownOpen { get; init; }
+        public string LocalPlayerName { get; init; } = string.Empty;
     }
 
     /// <summary>
@@ -30,13 +89,32 @@ namespace HaCreator.MapSimulator
     public class MapSimulatorChat
     {
         #region Constants
+        private static readonly Color OutgoingWhisperMessageColor = new Color(255, 191, 221, 204);
+        private static readonly Color IncomingWhisperMessageColor = new Color(255, 198, 0, 221);
+        private static readonly Color SystemMessageColor = new Color(255, 228, 151);
+        private static readonly Color ErrorMessageColor = new Color(247, 75, 75);
+        private static readonly Color DefaultMessageColor = Color.White;
+        private static readonly Color NoticeMessageColor = new Color(202, 231, 255, 176);
+        private static readonly Color PartyMessageColor = new Color(124, 255, 172);
+        private static readonly Color FriendMessageColor = new Color(255, 255, 120);
+        private static readonly Color GuildMessageColor = new Color(176, 255, 120);
+        private static readonly Color AllianceMessageColor = new Color(124, 236, 255);
+        private static readonly Color ExpeditionMessageColor = new Color(255, 216, 128);
+        private static readonly Color ClientType11Color = new Color(255, 255, 255, 176);
+        private static readonly Color ClientType18Color = new Color(77, 26, 173, 44);
+        private static readonly Color ClientType20Color = new Color(255, 92, 89, 128);
+        private static readonly Color ClientType22Color = new Color(153, 204, 51);
+
         private const int CHAT_INPUT_X = 5;
         private const int CHAT_INPUT_Y_OFFSET = 55; // Offset from bottom of screen (just above status bar level indicator)
         private const int CHAT_INPUT_WIDTH = 478;
         private const int CHAT_INPUT_HEIGHT = 15;
         private const int CHAT_MESSAGE_DISPLAY_TIME = 10000; // Messages fade after 10 seconds
         private const int CHAT_MAX_INPUT_LENGTH = 100;
-        private const int MAX_CHAT_MESSAGES = 50;
+        // Client ChatLogAdd trims the chat log once it exceeds 0x40 entries.
+        internal const int ClientChatLogEntryLimit = 64;
+        internal const int WhisperTargetPickerVisibleRowCount = 6;
+        private const int MAX_CHAT_MESSAGES = ClientChatLogEntryLimit;
         private const int CHAT_DISPLAY_LINES = 15;
         private const int CHAT_CURSOR_BLINK_RATE = 500; // Blink every 500ms
 
@@ -45,22 +123,55 @@ namespace HaCreator.MapSimulator
         private const int KEY_REPEAT_RATE = 35; // ms between repeats
 
         // Input history settings
-        private const int MAX_INPUT_HISTORY = 50;
+        // CChatHelper::HistoryAdd trims local edit history to eight retained entries.
+        private const int MAX_INPUT_HISTORY = 8;
+        private const int MAX_WHISPER_CANDIDATES = 50;
+        private const int ClientChatHelperMuteWindowMs = 0xAF0;
+        private const int ClientChatHelperRecentResetMs = 0x7530;
+        private const int ClientChatHelperFloodWindowMs = 0x7D0;
+        private const int ClientChatHelperRecentRepeatLimit = 4;
+        private const int ClientChatHelperChatTimestampLimit = 4;
+        private const int ClientChatHelperRepeatedMessageStringPoolId = 0x390;
+        private const int ClientChatHelperFloodMessageStringPoolId = 0x391;
+        private const int ClientChatHelperContextBlockedStringPoolId = 0x392;
         #endregion
 
         #region Fields
         private bool _isActive = false;
         private readonly StringBuilder _inputText = new StringBuilder(128);
         private readonly List<ChatMessage> _messages = new List<ChatMessage>();
+        internal event Action<string, int, int> ClientChatMessageAdded;
+        internal Func<string, int, bool> ClientChatHelperNoticeRequested { get; set; }
         private int _cursorBlinkTimer = 0;
         private int _lastTickCount = 0;
         private int _cursorPosition = 0; // Position within input text
+        private int _selectionAnchor = -1;
+        private ImeCompositionState _compositionState = ImeCompositionState.Empty;
+        private ImeCandidateListState _imeCandidateListState = ImeCandidateListState.Empty;
 
         private SpriteFont _font;
         private Texture2D _backgroundTexture;
         private int _screenHeight;
 
         private readonly ChatCommandHandler _commandHandler = new ChatCommandHandler();
+        private MapSimulatorChatTargetType _chatTarget = MapSimulatorChatTargetType.All;
+        private string _whisperTarget = string.Empty;
+        private string _replyTarget = string.Empty;
+        private string _localPlayerName = string.Empty;
+        private string _lastOutgoingWhisperText = string.Empty;
+        private string _lastOutgoingWhisperTarget = string.Empty;
+        private readonly List<string> _whisperCandidates = new List<string>();
+        private bool _isWhisperTargetPickerActive;
+        private WhisperTargetPickerPresentation _whisperTargetPickerPresentation = WhisperTargetPickerPresentation.Inline;
+        private int _whisperTargetPickerSelectionIndex = -1;
+        private int _whisperTargetPickerFirstVisibleIndex;
+        private WhisperTargetPickerModalButtonFocus _whisperTargetPickerModalButtonFocus =
+            WhisperTargetPickerModalButtonFocus.Confirm;
+        private WhisperTargetPickerModalFocusTarget _whisperTargetPickerModalFocusTarget =
+            WhisperTargetPickerModalFocusTarget.ComboBox;
+        private bool _isWhisperTargetPickerComboDropdownOpen;
+        private string _savedChatInputBeforeWhisperPicker = string.Empty;
+        private int _savedChatCursorBeforeWhisperPicker;
 
         // Key repeat tracking
         private Keys _lastHeldKey = Keys.None;
@@ -71,6 +182,17 @@ namespace HaCreator.MapSimulator
         private readonly List<string> _inputHistory = new List<string>();
         private int _historyIndex = -1; // -1 means not browsing history
         private string _savedCurrentInput = ""; // Saves current input when browsing history
+        private bool _clientChatHelperUseSubmittedHistoryIndex;
+        private bool _pendingClientChatHelperSubmittedHistoryIndex;
+        private int _pendingClientChatHelperSubmittedHistoryForwardIndex = -1;
+        private readonly List<string> _clientChatHelperRecentMessages = new List<string>(ClientChatHelperRecentRepeatLimit);
+        private readonly int[] _clientChatHelperChatTimestamps = new int[ClientChatHelperChatTimestampLimit];
+        private readonly bool[] _clientChatHelperChatTimestampValid = new bool[ClientChatHelperChatTimestampLimit];
+        private int _clientChatHelperChatIndex;
+        private int _clientChatHelperMutedTime;
+        private int _clientChatHelperLastCheckedTime;
+        private bool _clientChatHelperHasMutedTime;
+        private bool _clientChatHelperHasLastCheckedTime;
         #endregion
 
         #region Properties
@@ -83,7 +205,185 @@ namespace HaCreator.MapSimulator
         /// Command handler for registering and executing chat commands
         /// </summary>
         public ChatCommandHandler CommandHandler => _commandHandler;
+
+        public Action<string, int> MessageSubmitted { get; set; }
         #endregion
+
+        internal IReadOnlyList<string> WhisperCandidates => _whisperCandidates;
+        internal bool IsWhisperTargetPickerActive => _isWhisperTargetPickerActive;
+        internal int WhisperTargetPickerSelectionIndex => _whisperTargetPickerSelectionIndex;
+        internal WhisperTargetPickerPresentation CurrentWhisperTargetPickerPresentation => _whisperTargetPickerPresentation;
+        internal string LastOutgoingWhisperText => _lastOutgoingWhisperText;
+        internal string LastOutgoingWhisperTarget => _lastOutgoingWhisperTarget;
+        internal Func<string> ClipboardTextGetter { get; set; } = TryGetSystemClipboardText;
+        internal Action<string> ClipboardTextSetter { get; set; } = TrySetSystemClipboardText;
+        internal Func<int, int, bool> ImeCandidateSelectedRequested { get; set; }
+        internal bool IsClientChatContextBlocked { get; set; }
+
+        internal ClientClaimChatLogResult BuildClientClaimChatLogOfTwoCharacters(
+            string targetCharacterName,
+            string sendCharacterName)
+        {
+            List<string> storedChatLines = new List<string>(_messages.Count);
+            for (int i = 0; i < _messages.Count; i++)
+            {
+                storedChatLines.Add(_messages[i].Text);
+            }
+
+            ClientClaimChatLogResult result = ClientClaimChatLogParity.BuildChatLogOfTwoCharacters(
+                storedChatLines,
+                targetCharacterName,
+                sendCharacterName,
+                mutateIncludedSenderLines: true);
+
+            for (int i = 0; i < storedChatLines.Count; i++)
+            {
+                ChatMessage message = _messages[i];
+                message.Text = storedChatLines[i];
+                _messages[i] = message;
+            }
+
+            return result;
+        }
+
+        private enum ChatSubmitDisposition
+        {
+            NotHandled = 0,
+            CloseChat = 1,
+            KeepChatOpen = 2
+        }
+
+        internal bool HandleCommittedText(string text)
+        {
+            string committedText = NormalizeClientEditCommittedText(text);
+            if (!_isActive
+                || string.IsNullOrEmpty(committedText)
+                || IsWhisperTargetPickerModalFooterFocused()
+                || !CanInsertInputText(committedText))
+            {
+                return false;
+            }
+
+            ClearImeEditState();
+            ActivateWhisperTargetPickerModalComboFocus();
+            TryDeleteInputSelection();
+            InsertInputText(committedText);
+            SyncWhisperTargetPickerSelectionFromInput();
+            ResetHistoryNavigation();
+            ResetKeyRepeat();
+            return true;
+        }
+
+        internal void HandleCompositionText(string text)
+        {
+            HandleCompositionState(new ImeCompositionState(text ?? string.Empty, Array.Empty<int>(), -1));
+        }
+
+        internal void HandleCompositionState(ImeCompositionState state)
+        {
+            if (!ShouldCaptureClientEditIme())
+            {
+                ClearCompositionText();
+                return;
+            }
+
+            string compositionText = NormalizeClientEditCommittedText(state?.Text);
+            if (string.IsNullOrEmpty(compositionText) || !CanInsertInputText(compositionText))
+            {
+                ClearCompositionText();
+                return;
+            }
+
+            int cursorPosition = state?.CursorPosition ?? -1;
+            cursorPosition = cursorPosition < 0
+                ? compositionText.Length
+                : Math.Clamp(cursorPosition, 0, compositionText.Length);
+            _compositionState = new ImeCompositionState(
+                compositionText,
+                state?.ClauseOffsets ?? Array.Empty<int>(),
+                cursorPosition,
+                state?.Attributes ?? Array.Empty<byte>());
+        }
+
+        internal void ClearCompositionText()
+        {
+            _compositionState = ImeCompositionState.Empty;
+        }
+
+        internal void HandleImeCandidateList(ImeCandidateListState state)
+        {
+            _imeCandidateListState = ShouldCaptureClientEditIme() && state?.HasCandidates == true
+                ? state
+                : ImeCandidateListState.Empty;
+        }
+
+        internal void ClearImeCandidateList()
+        {
+            _imeCandidateListState = ImeCandidateListState.Empty;
+        }
+
+        public enum WhisperTargetPickerPresentation
+        {
+            Inline = 0,
+            Modal = 1
+        }
+
+        public enum WhisperTargetPickerModalButtonFocus
+        {
+            Confirm = 0,
+            Close = 1
+        }
+
+        public enum WhisperTargetPickerModalFocusTarget
+        {
+            ComboBox = 0,
+            FooterButtons = 1
+        }
+
+        private enum WhisperTargetPickerNavigationMode
+        {
+            Step = 0,
+            Page = 1,
+            Absolute = 2
+        }
+
+        private enum ClientChatLogType
+        {
+            All = 0,
+            Party = 2,
+            Friend = 3,
+            Guild = 4,
+            Alliance = 5,
+            Couple = 6,
+            Type11 = 11,
+            System = 12,
+            Notice = 13,
+            OutgoingWhisper = 14,
+            Error = 15,
+            IncomingWhisper = 16,
+            Type18 = 18,
+            Type19 = 19,
+            Type20 = 20,
+            Type21 = 21,
+            Type22 = 22,
+            Type23 = 23,
+            Expedition = 26
+        }
+
+        internal enum WhisperTargetValidationResult
+        {
+            Valid = 0,
+            Empty = 1,
+            Invalid = 2,
+            Self = 3
+        }
+
+        internal static Color ResolveRenderedClientChatLogColor(int chatLogType, int channelId = -1)
+        {
+            return Enum.IsDefined(typeof(ClientChatLogType), chatLogType)
+                ? ResolveClientChatLogColor((ClientChatLogType)chatLogType, channelId)
+                : DefaultMessageColor;
+        }
 
         #region Initialization
         /// <summary>
@@ -120,22 +420,68 @@ namespace HaCreator.MapSimulator
         {
             _lastTickCount = tickCount;
 
+            if (!_isActive
+                && newKeyboardState.IsKeyDown(Keys.OemQuestion)
+                && oldKeyboardState.IsKeyUp(Keys.OemQuestion)
+                && !(newKeyboardState.IsKeyDown(Keys.LeftShift) || newKeyboardState.IsKeyDown(Keys.RightShift)))
+            {
+                Activate(tickCount, "/");
+                return true;
+            }
+
             // Toggle chat with Enter key
             if (newKeyboardState.IsKeyDown(Keys.Enter) && oldKeyboardState.IsKeyUp(Keys.Enter))
             {
                 if (_isActive)
                 {
+                    if (_isWhisperTargetPickerActive)
+                    {
+                        if (_whisperTargetPickerPresentation == WhisperTargetPickerPresentation.Modal
+                            && _whisperTargetPickerModalFocusTarget == WhisperTargetPickerModalFocusTarget.ComboBox
+                            && _isWhisperTargetPickerComboDropdownOpen)
+                        {
+                            // Client CCtrlComboBoxSelect::OnKey owns VK_RETURN while the select window
+                            // is open. Do not fall through into modal owner confirm handling.
+                            AcceptWhisperTargetPickerModalComboSelection();
+                            return true;
+                        }
+
+                        if (_whisperTargetPickerPresentation == WhisperTargetPickerPresentation.Modal
+                            && _whisperTargetPickerModalFocusTarget == WhisperTargetPickerModalFocusTarget.FooterButtons
+                            && _whisperTargetPickerModalButtonFocus == WhisperTargetPickerModalButtonFocus.Close)
+                        {
+                            CancelWhisperTargetPicker();
+                            return true;
+                        }
+
+                        ConfirmWhisperTargetPicker(tickCount);
+                        return true;
+                    }
+
                     // Send message if there's text
                     if (_inputText.Length > 0)
                     {
                         string message = _inputText.ToString();
-
-                        // Add to input history
-                        AddToInputHistory(message);
+                        RememberClientChatHelperSubmittedHistoryIndex(message);
 
                         _inputText.Clear();
                         _cursorPosition = 0;
+                        ClearInputSelection();
                         ResetHistoryNavigation();
+
+                        ChatSubmitDisposition slashDisposition = TryHandleSlashCommand(message, tickCount);
+                        if (slashDisposition == ChatSubmitDisposition.KeepChatOpen)
+                        {
+                            _isActive = true;
+                            _cursorBlinkTimer = tickCount;
+                            return true;
+                        }
+
+                        if (slashDisposition == ChatSubmitDisposition.CloseChat)
+                        {
+                            _isActive = false;
+                            return true;
+                        }
 
                         // Check if it's a command
                         if (_commandHandler.IsCommand(message))
@@ -153,18 +499,43 @@ namespace HaCreator.MapSimulator
                         }
                         else
                         {
-                            // Regular chat message
-                            AddMessage(message, Color.White, tickCount);
+                            SendTargetedChatMessage(message, tickCount);
                         }
                     }
                     _isActive = false;
                 }
                 else
                 {
-                    _isActive = true;
-                    _cursorBlinkTimer = tickCount;
-                    ResetHistoryNavigation();
+                    Activate(tickCount);
                 }
+                return true;
+            }
+
+            if (newKeyboardState.IsKeyDown(Keys.Tab) && oldKeyboardState.IsKeyUp(Keys.Tab))
+            {
+                if (_isWhisperTargetPickerActive)
+                {
+                    if (_whisperTargetPickerPresentation == WhisperTargetPickerPresentation.Modal)
+                    {
+                        if (IsWhisperTargetPickerModalDropdownNavigating())
+                        {
+                            // CCtrlComboBoxSelect::OnKey forwards non-UP/DOWN/RETURN keys to the
+                            // editable combo owner path; Tab still swaps owner focus lanes.
+                            ToggleWhisperTargetPickerModalFocusTarget();
+                            return true;
+                        }
+
+                        ToggleWhisperTargetPickerModalFocusTarget();
+                        return true;
+                    }
+
+                    MoveWhisperTargetPickerSelection(
+                        (newKeyboardState.IsKeyDown(Keys.LeftShift) || newKeyboardState.IsKeyDown(Keys.RightShift)) ? -1 : 1,
+                        WhisperTargetPickerNavigationMode.Step);
+                    return true;
+                }
+
+                CycleTarget(newKeyboardState.IsKeyDown(Keys.LeftShift) || newKeyboardState.IsKeyDown(Keys.RightShift) ? -1 : 1);
                 return true;
             }
 
@@ -172,21 +543,140 @@ namespace HaCreator.MapSimulator
             if (!_isActive)
                 return false;
 
+            bool controlHeld = newKeyboardState.IsKeyDown(Keys.LeftControl) || newKeyboardState.IsKeyDown(Keys.RightControl);
+            bool shiftHeld = newKeyboardState.IsKeyDown(Keys.LeftShift) || newKeyboardState.IsKeyDown(Keys.RightShift);
+
             // Handle Escape to cancel chat
             if (newKeyboardState.IsKeyDown(Keys.Escape))
             {
-                _isActive = false;
-                _inputText.Clear();
-                _cursorPosition = 0;
-                ResetKeyRepeat();
-                ResetHistoryNavigation();
+                if (_isWhisperTargetPickerActive)
+                {
+                    CancelWhisperTargetPicker();
+                    return true;
+                }
+
+                Deactivate();
                 return true;
             }
 
-            // Handle Up arrow - browse history (older)
-            if (newKeyboardState.IsKeyDown(Keys.Up) && oldKeyboardState.IsKeyUp(Keys.Up))
+            if (!IsWhisperTargetPickerModalFooterFocused()
+                && TryForwardClientEditKeyUpToParent(
+                    newKeyboardState,
+                    oldKeyboardState,
+                    IsWhisperTargetPickerModalDropdownNavigating()))
             {
-                if (_inputHistory.Count > 0)
+                return false;
+            }
+
+            if (!IsWhisperTargetPickerModalFooterFocused()
+                && ShouldForwardClientEditStageKey(newKeyboardState, oldKeyboardState))
+            {
+                return false;
+            }
+
+            if (!IsWhisperTargetPickerModalFooterFocused()
+                && ShouldForwardClientEditParentOnlyKey(newKeyboardState, oldKeyboardState, controlHeld, shiftHeld))
+            {
+                return false;
+            }
+
+            if (!IsWhisperTargetPickerModalFooterFocused()
+                && ShouldForwardClientEditPageKeyToParent(newKeyboardState))
+            {
+                return false;
+            }
+
+            if (!IsWhisperTargetPickerModalFooterFocused()
+                && !IsWhisperTargetPickerModalDropdownNavigating()
+                && TryResolveClientEditImeCandidateKeyboardSelection(
+                    _imeCandidateListState,
+                    newKeyboardState,
+                    oldKeyboardState,
+                    out int candidateListIndex,
+                    out int candidateIndex))
+            {
+                TryDispatchClientEditImeCandidateSelection(candidateListIndex, candidateIndex);
+                return true;
+            }
+
+            // CCtrlEdit::OnKey handles Shift+Delete as ExtractSelection(1), not DeleteString.
+            if (!IsWhisperTargetPickerModalFooterFocused()
+                && shiftHeld
+                && newKeyboardState.IsKeyDown(Keys.Delete))
+            {
+                ActivateWhisperTargetPickerModalComboFocus();
+                if (TryGetInputSelectionText(out string selectedText))
+                {
+                    TrySetClipboardText(selectedText);
+                    TryDeleteInputSelection();
+                    SyncWhisperTargetPickerSelectionFromInput();
+                }
+
+                return true;
+            }
+
+            if (!IsWhisperTargetPickerModalFooterFocused()
+                && !IsWhisperTargetPickerModalDropdownNavigating()
+                && newKeyboardState.IsKeyDown(Keys.Down)
+                && ShouldRouteClientEditKeyToImeCandidateWindow(Keys.Down, _imeCandidateListState))
+            {
+                bool isFirstPress = oldKeyboardState.IsKeyUp(Keys.Down);
+                bool isRepeat = !isFirstPress && ShouldRepeatKey(Keys.Down, tickCount);
+                if (!isFirstPress && !isRepeat)
+                {
+                    return true;
+                }
+
+                if (isFirstPress)
+                {
+                    _lastHeldKey = Keys.Down;
+                    _keyHoldStartTime = tickCount;
+                    _lastKeyRepeatTime = tickCount;
+                }
+                else
+                {
+                    _lastKeyRepeatTime = tickCount;
+                }
+
+                _imeCandidateListState = ResolveClientEditImeCandidateDownKeySelection(_imeCandidateListState);
+                // CCtrlEdit::OnKey calls m_pIMECandWnd->OnKey(VK_DOWN) and then forwards
+                // the same key to the parent owner. Chat stays active, so this does not
+                // leak into player movement, but the parent-forwarded ownership is visible
+                // to callers that model the client edit lane.
+                return false;
+            }
+
+            // Handle Up arrow - browse history (older)
+            if (newKeyboardState.IsKeyDown(Keys.Up))
+            {
+                bool isFirstPress = oldKeyboardState.IsKeyUp(Keys.Up);
+                bool isRepeat = !isFirstPress && ShouldRepeatKey(Keys.Up, tickCount);
+                if (!isFirstPress && !isRepeat)
+                {
+                    return true;
+                }
+
+                if (_isWhisperTargetPickerActive)
+                {
+                    if (IsWhisperTargetPickerModalFooterFocused())
+                    {
+                        ActivateWhisperTargetPickerModalComboFocus();
+                    }
+
+                    if (_whisperTargetPickerPresentation == WhisperTargetPickerPresentation.Modal
+                        && !_isWhisperTargetPickerComboDropdownOpen)
+                    {
+                        // Closed modal combo consumes Up without selection movement.
+                    }
+                    else
+                    {
+                        MoveWhisperTargetPickerSelection(
+                            -1,
+                            WhisperTargetPickerNavigationMode.Step,
+                            updateInputText: !IsWhisperTargetPickerModalDropdownNavigating());
+                    }
+                }
+                else if (_inputHistory.Count > 0)
                 {
                     // Save current input when starting to browse history
                     if (_historyIndex == -1)
@@ -194,58 +684,151 @@ namespace HaCreator.MapSimulator
                         _savedCurrentInput = _inputText.ToString();
                     }
 
-                    // Move to older entry
-                    if (_historyIndex < _inputHistory.Count - 1)
+                    if (_clientChatHelperUseSubmittedHistoryIndex
+                        && _historyIndex >= 0
+                        && _historyIndex < _inputHistory.Count)
                     {
-                        _historyIndex++;
+                        _clientChatHelperUseSubmittedHistoryIndex = false;
                         _inputText.Clear();
                         _inputText.Append(_inputHistory[_inputHistory.Count - 1 - _historyIndex]);
                         _cursorPosition = _inputText.Length; // Move cursor to end
-                    }
-                }
-                return true;
-            }
-
-            // Handle Down arrow - browse history (newer)
-            if (newKeyboardState.IsKeyDown(Keys.Down) && oldKeyboardState.IsKeyUp(Keys.Down))
-            {
-                if (_historyIndex > -1)
-                {
-                    _historyIndex--;
-                    _inputText.Clear();
-
-                    if (_historyIndex == -1)
-                    {
-                        // Restore the saved current input
-                        _inputText.Append(_savedCurrentInput);
+                        ClearInputSelection();
                     }
                     else
                     {
-                        _inputText.Append(_inputHistory[_inputHistory.Count - 1 - _historyIndex]);
+                        _clientChatHelperUseSubmittedHistoryIndex = false;
+                        // Move to older entry
+                        if (_historyIndex < _inputHistory.Count - 1)
+                        {
+                            _historyIndex++;
+                            _inputText.Clear();
+                            _inputText.Append(_inputHistory[_inputHistory.Count - 1 - _historyIndex]);
+                            _cursorPosition = _inputText.Length; // Move cursor to end
+                            ClearInputSelection();
+                        }
                     }
-                    _cursorPosition = _inputText.Length; // Move cursor to end
                 }
+
+                if (isFirstPress)
+                {
+                    _lastHeldKey = Keys.Up;
+                    _keyHoldStartTime = tickCount;
+                    _lastKeyRepeatTime = tickCount;
+                }
+                else
+                {
+                    _lastKeyRepeatTime = tickCount;
+                }
+
                 return true;
+            }
+            else if (_lastHeldKey == Keys.Up)
+            {
+                ResetKeyRepeat();
+            }
+
+            // Handle Down arrow - browse history (newer)
+            if (newKeyboardState.IsKeyDown(Keys.Down))
+            {
+                bool isFirstPress = oldKeyboardState.IsKeyUp(Keys.Down);
+                bool isRepeat = !isFirstPress && ShouldRepeatKey(Keys.Down, tickCount);
+                if (!isFirstPress && !isRepeat)
+                {
+                    return true;
+                }
+
+                if (_isWhisperTargetPickerActive)
+                {
+                    if (IsWhisperTargetPickerModalFooterFocused())
+                    {
+                        ActivateWhisperTargetPickerModalComboFocus();
+                    }
+
+                    if (IsWhisperTargetPickerModalComboFocused()
+                        && !_isWhisperTargetPickerComboDropdownOpen)
+                    {
+                        OpenWhisperTargetPickerModalComboDropdown();
+                    }
+                    else
+                    {
+                        OpenWhisperTargetPickerModalComboDropdown();
+                        MoveWhisperTargetPickerSelection(
+                            1,
+                            WhisperTargetPickerNavigationMode.Step,
+                            updateInputText: !IsWhisperTargetPickerModalDropdownNavigating());
+                    }
+                }
+                else if (_historyIndex > -1)
+                {
+                    // CChatHelper::HistoryDown clamps at the newest retained entry once
+                    // history browsing is active instead of restoring the pre-browse draft.
+                    if (_historyIndex > 0)
+                    {
+                        _historyIndex--;
+                    }
+
+                    _inputText.Clear();
+                    _inputText.Append(_inputHistory[_inputHistory.Count - 1 - _historyIndex]);
+                    _cursorPosition = _inputText.Length; // Move cursor to end
+                    ClearInputSelection();
+                }
+
+                if (isFirstPress)
+                {
+                    _lastHeldKey = Keys.Down;
+                    _keyHoldStartTime = tickCount;
+                    _lastKeyRepeatTime = tickCount;
+                }
+                else
+                {
+                    _lastKeyRepeatTime = tickCount;
+                }
+
+                return true;
+            }
+            else if (_lastHeldKey == Keys.Down)
+            {
+                ResetKeyRepeat();
             }
 
             // Handle Left arrow - move cursor left (with key repeat)
             if (newKeyboardState.IsKeyDown(Keys.Left))
             {
+                bool forwardEditCaretMoveToParent = ShouldForwardClientEditCaretMoveKeyToParent(
+                    Keys.Left,
+                    IsWhisperTargetPickerModalFooterFocused(),
+                    IsWhisperTargetPickerModalDropdownNavigating());
+
+                if (_isWhisperTargetPickerActive
+                    && _whisperTargetPickerPresentation == WhisperTargetPickerPresentation.Modal
+                    && oldKeyboardState.IsKeyUp(Keys.Left))
+                {
+                    if (_whisperTargetPickerModalFocusTarget == WhisperTargetPickerModalFocusTarget.FooterButtons)
+                    {
+                        MoveWhisperTargetPickerModalButtonFocus(-1);
+                        return true;
+                    }
+                }
+
+                if (oldKeyboardState.IsKeyUp(Keys.Left)
+                    && TryHandleWhisperTargetPickerModalComboToggleKey(Keys.Left))
+                {
+                    return true;
+                }
+
                 if (oldKeyboardState.IsKeyUp(Keys.Left))
                 {
-                    if (_cursorPosition > 0)
-                        _cursorPosition--;
+                    MoveInputCaret(ResolveClientEditHorizontalCaretTarget(moveRight: false, shiftHeld), shiftHeld);
                     _lastHeldKey = Keys.Left;
                     _keyHoldStartTime = tickCount;
                     _lastKeyRepeatTime = tickCount;
                 }
                 else if (ShouldRepeatKey(Keys.Left, tickCount))
                 {
-                    if (_cursorPosition > 0)
-                        _cursorPosition--;
+                    MoveInputCaret(ResolveClientEditHorizontalCaretTarget(moveRight: false, shiftHeld), shiftHeld);
                     _lastKeyRepeatTime = tickCount;
                 }
-                return true;
+                return !forwardEditCaretMoveToParent;
             }
             else if (_lastHeldKey == Keys.Left)
             {
@@ -255,37 +838,73 @@ namespace HaCreator.MapSimulator
             // Handle Right arrow - move cursor right (with key repeat)
             if (newKeyboardState.IsKeyDown(Keys.Right))
             {
+                bool forwardEditCaretMoveToParent = ShouldForwardClientEditCaretMoveKeyToParent(
+                    Keys.Right,
+                    IsWhisperTargetPickerModalFooterFocused(),
+                    IsWhisperTargetPickerModalDropdownNavigating());
+
+                if (_isWhisperTargetPickerActive
+                    && _whisperTargetPickerPresentation == WhisperTargetPickerPresentation.Modal
+                    && oldKeyboardState.IsKeyUp(Keys.Right))
+                {
+                    if (_whisperTargetPickerModalFocusTarget == WhisperTargetPickerModalFocusTarget.FooterButtons)
+                    {
+                        MoveWhisperTargetPickerModalButtonFocus(1);
+                        return true;
+                    }
+                }
+
+                if (oldKeyboardState.IsKeyUp(Keys.Right)
+                    && TryHandleWhisperTargetPickerModalComboToggleKey(Keys.Right))
+                {
+                    return true;
+                }
+
                 if (oldKeyboardState.IsKeyUp(Keys.Right))
                 {
-                    if (_cursorPosition < _inputText.Length)
-                        _cursorPosition++;
+                    MoveInputCaret(ResolveClientEditHorizontalCaretTarget(moveRight: true, shiftHeld), shiftHeld);
                     _lastHeldKey = Keys.Right;
                     _keyHoldStartTime = tickCount;
                     _lastKeyRepeatTime = tickCount;
                 }
                 else if (ShouldRepeatKey(Keys.Right, tickCount))
                 {
-                    if (_cursorPosition < _inputText.Length)
-                        _cursorPosition++;
+                    MoveInputCaret(ResolveClientEditHorizontalCaretTarget(moveRight: true, shiftHeld), shiftHeld);
                     _lastKeyRepeatTime = tickCount;
                 }
-                return true;
+                return !forwardEditCaretMoveToParent;
             }
             else if (_lastHeldKey == Keys.Right)
             {
                 ResetKeyRepeat();
             }
 
+            if (TryHandleClientEditClipboardShortcut(newKeyboardState, oldKeyboardState, controlHeld, shiftHeld))
+            {
+                return true;
+            }
+
             // Handle backspace with key repeat - delete at cursor position
             if (newKeyboardState.IsKeyDown(Keys.Back))
             {
+                if (IsWhisperTargetPickerModalFooterFocused())
+                {
+                    return true;
+                }
+
+                ActivateWhisperTargetPickerModalComboFocus();
                 if (oldKeyboardState.IsKeyUp(Keys.Back))
                 {
                     // First press - delete character before cursor
-                    if (_cursorPosition > 0)
+                    if (TryDeleteInputSelection())
+                    {
+                        SyncWhisperTargetPickerSelectionFromInput();
+                    }
+                    else if (_cursorPosition > 0)
                     {
                         _inputText.Remove(_cursorPosition - 1, 1);
                         _cursorPosition--;
+                        SyncWhisperTargetPickerSelectionFromInput();
                     }
                     _lastHeldKey = Keys.Back;
                     _keyHoldStartTime = tickCount;
@@ -294,10 +913,15 @@ namespace HaCreator.MapSimulator
                 else if (ShouldRepeatKey(Keys.Back, tickCount))
                 {
                     // Key repeat
-                    if (_cursorPosition > 0)
+                    if (TryDeleteInputSelection())
+                    {
+                        SyncWhisperTargetPickerSelectionFromInput();
+                    }
+                    else if (_cursorPosition > 0)
                     {
                         _inputText.Remove(_cursorPosition - 1, 1);
                         _cursorPosition--;
+                        SyncWhisperTargetPickerSelectionFromInput();
                     }
                     _lastKeyRepeatTime = tickCount;
                 }
@@ -311,12 +935,23 @@ namespace HaCreator.MapSimulator
             // Handle Delete key - delete at cursor position (with key repeat)
             if (newKeyboardState.IsKeyDown(Keys.Delete))
             {
+                if (IsWhisperTargetPickerModalFooterFocused())
+                {
+                    return true;
+                }
+
+                ActivateWhisperTargetPickerModalComboFocus();
                 if (oldKeyboardState.IsKeyUp(Keys.Delete))
                 {
                     // First press - delete character at cursor
-                    if (_cursorPosition < _inputText.Length)
+                    if (TryDeleteInputSelection())
+                    {
+                        SyncWhisperTargetPickerSelectionFromInput();
+                    }
+                    else if (_cursorPosition < _inputText.Length)
                     {
                         _inputText.Remove(_cursorPosition, 1);
+                        SyncWhisperTargetPickerSelectionFromInput();
                     }
                     _lastHeldKey = Keys.Delete;
                     _keyHoldStartTime = tickCount;
@@ -325,9 +960,14 @@ namespace HaCreator.MapSimulator
                 else if (ShouldRepeatKey(Keys.Delete, tickCount))
                 {
                     // Key repeat
-                    if (_cursorPosition < _inputText.Length)
+                    if (TryDeleteInputSelection())
+                    {
+                        SyncWhisperTargetPickerSelectionFromInput();
+                    }
+                    else if (_cursorPosition < _inputText.Length)
                     {
                         _inputText.Remove(_cursorPosition, 1);
+                        SyncWhisperTargetPickerSelectionFromInput();
                     }
                     _lastKeyRepeatTime = tickCount;
                 }
@@ -341,19 +981,140 @@ namespace HaCreator.MapSimulator
             // Handle Home key - move cursor to start
             if (newKeyboardState.IsKeyDown(Keys.Home) && oldKeyboardState.IsKeyUp(Keys.Home))
             {
-                _cursorPosition = 0;
+                if (controlHeld)
+                {
+                    return true;
+                }
+
+                if (_isWhisperTargetPickerActive)
+                {
+                    if (IsWhisperTargetPickerModalFooterFocused())
+                    {
+                        ActivateWhisperTargetPickerModalComboFocus();
+                    }
+
+                    if (_whisperTargetPickerPresentation != WhisperTargetPickerPresentation.Modal)
+                    {
+                        OpenWhisperTargetPickerModalComboDropdown();
+                        MoveWhisperTargetPickerSelectionToBoundary(
+                            moveToLast: false,
+                            updateInputText: !IsWhisperTargetPickerModalDropdownNavigating());
+                    }
+                    else if (IsWhisperTargetPickerModalDropdownNavigating())
+                    {
+                        MoveInputCaret(0, shiftHeld);
+                    }
+                    else
+                    {
+                        MoveInputCaret(0, shiftHeld);
+                    }
+
+                    return true;
+                }
+
+                MoveInputCaret(0, shiftHeld);
                 return true;
             }
 
             // Handle End key - move cursor to end
             if (newKeyboardState.IsKeyDown(Keys.End) && oldKeyboardState.IsKeyUp(Keys.End))
             {
-                _cursorPosition = _inputText.Length;
+                if (controlHeld)
+                {
+                    return true;
+                }
+
+                if (_isWhisperTargetPickerActive)
+                {
+                    if (IsWhisperTargetPickerModalFooterFocused())
+                    {
+                        ActivateWhisperTargetPickerModalComboFocus();
+                    }
+
+                    if (_whisperTargetPickerPresentation != WhisperTargetPickerPresentation.Modal)
+                    {
+                        OpenWhisperTargetPickerModalComboDropdown();
+                        MoveWhisperTargetPickerSelectionToBoundary(
+                            moveToLast: true,
+                            updateInputText: !IsWhisperTargetPickerModalDropdownNavigating());
+                    }
+                    else if (IsWhisperTargetPickerModalDropdownNavigating())
+                    {
+                        MoveInputCaret(_inputText.Length, shiftHeld);
+                    }
+                    else
+                    {
+                        MoveInputCaret(_inputText.Length, shiftHeld);
+                    }
+
+                    return true;
+                }
+
+                MoveInputCaret(_inputText.Length, shiftHeld);
                 return true;
             }
 
+            if (newKeyboardState.IsKeyDown(Keys.PageUp) && oldKeyboardState.IsKeyUp(Keys.PageUp))
+            {
+                if (ShouldForwardClientEditPageKeyToParent())
+                {
+                    return false;
+                }
+
+                if (_isWhisperTargetPickerActive)
+                {
+                    if (IsWhisperTargetPickerModalFooterFocused())
+                    {
+                        ActivateWhisperTargetPickerModalComboFocus();
+                    }
+
+                    if (_whisperTargetPickerPresentation != WhisperTargetPickerPresentation.Modal)
+                    {
+                        OpenWhisperTargetPickerModalComboDropdown();
+                        PageWhisperTargetPickerSelection(
+                            -1,
+                            updateInputText: !IsWhisperTargetPickerModalDropdownNavigating());
+                    }
+                    else if (IsWhisperTargetPickerModalDropdownNavigating())
+                    {
+                        return true;
+                    }
+
+                    return true;
+                }
+            }
+
+            if (newKeyboardState.IsKeyDown(Keys.PageDown) && oldKeyboardState.IsKeyUp(Keys.PageDown))
+            {
+                if (ShouldForwardClientEditPageKeyToParent())
+                {
+                    return false;
+                }
+
+                if (_isWhisperTargetPickerActive)
+                {
+                    if (IsWhisperTargetPickerModalFooterFocused())
+                    {
+                        ActivateWhisperTargetPickerModalComboFocus();
+                    }
+
+                    if (_whisperTargetPickerPresentation != WhisperTargetPickerPresentation.Modal)
+                    {
+                        OpenWhisperTargetPickerModalComboDropdown();
+                        PageWhisperTargetPickerSelection(
+                            1,
+                            updateInputText: !IsWhisperTargetPickerModalDropdownNavigating());
+                    }
+                    else if (IsWhisperTargetPickerModalDropdownNavigating())
+                    {
+                        return true;
+                    }
+
+                    return true;
+                }
+            }
+
             // Handle character input
-            bool shift = newKeyboardState.IsKeyDown(Keys.LeftShift) || newKeyboardState.IsKeyDown(Keys.RightShift);
             Keys[] pressedKeys = newKeyboardState.GetPressedKeys();
 
             // First, process ALL newly pressed keys immediately (for fast typing)
@@ -362,19 +1123,33 @@ namespace HaCreator.MapSimulator
                 if (key == Keys.LeftShift || key == Keys.RightShift ||
                     key == Keys.LeftControl || key == Keys.RightControl ||
                     key == Keys.LeftAlt || key == Keys.RightAlt ||
-                    key == Keys.Back || key == Keys.Enter || key == Keys.Escape ||
+                    key == Keys.Back || key == Keys.Enter || key == Keys.Escape || key == Keys.Tab ||
                     key == Keys.Up || key == Keys.Down || key == Keys.Left || key == Keys.Right ||
                     key == Keys.Home || key == Keys.End || key == Keys.Delete)
                     continue;
 
+                if (controlHeld)
+                {
+                    continue;
+                }
+
                 // Process only newly pressed keys
                 if (oldKeyboardState.IsKeyUp(key))
                 {
-                    char? c = KeyToChar(key, shift);
-                    if (c.HasValue && _inputText.Length < CHAT_MAX_INPUT_LENGTH)
+                    char? c = KeyToChar(key, shiftHeld);
+                    if (c.HasValue && CanInsertInputCharacter())
                     {
+                        if (IsWhisperTargetPickerModalFooterFocused())
+                        {
+                            continue;
+                        }
+
+                        ActivateWhisperTargetPickerModalComboFocus();
+                        TryDeleteInputSelection();
                         _inputText.Insert(_cursorPosition, c.Value);
                         _cursorPosition++;
+                        ClearInputSelection();
+                        SyncWhisperTargetPickerSelectionFromInput();
                         // Track this key for potential repeat
                         _lastHeldKey = key;
                         _keyHoldStartTime = tickCount;
@@ -387,11 +1162,19 @@ namespace HaCreator.MapSimulator
             if (_lastHeldKey != Keys.None && _lastHeldKey != Keys.Back &&
                 newKeyboardState.IsKeyDown(_lastHeldKey) && ShouldRepeatKey(_lastHeldKey, tickCount))
             {
-                char? c = KeyToChar(_lastHeldKey, shift);
-                if (c.HasValue && _inputText.Length < CHAT_MAX_INPUT_LENGTH)
+                char? c = KeyToChar(_lastHeldKey, shiftHeld);
+                if (!controlHeld && c.HasValue && CanInsertInputCharacter())
                 {
+                    if (IsWhisperTargetPickerModalFooterFocused())
+                    {
+                        return true;
+                    }
+
+                    TryDeleteInputSelection();
                     _inputText.Insert(_cursorPosition, c.Value);
                     _cursorPosition++;
+                    ClearInputSelection();
+                    SyncWhisperTargetPickerSelectionFromInput();
                     _lastKeyRepeatTime = tickCount;
                 }
             }
@@ -401,6 +1184,89 @@ namespace HaCreator.MapSimulator
             }
 
             return true; // Consume input when chat is active
+        }
+
+        private bool TryHandleClientEditClipboardShortcut(
+            KeyboardState newKeyboardState,
+            KeyboardState oldKeyboardState,
+            bool controlHeld,
+            bool shiftHeld)
+        {
+            if (!controlHeld && !shiftHeld)
+            {
+                return false;
+            }
+
+            bool copyPressed = controlHeld && IsNewKeyPress(newKeyboardState, oldKeyboardState, Keys.C);
+            bool cutPressed = (controlHeld && IsNewKeyPress(newKeyboardState, oldKeyboardState, Keys.X))
+                || (shiftHeld && IsNewKeyPress(newKeyboardState, oldKeyboardState, Keys.Delete));
+            bool pastePressed = (controlHeld && IsNewKeyPress(newKeyboardState, oldKeyboardState, Keys.V))
+                || (shiftHeld && IsNewKeyPress(newKeyboardState, oldKeyboardState, Keys.Insert));
+
+            if (!copyPressed && !cutPressed && !pastePressed)
+            {
+                return false;
+            }
+
+            if (IsWhisperTargetPickerModalFooterFocused())
+            {
+                return true;
+            }
+
+            if (copyPressed)
+            {
+                if (TryGetInputSelectionText(out string selectedText))
+                {
+                    TrySetClipboardText(selectedText);
+                }
+
+                return true;
+            }
+
+            if (cutPressed)
+            {
+                if (TryGetInputSelectionText(out string selectedText))
+                {
+                    TrySetClipboardText(selectedText);
+                    TryDeleteInputSelection();
+                    SyncWhisperTargetPickerSelectionFromInput();
+                }
+
+                return true;
+            }
+
+            if (pastePressed)
+            {
+                string clipboardText = NormalizeClientEditCommittedText(TryGetClipboardText());
+                if (!string.IsNullOrEmpty(clipboardText) && CanInsertInputText(clipboardText))
+                {
+                    ActivateWhisperTargetPickerModalComboFocus();
+                    TryDeleteInputSelection();
+                    InsertInputText(clipboardText);
+                    SyncWhisperTargetPickerSelectionFromInput();
+                }
+
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool ShouldForwardClientEditPageKeyToParent()
+        {
+            if (!_isWhisperTargetPickerActive)
+            {
+                return true;
+            }
+
+            return _whisperTargetPickerPresentation == WhisperTargetPickerPresentation.Modal
+                && IsWhisperTargetPickerModalComboFocused();
+        }
+
+        private bool ShouldForwardClientEditPageKeyToParent(KeyboardState newKeyboardState)
+        {
+            return (newKeyboardState.IsKeyDown(Keys.PageUp) || newKeyboardState.IsKeyDown(Keys.PageDown))
+                && ShouldForwardClientEditPageKeyToParent();
         }
 
         /// <summary>
@@ -434,9 +1300,17 @@ namespace HaCreator.MapSimulator
         /// </summary>
         private void AddToInputHistory(string message)
         {
+            bool hasPendingSubmittedHistory = _pendingClientChatHelperSubmittedHistoryIndex
+                && _pendingClientChatHelperSubmittedHistoryForwardIndex >= 0;
+            int pendingForwardIndex = _pendingClientChatHelperSubmittedHistoryForwardIndex;
+            int removedFromFront = 0;
+
             // Don't add duplicates of the last entry
             if (_inputHistory.Count > 0 && _inputHistory[_inputHistory.Count - 1] == message)
+            {
+                ApplyClientChatHelperSubmittedHistoryIndex(message, pendingForwardIndex, removedFromFront, hasPendingSubmittedHistory);
                 return;
+            }
 
             _inputHistory.Add(message);
 
@@ -444,7 +1318,10 @@ namespace HaCreator.MapSimulator
             while (_inputHistory.Count > MAX_INPUT_HISTORY)
             {
                 _inputHistory.RemoveAt(0);
+                removedFromFront++;
             }
+
+            ApplyClientChatHelperSubmittedHistoryIndex(message, pendingForwardIndex, removedFromFront, hasPendingSubmittedHistory);
         }
 
         /// <summary>
@@ -454,6 +1331,237 @@ namespace HaCreator.MapSimulator
         {
             _historyIndex = -1;
             _savedCurrentInput = "";
+            _clientChatHelperUseSubmittedHistoryIndex = false;
+        }
+
+        private void RememberClientChatHelperSubmittedHistoryIndex(string message)
+        {
+            _pendingClientChatHelperSubmittedHistoryIndex = false;
+            _pendingClientChatHelperSubmittedHistoryForwardIndex = -1;
+
+            if (_historyIndex < 0 || _historyIndex >= _inputHistory.Count)
+            {
+                return;
+            }
+
+            int forwardIndex = _inputHistory.Count - 1 - _historyIndex;
+            if (forwardIndex < 0 || forwardIndex >= _inputHistory.Count)
+            {
+                return;
+            }
+
+            if (!string.Equals(_inputHistory[forwardIndex], message, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _pendingClientChatHelperSubmittedHistoryIndex = true;
+            _pendingClientChatHelperSubmittedHistoryForwardIndex = forwardIndex;
+        }
+
+        private void ApplyClientChatHelperSubmittedHistoryIndex(
+            string message,
+            int pendingForwardIndex,
+            int removedFromFront,
+            bool hasPendingSubmittedHistory)
+        {
+            _pendingClientChatHelperSubmittedHistoryIndex = false;
+            _pendingClientChatHelperSubmittedHistoryForwardIndex = -1;
+
+            if (!hasPendingSubmittedHistory)
+            {
+                return;
+            }
+
+            int adjustedForwardIndex = pendingForwardIndex - removedFromFront;
+            if (adjustedForwardIndex < 0
+                || adjustedForwardIndex >= _inputHistory.Count
+                || !string.Equals(_inputHistory[adjustedForwardIndex], message, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            // CChatHelper::HistoryAdd preserves the submitted history row and marks
+            // m_bUseHistory so the next HistoryUp reopens that same native row.
+            _historyIndex = _inputHistory.Count - 1 - adjustedForwardIndex;
+            _clientChatHelperUseSubmittedHistoryIndex = true;
+        }
+
+        private bool TryApplyClientChatHelperTryChat(
+            string originalMessage,
+            int tickCount,
+            out string processedMessage,
+            bool addAcceptedMessageToHistory = true)
+        {
+            processedMessage = originalMessage ?? string.Empty;
+
+            if (_clientChatHelperHasMutedTime
+                && HasClientChatHelperElapsedLessThan(tickCount, _clientChatHelperMutedTime, ClientChatHelperMuteWindowMs))
+            {
+                return RejectClientChatHelperTryChat();
+            }
+
+            if (IsClientChatContextBlocked)
+            {
+                AddClientChatMessage(
+                    ResolveClientChatHelperContextBlockedMessage(),
+                    tickCount,
+                    8);
+                return RejectClientChatHelperTryChat();
+            }
+
+            if (!ClientCurseProcessParity.TryProcessString(
+                    processedMessage,
+                    ignoreNewLine: false,
+                    out processedMessage,
+                    out _,
+                    out string curseNotice))
+            {
+                ShowClientChatHelperNotice(curseNotice ?? ClientCurseProcessParity.GetInappropriateContentNotice(), tickCount);
+                return RejectClientChatHelperTryChat();
+            }
+
+            if (_clientChatHelperHasLastCheckedTime
+                && HasClientChatHelperElapsedGreaterThan(tickCount, _clientChatHelperLastCheckedTime, ClientChatHelperRecentResetMs))
+            {
+                _clientChatHelperRecentMessages.Clear();
+                _clientChatHelperLastCheckedTime = tickCount;
+            }
+            else if (!_clientChatHelperHasLastCheckedTime)
+            {
+                _clientChatHelperLastCheckedTime = tickCount;
+                _clientChatHelperHasLastCheckedTime = true;
+            }
+
+            _clientChatHelperRecentMessages.Add(originalMessage ?? string.Empty);
+            while (_clientChatHelperRecentMessages.Count > ClientChatHelperRecentRepeatLimit)
+            {
+                _clientChatHelperRecentMessages.RemoveAt(0);
+            }
+
+            if (_clientChatHelperRecentMessages.Count == ClientChatHelperRecentRepeatLimit
+                && AreClientChatHelperRecentMessagesEqual())
+            {
+                MuteClientChatHelper(tickCount);
+                ShowClientChatHelperNotice(ResolveClientChatHelperRepeatedMessageNotice(), tickCount);
+                return RejectClientChatHelperTryChat();
+            }
+
+            int currentIndex = _clientChatHelperChatIndex;
+            _clientChatHelperChatTimestamps[currentIndex] = tickCount;
+            _clientChatHelperChatTimestampValid[currentIndex] = true;
+            int nextIndex = (currentIndex + 1) % ClientChatHelperChatTimestampLimit;
+            _clientChatHelperChatIndex = nextIndex;
+
+            if (_clientChatHelperChatTimestampValid[nextIndex]
+                && HasClientChatHelperElapsedLessThan(
+                    tickCount,
+                    _clientChatHelperChatTimestamps[nextIndex],
+                    ClientChatHelperFloodWindowMs))
+            {
+                MuteClientChatHelper(tickCount);
+                ShowClientChatHelperNotice(ResolveClientChatHelperFloodNotice(), tickCount);
+                return RejectClientChatHelperTryChat();
+            }
+
+            if (addAcceptedMessageToHistory)
+            {
+                AddToInputHistory(originalMessage);
+            }
+
+            return true;
+        }
+
+        private void AddClientChatHelperCommandHistory(string command)
+        {
+            string trimmedCommand = command?.Trim() ?? string.Empty;
+            if (trimmedCommand.Length == 0)
+            {
+                return;
+            }
+
+            AddToInputHistory(trimmedCommand);
+        }
+
+        private bool RejectClientChatHelperTryChat()
+        {
+            // CChatHelper::TryChat only reaches HistoryAdd on the accepted branch.
+            // Rejected sends must not arm the submitted-history reuse lane.
+            _pendingClientChatHelperSubmittedHistoryIndex = false;
+            _pendingClientChatHelperSubmittedHistoryForwardIndex = -1;
+            return false;
+        }
+
+        private bool AreClientChatHelperRecentMessagesEqual()
+        {
+            if (_clientChatHelperRecentMessages.Count == 0)
+            {
+                return false;
+            }
+
+            string first = _clientChatHelperRecentMessages[0];
+            for (int i = 1; i < _clientChatHelperRecentMessages.Count; i++)
+            {
+                if (!string.Equals(first, _clientChatHelperRecentMessages[i], StringComparison.Ordinal))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private void MuteClientChatHelper(int tickCount)
+        {
+            _clientChatHelperMutedTime = tickCount;
+            _clientChatHelperHasMutedTime = true;
+        }
+
+        private static bool HasClientChatHelperElapsedLessThan(int currentTick, int previousTick, int thresholdMs)
+        {
+            return unchecked((uint)(currentTick - previousTick)) < (uint)thresholdMs;
+        }
+
+        private static bool HasClientChatHelperElapsedGreaterThan(int currentTick, int previousTick, int thresholdMs)
+        {
+            return unchecked((uint)(currentTick - previousTick)) > (uint)thresholdMs;
+        }
+
+        private void ShowClientChatHelperNotice(string notice, int tickCount)
+        {
+            if (ClientChatHelperNoticeRequested?.Invoke(notice ?? string.Empty, tickCount) == true)
+            {
+                return;
+            }
+
+            AddErrorMessage(notice, tickCount);
+        }
+
+        internal static string ResolveClientChatHelperRepeatedMessageNotice()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                ClientChatHelperRepeatedMessageStringPoolId,
+                "Please do not repeat the same message.",
+                appendFallbackSuffix: false,
+                minimumHexWidth: 0);
+        }
+
+        internal static string ResolveClientChatHelperFloodNotice()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                ClientChatHelperFloodMessageStringPoolId,
+                "Please wait before chatting again.",
+                appendFallbackSuffix: false,
+                minimumHexWidth: 0);
+        }
+
+        internal static string ResolveClientChatHelperContextBlockedMessage()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                ClientChatHelperContextBlockedStringPoolId,
+                "You cannot chat right now.",
+                appendFallbackSuffix: false,
+                minimumHexWidth: 0);
         }
 
         /// <summary>
@@ -511,14 +1619,95 @@ namespace HaCreator.MapSimulator
         /// <param name="text">Message text</param>
         /// <param name="color">Message color</param>
         /// <param name="tickCount">Current tick count for timestamp</param>
-        public void AddMessage(string text, Color color, int tickCount)
+        public void AddMessage(string text, Color color, int tickCount, int chatLogType = -1)
         {
-            _messages.Add(new ChatMessage(text, color, tickCount));
+            AddMessage(text, color, tickCount, chatLogType, null);
+        }
+
+        public void AddClientChatMessage(string text, int tickCount, int chatLogType)
+        {
+            AddClientChatMessage(text, tickCount, chatLogType, null, -1);
+        }
+
+        public void AddClientChatMessage(string text, int tickCount, int chatLogType, string whisperTargetCandidate)
+        {
+            AddClientChatMessage(text, tickCount, chatLogType, whisperTargetCandidate, -1);
+        }
+
+        public void AddSystemMessage(string text, int tickCount)
+        {
+            AddClientMessage(text, tickCount, ClientChatLogType.System);
+        }
+
+        public void AddNoticeMessage(string text, int tickCount)
+        {
+            AddClientMessage(text, tickCount, ClientChatLogType.Notice);
+        }
+
+        public void AddErrorMessage(string text, int tickCount)
+        {
+            AddClientMessage(text, tickCount, ClientChatLogType.Error);
+        }
+
+        public void AddClientChatMessage(
+            string text,
+            int tickCount,
+            int chatLogType,
+            string whisperTargetCandidate,
+            int channelId)
+        {
+            AddMessage(
+                text,
+                ResolveRenderedClientChatLogColor(chatLogType, channelId),
+                tickCount,
+                chatLogType,
+                whisperTargetCandidate,
+                channelId);
+        }
+
+        public void AddMessage(string text, Color color, int tickCount, int chatLogType, string whisperTargetCandidate)
+        {
+            AddMessage(text, color, tickCount, chatLogType, whisperTargetCandidate, -1);
+        }
+
+        public void AddMessage(
+            string text,
+            Color color,
+            int tickCount,
+            int chatLogType,
+            string whisperTargetCandidate,
+            int channelId)
+        {
+            if (chatLogType < 0)
+            {
+                if (TryInferClientChatLogTypeFromPrefix(text, out ClientChatLogType prefixedType))
+                {
+                    chatLogType = (int)prefixedType;
+                    color = ResolveClientChatLogColor(prefixedType, channelId);
+                }
+                else
+                {
+                    chatLogType = InferClientChatLogType(text, color);
+                    if (Enum.IsDefined(typeof(ClientChatLogType), chatLogType))
+                    {
+                        color = ResolveClientChatLogColor((ClientChatLogType)chatLogType, channelId);
+                    }
+                }
+            }
+
+            RememberIncomingWhisperTarget(chatLogType, whisperTargetCandidate, text);
+
+            _messages.Add(new ChatMessage(text, color, tickCount, chatLogType, whisperTargetCandidate, channelId));
 
             // Remove old messages if exceeding limit
             while (_messages.Count > MAX_CHAT_MESSAGES)
             {
                 _messages.RemoveAt(0);
+            }
+
+            if (chatLogType >= 0)
+            {
+                ClientChatMessageAdded?.Invoke(text, chatLogType, tickCount);
             }
         }
 
@@ -528,8 +1717,162 @@ namespace HaCreator.MapSimulator
         public void Deactivate()
         {
             _isActive = false;
+            CloseWhisperTargetPicker(restoreDraft: false);
             _inputText.Clear();
             _cursorPosition = 0;
+            ClearInputSelection();
+            ClearImeEditState();
+            ResetKeyRepeat();
+            ResetHistoryNavigation();
+        }
+
+        public void Activate(int tickCount, string initialText = null)
+        {
+            _isActive = true;
+            _cursorBlinkTimer = tickCount;
+            ResetHistoryNavigation();
+            ClearImeEditState();
+            SetInputText(initialText ?? string.Empty);
+        }
+
+        public void ToggleActive(int tickCount)
+        {
+            if (_isActive)
+            {
+                Deactivate();
+                return;
+            }
+
+            Activate(tickCount);
+        }
+
+        public void CycleTarget(int direction)
+        {
+            const int targetCount = 6;
+            int nextIndex = ((int)_chatTarget + direction) % targetCount;
+            if (nextIndex < 0)
+            {
+                nextIndex += targetCount;
+            }
+
+            _chatTarget = (MapSimulatorChatTargetType)nextIndex;
+            _whisperTarget = string.Empty;
+        }
+
+        public void ActivateTarget(MapSimulatorChatTargetType targetType, int tickCount, string initialText = null)
+        {
+            _chatTarget = targetType;
+            _whisperTarget = string.Empty;
+            Activate(tickCount, initialText);
+        }
+
+        public void BeginWhisperTo(string whisperTarget, int tickCount)
+        {
+            if (!TryArmWhisperTarget(whisperTarget, tickCount))
+            {
+                return;
+            }
+
+            Activate(tickCount);
+        }
+
+        public void BeginWhisperFromChatLog(string whisperTarget, int tickCount)
+        {
+            WhisperTargetValidationResult validationResult = ValidateExplicitWhisperTargetCandidate(
+                whisperTarget,
+                _localPlayerName,
+                out string normalizedTarget);
+            if (validationResult != WhisperTargetValidationResult.Valid)
+            {
+                return;
+            }
+
+            AddWhisperCandidate(normalizedTarget);
+            OpenWhisperTargetPicker(tickCount, normalizedTarget);
+        }
+
+        public void RememberWhisperTarget(string whisperTarget)
+        {
+            WhisperTargetValidationResult validationResult = ValidateExplicitWhisperTargetCandidate(
+                whisperTarget,
+                _localPlayerName,
+                out string normalizedTarget);
+            if (validationResult != WhisperTargetValidationResult.Valid)
+            {
+                return;
+            }
+
+            AddWhisperCandidate(normalizedTarget);
+            _replyTarget = normalizedTarget;
+        }
+
+        internal void ClearLastOutgoingWhisperEcho()
+        {
+            _lastOutgoingWhisperTarget = string.Empty;
+            _lastOutgoingWhisperText = string.Empty;
+        }
+
+        public void AddIncomingTargetedMessage(
+            MapSimulatorChatTargetType targetType,
+            string speaker,
+            string message,
+            int tickCount)
+        {
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                return;
+            }
+
+            string prefix = GetTargetPrefix(targetType);
+            string trimmedSpeaker = speaker?.Trim();
+            string trimmedMessage = message.Trim();
+            string text = string.IsNullOrWhiteSpace(trimmedSpeaker)
+                ? $"{prefix} {trimmedMessage}".Trim()
+                : $"{prefix} {trimmedSpeaker}: {trimmedMessage}".Trim();
+            ClientChatLogType chatLogType = GetTargetChatLogType(targetType);
+            AddClientChatMessage(text, tickCount, (int)chatLogType);
+        }
+
+        public MapSimulatorChatRenderState GetRenderState(string localPlayerName = null)
+        {
+            _localPlayerName = NormalizeChatSpeakerCandidate(localPlayerName);
+            string inputText = _inputText.ToString();
+            BuildCompositionPreview(
+                inputText,
+                _cursorPosition,
+                _selectionAnchor,
+                _compositionState,
+                out string compositionPreviewText,
+                out int compositionStart,
+                out int compositionLength,
+                out int compositionCursorPosition);
+            return new MapSimulatorChatRenderState
+            {
+                Messages = _messages,
+                WhisperCandidates = _whisperCandidates,
+                IsActive = _isActive,
+                IsWhisperTargetPickerActive = _isWhisperTargetPickerActive,
+                WhisperTargetPickerPresentation = _whisperTargetPickerPresentation,
+                InputText = inputText,
+                CursorPosition = _cursorPosition,
+                SelectionAnchor = _selectionAnchor,
+                CompositionText = _compositionState.Text,
+                CompositionStart = compositionStart,
+                CompositionLength = compositionLength,
+                CompositionCursorPosition = compositionCursorPosition,
+                CompositionClauseOffsets = _compositionState.ClauseOffsets,
+                CompositionAttributes = _compositionState.Attributes,
+                CompositionPreviewText = compositionPreviewText,
+                ImeCandidateList = _imeCandidateListState,
+                TargetType = _chatTarget,
+                WhisperTarget = _whisperTarget ?? string.Empty,
+                WhisperTargetPickerSelectionIndex = _whisperTargetPickerSelectionIndex,
+                WhisperTargetPickerFirstVisibleIndex = _whisperTargetPickerFirstVisibleIndex,
+                WhisperTargetPickerModalButtonFocus = _whisperTargetPickerModalButtonFocus,
+                WhisperTargetPickerModalFocusTarget = _whisperTargetPickerModalFocusTarget,
+                IsWhisperTargetPickerComboDropdownOpen = _isWhisperTargetPickerComboDropdownOpen,
+                LocalPlayerName = _localPlayerName
+            };
         }
 
         /// <summary>
@@ -538,6 +1881,330 @@ namespace HaCreator.MapSimulator
         public void ClearMessages()
         {
             _messages.Clear();
+        }
+
+        public void OpenWhisperTargetPicker(
+            int tickCount,
+            string initialTarget = null,
+            WhisperTargetPickerPresentation presentation = WhisperTargetPickerPresentation.Inline)
+        {
+            string normalizedInitialTarget = NormalizeChatSpeakerCandidate(initialTarget);
+            bool explicitInitialTarget = !string.IsNullOrWhiteSpace(normalizedInitialTarget);
+            if (string.IsNullOrWhiteSpace(normalizedInitialTarget))
+            {
+                normalizedInitialTarget = NormalizeChatSpeakerCandidate(_whisperTarget);
+                explicitInitialTarget = !string.IsNullOrWhiteSpace(normalizedInitialTarget);
+            }
+
+            if (string.IsNullOrWhiteSpace(normalizedInitialTarget))
+            {
+                normalizedInitialTarget = NormalizeChatSpeakerCandidate(_replyTarget);
+                explicitInitialTarget = !string.IsNullOrWhiteSpace(normalizedInitialTarget);
+            }
+
+            if (!_isWhisperTargetPickerActive)
+            {
+                _savedChatInputBeforeWhisperPicker = _inputText.ToString();
+                _savedChatCursorBeforeWhisperPicker = _cursorPosition;
+            }
+
+            Activate(tickCount);
+            _isWhisperTargetPickerActive = true;
+            _whisperTargetPickerPresentation = presentation;
+            _whisperTargetPickerModalButtonFocus = WhisperTargetPickerModalButtonFocus.Confirm;
+            _whisperTargetPickerModalFocusTarget = WhisperTargetPickerModalFocusTarget.ComboBox;
+            _isWhisperTargetPickerComboDropdownOpen = false;
+            _whisperTargetPickerFirstVisibleIndex = 0;
+            ResetHistoryNavigation();
+
+            SetInputText(explicitInitialTarget ? normalizedInitialTarget : string.Empty);
+            SyncWhisperTargetPickerSelectionFromInput();
+            SnapWhisperTargetPickerFirstVisibleIndexToSelection();
+        }
+
+        internal bool ConfirmWhisperTargetPicker(int tickCount)
+        {
+            if (!_isWhisperTargetPickerActive)
+            {
+                return false;
+            }
+
+            string whisperTarget = ResolveWhisperTargetPickerSelection();
+            string resolvedWhisperTarget = whisperTarget;
+            if (_whisperTargetPickerPresentation == WhisperTargetPickerPresentation.Modal
+                && !TryResolveModalWhisperTargetConfirmation(whisperTarget, tickCount, out resolvedWhisperTarget))
+            {
+                return false;
+            }
+
+            if (_whisperTargetPickerPresentation == WhisperTargetPickerPresentation.Modal)
+            {
+                whisperTarget = resolvedWhisperTarget;
+            }
+
+            if (!TryArmWhisperTarget(whisperTarget, tickCount))
+            {
+                return false;
+            }
+
+            CloseWhisperTargetPicker(restoreDraft: false);
+            _isActive = true;
+            _cursorBlinkTimer = tickCount;
+            return true;
+        }
+
+        internal void CancelActiveWhisperTargetPicker()
+        {
+            if (_isWhisperTargetPickerActive)
+            {
+                CancelWhisperTargetPicker();
+            }
+        }
+
+        public void SelectWhisperTargetPickerCandidate(string whisperTarget, int tickCount)
+        {
+            if (_isWhisperTargetPickerActive
+                && _whisperTargetPickerPresentation == WhisperTargetPickerPresentation.Modal)
+            {
+                WhisperTargetValidationResult validationResult = ValidateExplicitWhisperTargetCandidate(
+                    whisperTarget,
+                    _localPlayerName,
+                    out string normalizedTarget);
+                if (validationResult != WhisperTargetValidationResult.Valid)
+                {
+                    return;
+                }
+
+                _whisperTargetPickerModalFocusTarget = WhisperTargetPickerModalFocusTarget.ComboBox;
+                _isWhisperTargetPickerComboDropdownOpen = false;
+                SetInputText(normalizedTarget, selectAll: true);
+                SyncWhisperTargetPickerSelectionFromInput();
+                return;
+            }
+
+            OpenWhisperTargetPicker(tickCount, whisperTarget, _whisperTargetPickerPresentation);
+            ConfirmWhisperTargetPicker(tickCount);
+        }
+
+        internal bool SelectWhisperTargetPickerModalComboDropdownCandidateAtClientRowIndex(int clientRowIndex)
+        {
+            if (!_isWhisperTargetPickerActive
+                || _whisperTargetPickerPresentation != WhisperTargetPickerPresentation.Modal
+                || !_isWhisperTargetPickerComboDropdownOpen
+                || clientRowIndex < 0
+                || clientRowIndex >= _whisperCandidates.Count)
+            {
+                return false;
+            }
+
+            _whisperTargetPickerModalFocusTarget = WhisperTargetPickerModalFocusTarget.ComboBox;
+            _whisperTargetPickerSelectionIndex = clientRowIndex;
+            _isWhisperTargetPickerComboDropdownOpen = false;
+            SetInputText(_whisperCandidates[clientRowIndex], selectAll: true);
+            return true;
+        }
+
+        internal void OffsetWhisperTargetPickerSelection(int delta)
+        {
+            if (!_isWhisperTargetPickerActive || delta == 0)
+            {
+                return;
+            }
+
+            MoveWhisperTargetPickerSelection(delta, WhisperTargetPickerNavigationMode.Step);
+        }
+
+        internal void ScrollWhisperTargetPickerModalComboDropdown(int deltaRows)
+        {
+            if (!_isWhisperTargetPickerActive
+                || _whisperTargetPickerPresentation != WhisperTargetPickerPresentation.Modal
+                || !_isWhisperTargetPickerComboDropdownOpen
+                || deltaRows == 0)
+            {
+                return;
+            }
+
+            _whisperTargetPickerModalFocusTarget = WhisperTargetPickerModalFocusTarget.ComboBox;
+            _whisperTargetPickerFirstVisibleIndex = ClampWhisperTargetPickerFirstVisibleIndex(
+                _whisperTargetPickerFirstVisibleIndex + deltaRows,
+                _whisperCandidates.Count,
+                WhisperTargetPickerVisibleRowCount);
+        }
+
+        internal void PageWhisperTargetPickerModalComboDropdown(int deltaPages)
+        {
+            if (deltaPages == 0)
+            {
+                return;
+            }
+
+            ScrollWhisperTargetPickerModalComboDropdown(deltaPages * WhisperTargetPickerVisibleRowCount);
+        }
+
+        internal void SetWhisperTargetPickerModalComboDropdownFirstVisibleIndex(int firstVisibleIndex)
+        {
+            if (!_isWhisperTargetPickerActive
+                || _whisperTargetPickerPresentation != WhisperTargetPickerPresentation.Modal
+                || !_isWhisperTargetPickerComboDropdownOpen)
+            {
+                return;
+            }
+
+            _whisperTargetPickerModalFocusTarget = WhisperTargetPickerModalFocusTarget.ComboBox;
+            _whisperTargetPickerFirstVisibleIndex = ClampWhisperTargetPickerFirstVisibleIndex(
+                firstVisibleIndex,
+                _whisperCandidates.Count,
+                WhisperTargetPickerVisibleRowCount);
+        }
+
+        internal void HighlightWhisperTargetPickerModalComboDropdownCandidate(string whisperTarget)
+        {
+            if (!_isWhisperTargetPickerActive
+                || _whisperTargetPickerPresentation != WhisperTargetPickerPresentation.Modal
+                || !_isWhisperTargetPickerComboDropdownOpen)
+            {
+                return;
+            }
+
+            WhisperTargetValidationResult validationResult = ValidateExplicitWhisperTargetCandidate(
+                whisperTarget,
+                _localPlayerName,
+                out string normalizedTarget);
+            if (validationResult != WhisperTargetValidationResult.Valid)
+            {
+                return;
+            }
+
+            for (int i = 0; i < _whisperCandidates.Count; i++)
+            {
+                if (string.Equals(_whisperCandidates[i], normalizedTarget, StringComparison.OrdinalIgnoreCase))
+                {
+                    _whisperTargetPickerModalFocusTarget = WhisperTargetPickerModalFocusTarget.ComboBox;
+                    _whisperTargetPickerSelectionIndex = i;
+                    EnsureWhisperTargetPickerSelectionVisible();
+                    return;
+                }
+            }
+        }
+
+        internal void HighlightWhisperTargetPickerModalComboDropdownCandidateAtClientRowIndex(int clientRowIndex)
+        {
+            if (!_isWhisperTargetPickerActive
+                || _whisperTargetPickerPresentation != WhisperTargetPickerPresentation.Modal
+                || !_isWhisperTargetPickerComboDropdownOpen
+                || clientRowIndex < 0
+                || clientRowIndex >= _whisperCandidates.Count)
+            {
+                return;
+            }
+
+            _whisperTargetPickerModalFocusTarget = WhisperTargetPickerModalFocusTarget.ComboBox;
+            _whisperTargetPickerSelectionIndex = clientRowIndex;
+            EnsureWhisperTargetPickerSelectionVisible();
+        }
+
+        internal bool DeleteWhisperTargetPickerModalComboDropdownCandidate(string whisperTarget)
+        {
+            if (!_isWhisperTargetPickerActive
+                || _whisperTargetPickerPresentation != WhisperTargetPickerPresentation.Modal
+                || !_isWhisperTargetPickerComboDropdownOpen)
+            {
+                return false;
+            }
+
+            WhisperTargetValidationResult validationResult = ValidateExplicitWhisperTargetCandidate(
+                whisperTarget,
+                _localPlayerName,
+                out string normalizedTarget);
+            if (validationResult != WhisperTargetValidationResult.Valid)
+            {
+                return false;
+            }
+
+            int removedIndex = _whisperCandidates.FindIndex(candidate =>
+                string.Equals(candidate, normalizedTarget, StringComparison.OrdinalIgnoreCase));
+            if (removedIndex < 0)
+            {
+                return false;
+            }
+
+            _whisperCandidates.RemoveAt(removedIndex);
+            ResetWhisperTargetPickerAfterClientComboDelete(removedIndex);
+            return true;
+        }
+
+        internal bool DeleteWhisperTargetPickerModalComboDropdownCandidateAtClientRowIndex(int clientRowIndex)
+        {
+            if (!_isWhisperTargetPickerActive
+                || _whisperTargetPickerPresentation != WhisperTargetPickerPresentation.Modal
+                || !_isWhisperTargetPickerComboDropdownOpen
+                || _whisperCandidates.Count == 0)
+            {
+                return false;
+            }
+
+            if (clientRowIndex < 0 || clientRowIndex >= _whisperCandidates.Count)
+            {
+                return false;
+            }
+
+            int removedIndex = clientRowIndex;
+            _whisperCandidates.RemoveAt(removedIndex);
+            ResetWhisperTargetPickerAfterClientComboDelete(removedIndex);
+            return true;
+        }
+
+        private void ResetWhisperTargetPickerAfterClientComboDelete(int _)
+        {
+            _whisperTargetPickerModalFocusTarget = WhisperTargetPickerModalFocusTarget.ComboBox;
+            if (_whisperCandidates.Count == 0)
+            {
+                _whisperTargetPickerSelectionIndex = -1;
+                _isWhisperTargetPickerComboDropdownOpen = false;
+                _whisperTargetPickerFirstVisibleIndex = 0;
+                SetInputText(string.Empty);
+                return;
+            }
+
+            _whisperTargetPickerSelectionIndex = 0;
+            _whisperTargetPickerFirstVisibleIndex = 0;
+            SetInputText(_whisperCandidates[0], selectAll: true);
+        }
+
+        internal void PageWhisperTargetPickerSelection(int deltaPages)
+        {
+            PageWhisperTargetPickerSelection(deltaPages, updateInputText: true);
+        }
+
+        internal void PageWhisperTargetPickerSelection(int deltaPages, bool updateInputText)
+        {
+            if (!_isWhisperTargetPickerActive || deltaPages == 0)
+            {
+                return;
+            }
+
+            MoveWhisperTargetPickerSelection(
+                deltaPages,
+                WhisperTargetPickerNavigationMode.Page,
+                updateInputText);
+        }
+
+        internal void MoveWhisperTargetPickerSelectionToBoundary(bool moveToLast)
+        {
+            MoveWhisperTargetPickerSelectionToBoundary(moveToLast, updateInputText: true);
+        }
+
+        internal void MoveWhisperTargetPickerSelectionToBoundary(bool moveToLast, bool updateInputText)
+        {
+            if (!_isWhisperTargetPickerActive || _whisperCandidates.Count == 0)
+            {
+                return;
+            }
+
+            MoveWhisperTargetPickerSelection(
+                moveToLast ? _whisperCandidates.Count - 1 : 0,
+                WhisperTargetPickerNavigationMode.Absolute,
+                updateInputText);
         }
         #endregion
 
@@ -625,5 +2292,1907 @@ namespace HaCreator.MapSimulator
             }
         }
         #endregion
+
+        private void SendTargetedChatMessage(string message, int tickCount)
+        {
+            if (!string.IsNullOrWhiteSpace(_whisperTarget))
+            {
+                SendWhisperMessage(_whisperTarget, message, tickCount);
+                return;
+            }
+
+            string prefix = GetTargetPrefix(_chatTarget);
+            ClientChatLogType chatLogType = GetTargetChatLogType(_chatTarget);
+            Color color = ResolveClientChatLogColor(chatLogType);
+            if (!TryApplyClientChatHelperTryChat(message, tickCount, out string processedMessage))
+            {
+                return;
+            }
+
+            if (string.IsNullOrEmpty(prefix))
+            {
+                AddMessage(processedMessage, color, tickCount, (int)chatLogType);
+                MessageSubmitted?.Invoke(processedMessage, tickCount);
+                return;
+            }
+
+            AddMessage(FormatLocalGroupChatEcho(processedMessage, prefix), color, tickCount, (int)chatLogType);
+            MessageSubmitted?.Invoke(processedMessage, tickCount);
+        }
+
+        private ChatSubmitDisposition TryHandleSlashCommand(string message, int tickCount)
+        {
+            if (string.IsNullOrWhiteSpace(message) || message[0] != '/')
+            {
+                return ChatSubmitDisposition.NotHandled;
+            }
+
+            string trimmedMessage = message.Trim();
+            if (TryHandleWhisperCommand(trimmedMessage, tickCount, out ChatSubmitDisposition whisperDisposition))
+            {
+                return whisperDisposition;
+            }
+
+            if (TryHandleTargetModeCommand(trimmedMessage, tickCount, out ChatSubmitDisposition targetDisposition))
+            {
+                return targetDisposition;
+            }
+
+            return ChatSubmitDisposition.NotHandled;
+        }
+
+        private bool TryHandleWhisperCommand(string trimmedMessage, int tickCount, out ChatSubmitDisposition disposition)
+        {
+            disposition = ChatSubmitDisposition.NotHandled;
+            bool isWhisperCommand = string.Equals(trimmedMessage, "/w", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(trimmedMessage, "/whisper", StringComparison.OrdinalIgnoreCase)
+                || trimmedMessage.StartsWith("/w ", StringComparison.OrdinalIgnoreCase)
+                || trimmedMessage.StartsWith("/whisper ", StringComparison.OrdinalIgnoreCase);
+            bool isReplyCommand = string.Equals(trimmedMessage, "/r", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(trimmedMessage, "/reply", StringComparison.OrdinalIgnoreCase)
+                || trimmedMessage.StartsWith("/r ", StringComparison.OrdinalIgnoreCase)
+                || trimmedMessage.StartsWith("/reply ", StringComparison.OrdinalIgnoreCase);
+
+            if (!isWhisperCommand && !isReplyCommand)
+            {
+                return false;
+            }
+
+            if (isWhisperCommand)
+            {
+                string[] parts = trimmedMessage.Split(new[] { ' ' }, 3, StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length == 1)
+                {
+                    string whisperTarget = ResolveActiveWhisperTarget();
+                    if (string.IsNullOrWhiteSpace(whisperTarget))
+                    {
+                        OpenWhisperTargetPicker(
+                            tickCount,
+                            presentation: WhisperTargetPickerPresentation.Modal);
+                    }
+                    else
+                    {
+                        TryArmWhisperTarget(whisperTarget, tickCount);
+                    }
+
+                    disposition = ChatSubmitDisposition.KeepChatOpen;
+                    return true;
+                }
+
+                if (!TryArmWhisperTarget(parts[1], tickCount))
+                {
+                    disposition = ChatSubmitDisposition.KeepChatOpen;
+                    return true;
+                }
+
+                if (parts.Length >= 3)
+                {
+                    SendWhisperMessage(_whisperTarget, parts[2], tickCount);
+                    disposition = ChatSubmitDisposition.CloseChat;
+                    return true;
+                }
+
+                disposition = ChatSubmitDisposition.KeepChatOpen;
+                return true;
+            }
+
+            string replyTarget = !string.IsNullOrWhiteSpace(_replyTarget) ? _replyTarget : _whisperTarget;
+            if (string.IsNullOrWhiteSpace(replyTarget))
+            {
+                OpenWhisperTargetPicker(
+                    tickCount,
+                    presentation: WhisperTargetPickerPresentation.Modal);
+                disposition = ChatSubmitDisposition.KeepChatOpen;
+                return true;
+            }
+
+            if (!TryArmWhisperTarget(replyTarget, tickCount))
+            {
+                disposition = ChatSubmitDisposition.KeepChatOpen;
+                return true;
+            }
+            string[] replyParts = trimmedMessage.Split(new[] { ' ' }, 2, StringSplitOptions.RemoveEmptyEntries);
+            if (replyParts.Length < 2)
+            {
+                disposition = ChatSubmitDisposition.KeepChatOpen;
+                return true;
+            }
+
+            SendWhisperMessage(_whisperTarget, replyParts[1], tickCount);
+            disposition = ChatSubmitDisposition.CloseChat;
+            return true;
+        }
+
+        private bool TryHandleTargetModeCommand(string trimmedMessage, int tickCount, out ChatSubmitDisposition disposition)
+        {
+            disposition = ChatSubmitDisposition.NotHandled;
+            if (!TryParseTargetModeCommand(trimmedMessage, out MapSimulatorChatTargetType targetType, out string payload))
+            {
+                return false;
+            }
+
+            _chatTarget = targetType;
+            _whisperTarget = string.Empty;
+
+            if (string.IsNullOrWhiteSpace(payload))
+            {
+                disposition = ChatSubmitDisposition.KeepChatOpen;
+                return true;
+            }
+
+            string prefix = GetTargetPrefix(targetType);
+            ClientChatLogType chatLogType = GetTargetChatLogType(targetType);
+            Color color = ResolveClientChatLogColor(chatLogType);
+            if (!TryApplyClientChatHelperTryChat(
+                    payload,
+                    tickCount,
+                    out string processedPayload,
+                    addAcceptedMessageToHistory: false))
+            {
+                disposition = ChatSubmitDisposition.CloseChat;
+                return true;
+            }
+
+            AddClientChatHelperCommandHistory(trimmedMessage);
+
+            if (string.IsNullOrEmpty(prefix))
+            {
+                AddMessage(processedPayload, color, tickCount, (int)chatLogType);
+            }
+            else
+            {
+                AddMessage(FormatLocalGroupChatEcho(processedPayload, prefix), color, tickCount, (int)chatLogType);
+            }
+
+            MessageSubmitted?.Invoke(processedPayload, tickCount);
+            disposition = ChatSubmitDisposition.CloseChat;
+
+            return true;
+        }
+
+        private void SendWhisperMessage(string whisperTarget, string message, int tickCount)
+        {
+            if (!TryArmWhisperTarget(whisperTarget, tickCount))
+            {
+                return;
+            }
+
+            if (!TryApplyClientChatHelperTryChat(message, tickCount, out string processedMessage))
+            {
+                return;
+            }
+
+            AddMessage(
+                $"> {_whisperTarget}: {processedMessage}",
+                OutgoingWhisperMessageColor,
+                tickCount,
+                (int)ClientChatLogType.OutgoingWhisper,
+                _whisperTarget);
+            _lastOutgoingWhisperTarget = _whisperTarget ?? string.Empty;
+            _lastOutgoingWhisperText = message ?? string.Empty;
+            MessageSubmitted?.Invoke(processedMessage, tickCount);
+        }
+
+        private bool TryArmWhisperTarget(string whisperTarget, int tickCount)
+        {
+            WhisperTargetValidationResult validationResult = ValidateExplicitWhisperTargetCandidate(
+                whisperTarget,
+                _localPlayerName,
+                out string normalizedTarget);
+            if (validationResult == WhisperTargetValidationResult.Empty)
+            {
+                return false;
+            }
+
+            if (validationResult == WhisperTargetValidationResult.Invalid)
+            {
+                AddClientMessage(
+                    MapleStoryStringPool.GetOrFallback(0x031F, "Please enter a valid character name."),
+                    tickCount,
+                    ClientChatLogType.System);
+                return false;
+            }
+
+            if (validationResult == WhisperTargetValidationResult.Self)
+            {
+                AddClientMessage(
+                    MapleStoryStringPool.GetOrFallback(0x0320, "You cannot whisper yourself."),
+                    tickCount,
+                    ClientChatLogType.System);
+                return false;
+            }
+
+            _whisperTarget = normalizedTarget;
+            _replyTarget = normalizedTarget;
+            AddWhisperCandidate(normalizedTarget);
+            if (_isWhisperTargetPickerActive)
+            {
+                SyncWhisperTargetPickerSelectionFromInput();
+            }
+            return true;
+        }
+
+        private string ResolveActiveWhisperTarget()
+        {
+            if (!string.IsNullOrWhiteSpace(_whisperTarget))
+            {
+                return _whisperTarget;
+            }
+
+            return !string.IsNullOrWhiteSpace(_replyTarget) ? _replyTarget : string.Empty;
+        }
+
+        private void AddClientMessage(string text, int tickCount, ClientChatLogType chatLogType, Color? colorOverride = null)
+        {
+            Color color = colorOverride ?? ResolveClientChatLogColor(chatLogType);
+            AddMessage(text, color, tickCount, (int)chatLogType);
+        }
+
+        private static Color ResolveClientChatLogColor(ClientChatLogType chatLogType, int channelId = -1)
+        {
+            return chatLogType switch
+            {
+                ClientChatLogType.All => DefaultMessageColor,
+                ClientChatLogType.Party => PartyMessageColor,
+                ClientChatLogType.Friend => FriendMessageColor,
+                ClientChatLogType.Guild => GuildMessageColor,
+                ClientChatLogType.Alliance => AllianceMessageColor,
+                ClientChatLogType.Couple => DefaultMessageColor,
+                ClientChatLogType.Type11 => ClientType11Color,
+                ClientChatLogType.Expedition => ExpeditionMessageColor,
+                ClientChatLogType.Notice => NoticeMessageColor,
+                ClientChatLogType.OutgoingWhisper => OutgoingWhisperMessageColor,
+                ClientChatLogType.Error => ErrorMessageColor,
+                ClientChatLogType.System => SystemMessageColor,
+                ClientChatLogType.IncomingWhisper => IncomingWhisperMessageColor,
+                ClientChatLogType.Type18 => ClientType18Color,
+                ClientChatLogType.Type19 => channelId != -1 ? ClientType22Color : ClientType20Color,
+                ClientChatLogType.Type20 => ClientType20Color,
+                ClientChatLogType.Type21 => IncomingWhisperMessageColor,
+                ClientChatLogType.Type22 => ClientType22Color,
+                ClientChatLogType.Type23 => ClientType22Color,
+                _ => DefaultMessageColor
+            };
+        }
+
+        private static int InferClientChatLogType(string text, Color color)
+        {
+            if (TryInferClientChatLogTypeFromPrefix(text, out ClientChatLogType prefixType))
+            {
+                return (int)prefixType;
+            }
+
+            if (ColorsMatch(color, PartyMessageColor))
+            {
+                return (int)ClientChatLogType.Party;
+            }
+
+            if (ColorsMatch(color, FriendMessageColor))
+            {
+                return (int)ClientChatLogType.Friend;
+            }
+
+            if (ColorsMatch(color, GuildMessageColor))
+            {
+                return (int)ClientChatLogType.Guild;
+            }
+
+            if (ColorsMatch(color, AllianceMessageColor))
+            {
+                return (int)ClientChatLogType.Alliance;
+            }
+
+            if (ColorsMatch(color, ExpeditionMessageColor))
+            {
+                return (int)ClientChatLogType.Expedition;
+            }
+
+            if (ColorsMatch(color, ErrorMessageColor))
+            {
+                return (int)ClientChatLogType.Error;
+            }
+
+            if (ColorsMatch(color, NoticeMessageColor))
+            {
+                return (int)ClientChatLogType.Notice;
+            }
+
+            if (ColorsMatch(color, SystemMessageColor))
+            {
+                return (int)ClientChatLogType.System;
+            }
+
+            if (ColorsMatch(color, OutgoingWhisperMessageColor) || ColorsMatch(color, IncomingWhisperMessageColor))
+            {
+                return InferWhisperChatLogType(text);
+            }
+
+            if (ColorsMatch(color, ClientType11Color))
+            {
+                return (int)ClientChatLogType.Type11;
+            }
+
+            if (ColorsMatch(color, ClientType18Color))
+            {
+                return (int)ClientChatLogType.Type18;
+            }
+
+            if (ColorsMatch(color, ClientType20Color))
+            {
+                return (int)ClientChatLogType.Type20;
+            }
+
+            if (ColorsMatch(color, ClientType22Color))
+            {
+                return (int)ClientChatLogType.Type22;
+            }
+
+            return -1;
+        }
+
+        private static bool TryInferClientChatLogTypeFromPrefix(string text, out ClientChatLogType chatLogType)
+        {
+            chatLogType = ClientChatLogType.All;
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return false;
+            }
+
+            if (text.StartsWith("[Friend]", StringComparison.OrdinalIgnoreCase))
+            {
+                chatLogType = ClientChatLogType.Friend;
+                return true;
+            }
+
+            if (text.StartsWith("[Party]", StringComparison.OrdinalIgnoreCase))
+            {
+                chatLogType = ClientChatLogType.Party;
+                return true;
+            }
+
+            if (text.StartsWith("[Guild]", StringComparison.OrdinalIgnoreCase))
+            {
+                chatLogType = ClientChatLogType.Guild;
+                return true;
+            }
+
+            if (text.StartsWith("[Alliance]", StringComparison.OrdinalIgnoreCase))
+            {
+                chatLogType = ClientChatLogType.Alliance;
+                return true;
+            }
+
+            if (text.StartsWith("[Association]", StringComparison.OrdinalIgnoreCase))
+            {
+                chatLogType = ClientChatLogType.Alliance;
+                return true;
+            }
+
+            if (text.StartsWith("[Couple]", StringComparison.OrdinalIgnoreCase))
+            {
+                chatLogType = ClientChatLogType.Couple;
+                return true;
+            }
+
+            if (text.StartsWith("[Expedition]", StringComparison.OrdinalIgnoreCase))
+            {
+                chatLogType = ClientChatLogType.Expedition;
+                return true;
+            }
+
+            if (text.StartsWith("[System]", StringComparison.OrdinalIgnoreCase))
+            {
+                chatLogType = ClientChatLogType.System;
+                return true;
+            }
+
+            if (text.StartsWith("[Notice]", StringComparison.OrdinalIgnoreCase))
+            {
+                chatLogType = ClientChatLogType.Notice;
+                return true;
+            }
+
+            if (text.StartsWith("[Error]", StringComparison.OrdinalIgnoreCase))
+            {
+                chatLogType = ClientChatLogType.Error;
+                return true;
+            }
+
+            if (HasWhisperPrefix(text)
+                || text.StartsWith(">", StringComparison.Ordinal))
+            {
+                chatLogType = (ClientChatLogType)InferWhisperChatLogType(text);
+                return true;
+            }
+
+            return false;
+        }
+
+        private static int InferWhisperChatLogType(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return (int)ClientChatLogType.IncomingWhisper;
+            }
+
+            if (text.StartsWith(">", StringComparison.Ordinal)
+                || (HasWhisperPrefix(text)
+                    && text.IndexOf("->", StringComparison.Ordinal) >= 0))
+            {
+                return (int)ClientChatLogType.OutgoingWhisper;
+            }
+
+            return (int)ClientChatLogType.IncomingWhisper;
+        }
+
+        private void RememberIncomingWhisperTarget(int chatLogType, string whisperTargetCandidate, string text)
+        {
+            if (chatLogType != (int)ClientChatLogType.IncomingWhisper)
+            {
+                return;
+            }
+
+            string resolvedTarget = whisperTargetCandidate;
+            if (string.IsNullOrWhiteSpace(resolvedTarget))
+            {
+                resolvedTarget = ExtractIncomingWhisperTarget(text);
+            }
+
+            RememberWhisperTarget(resolvedTarget);
+        }
+
+        private static string ExtractIncomingWhisperTarget(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return string.Empty;
+            }
+
+            int separatorIndex = text.IndexOf(':');
+            if (separatorIndex < 0)
+            {
+                return string.Empty;
+            }
+
+            string prefix = text[..separatorIndex].Trim();
+            if (!TryStripWhisperPrefix(prefix, out prefix))
+            {
+                return string.Empty;
+            }
+
+            return NormalizeChatSpeakerCandidate(prefix);
+        }
+
+        private static bool HasWhisperPrefix(string text)
+        {
+            return text.StartsWith("[Whisper]", StringComparison.OrdinalIgnoreCase)
+                || text.StartsWith("[GM Whisper]", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool TryStripWhisperPrefix(string text, out string remainder)
+        {
+            remainder = string.Empty;
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return false;
+            }
+
+            if (text.StartsWith("[Whisper]", StringComparison.OrdinalIgnoreCase))
+            {
+                remainder = text["[Whisper]".Length..].TrimStart();
+                return true;
+            }
+
+            if (text.StartsWith("[GM Whisper]", StringComparison.OrdinalIgnoreCase))
+            {
+                remainder = text["[GM Whisper]".Length..].TrimStart();
+                return true;
+            }
+
+            return false;
+        }
+
+        internal static string NormalizeChatSpeakerCandidate(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return string.Empty;
+            }
+
+            string trimmed = text.Trim();
+            int separatorIndex = trimmed.IndexOf(':');
+            if (separatorIndex > 0)
+            {
+                trimmed = trimmed[..separatorIndex].TrimEnd();
+            }
+
+            if (TryStripWhisperPrefix(trimmed, out string whisperRemainder))
+            {
+                trimmed = whisperRemainder;
+            }
+
+            while (trimmed.StartsWith("[", StringComparison.Ordinal))
+            {
+                int closingBracketIndex = trimmed.IndexOf(']');
+                if (closingBracketIndex <= 0 || closingBracketIndex >= trimmed.Length - 1)
+                {
+                    break;
+                }
+
+                trimmed = trimmed[(closingBracketIndex + 1)..].TrimStart();
+            }
+
+            if (trimmed.StartsWith(">", StringComparison.Ordinal))
+            {
+                trimmed = trimmed[1..].TrimStart();
+            }
+
+            int arrowIndex = trimmed.LastIndexOf("->", StringComparison.Ordinal);
+            if (arrowIndex >= 0 && arrowIndex + 2 < trimmed.Length)
+            {
+                trimmed = trimmed[(arrowIndex + 2)..].TrimStart();
+            }
+
+            if (trimmed.StartsWith("GM ", StringComparison.OrdinalIgnoreCase))
+            {
+                trimmed = trimmed[3..].TrimStart();
+            }
+
+            if (TryTrimTrailingChannelSuffix(trimmed, out string withoutChannelSuffix))
+            {
+                trimmed = withoutChannelSuffix;
+            }
+
+            return ExtractCharacterName(trimmed);
+        }
+
+        internal static string ExtractCharacterName(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return string.Empty;
+            }
+
+            string trimmed = TrimClientWhitespace(text);
+            int validLength = 0;
+            while (validLength < trimmed.Length)
+            {
+                char c = trimmed[validLength];
+                bool isAsciiLetter = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+                bool isAsciiDigit = c >= '0' && c <= '9';
+                if (!isAsciiLetter && !isAsciiDigit)
+                {
+                    break;
+                }
+
+                validLength++;
+            }
+
+            if (validLength == 0)
+            {
+                return string.Empty;
+            }
+
+            if (validLength != trimmed.Length
+                && !HasOnlyClientWhitespace(trimmed, validLength))
+            {
+                return string.Empty;
+            }
+
+            return trimmed[..validLength];
+        }
+
+        internal static WhisperTargetValidationResult ValidateWhisperTargetCandidate(
+            string whisperTarget,
+            string localPlayerName,
+            out string normalizedTarget)
+        {
+            normalizedTarget = NormalizeChatSpeakerCandidate(whisperTarget);
+            if (string.IsNullOrWhiteSpace(normalizedTarget))
+            {
+                return WhisperTargetValidationResult.Empty;
+            }
+
+            if (!IsPlausibleCharacterName(normalizedTarget))
+            {
+                return WhisperTargetValidationResult.Invalid;
+            }
+
+            string normalizedLocalPlayerName = NormalizeChatSpeakerCandidate(localPlayerName);
+            if (!string.IsNullOrWhiteSpace(normalizedLocalPlayerName)
+                && string.Equals(normalizedTarget, normalizedLocalPlayerName, StringComparison.OrdinalIgnoreCase))
+            {
+                return WhisperTargetValidationResult.Self;
+            }
+
+            return WhisperTargetValidationResult.Valid;
+        }
+
+        internal static WhisperTargetValidationResult ValidateExplicitWhisperTargetCandidate(
+            string whisperTarget,
+            string localPlayerName,
+            out string normalizedTarget)
+        {
+            normalizedTarget = string.Empty;
+            string rawInput = TrimClientWhitespace(whisperTarget ?? string.Empty);
+            if (rawInput.Length == 0)
+            {
+                return WhisperTargetValidationResult.Empty;
+            }
+
+            string extractedTarget = ExtractCharacterName(rawInput);
+            if (string.IsNullOrWhiteSpace(extractedTarget)
+                || extractedTarget.Length != rawInput.Length
+                || !IsPlausibleCharacterName(extractedTarget))
+            {
+                return WhisperTargetValidationResult.Invalid;
+            }
+
+            string normalizedLocalPlayerName = NormalizeChatSpeakerCandidate(localPlayerName);
+            if (!string.IsNullOrWhiteSpace(normalizedLocalPlayerName)
+                && string.Equals(extractedTarget, normalizedLocalPlayerName, StringComparison.OrdinalIgnoreCase))
+            {
+                return WhisperTargetValidationResult.Self;
+            }
+
+            normalizedTarget = extractedTarget;
+            return WhisperTargetValidationResult.Valid;
+        }
+
+        private static string TrimClientWhitespace(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return string.Empty;
+            }
+
+            int start = 0;
+            int end = text.Length - 1;
+            while (start <= end && IsClientWhitespace(text[start]))
+            {
+                start++;
+            }
+
+            while (end >= start && IsClientWhitespace(text[end]))
+            {
+                end--;
+            }
+
+            if (start > end)
+            {
+                return string.Empty;
+            }
+
+            return text.Substring(start, end - start + 1);
+        }
+
+        private static bool IsClientWhitespace(char value)
+        {
+            return value <= '\u0020';
+        }
+
+        private static bool IsPlausibleCharacterName(string characterName)
+        {
+            if (string.IsNullOrWhiteSpace(characterName))
+            {
+                return false;
+            }
+
+            string trimmedName = TrimClientWhitespace(characterName);
+            if (trimmedName.Length < 4 || trimmedName.Length > 12)
+            {
+                return false;
+            }
+
+            int ambiguousCharacterCount = 0;
+            foreach (char c in trimmedName)
+            {
+                bool isAsciiLetter = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+                bool isAsciiDigit = c >= '0' && c <= '9';
+                if (!isAsciiLetter && !isAsciiDigit)
+                {
+                    return false;
+                }
+
+                if (c == 'I' || c == 'l')
+                {
+                    ambiguousCharacterCount++;
+                }
+            }
+
+            return ambiguousCharacterCount < 4;
+        }
+
+        private static bool HasOnlyClientWhitespace(string value, int startIndex)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                return true;
+            }
+
+            int clampedStart = Math.Clamp(startIndex, 0, value.Length);
+            for (int i = clampedStart; i < value.Length; i++)
+            {
+                if (!IsClientWhitespace(value[i]))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static bool TryTrimTrailingChannelSuffix(string text, out string trimmed)
+        {
+            trimmed = text;
+            if (string.IsNullOrWhiteSpace(text) || !text.EndsWith(")", StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            int suffixStart = text.LastIndexOf(" (", StringComparison.Ordinal);
+            if (suffixStart <= 0)
+            {
+                return false;
+            }
+
+            string suffix = text[(suffixStart + 2)..^1].Trim();
+            if (!suffix.StartsWith("Ch", StringComparison.OrdinalIgnoreCase)
+                && !suffix.StartsWith("Channel", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            trimmed = text[..suffixStart].TrimEnd();
+            return true;
+        }
+
+        private static bool ColorsMatch(Color left, Color right)
+        {
+            return left.R == right.R
+                && left.G == right.G
+                && left.B == right.B
+                && left.A == right.A;
+        }
+
+        private static ClientChatLogType GetTargetChatLogType(MapSimulatorChatTargetType targetType)
+        {
+            return targetType switch
+            {
+                MapSimulatorChatTargetType.All => ClientChatLogType.All,
+                MapSimulatorChatTargetType.Friend => ClientChatLogType.Friend,
+                MapSimulatorChatTargetType.Party => ClientChatLogType.Party,
+                MapSimulatorChatTargetType.Guild => ClientChatLogType.Guild,
+                MapSimulatorChatTargetType.Association => ClientChatLogType.Alliance,
+                MapSimulatorChatTargetType.Expedition => ClientChatLogType.Expedition,
+                _ => ClientChatLogType.All
+            };
+        }
+
+        private void AddWhisperCandidate(string whisperTarget)
+        {
+            WhisperTargetValidationResult validationResult = ValidateExplicitWhisperTargetCandidate(
+                whisperTarget,
+                _localPlayerName,
+                out string normalizedTarget);
+            if (validationResult != WhisperTargetValidationResult.Valid)
+            {
+                return;
+            }
+
+            _whisperCandidates.RemoveAll(candidate =>
+                string.Equals(candidate, normalizedTarget, StringComparison.OrdinalIgnoreCase));
+            _whisperCandidates.Insert(0, normalizedTarget);
+            while (_whisperCandidates.Count > MAX_WHISPER_CANDIDATES)
+            {
+                _whisperCandidates.RemoveAt(_whisperCandidates.Count - 1);
+            }
+        }
+
+        private void CancelWhisperTargetPicker()
+        {
+            CloseWhisperTargetPicker(restoreDraft: true);
+        }
+
+        private void CloseWhisperTargetPicker(bool restoreDraft)
+        {
+            _isWhisperTargetPickerActive = false;
+            _whisperTargetPickerPresentation = WhisperTargetPickerPresentation.Inline;
+            _whisperTargetPickerSelectionIndex = -1;
+            _whisperTargetPickerFirstVisibleIndex = 0;
+            _whisperTargetPickerModalButtonFocus = WhisperTargetPickerModalButtonFocus.Confirm;
+            _whisperTargetPickerModalFocusTarget = WhisperTargetPickerModalFocusTarget.ComboBox;
+            _isWhisperTargetPickerComboDropdownOpen = false;
+
+            if (restoreDraft)
+            {
+                SetInputText(_savedChatInputBeforeWhisperPicker);
+                _cursorPosition = Math.Clamp(_savedChatCursorBeforeWhisperPicker, 0, _inputText.Length);
+                ClearInputSelection();
+            }
+            else
+            {
+                SetInputText(string.Empty);
+            }
+
+            _savedChatInputBeforeWhisperPicker = string.Empty;
+            _savedChatCursorBeforeWhisperPicker = 0;
+        }
+
+        private void MoveWhisperTargetPickerSelection(
+            int delta,
+            WhisperTargetPickerNavigationMode navigationMode,
+            bool updateInputText = true)
+        {
+            if (_whisperCandidates.Count == 0)
+            {
+                _whisperTargetPickerSelectionIndex = -1;
+                return;
+            }
+
+            int targetIndex;
+            if (navigationMode == WhisperTargetPickerNavigationMode.Absolute)
+            {
+                targetIndex = Math.Clamp(delta, 0, _whisperCandidates.Count - 1);
+            }
+            else if (_whisperTargetPickerSelectionIndex < 0 || _whisperTargetPickerSelectionIndex >= _whisperCandidates.Count)
+            {
+                targetIndex = delta >= 0 ? 0 : _whisperCandidates.Count - 1;
+            }
+            else
+            {
+                int resolvedDelta = navigationMode == WhisperTargetPickerNavigationMode.Page
+                    ? delta * WhisperTargetPickerVisibleRowCount
+                    : delta;
+                targetIndex = Math.Clamp(
+                    _whisperTargetPickerSelectionIndex + resolvedDelta,
+                    0,
+                    _whisperCandidates.Count - 1);
+            }
+
+            _whisperTargetPickerSelectionIndex = targetIndex;
+            EnsureWhisperTargetPickerSelectionVisible();
+            if (updateInputText)
+            {
+                SetInputText(_whisperCandidates[_whisperTargetPickerSelectionIndex]);
+            }
+        }
+
+        internal void MoveWhisperTargetPickerModalButtonFocus(int delta)
+        {
+            if (!_isWhisperTargetPickerActive
+                || _whisperTargetPickerPresentation != WhisperTargetPickerPresentation.Modal
+                || delta == 0)
+            {
+                return;
+            }
+
+            _whisperTargetPickerModalFocusTarget = WhisperTargetPickerModalFocusTarget.FooterButtons;
+            _isWhisperTargetPickerComboDropdownOpen = false;
+            _whisperTargetPickerModalButtonFocus = _whisperTargetPickerModalButtonFocus == WhisperTargetPickerModalButtonFocus.Confirm
+                ? WhisperTargetPickerModalButtonFocus.Close
+                : WhisperTargetPickerModalButtonFocus.Confirm;
+        }
+
+        internal void ActivateWhisperTargetPickerModalButtonFocus()
+        {
+            if (!_isWhisperTargetPickerActive
+                || _whisperTargetPickerPresentation != WhisperTargetPickerPresentation.Modal)
+            {
+                return;
+            }
+
+            _whisperTargetPickerModalFocusTarget = WhisperTargetPickerModalFocusTarget.FooterButtons;
+            _isWhisperTargetPickerComboDropdownOpen = false;
+        }
+
+        internal void ActivateWhisperTargetPickerModalComboFocus()
+        {
+            if (!_isWhisperTargetPickerActive
+                || _whisperTargetPickerPresentation != WhisperTargetPickerPresentation.Modal)
+            {
+                return;
+            }
+
+            _whisperTargetPickerModalFocusTarget = WhisperTargetPickerModalFocusTarget.ComboBox;
+        }
+
+        internal void CloseWhisperTargetPickerModalComboDropdown()
+        {
+            if (!_isWhisperTargetPickerActive
+                || _whisperTargetPickerPresentation != WhisperTargetPickerPresentation.Modal)
+            {
+                return;
+            }
+
+            _whisperTargetPickerModalFocusTarget = WhisperTargetPickerModalFocusTarget.ComboBox;
+            _isWhisperTargetPickerComboDropdownOpen = false;
+        }
+
+        internal void OpenWhisperTargetPickerModalComboDropdown()
+        {
+            if (!_isWhisperTargetPickerActive
+                || _whisperTargetPickerPresentation != WhisperTargetPickerPresentation.Modal)
+            {
+                return;
+            }
+
+            _whisperTargetPickerModalFocusTarget = WhisperTargetPickerModalFocusTarget.ComboBox;
+            _isWhisperTargetPickerComboDropdownOpen = _whisperCandidates.Count > 0;
+            if (_isWhisperTargetPickerComboDropdownOpen)
+            {
+                SyncWhisperTargetPickerDropdownScrollFromSelection();
+                EnsureWhisperTargetPickerDropdownSelectionSeeded();
+            }
+        }
+
+        internal void ToggleWhisperTargetPickerModalComboDropdown()
+        {
+            if (!_isWhisperTargetPickerActive
+                || _whisperTargetPickerPresentation != WhisperTargetPickerPresentation.Modal)
+            {
+                return;
+            }
+
+            _whisperTargetPickerModalFocusTarget = WhisperTargetPickerModalFocusTarget.ComboBox;
+            _isWhisperTargetPickerComboDropdownOpen = !_isWhisperTargetPickerComboDropdownOpen
+                && _whisperCandidates.Count > 0;
+            if (_isWhisperTargetPickerComboDropdownOpen)
+            {
+                SyncWhisperTargetPickerDropdownScrollFromSelection();
+                EnsureWhisperTargetPickerDropdownSelectionSeeded();
+            }
+        }
+
+        internal bool AcceptWhisperTargetPickerModalComboSelection()
+        {
+            if (!_isWhisperTargetPickerActive
+                || _whisperTargetPickerPresentation != WhisperTargetPickerPresentation.Modal
+                || !_isWhisperTargetPickerComboDropdownOpen
+                || _whisperTargetPickerSelectionIndex < 0
+                || _whisperTargetPickerSelectionIndex >= _whisperCandidates.Count)
+            {
+                return false;
+            }
+
+            _whisperTargetPickerModalFocusTarget = WhisperTargetPickerModalFocusTarget.ComboBox;
+            _isWhisperTargetPickerComboDropdownOpen = false;
+            SetInputText(_whisperCandidates[_whisperTargetPickerSelectionIndex], selectAll: true);
+            return true;
+        }
+
+        private void EnsureWhisperTargetPickerDropdownSelectionSeeded()
+        {
+            if (_whisperTargetPickerSelectionIndex >= 0
+                && _whisperTargetPickerSelectionIndex < _whisperCandidates.Count)
+            {
+                return;
+            }
+
+            _whisperTargetPickerSelectionIndex = Math.Clamp(
+                _whisperTargetPickerFirstVisibleIndex,
+                0,
+                _whisperCandidates.Count - 1);
+            EnsureWhisperTargetPickerSelectionVisible();
+        }
+
+        private void SyncWhisperTargetPickerDropdownScrollFromSelection()
+        {
+            if (_whisperTargetPickerSelectionIndex < 0
+                || _whisperTargetPickerSelectionIndex >= _whisperCandidates.Count)
+            {
+                _whisperTargetPickerFirstVisibleIndex = ClampWhisperTargetPickerFirstVisibleIndex(
+                    _whisperTargetPickerFirstVisibleIndex,
+                    _whisperCandidates.Count,
+                    WhisperTargetPickerVisibleRowCount);
+                return;
+            }
+
+            _whisperTargetPickerFirstVisibleIndex = ClampWhisperTargetPickerFirstVisibleIndex(
+                _whisperTargetPickerSelectionIndex,
+                _whisperCandidates.Count,
+                WhisperTargetPickerVisibleRowCount);
+        }
+
+        internal void ToggleWhisperTargetPickerModalFocusTarget()
+        {
+            if (!_isWhisperTargetPickerActive
+                || _whisperTargetPickerPresentation != WhisperTargetPickerPresentation.Modal)
+            {
+                return;
+            }
+
+            if (_whisperTargetPickerModalFocusTarget == WhisperTargetPickerModalFocusTarget.ComboBox)
+            {
+                _whisperTargetPickerModalFocusTarget = WhisperTargetPickerModalFocusTarget.FooterButtons;
+                _isWhisperTargetPickerComboDropdownOpen = false;
+                return;
+            }
+
+            _whisperTargetPickerModalFocusTarget = WhisperTargetPickerModalFocusTarget.ComboBox;
+            _isWhisperTargetPickerComboDropdownOpen = false;
+        }
+
+        private bool IsWhisperTargetPickerModalComboFocused()
+        {
+            return _isWhisperTargetPickerActive
+                && _whisperTargetPickerPresentation == WhisperTargetPickerPresentation.Modal
+                && _whisperTargetPickerModalFocusTarget == WhisperTargetPickerModalFocusTarget.ComboBox;
+        }
+
+        private bool IsWhisperTargetPickerModalFooterFocused()
+        {
+            return _isWhisperTargetPickerActive
+                && _whisperTargetPickerPresentation == WhisperTargetPickerPresentation.Modal
+                && _whisperTargetPickerModalFocusTarget == WhisperTargetPickerModalFocusTarget.FooterButtons;
+        }
+
+        private bool IsWhisperTargetPickerModalDropdownNavigating()
+        {
+            return IsWhisperTargetPickerModalComboFocused()
+                && _isWhisperTargetPickerComboDropdownOpen;
+        }
+
+        private bool TryHandleWhisperTargetPickerModalComboToggleKey(Keys key)
+        {
+            if (!_isWhisperTargetPickerActive
+                || _whisperTargetPickerPresentation != WhisperTargetPickerPresentation.Modal
+                || !IsWhisperTargetPickerModalComboFocused())
+            {
+                return false;
+            }
+
+            if (!ShouldToggleWhisperTargetPickerModalComboDropdownOnArrowKey(
+                    _isWhisperTargetPickerComboDropdownOpen,
+                    key))
+            {
+                return false;
+            }
+
+            ToggleWhisperTargetPickerModalComboDropdown();
+            return true;
+        }
+
+        internal static bool ShouldToggleWhisperTargetPickerModalComboDropdownOnArrowKey(
+            bool isDropdownOpen,
+            Keys key)
+        {
+            // Client CCtrlComboBox::OnKey routes VK_LEFT/VK_RIGHT through BtClicked only on the combo owner.
+            // Once the select window is open, CCtrlComboBoxSelect::OnKey owns VK_UP/VK_DOWN/VK_RETURN and
+            // forwards other keys to the edit child instead of collapsing the dropdown.
+            if (!isDropdownOpen && (key == Keys.Left || key == Keys.Right))
+            {
+                return true;
+            }
+
+            // VK_DOWN still belongs to the combo owner only while the list is closed.
+            return !isDropdownOpen && key == Keys.Down;
+        }
+
+        internal static int ResolveWhisperTargetPickerFirstVisibleIndex(
+            int selectionIndex,
+            int candidateCount,
+            int visibleRowCount = WhisperTargetPickerVisibleRowCount)
+        {
+            if (candidateCount <= 0)
+            {
+                return 0;
+            }
+
+            int clampedVisibleRowCount = Math.Max(1, visibleRowCount);
+            if (candidateCount <= clampedVisibleRowCount || selectionIndex < 0)
+            {
+                return 0;
+            }
+
+            int maxStartIndex = Math.Max(0, candidateCount - clampedVisibleRowCount);
+            int preferredStartIndex = selectionIndex - clampedVisibleRowCount + 1;
+            return Math.Clamp(preferredStartIndex, 0, maxStartIndex);
+        }
+
+        internal static int ClampWhisperTargetPickerFirstVisibleIndex(
+            int firstVisibleIndex,
+            int candidateCount,
+            int visibleRowCount = WhisperTargetPickerVisibleRowCount)
+        {
+            if (candidateCount <= 0)
+            {
+                return 0;
+            }
+
+            int clampedVisibleRowCount = Math.Max(1, visibleRowCount);
+            int maxStartIndex = Math.Max(0, candidateCount - clampedVisibleRowCount);
+            return Math.Clamp(firstVisibleIndex, 0, maxStartIndex);
+        }
+
+        internal static int ResolveWhisperTargetPickerMaxScrollOffset(
+            int candidateCount,
+            int visibleRowCount = WhisperTargetPickerVisibleRowCount)
+        {
+            return ClampWhisperTargetPickerFirstVisibleIndex(
+                int.MaxValue,
+                candidateCount,
+                visibleRowCount);
+        }
+
+        private string ResolveWhisperTargetPickerSelection()
+        {
+            string typedValue = _inputText.ToString();
+            if (!string.IsNullOrWhiteSpace(typedValue))
+            {
+                return typedValue;
+            }
+
+            return _whisperTargetPickerSelectionIndex >= 0 && _whisperTargetPickerSelectionIndex < _whisperCandidates.Count
+                ? _whisperCandidates[_whisperTargetPickerSelectionIndex]
+                : string.Empty;
+        }
+
+        private bool TryResolveModalWhisperTargetConfirmation(string whisperTarget, int tickCount, out string resolvedWhisperTarget)
+        {
+            resolvedWhisperTarget = string.Empty;
+            WhisperTargetValidationResult validationResult = ValidateExplicitWhisperTargetCandidate(
+                whisperTarget,
+                _localPlayerName,
+                out string normalizedTarget);
+            if (validationResult == WhisperTargetValidationResult.Valid)
+            {
+                resolvedWhisperTarget = normalizedTarget;
+                return true;
+            }
+
+            if (validationResult == WhisperTargetValidationResult.Invalid)
+            {
+                AddClientMessage(
+                    MapleStoryStringPool.GetOrFallback(0x031F, "Please enter a valid character name."),
+                    tickCount,
+                    ClientChatLogType.System);
+            }
+            else if (validationResult == WhisperTargetValidationResult.Self)
+            {
+                AddClientMessage(
+                    MapleStoryStringPool.GetOrFallback(0x0320, "You cannot whisper yourself."),
+                    tickCount,
+                    ClientChatLogType.System);
+            }
+
+            CloseWhisperTargetPicker(restoreDraft: true);
+            _isActive = true;
+            _cursorBlinkTimer = tickCount;
+            return false;
+        }
+
+        private void SyncWhisperTargetPickerSelectionFromInput()
+        {
+            if (!_isWhisperTargetPickerActive)
+            {
+                return;
+            }
+
+            string normalizedInput = NormalizeChatSpeakerCandidate(_inputText.ToString());
+            if (string.IsNullOrWhiteSpace(normalizedInput))
+            {
+                _whisperTargetPickerSelectionIndex = -1;
+                _whisperTargetPickerFirstVisibleIndex = 0;
+                return;
+            }
+
+            int prefixMatchIndex = -1;
+            for (int i = 0; i < _whisperCandidates.Count; i++)
+            {
+                if (string.Equals(_whisperCandidates[i], normalizedInput, StringComparison.OrdinalIgnoreCase))
+                {
+                    _whisperTargetPickerSelectionIndex = i;
+                    EnsureWhisperTargetPickerSelectionVisible();
+                    return;
+                }
+
+                if (prefixMatchIndex < 0
+                    && _whisperCandidates[i].StartsWith(normalizedInput, StringComparison.OrdinalIgnoreCase))
+                {
+                    prefixMatchIndex = i;
+                }
+            }
+
+            _whisperTargetPickerSelectionIndex = prefixMatchIndex;
+            EnsureWhisperTargetPickerSelectionVisible();
+        }
+
+        private void SnapWhisperTargetPickerFirstVisibleIndexToSelection()
+        {
+            _whisperTargetPickerFirstVisibleIndex = ResolveWhisperTargetPickerFirstVisibleIndex(
+                _whisperTargetPickerSelectionIndex,
+                _whisperCandidates.Count,
+                WhisperTargetPickerVisibleRowCount);
+        }
+
+        private void EnsureWhisperTargetPickerSelectionVisible()
+        {
+            if (_whisperCandidates.Count == 0)
+            {
+                _whisperTargetPickerFirstVisibleIndex = 0;
+                return;
+            }
+
+            _whisperTargetPickerFirstVisibleIndex = ClampWhisperTargetPickerFirstVisibleIndex(
+                _whisperTargetPickerFirstVisibleIndex,
+                _whisperCandidates.Count,
+                WhisperTargetPickerVisibleRowCount);
+
+            if (_whisperTargetPickerSelectionIndex < 0)
+            {
+                return;
+            }
+
+            int lastVisibleIndex = _whisperTargetPickerFirstVisibleIndex + WhisperTargetPickerVisibleRowCount - 1;
+            if (_whisperTargetPickerSelectionIndex < _whisperTargetPickerFirstVisibleIndex)
+            {
+                _whisperTargetPickerFirstVisibleIndex = _whisperTargetPickerSelectionIndex;
+            }
+            else if (_whisperTargetPickerSelectionIndex > lastVisibleIndex)
+            {
+                _whisperTargetPickerFirstVisibleIndex = _whisperTargetPickerSelectionIndex - WhisperTargetPickerVisibleRowCount + 1;
+            }
+
+            _whisperTargetPickerFirstVisibleIndex = ClampWhisperTargetPickerFirstVisibleIndex(
+                _whisperTargetPickerFirstVisibleIndex,
+                _whisperCandidates.Count,
+                WhisperTargetPickerVisibleRowCount);
+        }
+
+        private void SetInputText(string text, bool selectAll = false)
+        {
+            ClearImeEditState();
+            _inputText.Clear();
+            if (!string.IsNullOrEmpty(text))
+            {
+                _inputText.Append(text);
+            }
+
+            _cursorPosition = _inputText.Length;
+            _selectionAnchor = selectAll && _inputText.Length > 0 ? 0 : -1;
+        }
+
+        private void ClearInputSelection()
+        {
+            _selectionAnchor = -1;
+        }
+
+        private void MoveInputCaret(int targetPosition, bool extendSelection)
+        {
+            int clampedTargetPosition = Math.Clamp(targetPosition, 0, _inputText.Length);
+            if (extendSelection)
+            {
+                if (_selectionAnchor < 0)
+                {
+                    _selectionAnchor = _cursorPosition;
+                }
+            }
+            else
+            {
+                ClearInputSelection();
+            }
+
+            _cursorPosition = clampedTargetPosition;
+        }
+
+        private int ResolveClientEditHorizontalCaretTarget(bool moveRight, bool extendSelection)
+        {
+            if (!extendSelection)
+            {
+                int collapsedCaret = ClientEditSelectionHelper.ResolveNavigationCaret(
+                    _inputText.Length,
+                    _selectionAnchor,
+                    _cursorPosition,
+                    moveRight);
+                if (collapsedCaret != _cursorPosition)
+                {
+                    return collapsedCaret;
+                }
+            }
+
+            if (moveRight)
+            {
+                return _cursorPosition < _inputText.Length ? _cursorPosition + 1 : _cursorPosition;
+            }
+
+            return _cursorPosition > 0 ? _cursorPosition - 1 : _cursorPosition;
+        }
+
+        private bool TryDeleteInputSelection()
+        {
+            if (_selectionAnchor < 0)
+            {
+                return false;
+            }
+
+            int selectionStart = Math.Clamp(Math.Min(_cursorPosition, _selectionAnchor), 0, _inputText.Length);
+            int selectionEnd = Math.Clamp(Math.Max(_cursorPosition, _selectionAnchor), 0, _inputText.Length);
+            ClearInputSelection();
+            if (selectionEnd <= selectionStart)
+            {
+                _cursorPosition = selectionStart;
+                return false;
+            }
+
+            _inputText.Remove(selectionStart, selectionEnd - selectionStart);
+            _cursorPosition = selectionStart;
+            return true;
+        }
+
+        private bool TryGetInputSelectionText(out string selectedText)
+        {
+            selectedText = string.Empty;
+            if (_selectionAnchor < 0)
+            {
+                return false;
+            }
+
+            int selectionStart = Math.Clamp(Math.Min(_cursorPosition, _selectionAnchor), 0, _inputText.Length);
+            int selectionEnd = Math.Clamp(Math.Max(_cursorPosition, _selectionAnchor), 0, _inputText.Length);
+            if (selectionEnd <= selectionStart)
+            {
+                return false;
+            }
+
+            selectedText = _inputText.ToString(selectionStart, selectionEnd - selectionStart);
+            return true;
+        }
+
+        private bool CanInsertInputCharacter()
+        {
+            return _inputText.Length < CHAT_MAX_INPUT_LENGTH
+                || (_selectionAnchor >= 0 && Math.Abs(_cursorPosition - _selectionAnchor) > 0);
+        }
+
+        private bool CanInsertInputText(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return false;
+            }
+
+            if (_inputText.Length < CHAT_MAX_INPUT_LENGTH)
+            {
+                return true;
+            }
+
+            return _selectionAnchor >= 0 && Math.Abs(_cursorPosition - _selectionAnchor) > 0;
+        }
+
+        private void InsertInputText(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return;
+            }
+
+            int availableLength = CHAT_MAX_INPUT_LENGTH - _inputText.Length;
+            if (availableLength <= 0)
+            {
+                return;
+            }
+
+            string textToInsert = text.Length <= availableLength ? text : text.Substring(0, availableLength);
+            _inputText.Insert(_cursorPosition, textToInsert);
+            _cursorPosition += textToInsert.Length;
+            ClearInputSelection();
+        }
+
+        private static bool IsNewKeyPress(KeyboardState newKeyboardState, KeyboardState oldKeyboardState, Keys key)
+        {
+            return newKeyboardState.IsKeyDown(key) && oldKeyboardState.IsKeyUp(key);
+        }
+
+        internal static bool ShouldForwardClientEditStageKey(Keys key)
+        {
+            return key >= Keys.F1 && key <= Keys.F12;
+        }
+
+        internal static bool ShouldForwardClientEditKeyUpToParent(Keys key)
+        {
+            return ShouldForwardClientEditKeyUpToParent(key, modalDropdownNavigating: false);
+        }
+
+        internal static bool ShouldForwardClientEditKeyUpToParent(Keys key, bool modalDropdownNavigating)
+        {
+            // CCtrlEdit::OnKey forwards key-up (negative lParam) directly to the parent owner.
+            // When the combo select window is open, VK_UP/VK_DOWN/VK_RETURN are owned by
+            // CCtrlComboBoxSelect::OnKey and should not be promoted as edit-child key-up.
+            if (modalDropdownNavigating
+                && (key == Keys.Up || key == Keys.Down || key == Keys.Enter))
+            {
+                return false;
+            }
+
+            _ = key;
+            return true;
+        }
+
+        internal static bool ShouldForwardClientEditCaretMoveKeyToParent(
+            Keys key,
+            bool footerLaneFocused,
+            bool modalDropdownNavigating)
+        {
+            if (footerLaneFocused || modalDropdownNavigating)
+            {
+                return false;
+            }
+
+            return key == Keys.Left || key == Keys.Right;
+        }
+
+        internal static bool ShouldRouteClientEditKeyToImeCandidateWindow(
+            Keys key,
+            ImeCandidateListState candidateListState)
+        {
+            // CCtrlEdit::OnKey routes VK_DOWN through m_pIMECandWnd when the
+            // edit-owned candidate child exists. Other arrows keep their existing
+            // edit/history/combo owner paths in this modeled status-bar seam.
+            return key == Keys.Down && candidateListState?.HasCandidates == true;
+        }
+
+        internal static bool TryResolveClientEditImeCandidateKeyboardSelection(
+            ImeCandidateListState candidateListState,
+            KeyboardState newKeyboardState,
+            KeyboardState oldKeyboardState,
+            out int listIndex,
+            out int candidateIndex)
+        {
+            listIndex = candidateListState?.ListIndex ?? -1;
+            candidateIndex = -1;
+            if (candidateListState?.HasCandidates != true || listIndex < 0)
+            {
+                return false;
+            }
+
+            bool WasPressed(KeyboardState currentState, Keys key)
+            {
+                return currentState.IsKeyDown(key) && oldKeyboardState.IsKeyUp(key);
+            }
+
+            candidateIndex = SkillMacroImeCandidateWindowLayout.ResolveVisibleCandidateIndexFromKeyboard(
+                candidateListState,
+                newKeyboardState,
+                WasPressed);
+            return candidateIndex >= 0;
+        }
+
+        internal bool TryDispatchClientEditImeCandidateSelection(int listIndex, int candidateIndex)
+        {
+            if (listIndex < 0 || candidateIndex < 0)
+            {
+                return false;
+            }
+
+            bool selected = ImeCandidateSelectedRequested?.Invoke(listIndex, candidateIndex) == true;
+            if (selected)
+            {
+                ReleaseImeEditStateAfterNativeCandidateSelection();
+            }
+
+            return selected;
+        }
+
+        internal void ReleaseImeEditStateAfterNativeCandidateSelection()
+        {
+            ClearImeEditState();
+        }
+
+        internal static ImeCandidateListState ResolveClientEditImeCandidateDownKeySelection(
+            ImeCandidateListState candidateListState)
+        {
+            if (candidateListState?.HasCandidates != true)
+            {
+                return ImeCandidateListState.Empty;
+            }
+
+            int candidateCount = candidateListState.Candidates.Count;
+            int pageSize = candidateListState.PageSize > 0
+                ? Math.Min(candidateListState.PageSize, candidateCount)
+                : candidateCount;
+            int selection = Math.Clamp(candidateListState.Selection, 0, candidateCount - 1);
+            if (candidateListState.Selection < 0)
+            {
+                selection = Math.Clamp(candidateListState.PageStart, 0, candidateCount - 1);
+            }
+            else if (selection < candidateCount - 1)
+            {
+                selection++;
+            }
+
+            int maxPageStart = Math.Max(0, candidateCount - pageSize);
+            int pageStart = Math.Clamp(candidateListState.PageStart, 0, maxPageStart);
+            if (selection < pageStart)
+            {
+                pageStart = selection;
+            }
+            else if (selection >= pageStart + pageSize)
+            {
+                pageStart = selection - pageSize + 1;
+            }
+
+            pageStart = Math.Clamp(pageStart, 0, maxPageStart);
+            return new ImeCandidateListState(
+                candidateListState.Candidates,
+                pageStart,
+                pageSize,
+                selection,
+                candidateListState.Vertical,
+                candidateListState.ListIndex,
+                candidateListState.WindowForm);
+        }
+
+        internal static bool ShouldForwardClientEditParentOnlyKey(
+            Keys key,
+            bool controlHeld,
+            bool shiftHeld)
+        {
+            if (key == Keys.Insert && !shiftHeld)
+            {
+                return true;
+            }
+
+            if (!controlHeld)
+            {
+                return false;
+            }
+
+            if (IsClientEditModifierKey(key)
+                || IsClientEditClipboardShortcutKey(key)
+                || IsClientEditOwnedControlKey(key))
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        private static bool IsClientEditModifierKey(Keys key)
+        {
+            return key == Keys.LeftControl
+                || key == Keys.RightControl
+                || key == Keys.LeftShift
+                || key == Keys.RightShift
+                || key == Keys.LeftAlt
+                || key == Keys.RightAlt;
+        }
+
+        private static bool IsClientEditClipboardShortcutKey(Keys key)
+        {
+            return key == Keys.C
+                || key == Keys.V
+                || key == Keys.X;
+        }
+
+        private static bool IsClientEditOwnedControlKey(Keys key)
+        {
+            return key == Keys.Back
+                || key == Keys.Delete
+                || key == Keys.Left
+                || key == Keys.Right
+                || key == Keys.Up
+                || key == Keys.Down;
+        }
+
+        private static bool ShouldForwardClientEditStageKey(
+            KeyboardState newKeyboardState,
+            KeyboardState oldKeyboardState)
+        {
+            foreach (Keys key in newKeyboardState.GetPressedKeys())
+            {
+                if (ShouldForwardClientEditStageKey(key))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private bool TryForwardClientEditKeyUpToParent(
+            KeyboardState newKeyboardState,
+            KeyboardState oldKeyboardState,
+            bool modalDropdownNavigating)
+        {
+            foreach (Keys key in oldKeyboardState.GetPressedKeys())
+            {
+                if (newKeyboardState.IsKeyUp(key)
+                    && ShouldForwardClientEditKeyUpToParent(key, modalDropdownNavigating))
+                {
+                    if (_lastHeldKey == key)
+                    {
+                        ResetKeyRepeat();
+                    }
+
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool ShouldForwardClientEditParentOnlyKey(
+            KeyboardState newKeyboardState,
+            KeyboardState oldKeyboardState,
+            bool controlHeld,
+            bool shiftHeld)
+        {
+            foreach (Keys key in newKeyboardState.GetPressedKeys())
+            {
+                if (ShouldForwardClientEditParentOnlyKey(key, controlHeld, shiftHeld))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private string TryGetClipboardText()
+        {
+            try
+            {
+                return ClipboardTextGetter?.Invoke() ?? string.Empty;
+            }
+            catch (Exception)
+            {
+                return string.Empty;
+            }
+        }
+
+        private void TrySetClipboardText(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return;
+            }
+
+            try
+            {
+                ClipboardTextSetter?.Invoke(text);
+            }
+            catch (Exception)
+            {
+            }
+        }
+
+        private static string TryGetSystemClipboardText()
+        {
+            try
+            {
+                return System.Windows.Forms.Clipboard.ContainsText()
+                    ? System.Windows.Forms.Clipboard.GetText()
+                    : string.Empty;
+            }
+            catch (Exception)
+            {
+                return string.Empty;
+            }
+        }
+
+        private static void TrySetSystemClipboardText(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return;
+            }
+
+            try
+            {
+                System.Windows.Forms.Clipboard.SetText(text);
+            }
+            catch (Exception)
+            {
+            }
+        }
+
+        internal static string NormalizeClientEditCommittedText(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return string.Empty;
+            }
+
+            StringBuilder normalized = null;
+            for (int i = 0; i < text.Length; i++)
+            {
+                char c = text[i];
+                if (char.IsControl(c))
+                {
+                    normalized ??= new StringBuilder(text.Length).Append(text, 0, i);
+                    continue;
+                }
+
+                normalized?.Append(c);
+            }
+
+            return normalized?.ToString() ?? text;
+        }
+
+        private bool ShouldCaptureClientEditIme()
+        {
+            return _isActive && !IsWhisperTargetPickerModalFooterFocused();
+        }
+
+        private void ClearImeEditState()
+        {
+            ClearCompositionText();
+            ClearImeCandidateList();
+        }
+
+        internal static void BuildCompositionPreview(
+            string inputText,
+            int cursorPosition,
+            int selectionAnchor,
+            ImeCompositionState compositionState,
+            out string previewText,
+            out int compositionStart,
+            out int compositionLength,
+            out int compositionCursorPosition)
+        {
+            inputText ??= string.Empty;
+            compositionStart = -1;
+            compositionLength = 0;
+            compositionCursorPosition = -1;
+
+            string compositionText = NormalizeClientEditCommittedText(compositionState?.Text);
+            if (string.IsNullOrEmpty(compositionText))
+            {
+                previewText = inputText;
+                return;
+            }
+
+            int safeCursor = Math.Clamp(cursorPosition, 0, inputText.Length);
+            int replaceStart = safeCursor;
+            int replaceEnd = safeCursor;
+            if (selectionAnchor >= 0)
+            {
+                int safeAnchor = Math.Clamp(selectionAnchor, 0, inputText.Length);
+                replaceStart = Math.Min(safeCursor, safeAnchor);
+                replaceEnd = Math.Max(safeCursor, safeAnchor);
+            }
+
+            previewText = inputText.Remove(replaceStart, replaceEnd - replaceStart)
+                .Insert(replaceStart, compositionText);
+            compositionStart = replaceStart;
+            compositionLength = compositionText.Length;
+            int compositionCursor = compositionState?.CursorPosition ?? -1;
+            compositionCursor = compositionCursor < 0
+                ? compositionText.Length
+                : Math.Clamp(compositionCursor, 0, compositionText.Length);
+            compositionCursorPosition = replaceStart + compositionCursor;
+        }
+
+        private static bool TryParseTargetModeCommand(
+            string trimmedMessage,
+            out MapSimulatorChatTargetType targetType,
+            out string payload)
+        {
+            targetType = MapSimulatorChatTargetType.All;
+            payload = string.Empty;
+
+            string[] parts = trimmedMessage.Split(new[] { ' ' }, 2, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 0)
+            {
+                return false;
+            }
+
+            if (!TryMapTargetCommand(parts[0], out targetType))
+            {
+                return false;
+            }
+
+            if (parts.Length >= 2)
+            {
+                payload = parts[1].Trim();
+            }
+
+            return true;
+        }
+
+        private static bool TryMapTargetCommand(string command, out MapSimulatorChatTargetType targetType)
+        {
+            targetType = MapSimulatorChatTargetType.All;
+
+            switch (command.ToLowerInvariant())
+            {
+                case "/all":
+                case "/say":
+                    targetType = MapSimulatorChatTargetType.All;
+                    return true;
+                case "/f":
+                case "/friend":
+                    targetType = MapSimulatorChatTargetType.Friend;
+                    return true;
+                case "/p":
+                case "/party":
+                    targetType = MapSimulatorChatTargetType.Party;
+                    return true;
+                case "/g":
+                case "/guild":
+                    targetType = MapSimulatorChatTargetType.Guild;
+                    return true;
+                case "/a":
+                case "/alliance":
+                case "/association":
+                    targetType = MapSimulatorChatTargetType.Association;
+                    return true;
+                case "/e":
+                case "/expedition":
+                    targetType = MapSimulatorChatTargetType.Expedition;
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        private static string GetTargetPrefix(MapSimulatorChatTargetType targetType)
+        {
+            return targetType switch
+            {
+                MapSimulatorChatTargetType.All => string.Empty,
+                MapSimulatorChatTargetType.Friend => "[Friend]",
+                MapSimulatorChatTargetType.Party => "[Party]",
+                MapSimulatorChatTargetType.Guild => "[Guild]",
+                MapSimulatorChatTargetType.Association => "[Alliance]",
+                MapSimulatorChatTargetType.Expedition => "[Expedition]",
+                _ => string.Empty
+            };
+        }
+
+        private string FormatLocalGroupChatEcho(string message, string fallbackPrefix)
+        {
+            string trimmedMessage = message?.Trim() ?? string.Empty;
+            string localName = NormalizeChatSpeakerCandidate(_localPlayerName);
+            if (string.IsNullOrWhiteSpace(localName))
+            {
+                return $"{fallbackPrefix} {trimmedMessage}".Trim();
+            }
+
+            string format = MapleStoryStringPool.GetOrFallback(0x072D, "%s: %s");
+            return FormatClientString(format, localName, trimmedMessage);
+        }
+
+        private static string FormatClientString(string format, string first, string second)
+        {
+            if (string.IsNullOrEmpty(format))
+            {
+                return $"{first}: {second}";
+            }
+
+            int firstPlaceholder = format.IndexOf("%s", StringComparison.Ordinal);
+            if (firstPlaceholder < 0)
+            {
+                return format;
+            }
+
+            string result = format.Remove(firstPlaceholder, 2).Insert(firstPlaceholder, first ?? string.Empty);
+            int secondPlaceholder = result.IndexOf("%s", firstPlaceholder + (first?.Length ?? 0), StringComparison.Ordinal);
+            return secondPlaceholder < 0
+                ? result
+                : result.Remove(secondPlaceholder, 2).Insert(secondPlaceholder, second ?? string.Empty);
+        }
+
     }
 }

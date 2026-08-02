@@ -1,0 +1,230 @@
+using System;
+using System.Globalization;
+using System.IO;
+using System.Text;
+
+using BinaryReader = MapleLib.PacketLib.PacketReader;
+using BinaryWriter = MapleLib.PacketLib.PacketWriter;
+namespace HaCreator.MapSimulator.Interaction
+{
+    internal sealed class ContextOwnedStagePeriodRuntime
+    {
+        private const ushort StageChangePacketType = 135;
+        private static readonly Lazy<Encoding> ClientMapleStringEncoding = new(CreateClientMapleStringEncoding);
+
+        private int _boundMapId = int.MinValue;
+        private string _currentStagePeriod = string.Empty;
+        private byte _currentMode;
+        private string _status = "Context-owned stage-period transition idle.";
+
+        internal void BindMap(int mapId)
+        {
+            _boundMapId = mapId;
+        }
+
+        internal void Clear()
+        {
+            _currentStagePeriod = string.Empty;
+            _currentMode = 0;
+            _status = "Context-owned stage-period transition cleared.";
+        }
+
+        internal string DescribeStatus()
+        {
+            string mapSuffix = _boundMapId > 0
+                ? $" map={_boundMapId.ToString(CultureInfo.InvariantCulture)}"
+                : string.Empty;
+            string currentSuffix = string.IsNullOrWhiteSpace(_currentStagePeriod)
+                ? " current=(none)"
+                : $" current='{_currentStagePeriod}' mode={_currentMode.ToString(CultureInfo.InvariantCulture)}";
+            return $"{_status}{currentSuffix}{mapSuffix}";
+        }
+
+        internal bool TryApplyPacket(
+            byte[] payload,
+            int currentTick,
+            ContextOwnedStagePeriodCallbacks callbacks,
+            out string message)
+        {
+            callbacks ??= new ContextOwnedStagePeriodCallbacks();
+            if (!TryDecodePayload(payload, out PacketStagePeriodChangePacket packet, out string error))
+            {
+                message = error;
+                return false;
+            }
+
+            bool isAlreadyCurrent = callbacks.IsStagePeriodCurrent?.Invoke(packet)
+                ?? string.Equals(_currentStagePeriod, packet.StagePeriod, StringComparison.OrdinalIgnoreCase)
+                && _currentMode == packet.Mode;
+            if (isAlreadyCurrent)
+            {
+                _currentStagePeriod = packet.StagePeriod;
+                _currentMode = packet.Mode;
+                _status = $"CWvsContext::OnStageChange decoded '{packet.StagePeriod}' mode {packet.Mode.ToString(CultureInfo.InvariantCulture)}, but the live stage-period cache was already current.";
+                message = _status;
+                return true;
+            }
+
+            ContextOwnedStagePeriodValidationResult validation = callbacks.ValidateStagePeriodChange?.Invoke(packet)
+                ?? ContextOwnedStagePeriodValidationResult.Accepted();
+            if (!validation.Success)
+            {
+                _status = validation.Detail
+                    ?? $"CWvsContext::OnStageChange rejected '{packet.StagePeriod}' mode {packet.Mode.ToString(CultureInfo.InvariantCulture)} because CStageSystem::BuildCacheData would fail for that stage-theme cache key.";
+                message = _status;
+                return false;
+            }
+
+            _currentStagePeriod = packet.StagePeriod;
+            _currentMode = packet.Mode;
+            _status = callbacks.ApplyStagePeriodChange?.Invoke(packet, currentTick)
+                ?? $"CWvsContext::OnStageChange decoded '{packet.StagePeriod}' mode {packet.Mode.ToString(CultureInfo.InvariantCulture)}, but the simulator has no context-owned stage-period handler.";
+            message = _status;
+            return true;
+        }
+
+        internal static byte[] BuildPayload(string stagePeriod, byte mode)
+        {
+            using MemoryStream stream = new();
+            using BinaryWriter writer = new(stream, Encoding.Default, leaveOpen: true);
+            WriteMapleString(writer, stagePeriod);
+            writer.Write(mode);
+            writer.Flush();
+            return stream.ToArray();
+        }
+
+        internal static bool TryDecodePayload(byte[] payload, out PacketStagePeriodChangePacket packet, out string error)
+        {
+            packet = default;
+            error = null;
+            payload ??= Array.Empty<byte>();
+
+            if (TryDecodePayloadBody(payload, out packet, out error))
+            {
+                return true;
+            }
+
+            string framedError = null;
+            if (payload.Length >= sizeof(ushort)
+                && BitConverter.ToUInt16(payload, 0) == StageChangePacketType
+                && TryDecodePayloadBody(payload.AsSpan(sizeof(ushort)).ToArray(), out packet, out framedError))
+            {
+                error = null;
+                return true;
+            }
+
+            if (payload.Length >= sizeof(ushort)
+                && BitConverter.ToUInt16(payload, 0) == StageChangePacketType)
+            {
+                error = $"Stage-period opcode {StageChangePacketType.ToString(CultureInfo.InvariantCulture)} body could not be decoded: {framedError}";
+            }
+
+            return false;
+        }
+
+        private static bool TryDecodePayloadBody(byte[] payload, out PacketStagePeriodChangePacket packet, out string error)
+        {
+            packet = default;
+            error = null;
+
+            try
+            {
+                using MemoryStream stream = new(payload, writable: false);
+                using BinaryReader reader = new(stream, Encoding.Default, leaveOpen: false);
+                string stagePeriod = ReadMapleString(reader);
+                string normalizedStagePeriod = stagePeriod?.Trim();
+                if (string.IsNullOrWhiteSpace(normalizedStagePeriod))
+                {
+                    error = "Stage-period payload decoded an empty Maple string.";
+                    return false;
+                }
+
+                byte mode = reader.ReadByte();
+                long remaining = stream.Length - stream.Position;
+                if (remaining > 0)
+                {
+                    error = $"Stage-period payload has {remaining.ToString(CultureInfo.InvariantCulture)} trailing byte(s).";
+                    return false;
+                }
+
+                packet = new PacketStagePeriodChangePacket(normalizedStagePeriod, mode);
+                return true;
+            }
+            catch (Exception ex) when (ex is IOException || ex is EndOfStreamException || ex is InvalidDataException)
+            {
+                error = $"Stage-period payload could not be decoded: {ex.Message}";
+                return false;
+            }
+        }
+
+        private static void WriteMapleString(BinaryWriter writer, string value)
+        {
+            string text = value ?? string.Empty;
+            byte[] encoded = EncodeClientMapleString(text);
+            writer.Write((short)encoded.Length);
+            writer.Write(encoded);
+        }
+
+        private static string ReadMapleString(BinaryReader reader)
+        {
+            short length = reader.ReadInt16();
+            if (length < 0)
+            {
+                throw new InvalidDataException("Maple strings with negative lengths are not supported in the context-owned stage-period runtime.");
+            }
+
+            byte[] bytes = reader.ReadBytes(length);
+            if (bytes.Length != length)
+            {
+                throw new EndOfStreamException("Stage-period Maple string ended before its declared length.");
+            }
+
+            return DecodeClientMapleString(bytes);
+        }
+
+        internal static byte[] EncodeClientMapleString(string value)
+        {
+            return ClientMapleStringEncoding.Value.GetBytes(value ?? string.Empty);
+        }
+
+        internal static string DecodeClientMapleString(byte[] bytes)
+        {
+            return ClientMapleStringEncoding.Value.GetString(bytes ?? Array.Empty<byte>());
+        }
+
+        private static Encoding CreateClientMapleStringEncoding()
+        {
+            try
+            {
+                Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+                return Encoding.GetEncoding(949);
+            }
+            catch (Exception)
+            {
+                return Encoding.Default;
+            }
+        }
+    }
+
+    internal sealed class ContextOwnedStagePeriodCallbacks
+    {
+        internal Func<PacketStagePeriodChangePacket, int, string> ApplyStagePeriodChange { get; init; }
+        internal Func<PacketStagePeriodChangePacket, bool> IsStagePeriodCurrent { get; init; }
+        internal Func<PacketStagePeriodChangePacket, ContextOwnedStagePeriodValidationResult> ValidateStagePeriodChange { get; init; }
+    }
+
+    internal readonly record struct ContextOwnedStagePeriodValidationResult(bool Success, string Detail)
+    {
+        internal static ContextOwnedStagePeriodValidationResult Accepted(string detail = null)
+        {
+            return new(true, detail);
+        }
+
+        internal static ContextOwnedStagePeriodValidationResult Rejected(string detail)
+        {
+            return new(false, detail);
+        }
+    }
+
+    internal readonly record struct PacketStagePeriodChangePacket(string StagePeriod, byte Mode);
+}

@@ -1,0 +1,37 @@
+namespace HaCreator.MapSimulator
+{
+    internal enum LoginUtilityDialogAction
+    {
+        None = 0,
+        DismissOnly = 1,
+        ConfirmDeleteCharacter = 2,
+        CreateCharacter = 3,
+        AccountMigrationDecision = 4,
+        EulaDecision = 5,
+        AcceptLicenseAgreement = 17,
+        QueueConfirmEula = 16,
+        VerifyBirthDate = 6,
+        VerifyPic = 7,
+        SetPic = 8,
+        SecondaryPasswordDecision = 9,
+        SetSpw = 10,
+        VerifySpw = 11,
+        WebsiteHandoffDecision = 12,
+        WebsiteHandoff = 13,
+        ConfirmApspEvent = 14,
+        ConfirmFollowCharacterRequest = 15,
+        ConfirmUtilityQuit = 18,
+        VerifyTrunkPic = 19,
+        VerifyTrunkSpw = 20,
+        RetryTrunkPic = 21,
+        RetryTrunkSpw = 22,
+        LogoutGiftCompletion = 23,
+        SetFamilyPrecept = 24,
+        ExecuteFamilyPrivilegeTarget = 25,
+        EntrustedShopBlacklistAdd = 26,
+        EntrustedShopBlacklistNotice = 27,
+        FieldMessageBoxChalkboardCompose = 28,
+        EngagementProposalRequestNote = 29,
+        UnregisterFamilyCharacter = 30,
+    }
+}

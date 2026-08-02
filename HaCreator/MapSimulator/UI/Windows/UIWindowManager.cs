@@ -1,6 +1,9 @@
+using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.Animation;
 using HaCreator.MapSimulator.UI;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
+using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
@@ -19,36 +22,59 @@ namespace HaCreator.MapSimulator.UI
         #region Fields
         private readonly List<UIWindowBase> windows = new List<UIWindowBase>();
         private readonly Dictionary<string, UIWindowBase> windowsByName = new Dictionary<string, UIWindowBase>();
+        private readonly Dictionary<string, Action<UIWindowManager>> lazyWindowRegistrars = new Dictionary<string, Action<UIWindowManager>>(StringComparer.Ordinal);
+        private readonly ProductionEnhancementAnimationDisplayer _productionEnhancementAnimationDisplayer = new();
 
         // Individual window references for quick access (UIWindowBase for polymorphic pre-BB/post-BB support)
         public UIWindowBase InventoryWindow { get; private set; }
         public UIWindowBase EquipWindow { get; private set; }
         public UIWindowBase SkillWindow { get; private set; }
         public UIWindowBase QuestWindow { get; private set; }
+        public QuestDetailWindow QuestDetailWindow { get; private set; }
         public UIWindowBase AbilityWindow { get; private set; }
         public QuickSlotUI QuickSlotWindow { get; private set; }
         public SkillMacroUI SkillMacroWindow { get; private set; }
+        internal SoftKeyboardUI SoftKeyboardWindow { get; private set; }
 
         // Window that currently has focus (topmost)
         private UIWindowBase _focusedWindow;
+        private UIWindowBase _softKeyboardModalOwner;
+        private UIWindowBase _softKeyboardPreviousFocusedWindow;
+        private ISoftKeyboardHost _activeSoftKeyboardHost;
 
         // Window currently being dragged (prevents other windows from starting drag)
         private UIWindowBase _draggingWindow;
 
-        // Keyboard toggle bindings
-        private readonly Dictionary<Keys, string> keyBindings = new Dictionary<Keys, string>
+        private static readonly Dictionary<InputAction, string> PlayerInputWindowBindings = new Dictionary<InputAction, string>
         {
-            { Keys.I, "Inventory" },
-            { Keys.E, "Equipment" },
-            { Keys.S, "Skills" },
-            { Keys.Q, "Quest" },
-            { Keys.A, "Ability" },
-            { Keys.OemTilde, "QuickSlot" }  // ` key toggles quick slot bar
-            // Note: SkillMacro window is opened via MACRO button in Skill window, not keyboard shortcut
+            { InputAction.ToggleInventory, MapSimulatorWindowNames.Inventory },
+            { InputAction.ToggleEquip, MapSimulatorWindowNames.Equipment },
+            { InputAction.ToggleSkills, MapSimulatorWindowNames.Skills },
+            { InputAction.ToggleQuest, MapSimulatorWindowNames.Quest },
+            { InputAction.ToggleStats, MapSimulatorWindowNames.Ability },
+            { InputAction.ToggleQuickSlot, MapSimulatorWindowNames.QuickSlot },
+            { InputAction.ToggleKeyConfig, MapSimulatorWindowNames.KeyConfig },
         };
+
+        // Keyboard toggle bindings
+        private readonly Dictionary<Keys, string> keyBindings = BuildWindowBindingsFromPlayerInput(input: null);
 
         // Last key states for toggle detection
         private KeyboardState _previousKeyState;
+        private MouseState _previousMouseState;
+        private SpriteFont _windowFont;
+
+        /// <summary>
+        /// Optional callback invoked before a named window is shown through the manager.
+        /// Used by the simulator to keep scripted ownership aligned across launcher paths.
+        /// </summary>
+        public Action<UIWindowBase> BeforeShowWindow { get; set; }
+
+        /// <summary>
+        /// Optional callback invoked before opening a hidden window via keyboard toggle flow.
+        /// Returning false keeps the window closed.
+        /// </summary>
+        public Func<string, bool> BeforeToggleWindowOpen { get; set; }
         #endregion
 
         #region Properties
@@ -62,10 +88,29 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         public UIWindowBase FocusedWindow => _focusedWindow;
 
+        internal ProductionEnhancementAnimationDisplayer ProductionEnhancementAnimationDisplayer => _productionEnhancementAnimationDisplayer;
+
         /// <summary>
         /// Whether any window is currently visible
         /// </summary>
         public bool AnyWindowVisible => windows.Exists(w => w.IsVisible);
+        public bool CapturesKeyboardInput => windows.Exists(w => w.IsVisible && w.CapturesKeyboardInput);
+        public UIWindowBase ActiveKeyboardWindow
+        {
+            get
+            {
+                for (int i = windows.Count - 1; i >= 0; i--)
+                {
+                    UIWindowBase window = windows[i];
+                    if (window.IsVisible && window.CapturesKeyboardInput)
+                    {
+                        return window;
+                    }
+                }
+
+                return null;
+            }
+        }
 
         /// <summary>
         /// Whether a window is currently being dragged
@@ -79,8 +124,11 @@ namespace HaCreator.MapSimulator.UI
         {
             for (int i = windows.Count - 1; i >= 0; i--)
             {
-                if (windows[i].IsVisible && windows[i].ContainsPoint(x, y))
+                if (windows[i].IsVisible
+                    && (windows[i].ContainsPoint(x, y) || windows[i].IsModalDialogOwner))
+                {
                     return true;
+                }
             }
             return false;
         }
@@ -123,6 +171,12 @@ namespace HaCreator.MapSimulator.UI
             RegisterWindow(questWindow);
         }
 
+        public void RegisterQuestDetailWindow(QuestDetailWindow questDetailWindow)
+        {
+            QuestDetailWindow = questDetailWindow;
+            RegisterWindow(questDetailWindow);
+        }
+
         /// <summary>
         /// Register the ability/stat window (supports both pre-BB AbilityUI and post-BB AbilityUIBigBang)
         /// </summary>
@@ -150,6 +204,84 @@ namespace HaCreator.MapSimulator.UI
             RegisterWindow(skillMacroWindow);
         }
 
+        internal void RegisterSoftKeyboardWindow(SoftKeyboardUI softKeyboardWindow)
+        {
+            SoftKeyboardWindow = softKeyboardWindow;
+            if (softKeyboardWindow != null)
+            {
+                softKeyboardWindow.BeforeShow = HandleBeforeShowWindow;
+                softKeyboardWindow.AfterDismiss = HandleSoftKeyboardDismissed;
+            }
+
+            if (_windowFont != null)
+            {
+                softKeyboardWindow?.SetFont(_windowFont);
+            }
+        }
+
+        /// <summary>
+        /// Register a custom or placeholder utility window with the manager.
+        /// </summary>
+        public void RegisterCustomWindow(UIWindowBase window)
+        {
+            RegisterWindow(window);
+        }
+
+        public void RegisterLazyWindow(string windowName, Action<UIWindowManager> registrar)
+        {
+            if (string.IsNullOrWhiteSpace(windowName) || registrar == null)
+            {
+                return;
+            }
+
+            if (windowsByName.ContainsKey(windowName))
+            {
+                return;
+            }
+
+            lazyWindowRegistrars[windowName] = registrar;
+        }
+
+        public bool RemoveWindow(string windowName)
+        {
+            return windowsByName.TryGetValue(windowName, out UIWindowBase window) && RemoveWindow(window);
+        }
+
+        public bool RemoveWindow(UIWindowBase window)
+        {
+            if (window == null || !windows.Remove(window))
+            {
+                return false;
+            }
+
+            _productionEnhancementAnimationDisplayer.ClearWindow(window.WindowName);
+
+            if (windowsByName.TryGetValue(window.WindowName, out UIWindowBase registeredWindow) && ReferenceEquals(registeredWindow, window))
+            {
+                windowsByName.Remove(window.WindowName);
+            }
+
+            if (ReferenceEquals(_focusedWindow, window))
+            {
+                _focusedWindow = null;
+                for (int i = windows.Count - 1; i >= 0; i--)
+                {
+                    if (windows[i].IsVisible)
+                    {
+                        _focusedWindow = windows[i];
+                        break;
+                    }
+                }
+            }
+
+            if (ReferenceEquals(_draggingWindow, window))
+            {
+                _draggingWindow = null;
+            }
+
+            return true;
+        }
+
         /// <summary>
         /// Register a window with the manager
         /// </summary>
@@ -158,8 +290,21 @@ namespace HaCreator.MapSimulator.UI
             if (window == null)
                 return;
 
+            window.AttachAnimationDisplayerWindowOverlayOwner(_productionEnhancementAnimationDisplayer.Owner);
+            window.BeforeShow = HandleBeforeShowWindow;
+            if (_windowFont != null)
+            {
+                window.SetFont(_windowFont);
+            }
+
             windows.Add(window);
             windowsByName[window.WindowName] = window;
+            lazyWindowRegistrars.Remove(window.WindowName);
+        }
+
+        private void HandleBeforeShowWindow(UIWindowBase window)
+        {
+            BeforeShowWindow?.Invoke(window);
         }
 
         /// <summary>
@@ -169,6 +314,63 @@ namespace HaCreator.MapSimulator.UI
         {
             keyBindings[key] = windowName;
         }
+
+        public void SyncKeyBindingsFromPlayerInput(PlayerInput input)
+        {
+            keyBindings.Clear();
+            foreach (KeyValuePair<Keys, string> entry in BuildWindowBindingsFromPlayerInput(input))
+            {
+                keyBindings[entry.Key] = entry.Value;
+            }
+        }
+
+        private static Dictionary<Keys, string> BuildWindowBindingsFromPlayerInput(PlayerInput input)
+        {
+            var bindings = new Dictionary<Keys, string>();
+            foreach (KeyValuePair<InputAction, string> entry in PlayerInputWindowBindings)
+            {
+                KeyBinding binding = input?.GetBinding(entry.Key);
+                if (binding == null)
+                {
+                    foreach (var defaultBinding in PlayerInput.GetDefaultBindings())
+                    {
+                        if (defaultBinding.action != entry.Key)
+                        {
+                            continue;
+                        }
+
+                        TryAddWindowBinding(bindings, defaultBinding.primary, entry.Value);
+                        TryAddWindowBinding(bindings, defaultBinding.secondary, entry.Value);
+                        goto NextBinding;
+                    }
+
+                    continue;
+                }
+
+                TryAddWindowBinding(bindings, binding.PrimaryKey, entry.Value);
+                TryAddWindowBinding(bindings, binding.SecondaryKey, entry.Value);
+
+            NextBinding:
+                ;
+            }
+
+            // Fallback simulator shortcuts that are not yet modeled through PlayerInput.
+            bindings[Keys.T] = MapSimulatorWindowNames.TradingRoom;
+            bindings[Keys.P] = MapSimulatorWindowNames.PersonalShop;
+            bindings[Keys.H] = MapSimulatorWindowNames.EntrustedShop;
+            bindings[Keys.O] = MapSimulatorWindowNames.MiniRoom;
+            return bindings;
+        }
+
+        private static void TryAddWindowBinding(Dictionary<Keys, string> bindings, Keys key, string windowName)
+        {
+            if (key == Keys.None || string.IsNullOrWhiteSpace(windowName))
+            {
+                return;
+            }
+
+            bindings[key] = windowName;
+        }
         #endregion
 
         #region Window Management
@@ -177,8 +379,17 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         public void ToggleWindow(string windowName, int tickCount)
         {
-            if (windowsByName.TryGetValue(windowName, out var window))
+            if (EnsureWindowRegistered(windowName) &&
+                windowsByName.TryGetValue(windowName, out var window))
             {
+                if (!window.IsVisible)
+                {
+                    if (BeforeToggleWindowOpen != null && !BeforeToggleWindowOpen(windowName))
+                    {
+                        return;
+                    }
+                }
+
                 window.ToggleVisibility(tickCount);
 
                 if (window.IsVisible)
@@ -193,11 +404,37 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         public void ShowWindow(string windowName)
         {
-            if (windowsByName.TryGetValue(windowName, out var window))
+            if (EnsureWindowRegistered(windowName) &&
+                windowsByName.TryGetValue(windowName, out var window))
             {
-                window.Show();
-                BringToFront(window);
+                ShowWindow(window);
             }
+        }
+
+        /// <summary>
+        /// Show a window after first applying caller-owned launch state through the manager seam.
+        /// Keeps registered visibility transitions and owner callbacks aligned in one place.
+        /// </summary>
+        public void ShowWindow(UIWindowBase window, Action prepareToShow)
+        {
+            if (window == null)
+            {
+                return;
+            }
+
+            prepareToShow?.Invoke();
+            ShowWindow(window);
+        }
+
+        public void ShowWindow(UIWindowBase window)
+        {
+            if (window == null)
+            {
+                return;
+            }
+
+            window.Show();
+            BringToFront(window);
         }
 
         /// <summary>
@@ -218,6 +455,11 @@ namespace HaCreator.MapSimulator.UI
         {
             foreach (var window in windows)
             {
+                if (window.ExcludeFromWindowManagerHide)
+                {
+                    continue;
+                }
+
                 window.Hide();
             }
             _focusedWindow = null;
@@ -232,7 +474,7 @@ namespace HaCreator.MapSimulator.UI
             // Find the topmost visible window (last in list)
             for (int i = windows.Count - 1; i >= 0; i--)
             {
-                if (windows[i].IsVisible)
+                if (windows[i].IsVisible && !windows[i].ExcludeFromWindowManagerHide)
                 {
                     windows[i].Hide();
 
@@ -262,6 +504,10 @@ namespace HaCreator.MapSimulator.UI
                 windows.Remove(window);
                 windows.Add(window);
                 _focusedWindow = window;
+                if (window.IsVisible && window.CapturesKeyboardInput)
+                {
+                    window.RefreshImePresentationPlacement();
+                }
             }
         }
 
@@ -274,7 +520,15 @@ namespace HaCreator.MapSimulator.UI
             foreach (var window in windows)
             {
                 window.ResetDragState();
+                CancelSkillDrag(window);
+                if (window is InventoryUI inventoryWindow)
+                {
+                    inventoryWindow.CancelInventoryDrag();
+                }
             }
+
+            QuickSlotWindow?.CancelDrag();
+            SkillMacroWindow?.CancelDrag();
         }
 
         /// <summary>
@@ -283,6 +537,34 @@ namespace HaCreator.MapSimulator.UI
         public UIWindowBase GetWindow(string windowName)
         {
             return windowsByName.TryGetValue(windowName, out var window) ? window : null;
+        }
+
+        public UIWindowBase GetOrRegisterWindow(string windowName)
+        {
+            EnsureWindowRegistered(windowName);
+            return GetWindow(windowName);
+        }
+
+        private bool EnsureWindowRegistered(string windowName)
+        {
+            if (string.IsNullOrWhiteSpace(windowName))
+            {
+                return false;
+            }
+
+            if (windowsByName.ContainsKey(windowName))
+            {
+                return true;
+            }
+
+            if (!lazyWindowRegistrars.TryGetValue(windowName, out Action<UIWindowManager> registrar))
+            {
+                return false;
+            }
+
+            lazyWindowRegistrars.Remove(windowName);
+            registrar(this);
+            return windowsByName.ContainsKey(windowName);
         }
         #endregion
 
@@ -294,15 +576,15 @@ namespace HaCreator.MapSimulator.UI
         /// <param name="tickCount">Current tick count</param>
         /// <param name="chatIsActive">Whether the chat input is active (blocks hotkeys)</param>
         /// <returns>True if ESC was pressed and windows were closed (to prevent simulator from closing)</returns>
-        public bool Update(GameTime gameTime, int tickCount, bool chatIsActive = false)
+        public bool Update(GameTime gameTime, int tickCount, bool chatIsActive = false, bool inputActive = true)
         {
             bool escHandled = false;
 
             // Handle keyboard shortcuts
             KeyboardState keyState = Keyboard.GetState();
 
-            // Skip all hotkey processing when chat is active
-            if (!chatIsActive)
+            // Skip hotkey handling while chat is active or the simulator window is unfocused.
+            if (inputActive && !chatIsActive && !CapturesKeyboardInput)
             {
                 // ESC key closes the topmost visible window (one at a time)
                 if (keyState.IsKeyDown(Keys.Escape) && !_previousKeyState.IsKeyDown(Keys.Escape))
@@ -321,8 +603,8 @@ namespace HaCreator.MapSimulator.UI
             }
             _previousKeyState = keyState;
 
-            // Update each visible window
-            foreach (var window in windows)
+            // Windows can change z-order or visibility during Update, so iterate a stable snapshot.
+            foreach (var window in windows.ToArray())
             {
                 if (window.IsVisible)
                 {
@@ -330,7 +612,49 @@ namespace HaCreator.MapSimulator.UI
                 }
             }
 
+            ProcessPendingEquipmentChanges(windows, EquipWindow, InventoryWindow as InventoryUI);
+
+            ISoftKeyboardHost activeSoftKeyboardHost = GetActiveSoftKeyboardHost();
+            HandleSoftKeyboardOwnerTransition(activeSoftKeyboardHost);
+            SoftKeyboardWindow?.SyncHost(activeSoftKeyboardHost);
+            if (SoftKeyboardWindow?.IsVisible == true)
+            {
+                SoftKeyboardWindow.Update(gameTime);
+            }
+
             return escHandled;
+        }
+
+        internal static void ProcessPendingEquipmentChange(UIWindowBase equipWindow, InventoryUI inventoryWindow)
+        {
+            if (equipWindow is IEquipmentPendingChangeWindow pendingChangeWindow
+                && pendingChangeWindow.HasPendingEquipmentChange)
+            {
+                pendingChangeWindow.ProcessPendingEquipmentChange(inventoryWindow);
+            }
+        }
+
+        internal static void ProcessPendingEquipmentChanges(
+            IReadOnlyList<UIWindowBase> registeredWindows,
+            UIWindowBase primaryEquipWindow,
+            InventoryUI inventoryWindow)
+        {
+            ProcessPendingEquipmentChange(primaryEquipWindow, inventoryWindow);
+            if (registeredWindows == null || registeredWindows.Count == 0)
+            {
+                return;
+            }
+
+            for (int i = 0; i < registeredWindows.Count; i++)
+            {
+                UIWindowBase window = registeredWindows[i];
+                if (window == null || ReferenceEquals(window, primaryEquipWindow))
+                {
+                    continue;
+                }
+
+                ProcessPendingEquipmentChange(window, inventoryWindow);
+            }
         }
         #endregion
 
@@ -354,6 +678,15 @@ namespace HaCreator.MapSimulator.UI
                         drawReflectionInfo, renderParameters, tickCount);
                 }
             }
+
+            DrawDraggedSkillOverlay(sprite);
+
+            if (SoftKeyboardWindow?.IsVisible == true)
+            {
+                SoftKeyboardWindow.Draw(sprite, skeletonMeshRenderer, gameTime,
+                    mapShiftX, mapShiftY, centerX, centerY,
+                    drawReflectionInfo, renderParameters, tickCount);
+            }
         }
         #endregion
 
@@ -364,6 +697,71 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         public bool CheckMouseEvent(int shiftCenteredX, int shiftCenteredY, MouseState mouseState, MouseCursorItem mouseCursor, int renderWidth, int renderHeight)
         {
+            bool leftJustPressed = mouseState.LeftButton == ButtonState.Pressed && _previousMouseState.LeftButton == ButtonState.Released;
+            bool leftJustReleased = mouseState.LeftButton == ButtonState.Released && _previousMouseState.LeftButton == ButtonState.Pressed;
+            bool rightJustPressed = mouseState.RightButton == ButtonState.Pressed && _previousMouseState.RightButton == ButtonState.Released;
+
+            if (leftJustPressed || rightJustPressed)
+            {
+                DismissStatusBarPopupOwners(mouseState.X, mouseState.Y);
+            }
+
+            if (SoftKeyboardWindow?.IsVisible == true)
+            {
+                bool handled = SoftKeyboardWindow.CheckMouseEvent(shiftCenteredX, shiftCenteredY, mouseState, mouseCursor, renderWidth, renderHeight);
+                if (handled && SoftKeyboardWindow.IsVisible)
+                {
+                    RestoreActiveSoftKeyboardOwnerFocus();
+                }
+
+                _previousMouseState = mouseState;
+
+                // Client soft-keyboard launch paths use CDialog::DoModal, so the keyboard
+                // keeps mouse ownership until it closes instead of letting clicks fall
+                // through to the underlying utility dialog or other windows.
+                if (handled || SoftKeyboardWindow.IsVisible)
+                {
+                    return true;
+                }
+            }
+
+            if ((GetActiveSkillDragSource() != null || (InventoryWindow as InventoryUI)?.IsDraggingItem == true || IsDraggingEquipment() || QuickSlotWindow?.IsDraggingSlot == true || SkillMacroWindow?.IsDraggingMacroBinding == true ||
+                 SkillMacroWindow?.IsDraggingSkillSlot == true || (_draggingWindow != null && mouseState.LeftButton == ButtonState.Pressed))
+                && mouseCursor != null)
+            {
+                mouseCursor.SetMouseCursorHold();
+            }
+
+            if (HandleSkillDrag(mouseState, leftJustPressed, leftJustReleased))
+            {
+                _previousMouseState = mouseState;
+                return false;
+            }
+
+            if (HandleInventoryInteraction(mouseState, leftJustPressed, leftJustReleased))
+            {
+                _previousMouseState = mouseState;
+                return false;
+            }
+
+            if (HandleEquipmentInteraction(mouseState, leftJustPressed, leftJustReleased))
+            {
+                _previousMouseState = mouseState;
+                return false;
+            }
+
+            if (HandleQuickSlotInteraction(mouseState, leftJustPressed, leftJustReleased, rightJustPressed))
+            {
+                _previousMouseState = mouseState;
+                return false;
+            }
+
+            if (HandleSkillMacroInteraction(mouseState, leftJustPressed, leftJustReleased, rightJustPressed))
+            {
+                _previousMouseState = mouseState;
+                return false;
+            }
+
             // If mouse button is released, clear the dragging window
             if (mouseState.LeftButton == ButtonState.Released)
             {
@@ -376,6 +774,7 @@ namespace HaCreator.MapSimulator.UI
                 if (_draggingWindow.IsVisible)
                 {
                     _draggingWindow.CheckMouseEvent(shiftCenteredX, shiftCenteredY, mouseState, mouseCursor, renderWidth, renderHeight);
+                    _previousMouseState = mouseState;
                     return false; // Don't consume - just like minimap
                 }
                 else
@@ -398,9 +797,13 @@ namespace HaCreator.MapSimulator.UI
                         _draggingWindow == null &&
                         mouseIsOverWindow)
                     {
-                        _draggingWindow = window;
                         BringToFront(window);
+                        if (window.SupportsDragging && window.CanStartDragAt(mouseState.X, mouseState.Y))
+                        {
+                            _draggingWindow = window;
+                        }
                         window.CheckMouseEvent(shiftCenteredX, shiftCenteredY, mouseState, mouseCursor, renderWidth, renderHeight);
+                        _previousMouseState = mouseState;
                         return false; // Don't consume - just like minimap
                     }
 
@@ -411,17 +814,763 @@ namespace HaCreator.MapSimulator.UI
                         bool handled = window.CheckMouseEvent(shiftCenteredX, shiftCenteredY, mouseState, mouseCursor, renderWidth, renderHeight);
                         if (handled)
                         {
+                            _previousMouseState = mouseState;
                             return true;
                         }
                         // Mouse is over this window but didn't click a button - stop checking windows below
+                        _previousMouseState = mouseState;
                         return false;
+                    }
+
+                    if (window.IsModalDialogOwner)
+                    {
+                        _previousMouseState = mouseState;
+                        return true;
                     }
                 }
             }
 
+            _previousMouseState = mouseState;
             return false;
         }
         #endregion
+
+        private void DismissStatusBarPopupOwners(int mouseX, int mouseY)
+        {
+            foreach (UIWindowBase window in windows)
+            {
+                if (window is StatusBarPopupMenuWindow popupWindow
+                    && popupWindow.IsVisible
+                    && !popupWindow.ContainsPoint(mouseX, mouseY))
+                {
+                    popupWindow.Hide();
+                }
+            }
+        }
+
+        private bool HandleSkillDrag(MouseState mouseState, bool leftJustPressed, bool leftJustReleased)
+        {
+            UIWindowBase activeDragSource = GetActiveSkillDragSource();
+            if (activeDragSource != null)
+            {
+                UpdateSkillDrag(activeDragSource, mouseState.X, mouseState.Y);
+
+                if (leftJustReleased)
+                {
+                    int skillId = GetDraggedSkillId(activeDragSource);
+                    bool dropped = skillId > 0 &&
+                                   QuickSlotWindow?.IsVisible == true &&
+                                   QuickSlotWindow.AcceptSkillDrop(skillId, mouseState.X, mouseState.Y);
+                    EndSkillDrag(activeDragSource);
+
+                    if (dropped && QuickSlotWindow != null)
+                    {
+                        BringToFront(QuickSlotWindow);
+                    }
+                }
+
+                return true;
+            }
+
+            if (!leftJustPressed)
+                return false;
+
+            UIWindowBase hoveredWindow = GetTopmostWindowAt(mouseState.X, mouseState.Y);
+            if (hoveredWindow == null)
+                return false;
+
+            if (!TryBeginSkillDrag(hoveredWindow, mouseState.X, mouseState.Y))
+                return false;
+
+            BringToFront(hoveredWindow);
+            _draggingWindow = null;
+            return true;
+        }
+
+        private bool HandleQuickSlotInteraction(MouseState mouseState, bool leftJustPressed, bool leftJustReleased, bool rightJustPressed)
+        {
+            if (QuickSlotWindow == null || !QuickSlotWindow.IsVisible)
+                return false;
+
+            QuickSlotWindow.OnMouseMove(mouseState.X, mouseState.Y);
+
+            if (QuickSlotWindow.IsDraggingSlot)
+            {
+                if (leftJustReleased)
+                {
+                    QuickSlotWindow.OnMouseUp(mouseState.X, mouseState.Y);
+                }
+
+                return true;
+            }
+
+            if (!QuickSlotWindow.ContainsPoint(mouseState.X, mouseState.Y))
+                return false;
+
+            int slot = QuickSlotWindow.GetSlotAtPosition(mouseState.X, mouseState.Y);
+            if (slot < 0)
+                return false;
+
+            if (rightJustPressed)
+            {
+                BringToFront(QuickSlotWindow);
+                QuickSlotWindow.OnMouseDown(mouseState.X, mouseState.Y, false, true);
+                return true;
+            }
+
+            if (leftJustPressed)
+            {
+                BringToFront(QuickSlotWindow);
+                QuickSlotWindow.OnMouseDown(mouseState.X, mouseState.Y, true, false);
+                return true;
+            }
+
+            if (mouseState.LeftButton == ButtonState.Pressed)
+                return true;
+
+            return false;
+        }
+
+        private bool HandleInventoryInteraction(MouseState mouseState, bool leftJustPressed, bool leftJustReleased)
+        {
+            if (InventoryWindow is not InventoryUI inventoryWindow || !inventoryWindow.IsVisible)
+                return false;
+
+            inventoryWindow.OnInventoryMouseMove(mouseState.X, mouseState.Y);
+
+            if (inventoryWindow.IsDraggingItem)
+            {
+                if (leftJustReleased)
+                {
+                    if (TryHandleInventoryDropToEquipment(inventoryWindow, mouseState.X, mouseState.Y))
+                    {
+                        inventoryWindow.CancelInventoryDrag();
+                        return true;
+                    }
+
+                    if (TryHandleInventoryDropRequest(inventoryWindow, mouseState.X, mouseState.Y))
+                    {
+                        inventoryWindow.CancelInventoryDrag();
+                        return true;
+                    }
+
+                    inventoryWindow.OnInventoryMouseUp(mouseState.X, mouseState.Y);
+                }
+
+                return true;
+            }
+
+            if (!inventoryWindow.ContainsPoint(mouseState.X, mouseState.Y) ||
+                !inventoryWindow.HandlesInventoryInteractionPoint(mouseState.X, mouseState.Y))
+            {
+                return false;
+            }
+
+            if (leftJustPressed)
+            {
+                BringToFront(inventoryWindow);
+                if (TryHandleInventoryPickRequest(inventoryWindow, mouseState.X, mouseState.Y))
+                {
+                    return true;
+                }
+
+                inventoryWindow.OnInventoryMouseDown(mouseState.X, mouseState.Y);
+                if (inventoryWindow.IsDraggingItem)
+                {
+                    _draggingWindow = null;
+                }
+
+                return true;
+            }
+
+            return mouseState.LeftButton == ButtonState.Pressed;
+        }
+
+        private bool TryHandleInventoryPickRequest(InventoryUI inventoryWindow, int mouseX, int mouseY)
+        {
+            if (inventoryWindow == null
+                || !inventoryWindow.TryGetSlotAtPoint(mouseX, mouseY, out InventoryType inventoryType, out int slotIndex, out InventorySlotData slotData))
+            {
+                return false;
+            }
+
+            return GetWindow(MapSimulatorWindowNames.MemoMailbox) is MemoMailboxWindow memoMailboxWindow
+                && memoMailboxWindow.TryHandleInventoryPick(inventoryType, slotIndex, slotData);
+        }
+
+        private bool TryHandleInventoryDropToEquipment(InventoryUI inventoryWindow, int mouseX, int mouseY)
+        {
+            if (inventoryWindow?.DraggedSlotData == null)
+            {
+                return false;
+            }
+
+            if (GetWindow(MapSimulatorWindowNames.MemoMailbox) is MemoMailboxWindow memoMailboxWindow
+                && memoMailboxWindow.TryHandleInventoryDrop(
+                    mouseX,
+                    mouseY,
+                    inventoryWindow.DraggedInventoryType,
+                    inventoryWindow.DraggedSlotIndex,
+                    inventoryWindow.DraggedSlotData))
+            {
+                return true;
+            }
+
+            if (GetWindow(MapSimulatorWindowNames.QuestRewardRaise) is QuestRewardRaiseWindow raiseWindow
+                && raiseWindow.TryHandleInventoryDrop(
+                    mouseX,
+                    mouseY,
+                    inventoryWindow.DraggedInventoryType,
+                    inventoryWindow.DraggedSlotIndex,
+                    inventoryWindow.DraggedSlotData))
+            {
+                return true;
+            }
+
+            bool handled;
+            bool pending;
+            IReadOnlyList<InventorySlotData> displacedSlots;
+
+            if (EquipWindow is EquipUIBigBang equipWindowBigBang && equipWindowBigBang.IsVisible)
+            {
+                handled = equipWindowBigBang.TryHandleInventoryDrop(
+                    mouseX,
+                    mouseY,
+                    inventoryWindow.DraggedInventoryType,
+                    inventoryWindow.DraggedSlotIndex,
+                    inventoryWindow.DraggedSlotData,
+                    out displacedSlots);
+                pending = equipWindowBigBang.HasPendingEquipmentChange;
+                if (handled && pending)
+                {
+                    equipWindowBigBang.TryLockPendingInventorySource(inventoryWindow);
+                }
+            }
+            else if (EquipWindow is EquipUI equipWindow && equipWindow.IsVisible)
+            {
+                handled = equipWindow.TryHandleInventoryDrop(
+                    mouseX,
+                    mouseY,
+                    inventoryWindow.DraggedInventoryType,
+                    inventoryWindow.DraggedSlotIndex,
+                    inventoryWindow.DraggedSlotData,
+                    out displacedSlots);
+                pending = equipWindow.HasPendingEquipmentChange;
+                if (handled && pending)
+                {
+                    equipWindow.TryLockPendingInventorySource(inventoryWindow);
+                }
+            }
+            else
+            {
+                return false;
+            }
+
+            if (!handled)
+            {
+                return false;
+            }
+
+            if (pending)
+            {
+                return true;
+            }
+
+            if (!inventoryWindow.TryRemoveSlotAt(inventoryWindow.DraggedInventoryType, inventoryWindow.DraggedSlotIndex, out _))
+            {
+                return false;
+            }
+
+            if (displacedSlots != null)
+            {
+                for (int i = 0; i < displacedSlots.Count; i++)
+                {
+                    InventorySlotData displacedSlot = displacedSlots[i];
+                    if (displacedSlot != null)
+                    {
+                        inventoryWindow.AddItem(MapleLib.WzLib.WzStructure.Data.ItemStructure.InventoryType.EQUIP, displacedSlot);
+                    }
+                }
+            }
+
+            return true;
+        }
+
+        private bool TryHandleInventoryDropRequest(InventoryUI inventoryWindow, int mouseX, int mouseY)
+        {
+            if (inventoryWindow?.DraggedSlotData == null
+                || inventoryWindow.InventoryDropRequested == null)
+            {
+                return false;
+            }
+
+            UIWindowBase targetWindow = GetTopmostWindowAt(mouseX, mouseY);
+            if (targetWindow != null)
+            {
+                return false;
+            }
+
+            return inventoryWindow.TryHandleExternalDropRequest(mouseX, mouseY);
+        }
+
+        private bool HandleEquipmentInteraction(MouseState mouseState, bool leftJustPressed, bool leftJustReleased)
+        {
+            switch (EquipWindow)
+            {
+                case EquipUI equipWindow when equipWindow.IsVisible:
+                    return HandleEquipmentInteraction(equipWindow, mouseState, leftJustPressed, leftJustReleased);
+                case EquipUIBigBang equipWindowBigBang when equipWindowBigBang.IsVisible:
+                    return HandleEquipmentInteraction(equipWindowBigBang, mouseState, leftJustPressed, leftJustReleased);
+                default:
+                    return false;
+            }
+        }
+
+        private bool HandleEquipmentInteraction(EquipUI equipWindow, MouseState mouseState, bool leftJustPressed, bool leftJustReleased)
+        {
+            equipWindow.OnEquipmentMouseMove(mouseState.X, mouseState.Y);
+
+            if (equipWindow.IsDraggingItem)
+            {
+                if (leftJustReleased)
+                {
+                    if (TryHandleEquipmentDropToInventory(equipWindow, mouseState.X, mouseState.Y))
+                    {
+                        equipWindow.CancelEquipmentDrag();
+                        return true;
+                    }
+
+                    equipWindow.OnEquipmentMouseUp(mouseState.X, mouseState.Y);
+                }
+
+                return true;
+            }
+
+            if (!equipWindow.ContainsPoint(mouseState.X, mouseState.Y) ||
+                !equipWindow.HandlesEquipmentInteractionPoint(mouseState.X, mouseState.Y))
+            {
+                return false;
+            }
+
+            if (leftJustPressed)
+            {
+                BringToFront(equipWindow);
+                equipWindow.OnEquipmentMouseDown(mouseState.X, mouseState.Y);
+                if (equipWindow.IsDraggingItem)
+                    _draggingWindow = null;
+
+                return equipWindow.IsDraggingItem;
+            }
+
+            return mouseState.LeftButton == ButtonState.Pressed;
+        }
+
+        private bool HandleEquipmentInteraction(EquipUIBigBang equipWindow, MouseState mouseState, bool leftJustPressed, bool leftJustReleased)
+        {
+            equipWindow.OnEquipmentMouseMove(mouseState.X, mouseState.Y);
+
+            if (equipWindow.IsDraggingItem)
+            {
+                if (leftJustReleased)
+                {
+                    if (TryHandleEquipmentDropToInventory(equipWindow, mouseState.X, mouseState.Y))
+                    {
+                        equipWindow.CancelEquipmentDrag();
+                        return true;
+                    }
+
+                    equipWindow.OnEquipmentMouseUp(mouseState.X, mouseState.Y);
+                }
+
+                return true;
+            }
+
+            if (!equipWindow.ContainsPoint(mouseState.X, mouseState.Y) ||
+                !equipWindow.HandlesEquipmentInteractionPoint(mouseState.X, mouseState.Y))
+            {
+                return false;
+            }
+
+            if (leftJustPressed)
+            {
+                BringToFront(equipWindow);
+                equipWindow.OnEquipmentMouseDown(mouseState.X, mouseState.Y);
+                if (equipWindow.IsDraggingItem)
+                    _draggingWindow = null;
+
+                return equipWindow.IsDraggingItem;
+            }
+
+            return mouseState.LeftButton == ButtonState.Pressed;
+        }
+
+        private bool TryHandleEquipmentDropToInventory(EquipUIBigBang equipWindow, int mouseX, int mouseY)
+        {
+            if (equipWindow == null
+                || InventoryWindow is not InventoryUI inventoryWindow
+                || !inventoryWindow.IsVisible
+                || !inventoryWindow.ContainsPoint(mouseX, mouseY))
+            {
+                return false;
+            }
+
+            InventorySlotData previewSlot = equipWindow.HasDraggedCompanionItem
+                ? equipWindow.DraggedCompanionSlotData
+                : equipWindow.HasDraggedCharacterItem
+                    ? equipWindow.DraggedCharacterSlotData
+                    : null;
+            if (previewSlot == null)
+            {
+                return false;
+            }
+
+            InventoryType inventoryType = InventoryItemMetadataResolver.ResolveInventoryType(previewSlot);
+            if (!inventoryWindow.CanAcceptItem(inventoryType, previewSlot.ItemId, Math.Max(1, previewSlot.Quantity), previewSlot.MaxStackSize))
+            {
+                return false;
+            }
+
+            if (equipWindow.HasDraggedCompanionItem)
+            {
+                if (!equipWindow.TryCommitDraggedCompanionRemoval(out InventorySlotData slotData))
+                {
+                    return false;
+                }
+
+                if (slotData != null)
+                {
+                    inventoryWindow.AddItem(inventoryType, slotData);
+                }
+                return true;
+            }
+
+            if (equipWindow.HasDraggedCharacterItem)
+            {
+                if (!equipWindow.TryCommitDraggedCharacterRemoval(out InventorySlotData slotData))
+                {
+                    return false;
+                }
+
+                if (slotData != null)
+                {
+                    inventoryWindow.AddItem(inventoryType, slotData);
+                }
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool TryHandleEquipmentDropToInventory(EquipUI equipWindow, int mouseX, int mouseY)
+        {
+            if (equipWindow == null
+                || InventoryWindow is not InventoryUI inventoryWindow
+                || !inventoryWindow.IsVisible
+                || !inventoryWindow.ContainsPoint(mouseX, mouseY)
+                || !equipWindow.HasDraggedCharacterItem)
+            {
+                return false;
+            }
+
+            InventorySlotData previewSlot = equipWindow.DraggedCharacterSlotData;
+            if (previewSlot == null)
+            {
+                return false;
+            }
+
+            InventoryType inventoryType = InventoryItemMetadataResolver.ResolveInventoryType(previewSlot);
+            if (!inventoryWindow.CanAcceptItem(inventoryType, previewSlot.ItemId, Math.Max(1, previewSlot.Quantity), previewSlot.MaxStackSize))
+            {
+                return false;
+            }
+
+            if (!equipWindow.TryCommitDraggedCharacterRemoval(out InventorySlotData slotData))
+            {
+                return false;
+            }
+
+            if (slotData != null)
+            {
+                inventoryWindow.AddItem(inventoryType, slotData);
+            }
+
+            return true;
+        }
+
+        private bool IsDraggingEquipment()
+        {
+            return EquipWindow switch
+            {
+                EquipUI equipWindow => equipWindow.IsDraggingItem,
+                EquipUIBigBang equipWindow => equipWindow.IsDraggingItem,
+                _ => false
+            };
+        }
+
+        private bool HandleSkillMacroInteraction(MouseState mouseState, bool leftJustPressed, bool leftJustReleased, bool rightJustPressed)
+        {
+            if (SkillMacroWindow == null || !SkillMacroWindow.IsVisible)
+                return false;
+
+            SkillMacroWindow.OnMouseMove(mouseState.X, mouseState.Y);
+
+            if (SkillMacroWindow.IsDraggingMacroBinding || SkillMacroWindow.IsDraggingSkillSlot)
+            {
+                if (leftJustReleased)
+                {
+                    bool dropped = SkillMacroWindow.IsDraggingMacroBinding &&
+                                   QuickSlotWindow?.IsVisible == true &&
+                                   QuickSlotWindow.AcceptMacroDrop(SkillMacroWindow.DraggedMacroIndex, mouseState.X, mouseState.Y);
+
+                    SkillMacroWindow.OnMouseUp(mouseState.X, mouseState.Y);
+
+                    if (dropped && QuickSlotWindow != null)
+                    {
+                        BringToFront(QuickSlotWindow);
+                    }
+                }
+
+                return true;
+            }
+
+            if (!SkillMacroWindow.ContainsPoint(mouseState.X, mouseState.Y) ||
+                !SkillMacroWindow.HandlesMacroInteractionPoint(mouseState.X, mouseState.Y))
+                return false;
+
+            if (rightJustPressed)
+            {
+                BringToFront(SkillMacroWindow);
+                SkillMacroWindow.OnMouseDown(mouseState.X, mouseState.Y, false, true);
+                return true;
+            }
+
+            if (leftJustPressed)
+            {
+                BringToFront(SkillMacroWindow);
+                SkillMacroWindow.OnMouseDown(mouseState.X, mouseState.Y, true, false);
+                return true;
+            }
+
+            if (mouseState.LeftButton == ButtonState.Pressed)
+                return true;
+
+            return false;
+        }
+
+        private UIWindowBase GetTopmostWindowAt(int x, int y)
+        {
+            for (int i = windows.Count - 1; i >= 0; i--)
+            {
+                if (windows[i].IsVisible && windows[i].ContainsPoint(x, y))
+                    return windows[i];
+            }
+
+            return null;
+        }
+
+        private UIWindowBase GetActiveSkillDragSource()
+        {
+            foreach (var window in windows)
+            {
+                if (IsDraggingSkill(window))
+                    return window;
+            }
+
+            return null;
+        }
+
+        private ISoftKeyboardHost GetActiveSoftKeyboardHost()
+        {
+            for (int i = windows.Count - 1; i >= 0; i--)
+            {
+                if (windows[i] is ISoftKeyboardHost host && host.WantsSoftKeyboard)
+                {
+                    return host;
+                }
+            }
+
+            return null;
+        }
+
+        private void HandleSoftKeyboardOwnerTransition(ISoftKeyboardHost host)
+        {
+            if (ReferenceEquals(_activeSoftKeyboardHost, host))
+            {
+                return;
+            }
+
+            UIWindowBase previousOwner = ResolveSoftKeyboardOwnerWindow(_activeSoftKeyboardHost);
+            _activeSoftKeyboardHost = host;
+            if (host == null)
+            {
+                RestoreSoftKeyboardModalFocus(previousOwner ?? _softKeyboardModalOwner);
+                return;
+            }
+
+            UIWindowBase ownerWindow = ResolveSoftKeyboardOwnerWindow(host);
+            if (_softKeyboardModalOwner == null)
+            {
+                _softKeyboardPreviousFocusedWindow =
+                    _focusedWindow != null
+                    && !ReferenceEquals(_focusedWindow, ownerWindow)
+                    && _focusedWindow.IsVisible
+                        ? _focusedWindow
+                        : null;
+            }
+
+            _softKeyboardModalOwner = ownerWindow;
+            if (ownerWindow?.IsVisible == true)
+            {
+                BringToFront(ownerWindow);
+            }
+            else
+            {
+                _focusedWindow = ownerWindow;
+            }
+        }
+
+        private void HandleSoftKeyboardDismissed(ISoftKeyboardHost dismissedHost)
+        {
+            _activeSoftKeyboardHost = null;
+            RestoreSoftKeyboardModalFocus(ResolveSoftKeyboardOwnerWindow(dismissedHost));
+        }
+
+        private void RestoreActiveSoftKeyboardOwnerFocus()
+        {
+            UIWindowBase focusTarget =
+                ResolveSoftKeyboardOwnerWindow(_activeSoftKeyboardHost)?.IsVisible == true ? ResolveSoftKeyboardOwnerWindow(_activeSoftKeyboardHost)
+                : _softKeyboardModalOwner?.IsVisible == true ? _softKeyboardModalOwner
+                : _softKeyboardPreviousFocusedWindow?.IsVisible == true ? _softKeyboardPreviousFocusedWindow
+                : null;
+
+            if (focusTarget != null)
+            {
+                BringToFront(focusTarget);
+            }
+        }
+
+        private void RestoreSoftKeyboardModalFocus(UIWindowBase preferredOwner)
+        {
+            UIWindowBase focusTarget =
+                preferredOwner?.IsVisible == true ? preferredOwner
+                : _softKeyboardModalOwner?.IsVisible == true ? _softKeyboardModalOwner
+                : _softKeyboardPreviousFocusedWindow?.IsVisible == true ? _softKeyboardPreviousFocusedWindow
+                : null;
+
+            _softKeyboardModalOwner = null;
+            _softKeyboardPreviousFocusedWindow = null;
+
+            if (focusTarget != null)
+            {
+                BringToFront(focusTarget);
+                focusTarget.RefreshImePresentationPlacement();
+                return;
+            }
+
+            _focusedWindow = null;
+            for (int i = windows.Count - 1; i >= 0; i--)
+            {
+                if (windows[i].IsVisible)
+                {
+                    _focusedWindow = windows[i];
+                    _focusedWindow.RefreshImePresentationPlacement();
+                    break;
+                }
+            }
+        }
+
+        private static UIWindowBase ResolveSoftKeyboardOwnerWindow(ISoftKeyboardHost host)
+        {
+            return host as UIWindowBase;
+        }
+
+        private static bool TryBeginSkillDrag(UIWindowBase window, int mouseX, int mouseY)
+        {
+            switch (window)
+            {
+                case SkillUI skillWindow:
+                    skillWindow.OnSkillMouseDown(mouseX, mouseY);
+                    return skillWindow.IsDraggingSkill;
+                case SkillUIBigBang skillWindow:
+                    skillWindow.OnSkillMouseDown(mouseX, mouseY);
+                    return skillWindow.IsDraggingSkill;
+                default:
+                    return false;
+            }
+        }
+
+        private static void UpdateSkillDrag(UIWindowBase window, int mouseX, int mouseY)
+        {
+            switch (window)
+            {
+                case SkillUI skillWindow:
+                    skillWindow.OnSkillMouseMove(mouseX, mouseY);
+                    break;
+                case SkillUIBigBang skillWindow:
+                    skillWindow.OnSkillMouseMove(mouseX, mouseY);
+                    break;
+            }
+        }
+
+        private static void EndSkillDrag(UIWindowBase window)
+        {
+            switch (window)
+            {
+                case SkillUI skillWindow:
+                    skillWindow.OnSkillMouseUp();
+                    break;
+                case SkillUIBigBang skillWindow:
+                    skillWindow.OnSkillMouseUp();
+                    break;
+            }
+        }
+
+        private static void CancelSkillDrag(UIWindowBase window)
+        {
+            switch (window)
+            {
+                case SkillUI skillWindow:
+                    skillWindow.CancelDrag();
+                    break;
+                case SkillUIBigBang skillWindow:
+                    skillWindow.CancelDrag();
+                    break;
+            }
+        }
+
+        private static bool IsDraggingSkill(UIWindowBase window)
+        {
+            return window switch
+            {
+                SkillUI skillWindow => skillWindow.IsDraggingSkill,
+                SkillUIBigBang skillWindow => skillWindow.IsDraggingSkill,
+                _ => false
+            };
+        }
+
+        private static int GetDraggedSkillId(UIWindowBase window)
+        {
+            return window switch
+            {
+                SkillUI skillWindow => skillWindow.DraggedSkillId,
+                SkillUIBigBang skillWindow => skillWindow.DraggedSkillId,
+                _ => 0
+            };
+        }
+
+        private void DrawDraggedSkillOverlay(SpriteBatch sprite)
+        {
+            UIWindowBase dragSource = GetActiveSkillDragSource();
+            switch (dragSource)
+            {
+                case SkillUI skillWindow:
+                    skillWindow.DrawDraggedSkill(sprite);
+                    break;
+                case SkillUIBigBang skillWindow:
+                    skillWindow.DrawDraggedSkill(sprite);
+                    break;
+            }
+        }
 
         #region Utility
         /// <summary>
@@ -429,10 +1578,13 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         public void SetFonts(SpriteFont font)
         {
+            _windowFont = font;
             foreach (var window in windows)
             {
                 window.SetFont(font);
             }
+
+            SoftKeyboardWindow?.SetFont(font);
         }
 
         /// <summary>

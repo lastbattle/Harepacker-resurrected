@@ -43,6 +43,19 @@ namespace HaCreator.MapSimulator.Pools
         public int VerticalImpact;
     }
 
+    public readonly struct PortalCollisionResult
+    {
+        public PortalCollisionResult(PortalItem portal, int portalIndex)
+        {
+            Portal = portal;
+            PortalIndex = portalIndex;
+        }
+
+        public PortalItem Portal { get; }
+
+        public int PortalIndex { get; }
+    }
+
     /// <summary>
     /// Portal Pool System - Manages portals including hidden portal discovery
     /// Based on CPortalList from MapleStory client
@@ -531,8 +544,17 @@ namespace HaCreator.MapSimulator.Pools
         /// <returns>Colliding portal, or null</returns>
         public PortalItem CheckPortalCollision(float playerX, float playerY, int playerHeight = 60)
         {
+            return FindPortalCollision(playerX, playerY, playerHeight)?.Portal;
+        }
+
+        public PortalCollisionResult? FindPortalCollision(float playerX, float playerY, int playerHeight = 60)
+        {
             if (_portals == null)
                 return null;
+
+            PortalItem nearestPortal = null;
+            int nearestPortalIndex = -1;
+            float nearestDistance = float.MaxValue;
 
             for (int i = 0; i < _portals.Length; i++)
             {
@@ -568,11 +590,19 @@ namespace HaCreator.MapSimulator.Pools
 
                 if (xCollide && yCollide)
                 {
-                    return portal;
+                    float distance = Math.Abs(playerX - portalX) + Math.Abs(playerY - portalY);
+                    if (distance < nearestDistance)
+                    {
+                        nearestDistance = distance;
+                        nearestPortal = portal;
+                        nearestPortalIndex = i;
+                    }
                 }
             }
 
-            return null;
+            return nearestPortal == null
+                ? null
+                : new PortalCollisionResult(nearestPortal, nearestPortalIndex);
         }
 
         /// <summary>

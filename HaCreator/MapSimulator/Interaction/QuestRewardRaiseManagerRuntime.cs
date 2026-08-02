@@ -1,0 +1,1212 @@
+using Microsoft.Xna.Framework;
+using MapleLib.WzLib.WzStructure.Data.ItemStructure;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace HaCreator.MapSimulator.Interaction
+{
+    internal sealed class QuestRewardRaiseManagerRuntime
+    {
+        private static readonly Point ClientDefaultItemOwnerPosition = new(0, 150);
+
+        private sealed record QuestRewardRaiseOwnerSnapshot(
+            int ManagerSessionId,
+            int OwnerRequestId,
+            int OwnerItemId,
+            int QrData,
+            int MaxDropCount,
+            QuestRewardRaiseWindowMode WindowMode,
+            QuestRewardRaiseWindowMode DisplayMode,
+            QuestRewardRaiseClientWindowKind ClientWindowKind,
+            bool AwaitingConfirmAck,
+            bool AwaitingOwnerDestroyAck,
+            string LastInboundSummary);
+
+        private int _nextManagerSessionId = 1;
+        private int _nextOwnerRequestId = 1;
+        private readonly System.Collections.Generic.Dictionary<int, QuestRewardRaiseOwnerSnapshot> _ownerSnapshotsByQuestId = new();
+        private readonly System.Collections.Generic.Dictionary<int, int> _questIdsByOwnerItemId = new();
+        private readonly System.Collections.Generic.Dictionary<int, QuestRewardRaiseState> _retainedClosedRaisesByQuestId = new();
+        private readonly System.Collections.Generic.Dictionary<int, Point> _windowPositionsByOwnerItemId = new();
+
+        public QuestRewardRaiseState ActiveRaise { get; private set; }
+
+        public QuestRewardRaiseState CreateWindowForItemOwner(QuestRewardChoicePrompt prompt, Point defaultPosition)
+        {
+            return CreateWindowForItemOwner(prompt, defaultPosition, QuestRewardRaiseSourceKind.InventoryItem);
+        }
+
+        public QuestRewardRaiseState CreateWindowForClientItemOwner(QuestRewardChoicePrompt prompt, Point defaultPosition)
+        {
+            return CreateWindowForItemOwner(prompt, defaultPosition, QuestRewardRaiseSourceKind.ClientItemOwner);
+        }
+
+        private QuestRewardRaiseState CreateWindowForItemOwner(
+            QuestRewardChoicePrompt prompt,
+            Point defaultPosition,
+            QuestRewardRaiseSourceKind source)
+        {
+            if (prompt?.OwnerContext == null || prompt.OwnerContext.OwnerItemId <= 0)
+            {
+                ActiveRaise = null;
+                return null;
+            }
+
+            QuestRewardRaiseState state = Open(
+                prompt,
+                source,
+                ResolveClientItemOwnerDefaultPosition(defaultPosition));
+            if (state == null)
+            {
+                return null;
+            }
+
+            state.OwnerItemId = Math.Max(0, prompt.OwnerContext.OwnerItemId);
+            state.WindowMode = QuestRewardRaiseWindowMode.PiecePlacement;
+            state.DisplayMode = QuestRewardRaiseWindowMode.PiecePlacement;
+            state.ClientWindowKind = ResolveOpenClientWindowKind(
+                prompt,
+                state,
+                null,
+                QuestRewardRaiseWindowMode.PiecePlacement);
+            RememberState(state);
+            return state;
+        }
+
+        public QuestRewardRaiseState CreateWindowForItemOwner(
+            int ownerItemId,
+            int questId,
+            string ownerName,
+            QuestRewardRaiseOwnerContext ownerContext,
+            IReadOnlyList<int> dropItemIds,
+            int initialQrData,
+            Func<int, string> itemNameResolver,
+            Func<int, InventoryType> inventoryTypeResolver,
+            Point defaultPosition)
+        {
+            return CreateWindowForItemOwner(
+                ownerItemId,
+                questId,
+                ownerName,
+                ownerContext,
+                dropItemIds,
+                initialQrData,
+                itemNameResolver,
+                inventoryTypeResolver,
+                defaultPosition,
+                QuestRewardRaiseSourceKind.InventoryItem);
+        }
+
+        public QuestRewardRaiseState CreateWindowForClientItemOwner(
+            int ownerItemId,
+            int questId,
+            string ownerName,
+            QuestRewardRaiseOwnerContext ownerContext,
+            IReadOnlyList<int> dropItemIds,
+            int initialQrData,
+            Func<int, string> itemNameResolver,
+            Func<int, InventoryType> inventoryTypeResolver,
+            Point defaultPosition)
+        {
+            return CreateWindowForItemOwner(
+                ownerItemId,
+                questId,
+                ownerName,
+                ownerContext,
+                dropItemIds,
+                initialQrData,
+                itemNameResolver,
+                inventoryTypeResolver,
+                defaultPosition,
+                QuestRewardRaiseSourceKind.ClientItemOwner);
+        }
+
+        private QuestRewardRaiseState CreateWindowForItemOwner(
+            int ownerItemId,
+            int questId,
+            string ownerName,
+            QuestRewardRaiseOwnerContext ownerContext,
+            IReadOnlyList<int> dropItemIds,
+            int initialQrData,
+            Func<int, string> itemNameResolver,
+            Func<int, InventoryType> inventoryTypeResolver,
+            Point defaultPosition,
+            QuestRewardRaiseSourceKind source)
+        {
+            QuestRewardChoicePrompt prompt = BuildItemOwnerPrompt(
+                ownerItemId,
+                questId,
+                ownerName,
+                ownerContext,
+                dropItemIds,
+                initialQrData,
+                itemNameResolver,
+                inventoryTypeResolver);
+            return CreateWindowForItemOwner(prompt, defaultPosition, source);
+        }
+
+        public QuestRewardRaiseState Open(QuestRewardChoicePrompt prompt, QuestRewardRaiseSourceKind source, Point defaultPosition)
+        {
+            if (prompt == null)
+            {
+                ActiveRaise = null;
+                return null;
+            }
+
+            int questId = Math.Max(0, prompt.QuestId);
+            _ownerSnapshotsByQuestId.TryGetValue(questId, out QuestRewardRaiseOwnerSnapshot snapshot);
+            _retainedClosedRaisesByQuestId.TryGetValue(questId, out QuestRewardRaiseState retainedState);
+
+            QuestRewardRaiseWindowMode windowMode = ResolveOpenWindowMode(prompt, retainedState, snapshot);
+            QuestRewardRaiseWindowMode displayMode = prompt.OwnerContext?.WindowMode
+                ?? retainedState?.DisplayMode
+                ?? snapshot?.DisplayMode
+                ?? windowMode;
+            int ownerItemId = ResolveOpenOwnerItemId(prompt, retainedState, snapshot);
+            int qrData = ResolveOpenQrData(prompt, retainedState, snapshot);
+            int maxDropCount = ResolveOpenMaxDropCount(prompt, retainedState, snapshot, windowMode);
+            QuestRewardRaiseClientWindowKind clientWindowKind = ResolveOpenClientWindowKind(prompt, retainedState, snapshot, windowMode);
+            bool reuseObservedOwnerState = ShouldReuseObservedOwnerState(snapshot);
+            Point windowPosition = defaultPosition;
+            if (ActiveRaise != null
+                && ActiveRaise.Prompt?.QuestId == prompt.QuestId
+                && ActiveRaise.OwnerItemId == ownerItemId
+                && ActiveRaise.WindowMode == windowMode
+                && ActiveRaise.WindowPosition != Point.Zero)
+            {
+                windowPosition = ActiveRaise.WindowPosition;
+            }
+            else if (ownerItemId > 0
+                && _windowPositionsByOwnerItemId.TryGetValue(ownerItemId, out Point backupPosition)
+                && backupPosition != Point.Zero)
+            {
+                windowPosition = backupPosition;
+            }
+
+            bool reuseRetainedClosedRaise = ShouldReuseRetainedClosedRaise(retainedState, prompt);
+            bool reusedOwnerIdentity = reuseObservedOwnerState || reuseRetainedClosedRaise;
+            if (reuseRetainedClosedRaise)
+            {
+                ActiveRaise = retainedState.CloneShallow();
+                _retainedClosedRaisesByQuestId.Remove(questId);
+            }
+            else
+            {
+                ActiveRaise = new QuestRewardRaiseState();
+            }
+
+            ActiveRaise.Source = source;
+            ActiveRaise.Prompt = prompt;
+            ActiveRaise.GroupIndex = ResolveOpenGroupIndex(prompt, ActiveRaise, displayMode);
+            ActiveRaise.ManagerSessionId = ResolveOpenManagerSessionId(reuseObservedOwnerState, snapshot, reuseRetainedClosedRaise, retainedState);
+            ActiveRaise.RequestId = ResolveOpenOwnerRequestId(reuseObservedOwnerState, snapshot, reuseRetainedClosedRaise, retainedState);
+            ActiveRaise.OwnerItemId = ownerItemId;
+            ActiveRaise.QrData = qrData;
+            ActiveRaise.MaxDropCount = maxDropCount;
+            ActiveRaise.UiData = prompt.OwnerContext?.UiData ?? string.Empty;
+            ActiveRaise.IncrementExpUnit = Math.Max(0, prompt.OwnerContext?.IncrementExpUnit ?? 0);
+            ActiveRaise.Grade = Math.Max(0, prompt.OwnerContext?.Grade ?? 0);
+            ActiveRaise.WindowMode = windowMode;
+            ActiveRaise.DisplayMode = displayMode;
+            ActiveRaise.ClientWindowKind = clientWindowKind;
+            ActiveRaise.WindowPosition = windowPosition;
+            ObserveIdentityCounters(ActiveRaise.ManagerSessionId, ActiveRaise.RequestId);
+            if (string.IsNullOrWhiteSpace(ActiveRaise.LastInboundSummary))
+            {
+                ActiveRaise.LastInboundSummary = snapshot?.LastInboundSummary ?? string.Empty;
+            }
+
+            ActiveRaise.AwaitingConfirmAck = ActiveRaise.AwaitingConfirmAck || (snapshot?.AwaitingConfirmAck ?? false);
+            ActiveRaise.AwaitingOwnerDestroyAck = ActiveRaise.AwaitingOwnerDestroyAck || (snapshot?.AwaitingOwnerDestroyAck ?? false);
+            ActiveRaise.IsWindowDismissedLocally = false;
+            ActiveRaise.ReusedOwnerIdentityOnOpen = reusedOwnerIdentity;
+
+            if (questId > 0)
+            {
+                RememberState(ActiveRaise);
+            }
+
+            return ActiveRaise;
+        }
+
+        public QuestRewardRaiseWindowMode ResolveOpenWindowMode(QuestRewardChoicePrompt prompt)
+        {
+            if (prompt == null)
+            {
+                return QuestRewardRaiseWindowMode.Selection;
+            }
+
+            int questId = Math.Max(0, prompt.QuestId);
+            _ownerSnapshotsByQuestId.TryGetValue(questId, out QuestRewardRaiseOwnerSnapshot snapshot);
+            _retainedClosedRaisesByQuestId.TryGetValue(questId, out QuestRewardRaiseState retainedState);
+            return ResolveOpenWindowMode(prompt, retainedState, snapshot);
+        }
+
+        private static int ResolveOpenGroupIndex(
+            QuestRewardChoicePrompt prompt,
+            QuestRewardRaiseState restoredState,
+            QuestRewardRaiseWindowMode displayMode)
+        {
+            int groupCount = prompt?.Groups?.Count ?? 0;
+            if (displayMode == QuestRewardRaiseWindowMode.PiecePlacement || groupCount <= 0)
+            {
+                return 0;
+            }
+
+            if (restoredState?.SelectedItemsByGroup?.Count > 0)
+            {
+                return Math.Clamp(
+                    QuestRewardRaiseState.ResolveSelectionProgressGroupIndex(prompt, restoredState.SelectedItemsByGroup),
+                    0,
+                    groupCount);
+            }
+
+            return Math.Clamp(restoredState?.GroupIndex ?? 0, 0, Math.Max(0, groupCount - 1));
+        }
+
+        public QuestRewardRaiseState Restore(QuestRewardRaiseState state)
+        {
+            ActiveRaise = state;
+            return ActiveRaise;
+        }
+
+        public void RetainClosedRaise(QuestRewardRaiseState state)
+        {
+            int questId = Math.Max(0, state?.Prompt?.QuestId ?? 0);
+            if (questId <= 0 || state == null)
+            {
+                return;
+            }
+
+            BackupWindowPosition(state);
+            QuestRewardRaiseState retainedState = state.CloneShallow();
+            retainedState.IsWindowDismissedLocally = true;
+            _retainedClosedRaisesByQuestId[questId] = retainedState;
+            RememberState(retainedState);
+            if (ReferenceEquals(ActiveRaise, state))
+            {
+                ActiveRaise = null;
+            }
+        }
+
+        public QuestRewardRaiseState DestroyActiveRaise()
+        {
+            QuestRewardRaiseState activeRaise = ActiveRaise;
+            RememberState(activeRaise);
+            ActiveRaise = null;
+            return activeRaise;
+        }
+
+        public QuestRewardRaiseState ClearActiveRaise()
+        {
+            QuestRewardRaiseState activeRaise = ActiveRaise;
+            ActiveRaise = null;
+            return activeRaise;
+        }
+
+        public QuestRewardRaiseState GetObservedRaiseByQuestId(int questId)
+        {
+            questId = Math.Max(0, questId);
+            if (questId <= 0)
+            {
+                return null;
+            }
+
+            if (ActiveRaise?.Prompt?.QuestId == questId)
+            {
+                return ActiveRaise;
+            }
+
+            _retainedClosedRaisesByQuestId.TryGetValue(questId, out QuestRewardRaiseState retainedState);
+            return retainedState;
+        }
+
+        public QuestRewardRaiseState FindObservedRaiseByPieceHint(InventoryType inventoryType, int slotIndex, int itemId)
+        {
+            if (MatchesPieceHint(ActiveRaise, inventoryType, slotIndex, itemId))
+            {
+                return ActiveRaise;
+            }
+
+            QuestRewardRaiseState fallbackByItem = null;
+            foreach (QuestRewardRaiseState retainedState in _retainedClosedRaisesByQuestId.Values)
+            {
+                if (retainedState?.PlacedPieces == null || retainedState.PlacedPieces.Count == 0)
+                {
+                    continue;
+                }
+
+                if (MatchesPieceHint(retainedState, inventoryType, slotIndex, itemId))
+                {
+                    return retainedState;
+                }
+
+                if (fallbackByItem == null && itemId > 0 && retainedState.PlacedPieces.Exists(piece => piece.ItemId == itemId))
+                {
+                    fallbackByItem = retainedState;
+                }
+            }
+
+            return fallbackByItem;
+        }
+
+        public bool TrySetQrDataForQuest(int questId, int qrData, out QuestRewardRaiseState updatedState)
+        {
+            updatedState = null;
+            questId = Math.Max(0, questId);
+            if (questId <= 0)
+            {
+                return false;
+            }
+
+            if (_ownerSnapshotsByQuestId.TryGetValue(questId, out QuestRewardRaiseOwnerSnapshot snapshot))
+            {
+                _ownerSnapshotsByQuestId[questId] = snapshot with { QrData = qrData };
+                RememberOwnerQuestMapping(questId, snapshot.OwnerItemId);
+            }
+
+            QuestRewardRaiseState observedRaise = GetObservedRaiseByQuestId(questId);
+            if (observedRaise == null)
+            {
+                return snapshot != null;
+            }
+
+            observedRaise.QrData = qrData;
+            updatedState = observedRaise;
+            return true;
+        }
+
+        public bool SetQrDataWithQuestId(int questId, int qrData, out QuestRewardRaiseState updatedState)
+        {
+            return TrySetQrDataForQuest(questId, qrData, out updatedState);
+        }
+
+        public void ObserveOwnerState(
+            int questId,
+            int ownerItemId,
+            int qrData,
+            int maxDropCount,
+            QuestRewardRaiseWindowMode windowMode,
+            QuestRewardRaiseWindowMode? displayMode = null)
+        {
+            questId = Math.Max(0, questId);
+            if (questId <= 0)
+            {
+                return;
+            }
+
+            _ownerSnapshotsByQuestId.TryGetValue(questId, out QuestRewardRaiseOwnerSnapshot snapshot);
+            _retainedClosedRaisesByQuestId.TryGetValue(questId, out QuestRewardRaiseState retainedState);
+            bool isActiveQuest = ActiveRaise?.Prompt?.QuestId == questId;
+            ownerItemId = ResolvePositiveObservedValue(
+                ownerItemId,
+                isActiveQuest ? ActiveRaise.OwnerItemId : 0,
+                retainedState?.OwnerItemId ?? 0,
+                snapshot?.OwnerItemId ?? 0);
+            maxDropCount = Math.Max(
+                1,
+                ResolvePositiveObservedValue(
+                    maxDropCount,
+                    isActiveQuest ? ActiveRaise.MaxDropCount : 0,
+                    retainedState?.MaxDropCount ?? 0,
+                    snapshot?.MaxDropCount ?? 0));
+            QuestRewardRaiseWindowMode resolvedDisplayMode = displayMode
+                ?? (isActiveQuest
+                    ? ActiveRaise.DisplayMode
+                    : snapshot?.DisplayMode ?? windowMode);
+            QuestRewardRaiseClientWindowKind resolvedClientWindowKind = ResolveObservedClientWindowKind(
+                isActiveQuest ? ActiveRaise : retainedState,
+                snapshot,
+                windowMode);
+            _ownerSnapshotsByQuestId[questId] = new QuestRewardRaiseOwnerSnapshot(
+                isActiveQuest
+                    ? ActiveRaise.ManagerSessionId
+                    : snapshot?.ManagerSessionId ?? 0,
+                isActiveQuest
+                    ? ActiveRaise.RequestId
+                    : snapshot?.OwnerRequestId ?? 0,
+                ownerItemId,
+                qrData,
+                maxDropCount,
+                windowMode,
+                resolvedDisplayMode,
+                resolvedClientWindowKind,
+                isActiveQuest
+                    ? ActiveRaise.AwaitingConfirmAck
+                    : snapshot?.AwaitingConfirmAck ?? false,
+                isActiveQuest
+                    ? ActiveRaise.AwaitingOwnerDestroyAck
+                    : snapshot?.AwaitingOwnerDestroyAck ?? false,
+                isActiveQuest
+                    ? ActiveRaise.LastInboundSummary ?? string.Empty
+                    : snapshot?.LastInboundSummary ?? string.Empty);
+            RememberOwnerQuestMapping(questId, ownerItemId);
+            ObserveIdentityCounters(
+                isActiveQuest ? ActiveRaise.ManagerSessionId : snapshot?.ManagerSessionId ?? 0,
+                isActiveQuest ? ActiveRaise.RequestId : snapshot?.OwnerRequestId ?? 0);
+
+            if (!isActiveQuest)
+            {
+                if (retainedState != null)
+                {
+                    retainedState.OwnerItemId = ownerItemId;
+                    retainedState.QrData = qrData;
+                    retainedState.MaxDropCount = maxDropCount;
+                    retainedState.WindowMode = windowMode;
+                    retainedState.DisplayMode = resolvedDisplayMode;
+                    retainedState.ClientWindowKind = resolvedClientWindowKind;
+                }
+                return;
+            }
+
+            ActiveRaise.OwnerItemId = ownerItemId;
+            ActiveRaise.QrData = qrData;
+            ActiveRaise.MaxDropCount = maxDropCount;
+            ActiveRaise.WindowMode = windowMode;
+            ActiveRaise.DisplayMode = resolvedDisplayMode;
+            ActiveRaise.ClientWindowKind = resolvedClientWindowKind;
+        }
+
+        public void RememberState(QuestRewardRaiseState state)
+        {
+            int questId = Math.Max(0, state?.Prompt?.QuestId ?? 0);
+            BackupWindowPosition(state);
+            if (questId <= 0 || state == null)
+            {
+                return;
+            }
+
+            ObserveIdentityCounters(state.ManagerSessionId, state.RequestId);
+            RememberOwnerQuestMapping(questId, state.OwnerItemId);
+
+            if (!state.IsWindowDismissedLocally)
+            {
+                _retainedClosedRaisesByQuestId.Remove(questId);
+            }
+
+            _ownerSnapshotsByQuestId[questId] = new QuestRewardRaiseOwnerSnapshot(
+                Math.Max(0, state.ManagerSessionId),
+                Math.Max(0, state.RequestId),
+                Math.Max(0, state.OwnerItemId),
+                state.QrData,
+                Math.Max(1, state.MaxDropCount),
+                state.WindowMode,
+                state.DisplayMode,
+                state.ClientWindowKind,
+                state.AwaitingConfirmAck,
+                state.AwaitingOwnerDestroyAck,
+                state.LastInboundSummary ?? string.Empty);
+        }
+
+        public void ObserveInboundPacket(QuestRewardRaiseInboundPacket packet, string summary)
+        {
+            QuestRewardRaisePacketPayload payload = packet?.Payload;
+            int questId = Math.Max(0, payload?.QuestId ?? 0);
+            if (questId <= 0)
+            {
+                return;
+            }
+
+            if (packet.Kind == QuestRewardRaiseInboundPacketKind.OwnerDestroyResult)
+            {
+                ForgetQuestOwnerMapping(questId);
+                _retainedClosedRaisesByQuestId.Remove(questId);
+                _ownerSnapshotsByQuestId.Remove(questId);
+                return;
+            }
+
+            _ownerSnapshotsByQuestId.TryGetValue(questId, out QuestRewardRaiseOwnerSnapshot snapshot);
+            bool isActiveQuest = ActiveRaise?.Prompt?.QuestId == questId;
+            if (_retainedClosedRaisesByQuestId.TryGetValue(questId, out QuestRewardRaiseState retainedState))
+            {
+                retainedState.ManagerSessionId = ResolvePositiveObservedValue(
+                    payload.ManagerSessionId,
+                    retainedState.ManagerSessionId,
+                    snapshot?.ManagerSessionId ?? 0);
+                retainedState.RequestId = ResolvePositiveObservedValue(
+                    payload.OwnerRequestId,
+                    retainedState.RequestId,
+                    snapshot?.OwnerRequestId ?? 0);
+                retainedState.OwnerItemId = ResolvePositiveObservedValue(
+                    payload.OwnerItemId,
+                    retainedState.OwnerItemId,
+                    snapshot?.OwnerItemId ?? 0);
+                retainedState.QrData = payload.QrData;
+                retainedState.MaxDropCount = ResolveObservedMaxDropCount(retainedState, snapshot, payload);
+                retainedState.WindowMode = payload.WindowMode;
+                retainedState.DisplayMode = payload.DisplayMode;
+                retainedState.ClientWindowKind = ResolveObservedClientWindowKind(retainedState, snapshot, payload.WindowMode);
+                retainedState.SyncSelectionProgressFromPayload(payload);
+                retainedState.AwaitingConfirmAck = packet.Kind == QuestRewardRaiseInboundPacketKind.PutItemConfirmResult
+                    ? false
+                    : retainedState.AwaitingConfirmAck;
+                retainedState.LastInboundSummary = summary ?? string.Empty;
+            }
+
+            _ownerSnapshotsByQuestId[questId] = new QuestRewardRaiseOwnerSnapshot(
+                ResolvePositiveObservedValue(
+                    payload.ManagerSessionId,
+                    isActiveQuest ? ActiveRaise.ManagerSessionId : 0,
+                    retainedState?.ManagerSessionId ?? 0,
+                    snapshot?.ManagerSessionId ?? 0),
+                ResolvePositiveObservedValue(
+                    payload.OwnerRequestId,
+                    isActiveQuest ? ActiveRaise.RequestId : 0,
+                    retainedState?.RequestId ?? 0,
+                    snapshot?.OwnerRequestId ?? 0),
+                ResolvePositiveObservedValue(
+                    payload.OwnerItemId,
+                    isActiveQuest ? ActiveRaise.OwnerItemId : 0,
+                    retainedState?.OwnerItemId ?? 0,
+                    snapshot?.OwnerItemId ?? 0),
+                payload.QrData,
+                ResolveObservedMaxDropCount(isActiveQuest ? ActiveRaise : retainedState, snapshot, payload),
+                payload.WindowMode,
+                payload.DisplayMode,
+                ResolveObservedClientWindowKind(isActiveQuest ? ActiveRaise : retainedState, snapshot, payload.WindowMode),
+                packet.Kind == QuestRewardRaiseInboundPacketKind.PutItemConfirmResult
+                    ? false
+                    : isActiveQuest ? ActiveRaise.AwaitingConfirmAck : snapshot?.AwaitingConfirmAck ?? false,
+                isActiveQuest ? ActiveRaise.AwaitingOwnerDestroyAck : snapshot?.AwaitingOwnerDestroyAck ?? false,
+                summary ?? string.Empty);
+            RememberOwnerQuestMapping(questId, ResolvePositiveObservedValue(
+                payload.OwnerItemId,
+                isActiveQuest ? ActiveRaise.OwnerItemId : 0,
+                retainedState?.OwnerItemId ?? 0,
+                snapshot?.OwnerItemId ?? 0));
+            ObserveIdentityCounters(payload.ManagerSessionId, payload.OwnerRequestId);
+        }
+
+        public QuestRewardRaiseState EnsureRetainedRaiseForInboundPacket(QuestRewardRaiseInboundPacket packet)
+        {
+            QuestRewardRaisePacketPayload payload = packet?.Payload;
+            int questId = Math.Max(0, payload?.QuestId ?? 0);
+            if (questId <= 0 || packet.Kind == QuestRewardRaiseInboundPacketKind.OwnerDestroyResult)
+            {
+                return null;
+            }
+
+            if (ActiveRaise?.Prompt?.QuestId == questId)
+            {
+                return ActiveRaise;
+            }
+
+            if (_retainedClosedRaisesByQuestId.TryGetValue(questId, out QuestRewardRaiseState retainedState))
+            {
+                return retainedState;
+            }
+
+            _ownerSnapshotsByQuestId.TryGetValue(questId, out QuestRewardRaiseOwnerSnapshot snapshot);
+            retainedState = new QuestRewardRaiseState
+            {
+                Source = QuestRewardRaiseSourceKind.QuestWindow,
+                Prompt = BuildSyntheticPromptForQuest(questId),
+                GroupIndex = 0,
+                ManagerSessionId = ResolvePositiveObservedValue(payload.ManagerSessionId, snapshot?.ManagerSessionId ?? 0),
+                RequestId = ResolvePositiveObservedValue(payload.OwnerRequestId, snapshot?.OwnerRequestId ?? 0),
+                OwnerItemId = ResolvePositiveObservedValue(payload.OwnerItemId, snapshot?.OwnerItemId ?? 0),
+                QrData = payload.QrData != 0 ? payload.QrData : snapshot?.QrData ?? 0,
+                MaxDropCount = ResolveObservedMaxDropCount(null, snapshot, payload),
+                WindowMode = payload.WindowMode,
+                DisplayMode = payload.DisplayMode,
+                ClientWindowKind = ResolveObservedClientWindowKind(null, snapshot, payload.WindowMode),
+                LastInboundSummary = snapshot?.LastInboundSummary ?? string.Empty,
+                AwaitingConfirmAck = snapshot?.AwaitingConfirmAck ?? false,
+                AwaitingOwnerDestroyAck = snapshot?.AwaitingOwnerDestroyAck ?? false,
+                IsWindowDismissedLocally = true
+            };
+            retainedState.SyncSelectionProgressFromPayload(payload);
+            _retainedClosedRaisesByQuestId[questId] = retainedState;
+            RememberState(retainedState);
+            return retainedState;
+        }
+
+        private static int ResolvePositiveObservedValue(int primaryValue, params int[] fallbackValues)
+        {
+            if (primaryValue > 0)
+            {
+                return primaryValue;
+            }
+
+            for (int i = 0; i < fallbackValues.Length; i++)
+            {
+                if (fallbackValues[i] > 0)
+                {
+                    return fallbackValues[i];
+                }
+            }
+
+            return 0;
+        }
+
+        private static bool MatchesPieceHint(
+            QuestRewardRaiseState state,
+            InventoryType inventoryType,
+            int slotIndex,
+            int itemId)
+        {
+            if (state?.PlacedPieces == null || state.PlacedPieces.Count == 0)
+            {
+                return false;
+            }
+
+            bool hasSlotHint = inventoryType != InventoryType.NONE && slotIndex >= 0;
+            if (hasSlotHint)
+            {
+                for (int i = 0; i < state.PlacedPieces.Count; i++)
+                {
+                    QuestRewardRaisePlacedPiece piece = state.PlacedPieces[i];
+                    if (piece.InventoryType == inventoryType
+                        && piece.SlotIndex == slotIndex
+                        && (itemId <= 0 || piece.ItemId == itemId))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            if (itemId <= 0)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < state.PlacedPieces.Count; i++)
+            {
+                if (state.PlacedPieces[i].ItemId == itemId)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        public QuestRewardRaiseState DestroyByQuestId(int questId)
+        {
+            questId = Math.Max(0, questId);
+            if (questId <= 0)
+            {
+                return null;
+            }
+
+            if (ActiveRaise?.Prompt?.QuestId == questId)
+            {
+                QuestRewardRaiseState destroyed = DestroyActiveRaise();
+                ForgetQuestOwnerMapping(questId);
+                _ownerSnapshotsByQuestId.Remove(questId);
+                return destroyed;
+            }
+
+            QuestRewardRaiseState retained = ClearRetainedRaiseByQuestId(questId);
+            ForgetQuestOwnerMapping(questId);
+            _ownerSnapshotsByQuestId.Remove(questId);
+            return retained;
+        }
+
+        public QuestRewardRaiseState DestroyWindowWithQuestId(int questId)
+        {
+            return DestroyByQuestId(questId);
+        }
+
+        public QuestRewardRaiseState DestroyWindowWithOwnerItemId(int ownerItemId)
+        {
+            int questId = ItemToQuest(ownerItemId);
+            return questId > 0
+                ? DestroyByQuestId(questId)
+                : null;
+        }
+
+        public QuestRewardRaiseState DestroyWindowWithOwnerItemId(int ownerItemId, int fallbackQuestId)
+        {
+            int questId = ItemToQuest(ownerItemId);
+            if (questId <= 0)
+            {
+                questId = Math.Max(0, fallbackQuestId);
+            }
+
+            return questId > 0
+                ? DestroyByQuestId(questId)
+                : null;
+        }
+
+        public QuestRewardRaiseState CloseWindowWithOwnerItemId(int ownerItemId)
+        {
+            ownerItemId = Math.Max(0, ownerItemId);
+            if (ownerItemId <= 0)
+            {
+                return null;
+            }
+
+            if (ActiveRaise?.OwnerItemId == ownerItemId)
+            {
+                QuestRewardRaiseState closed = ActiveRaise;
+                RetainClosedRaise(closed);
+                return closed;
+            }
+
+            int questId = ItemToQuest(ownerItemId);
+            return questId > 0
+                ? GetObservedRaiseByQuestId(questId)
+                : null;
+        }
+
+        public int QuestToItem(int questId)
+        {
+            questId = Math.Max(0, questId);
+            if (questId <= 0)
+            {
+                return 0;
+            }
+
+            if (ActiveRaise?.Prompt?.QuestId == questId && ActiveRaise.OwnerItemId > 0)
+            {
+                return ActiveRaise.OwnerItemId;
+            }
+
+            if (_retainedClosedRaisesByQuestId.TryGetValue(questId, out QuestRewardRaiseState retainedState)
+                && retainedState?.OwnerItemId > 0)
+            {
+                return retainedState.OwnerItemId;
+            }
+
+            return _ownerSnapshotsByQuestId.TryGetValue(questId, out QuestRewardRaiseOwnerSnapshot snapshot)
+                ? Math.Max(0, snapshot.OwnerItemId)
+                : 0;
+        }
+
+        public int ItemToQuest(int ownerItemId)
+        {
+            ownerItemId = Math.Max(0, ownerItemId);
+            if (ownerItemId <= 0)
+            {
+                return 0;
+            }
+
+            if (ActiveRaise?.OwnerItemId == ownerItemId)
+            {
+                return Math.Max(0, ActiveRaise.Prompt?.QuestId ?? 0);
+            }
+
+            foreach ((int questId, QuestRewardRaiseState retainedState) in _retainedClosedRaisesByQuestId)
+            {
+                if (retainedState?.OwnerItemId == ownerItemId)
+                {
+                    return Math.Max(0, questId);
+                }
+            }
+
+            return _questIdsByOwnerItemId.TryGetValue(ownerItemId, out int mappedQuestId)
+                ? Math.Max(0, mappedQuestId)
+                : 0;
+        }
+
+        public QuestRewardRaiseState GetObservedRaiseByOwnerItemId(int ownerItemId)
+        {
+            int questId = ItemToQuest(ownerItemId);
+            return questId > 0
+                ? GetObservedRaiseByQuestId(questId)
+                : null;
+        }
+
+        public QuestRewardRaiseState ClearRetainedRaiseByQuestId(int questId)
+        {
+            questId = Math.Max(0, questId);
+            if (questId <= 0 || !_retainedClosedRaisesByQuestId.TryGetValue(questId, out QuestRewardRaiseState retainedState))
+            {
+                return null;
+            }
+
+            _retainedClosedRaisesByQuestId.Remove(questId);
+            return retainedState;
+        }
+
+        private void RememberOwnerQuestMapping(int questId, int ownerItemId)
+        {
+            questId = Math.Max(0, questId);
+            ownerItemId = Math.Max(0, ownerItemId);
+            if (questId <= 0 || ownerItemId <= 0)
+            {
+                return;
+            }
+
+            ForgetQuestOwnerMapping(questId);
+            _questIdsByOwnerItemId[ownerItemId] = questId;
+        }
+
+        private void ForgetQuestOwnerMapping(int questId)
+        {
+            questId = Math.Max(0, questId);
+            if (questId <= 0 || _questIdsByOwnerItemId.Count == 0)
+            {
+                return;
+            }
+
+            int[] ownerItemIds = _questIdsByOwnerItemId
+                .Where(pair => pair.Value == questId)
+                .Select(pair => pair.Key)
+                .ToArray();
+            for (int i = 0; i < ownerItemIds.Length; i++)
+            {
+                _questIdsByOwnerItemId.Remove(ownerItemIds[i]);
+            }
+        }
+
+        private void BackupWindowPosition(QuestRewardRaiseState state)
+        {
+            if (state?.OwnerItemId > 0 && state.WindowPosition != Point.Zero)
+            {
+                _windowPositionsByOwnerItemId[state.OwnerItemId] = state.WindowPosition;
+            }
+        }
+
+        private static bool ShouldReuseObservedOwnerState(QuestRewardRaiseOwnerSnapshot snapshot)
+        {
+            return snapshot != null
+                && snapshot.ManagerSessionId > 0
+                && snapshot.OwnerRequestId > 0
+                && ((snapshot.OwnerItemId > 0
+                     && snapshot.WindowMode == QuestRewardRaiseWindowMode.PiecePlacement)
+                    || snapshot.AwaitingConfirmAck
+                    || snapshot.AwaitingOwnerDestroyAck
+                    || !string.IsNullOrWhiteSpace(snapshot.LastInboundSummary));
+        }
+
+        private static QuestRewardChoicePrompt BuildSyntheticPromptForQuest(int questId)
+        {
+            return new QuestRewardChoicePrompt
+            {
+                QuestId = Math.Max(0, questId),
+                QuestName = $"Quest #{Math.Max(0, questId)}",
+                CompletionPhase = false,
+                ActionLabel = string.Empty,
+                Groups = Array.Empty<QuestRewardChoiceGroup>()
+            };
+        }
+
+        private static QuestRewardChoicePrompt BuildItemOwnerPrompt(
+            int ownerItemId,
+            int questId,
+            string ownerName,
+            QuestRewardRaiseOwnerContext ownerContext,
+            IReadOnlyList<int> dropItemIds,
+            int initialQrData,
+            Func<int, string> itemNameResolver,
+            Func<int, InventoryType> inventoryTypeResolver)
+        {
+            ownerItemId = Math.Max(0, ownerItemId);
+            questId = Math.Max(0, questId);
+            if (ownerItemId <= 0 || questId <= 0 || ownerContext == null)
+            {
+                return null;
+            }
+
+            QuestRewardRaiseOwnerContext resolvedOwnerContext = new()
+            {
+                OwnerItemId = ownerItemId,
+                WindowMode = QuestRewardRaiseWindowMode.PiecePlacement,
+                ClientWindowKind = ownerContext.ClientWindowKind,
+                MaxDropCount = Math.Max(1, ownerContext.MaxDropCount),
+                InitialQrData = initialQrData,
+                UiData = ownerContext.UiData,
+                IncrementExpUnit = Math.Max(0, ownerContext.IncrementExpUnit),
+                Grade = Math.Max(0, ownerContext.Grade),
+                MessageLines = ownerContext.MessageLines ?? Array.Empty<string>()
+            };
+
+            return new QuestRewardChoicePrompt
+            {
+                QuestId = questId,
+                QuestName = string.IsNullOrWhiteSpace(ownerName)
+                    ? ResolveItemOwnerName(ownerItemId, itemNameResolver)
+                    : ownerName.Trim(),
+                CompletionPhase = false,
+                ActionLabel = "Raise",
+                OwnerContext = resolvedOwnerContext,
+                Groups = BuildItemOwnerGroups(ownerItemId, dropItemIds, resolvedOwnerContext.MessageLines, initialQrData, itemNameResolver, inventoryTypeResolver)
+            };
+        }
+
+        private static IReadOnlyList<QuestRewardChoiceGroup> BuildItemOwnerGroups(
+            int ownerItemId,
+            IReadOnlyList<int> dropItemIds,
+            IReadOnlyList<string> messageLines,
+            int initialQrData,
+            Func<int, string> itemNameResolver,
+            Func<int, InventoryType> inventoryTypeResolver)
+        {
+            string promptText = ResolveItemOwnerPromptText(messageLines, initialQrData);
+            IReadOnlyList<int> resolvedDropItemIds = dropItemIds ?? Array.Empty<int>();
+            QuestRewardChoiceOption[] options = resolvedDropItemIds
+                .Where(static itemId => itemId > 0)
+                .Distinct()
+                .Select(itemId => new QuestRewardChoiceOption
+                {
+                    ItemId = itemId,
+                    Label = ResolveItemOwnerName(itemId, itemNameResolver),
+                    DetailText = "WZ raise item list entry.",
+                    InventoryType = inventoryTypeResolver?.Invoke(itemId) ?? InventoryType.NONE
+                })
+                .ToArray();
+
+            return new[]
+            {
+                new QuestRewardChoiceGroup
+                {
+                    GroupKey = Math.Max(1, ownerItemId),
+                    PromptText = promptText,
+                    Options = options
+                }
+            };
+        }
+
+        private static string ResolveItemOwnerPromptText(IReadOnlyList<string> messageLines, int initialQrData)
+        {
+            if (messageLines?.Count > 0)
+            {
+                int messageIndex = Math.Clamp(initialQrData, 0, messageLines.Count - 1);
+                if (!string.IsNullOrWhiteSpace(messageLines[messageIndex]))
+                {
+                    return messageLines[messageIndex];
+                }
+            }
+
+            return "Drag qualifying items from the inventory into the raise surface. Right-click a placed row to release that local PutItem request.";
+        }
+
+        private static string ResolveItemOwnerName(int itemId, Func<int, string> itemNameResolver)
+        {
+            string resolvedName = itemNameResolver?.Invoke(itemId);
+            return string.IsNullOrWhiteSpace(resolvedName)
+                ? $"Item #{Math.Max(0, itemId)}"
+                : resolvedName.Trim();
+        }
+
+        private static int ResolveObservedMaxDropCount(
+            QuestRewardRaiseState observedState,
+            QuestRewardRaiseOwnerSnapshot snapshot,
+            QuestRewardRaisePacketPayload payload)
+        {
+            return Math.Max(
+                1,
+                Math.Max(
+                    Math.Max(observedState?.MaxDropCount ?? 1, snapshot?.MaxDropCount ?? 1),
+                    Math.Max(payload?.PlacedPieceCount ?? 0, payload?.MaxDropCount ?? 0)));
+        }
+
+        private static Point ResolveClientItemOwnerDefaultPosition(Point defaultPosition)
+        {
+            return defaultPosition == Point.Zero
+                ? ClientDefaultItemOwnerPosition
+                : defaultPosition;
+        }
+
+        private static bool ShouldReuseRetainedClosedRaise(QuestRewardRaiseState retainedState, QuestRewardChoicePrompt prompt)
+        {
+            if (retainedState?.Prompt == null || prompt == null)
+            {
+                return false;
+            }
+
+            if (Math.Max(0, retainedState.Prompt.QuestId) != Math.Max(0, prompt.QuestId))
+            {
+                return false;
+            }
+
+            int promptOwnerItemId = Math.Max(0, prompt.OwnerContext?.OwnerItemId ?? 0);
+            int retainedOwnerItemId = Math.Max(0, retainedState.OwnerItemId);
+            if (promptOwnerItemId > 0 && retainedOwnerItemId > 0 && promptOwnerItemId != retainedOwnerItemId)
+            {
+                return false;
+            }
+
+            return retainedState.PlacedPieces.Count > 0
+                || retainedState.SelectedItemsByGroup.Count > 0
+                || retainedState.GroupIndex > 0
+                || retainedState.AwaitingConfirmAck
+                || retainedState.AwaitingOwnerDestroyAck
+                || !string.IsNullOrWhiteSpace(retainedState.LastInboundSummary)
+                || !string.IsNullOrWhiteSpace(retainedState.OpenDispatchSummary);
+        }
+
+        private static int ResolveOpenOwnerItemId(
+            QuestRewardChoicePrompt prompt,
+            QuestRewardRaiseState retainedState,
+            QuestRewardRaiseOwnerSnapshot snapshot)
+        {
+            int ownerContextOwnerItemId = Math.Max(0, prompt?.OwnerContext?.OwnerItemId ?? 0);
+            int observedOwnerItemId = Math.Max(0, retainedState?.OwnerItemId ?? snapshot?.OwnerItemId ?? 0);
+            return ownerContextOwnerItemId > 0
+                ? ownerContextOwnerItemId
+                : observedOwnerItemId;
+        }
+
+        private static int ResolveOpenQrData(
+            QuestRewardChoicePrompt prompt,
+            QuestRewardRaiseState retainedState,
+            QuestRewardRaiseOwnerSnapshot snapshot)
+        {
+            int ownerContextQrData = prompt?.OwnerContext?.InitialQrData ?? 0;
+            if (ownerContextQrData != 0)
+            {
+                return ownerContextQrData;
+            }
+
+            return retainedState?.QrData ?? snapshot?.QrData ?? ownerContextQrData;
+        }
+
+        private static int ResolveOpenMaxDropCount(
+            QuestRewardChoicePrompt prompt,
+            QuestRewardRaiseState retainedState,
+            QuestRewardRaiseOwnerSnapshot snapshot,
+            QuestRewardRaiseWindowMode windowMode)
+        {
+            int ownerContextMaxDropCount = Math.Max(1, prompt?.OwnerContext?.MaxDropCount ?? 1);
+            int observedMaxDropCount = Math.Max(1, retainedState?.MaxDropCount ?? snapshot?.MaxDropCount ?? 1);
+            int promptDerivedMaxDropCount = windowMode == QuestRewardRaiseWindowMode.PiecePlacement
+                ? Math.Max(1, QuestRewardRaiseState.CountEnabledDropItems(prompt))
+                : 1;
+            return Math.Max(ownerContextMaxDropCount, Math.Max(observedMaxDropCount, promptDerivedMaxDropCount));
+        }
+
+        private static QuestRewardRaiseWindowMode ResolveOpenWindowMode(
+            QuestRewardChoicePrompt prompt,
+            QuestRewardRaiseState retainedState,
+            QuestRewardRaiseOwnerSnapshot snapshot)
+        {
+            return prompt?.OwnerContext?.WindowMode
+                ?? retainedState?.WindowMode
+                ?? snapshot?.WindowMode
+                ?? QuestRewardRaiseWindowMode.Selection;
+        }
+
+        private static QuestRewardRaiseClientWindowKind ResolveOpenClientWindowKind(
+            QuestRewardChoicePrompt prompt,
+            QuestRewardRaiseState retainedState,
+            QuestRewardRaiseOwnerSnapshot snapshot,
+            QuestRewardRaiseWindowMode windowMode)
+        {
+            QuestRewardRaiseClientWindowKind ownerContextKind = prompt?.OwnerContext?.ClientWindowKind ?? QuestRewardRaiseClientWindowKind.Selection;
+            if (ownerContextKind != QuestRewardRaiseClientWindowKind.Selection)
+            {
+                return ownerContextKind;
+            }
+
+            if (retainedState?.ClientWindowKind is QuestRewardRaiseClientWindowKind.RaiseWnd or QuestRewardRaiseClientWindowKind.RaisePieceWnd)
+            {
+                return retainedState.ClientWindowKind;
+            }
+
+            if (snapshot?.ClientWindowKind is QuestRewardRaiseClientWindowKind.RaiseWnd or QuestRewardRaiseClientWindowKind.RaisePieceWnd)
+            {
+                return snapshot.ClientWindowKind;
+            }
+
+            if (windowMode == QuestRewardRaiseWindowMode.PiecePlacement)
+            {
+                return Math.Max(0, prompt?.OwnerContext?.IncrementExpUnit ?? 0) > 0
+                    ? QuestRewardRaiseClientWindowKind.RaiseWnd
+                    : QuestRewardRaiseClientWindowKind.RaisePieceWnd;
+            }
+
+            return QuestRewardRaiseClientWindowKind.Selection;
+        }
+
+        private static QuestRewardRaiseClientWindowKind ResolveObservedClientWindowKind(
+            QuestRewardRaiseState observedState,
+            QuestRewardRaiseOwnerSnapshot snapshot,
+            QuestRewardRaiseWindowMode windowMode)
+        {
+            if (observedState?.ClientWindowKind is QuestRewardRaiseClientWindowKind.RaiseWnd or QuestRewardRaiseClientWindowKind.RaisePieceWnd)
+            {
+                return observedState.ClientWindowKind;
+            }
+
+            if (snapshot?.ClientWindowKind is QuestRewardRaiseClientWindowKind.RaiseWnd or QuestRewardRaiseClientWindowKind.RaisePieceWnd)
+            {
+                return snapshot.ClientWindowKind;
+            }
+
+            return windowMode == QuestRewardRaiseWindowMode.PiecePlacement
+                ? QuestRewardRaiseClientWindowKind.RaisePieceWnd
+                : QuestRewardRaiseClientWindowKind.Selection;
+        }
+
+        private int ResolveOpenManagerSessionId(
+            bool reuseObservedOwnerState,
+            QuestRewardRaiseOwnerSnapshot snapshot,
+            bool reuseRetainedClosedRaise,
+            QuestRewardRaiseState retainedState)
+        {
+            if (reuseObservedOwnerState && snapshot?.ManagerSessionId > 0)
+            {
+                return snapshot.ManagerSessionId;
+            }
+
+            if (reuseRetainedClosedRaise && retainedState?.ManagerSessionId > 0)
+            {
+                return retainedState.ManagerSessionId;
+            }
+
+            return GetNextManagerSessionId();
+        }
+
+        private int ResolveOpenOwnerRequestId(
+            bool reuseObservedOwnerState,
+            QuestRewardRaiseOwnerSnapshot snapshot,
+            bool reuseRetainedClosedRaise,
+            QuestRewardRaiseState retainedState)
+        {
+            if (reuseObservedOwnerState && snapshot?.OwnerRequestId > 0)
+            {
+                return snapshot.OwnerRequestId;
+            }
+
+            if (reuseRetainedClosedRaise && retainedState?.RequestId > 0)
+            {
+                return retainedState.RequestId;
+            }
+
+            return GetNextOwnerRequestId();
+        }
+
+        private int GetNextManagerSessionId()
+        {
+            int sessionId = _nextManagerSessionId++;
+            if (sessionId <= 0)
+            {
+                _nextManagerSessionId = 2;
+                sessionId = 1;
+            }
+
+            return sessionId;
+        }
+
+        private int GetNextOwnerRequestId()
+        {
+            int requestId = _nextOwnerRequestId++;
+            if (requestId <= 0)
+            {
+                _nextOwnerRequestId = 2;
+                requestId = 1;
+            }
+
+            return requestId;
+        }
+
+        private void ObserveIdentityCounters(int managerSessionId, int ownerRequestId)
+        {
+            int normalizedSessionId = Math.Max(0, managerSessionId);
+            if (normalizedSessionId > 0)
+            {
+                _nextManagerSessionId = Math.Max(_nextManagerSessionId, normalizedSessionId + 1);
+            }
+
+            int normalizedOwnerRequestId = Math.Max(0, ownerRequestId);
+            if (normalizedOwnerRequestId > 0)
+            {
+                _nextOwnerRequestId = Math.Max(_nextOwnerRequestId, normalizedOwnerRequestId + 1);
+            }
+        }
+    }
+}

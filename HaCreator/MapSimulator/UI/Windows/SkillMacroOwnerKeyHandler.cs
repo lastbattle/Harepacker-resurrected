@@ -1,0 +1,254 @@
+using Microsoft.Xna.Framework.Input;
+using HaCreator.MapSimulator.Character.Skills;
+
+namespace HaCreator.MapSimulator.UI
+{
+    internal static class SkillMacroOwnerKeyHandler
+    {
+        internal const int ClientForwardedPrimarySlotKeyCount = 8;
+        internal const int ClientForwardedFunctionKeyCount = 12;
+        internal const int ClientForwardedCtrlSlotKeyCount = 8;
+
+        internal static bool ShouldCloseWindow(KeyboardState keyboardState, KeyboardState previousKeyboardState)
+        {
+            return keyboardState.IsKeyDown(Keys.Escape)
+                && previousKeyboardState.IsKeyUp(Keys.Escape);
+        }
+
+        internal static bool TryGetClientForwardedFunctionKeyIndex(Keys key, out int functionKeyIndex)
+        {
+            if (key >= Keys.F1 && key <= Keys.F12)
+            {
+                functionKeyIndex = key - Keys.F1;
+                return true;
+            }
+
+            functionKeyIndex = -1;
+            return false;
+        }
+
+        internal static bool TryGetClientForwardedPrimarySlotIndex(Keys key, out int primarySlotIndex)
+        {
+            if (key >= Keys.D1 && key <= Keys.D8)
+            {
+                primarySlotIndex = key - Keys.D1;
+                return true;
+            }
+
+            primarySlotIndex = -1;
+            return false;
+        }
+
+        internal static bool TryGetClientForwardedCtrlSlotIndex(Keys key, out int ctrlSlotIndex)
+        {
+            if (TryGetClientForwardedPrimarySlotIndex(key, out ctrlSlotIndex))
+            {
+                return true;
+            }
+
+            ctrlSlotIndex = -1;
+            return false;
+        }
+
+        internal static bool TryResolveClientForwardedNonFunctionHotkeySlot(Keys key, bool controlHeld, out int hotkeySlot)
+        {
+            if (controlHeld
+                && TryGetClientForwardedCtrlSlotIndex(key, out int ctrlSlotIndex))
+            {
+                hotkeySlot = SkillManager.CTRL_SLOT_OFFSET + ctrlSlotIndex;
+                return true;
+            }
+
+            if (TryGetClientForwardedPrimarySlotIndex(key, out int primarySlotIndex))
+            {
+                hotkeySlot = primarySlotIndex;
+                return true;
+            }
+
+            hotkeySlot = -1;
+            return false;
+        }
+
+        internal static bool IsClientForwardedNonFunctionHotkeyPhysicalKey(Keys key)
+        {
+            return TryGetClientForwardedPrimarySlotIndex(key, out _);
+        }
+
+        internal static bool IsClientForwardedCtrlHotkeySlot(int hotkeySlot)
+        {
+            return hotkeySlot >= SkillManager.CTRL_SLOT_OFFSET
+                && hotkeySlot < SkillManager.CTRL_SLOT_OFFSET + ClientForwardedCtrlSlotKeyCount;
+        }
+
+        internal static bool IsClientForwardedModifierPhysicalKey(Keys key)
+        {
+            return key == Keys.LeftControl
+                || key == Keys.RightControl
+                || key == Keys.LeftShift
+                || key == Keys.RightShift
+                || key == Keys.LeftAlt
+                || key == Keys.RightAlt;
+        }
+
+        internal static bool ShouldSuppressConfiguredNonFunctionHotkeyForwarding(
+            Keys key,
+            bool imeCompositionActive,
+            bool imeCandidateWindowActive)
+        {
+            if (!imeCompositionActive && !imeCandidateWindowActive)
+            {
+                return false;
+            }
+
+            // When IME candidate ownership is active, candidate navigation/selection keys
+            // and locale-specific processed keys should stay in the edit/IME path
+            // and avoid skill hotkey dispatch.
+            return key switch
+            {
+                Keys.Kana or Keys.Kanji => true,
+                Keys.ImeConvert or Keys.ImeNoConvert or Keys.ProcessKey => true,
+                Keys.CapsLock => true,
+                Keys.Up or Keys.Down or Keys.Left or Keys.Right => true,
+                Keys.PageUp or Keys.PageDown => true,
+                Keys.Home or Keys.End => true,
+                Keys.Enter or Keys.Space => true,
+                Keys.Escape or Keys.Tab => true,
+                Keys.Back or Keys.Delete or Keys.Insert => true,
+                Keys.D0 or Keys.D1 or Keys.D2 or Keys.D3 or Keys.D4 or Keys.D5 or Keys.D6 or Keys.D7 or Keys.D8 or Keys.D9 => true,
+                Keys.NumPad0 or Keys.NumPad1 or Keys.NumPad2 or Keys.NumPad3 or Keys.NumPad4 or Keys.NumPad5 or Keys.NumPad6 or Keys.NumPad7 or Keys.NumPad8 or Keys.NumPad9 => true,
+                Keys.A or Keys.B or Keys.C or Keys.D or Keys.E or Keys.F or Keys.G or Keys.H or Keys.I or Keys.J or Keys.K or Keys.L or Keys.M => true,
+                Keys.N or Keys.O or Keys.P or Keys.Q or Keys.R or Keys.S or Keys.T or Keys.U or Keys.V or Keys.W or Keys.X or Keys.Y or Keys.Z => true,
+                Keys.Multiply or Keys.Add or Keys.Separator or Keys.Subtract or Keys.Decimal or Keys.Divide => true,
+                Keys.OemSemicolon or Keys.OemPlus or Keys.OemComma or Keys.OemMinus or Keys.OemPeriod or Keys.OemQuestion => true,
+                Keys.OemTilde or Keys.OemOpenBrackets or Keys.OemPipe or Keys.OemCloseBrackets or Keys.OemQuotes or Keys.OemBackslash => true,
+                Keys.Oem8 or Keys.OemCopy or Keys.OemAuto or Keys.OemEnlW or Keys.OemClear => true,
+                _ => false
+            };
+        }
+
+        internal static bool ShouldForwardClientOwnedNonFunctionKeyDownToParent(
+            Keys key,
+            bool controlHeld,
+            bool shiftHeld,
+            bool imeCompositionActive,
+            bool imeCandidateWindowActive)
+        {
+            if (TryGetClientForwardedFunctionKeyIndex(key, out _))
+            {
+                return false;
+            }
+
+            bool suppressImeOwnedForwarding = ShouldSuppressConfiguredNonFunctionHotkeyForwarding(
+                    key,
+                    imeCompositionActive,
+                    imeCandidateWindowActive);
+            if (ShouldDeferDownKeyToIme(key, imeCompositionActive, imeCandidateWindowActive))
+            {
+                return false;
+            }
+
+            if (key is Keys.Home or Keys.End)
+            {
+                return controlHeld;
+            }
+
+            if (suppressImeOwnedForwarding
+                && !ShouldForwardImeNavigationKeyToParent(key))
+            {
+                return false;
+            }
+
+            return key switch
+            {
+                Keys.Back => false,
+                Keys.Delete => false,
+                Keys.C or Keys.V or Keys.X => !controlHeld,
+                Keys.Down => true,
+                // `CCtrlEdit::OnKey` forwards plain Insert to the owner callback;
+                // Shift+Insert stays in the local paste command path.
+                Keys.Insert => !shiftHeld,
+                Keys.Enter or Keys.Left or Keys.Right or Keys.Up => true,
+                _ => true
+            };
+        }
+
+        internal static bool ShouldForwardClientOwnedNonFunctionKeyUpToParent(
+            Keys key,
+            bool imeCompositionActive,
+            bool imeCandidateWindowActive)
+        {
+            if (TryGetClientForwardedFunctionKeyIndex(key, out _))
+            {
+                return false;
+            }
+
+            // IDA evidence: `CCtrlEdit::OnKey` (`0x4e3a20`) forwards key-up (`lParam < 0`)
+            // directly to the parent owner callback for non-function keys.
+            _ = imeCompositionActive;
+            _ = imeCandidateWindowActive;
+            return true;
+        }
+
+        internal static bool ShouldReleaseActiveForwardedNonFunctionKeyForImeOwnership(
+            Keys key,
+            bool imeCompositionActive,
+            bool imeCandidateWindowActive)
+        {
+            // When the edit/IME path takes ownership after a key-down was already
+            // parent-forwarded, mirror the client owner split by ending any mirrored
+            // hotkey/cast state immediately instead of waiting for physical key-up.
+            return ShouldSuppressConfiguredNonFunctionHotkeyForwarding(
+                key,
+                imeCompositionActive,
+                imeCandidateWindowActive);
+        }
+
+        internal static bool ShouldApplyCaretBoundaryNavigation(bool controlHeld)
+        {
+            // `CCtrlEdit::OnKey` forwards Ctrl+Home/Ctrl+End to the parent owner path
+            // instead of moving the local edit caret.
+            return !controlHeld;
+        }
+
+        internal static bool ShouldDeferDownKeyToIme(
+            Keys key,
+            bool imeCompositionActive,
+            bool imeCandidateWindowActive)
+        {
+            // `CCtrlEdit::OnKey` routes VK_DOWN through the IME candidate owner
+            // before falling through to the parent callback.
+            return key == Keys.Down && (imeCompositionActive || imeCandidateWindowActive);
+        }
+
+        internal static bool ShouldForwardDeferredDownKeyToParentAfterIme(bool imeOwnedInputStateAfterKeyDown)
+        {
+            _ = imeOwnedInputStateAfterKeyDown;
+            return true;
+        }
+
+        internal static bool ShouldHandleClipboardPasteCommand(Keys key, bool controlHeld, bool shiftHeld)
+        {
+            return key == Keys.V && controlHeld
+                || key == Keys.Insert && shiftHeld;
+        }
+
+        internal static bool ShouldHandleClipboardCopyCommand(Keys key, bool controlHeld)
+        {
+            return key == Keys.C && controlHeld;
+        }
+
+        internal static bool ShouldHandleClipboardCutCommand(Keys key, bool controlHeld, bool shiftHeld)
+        {
+            return key == Keys.X && controlHeld
+                || key == Keys.Delete && shiftHeld;
+        }
+
+        private static bool ShouldForwardImeNavigationKeyToParent(Keys key)
+        {
+            // `CCtrlEdit::OnKey` still forwards cursor-navigation arrows to the parent
+            // owner path while IME candidate ownership is active. VK_DOWN is deferred
+            // through the IME owner first by ShouldDeferDownKeyToIme.
+            return key is Keys.Left or Keys.Right or Keys.Up;
+        }
+    }
+}

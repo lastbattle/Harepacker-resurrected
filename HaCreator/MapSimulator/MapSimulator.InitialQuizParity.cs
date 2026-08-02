@@ -1,0 +1,3237 @@
+using HaCreator.MapSimulator.Interaction;
+using HaCreator.MapSimulator.UI;
+using MapleLib.WzLib;
+using MapleLib.WzLib.WzProperties;
+using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
+using Microsoft.Xna.Framework.Input;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+
+namespace HaCreator.MapSimulator
+{
+    public partial class MapSimulator
+    {
+        private const int InitialQuizOwnerWidth = 266;
+        private const int InitialQuizOwnerHeight = 224;
+        private const int InitialQuizOwnerInputMaxLength = 50;
+        private const int InitialQuizOwnerInputFontHeightPixels = 12;
+        private const int InitialQuizOwnerFrameFadeAlpha = 176;
+        private const int InitialQuizBackgroundUolStringPoolId = 0x0F72;
+        private const int InitialQuizTimerDigitUolStringPoolId = 0x0F73;
+        private const int InitialQuizTimerCommaUolStringPoolId = 0x0F74;
+        private const int InitialQuizOkButtonUolStringPoolId = 0x0512;
+        private const int InitialQuizOwnerOkButtonStringPoolId = InitialQuizOkButtonUolStringPoolId;
+        private const int InitialQuizOwnerOkButtonControlId = 1;
+        private const int InitialQuizQuestionLabelStringPoolId = 0x0F75;
+        private const int InitialQuizHintLabelStringPoolId = 3958;
+        private const int InitialQuizAnswerLabelStringPoolId = 3959;
+        private const int InitialQuizAnswerNoticeStringPoolId = 3960;
+        private const int InitialQuizMinInputNoticeStringPoolId = 0x0F79;
+        private const int InitialQuizMaxInputNoticeStringPoolId = 0x0F7A;
+        private const int InitialQuizTimeoutNoticeStringPoolId = 3964;
+        private const int InitialQuizOwnerOkButtonLeft = 241;
+        private const int InitialQuizOwnerOkButtonTop = 199;
+        private const int InitialQuizOwnerOkButtonWidth = 47;
+        private const int InitialQuizOwnerOkButtonHeight = 18;
+        private const int InitialQuizOwnerEditAllocationSize = 0xBC;
+        private const int InitialQuizOwnerOkButtonAllocationSize = 0xADC;
+        private const int InitialQuizOwnerZRefPointerOffset = 8;
+        private const int InitialQuizOwnerEditCreateOrder = 1;
+        private const int InitialQuizOwnerOkButtonCreateOrder = 2;
+        private const int InitialQuizOwnerOkButtonCreateOption = 0;
+        private const int InitialQuizOwnerCreateWndLayer = 10;
+        private const int InitialQuizOwnerCreateWndShow = 1;
+        private const int InitialQuizOwnerCreateWndOption = 0;
+        private const int InitialQuizOwnerCreateWndEnable = 1;
+        private const int InitialQuizOwnerAnimationLeft = 222;
+        private const int InitialQuizOwnerAnimationTop = 65;
+        private const string InitialQuizOwnerCreateWndOrigin = "Origin_CC";
+        private const float InitialQuizOwnerTextScale = 0.44f;
+        private const float InitialQuizOwnerSecondaryTextScale = 0.42f;
+        private const float InitialQuizOwnerLabelTextScale = 0.39f;
+        private const float InitialQuizOwnerInputTextScale = 0.38f;
+        private static readonly Point InitialQuizOwnerEditOrigin = new(109, 157);
+
+        private bool _initialQuizOwnerVisualsLoaded;
+        private ClientTextRasterizer _initialQuizOwnerInputTextRasterizer;
+        private AntiMacroEditControl _initialQuizOwnerEditControl;
+        private NativeAntiMacroEditHost _initialQuizOwnerNativeEditHost;
+        private Texture2D _initialQuizOwnerBackgroundTexture;
+        private Texture2D _initialQuizOwnerBackgroundTexture2;
+        private Texture2D _initialQuizOwnerBackgroundTexture3;
+        private int _initialQuizOwnerBackgroundZ;
+        private int _initialQuizOwnerBackground2Z;
+        private int _initialQuizOwnerBackground3Z;
+        private InitialQuizButtonFrame _initialQuizOwnerOkButtonNormalFrame;
+        private InitialQuizButtonFrame _initialQuizOwnerOkButtonHoverFrame;
+        private InitialQuizButtonFrame _initialQuizOwnerOkButtonPressedFrame;
+        private InitialQuizButtonFrame _initialQuizOwnerOkButtonDisabledFrame;
+        private InitialQuizButtonFrame _initialQuizOwnerOkButtonKeyFocusedFrame;
+        private Texture2D[] _initialQuizOwnerDigits;
+        private Texture2D _initialQuizOwnerCommaTexture;
+        private InitialQuizAnimationFrame[] _initialQuizOwnerAnimationFrames = Array.Empty<InitialQuizAnimationFrame>();
+        private Point _initialQuizOwnerBackgroundOrigin = Point.Zero;
+        private Point _initialQuizOwnerBackground2Origin = Point.Zero;
+        private Point _initialQuizOwnerBackground3Origin = Point.Zero;
+        private static readonly string[] InitialQuizOwnerInputFontFamilyCandidates =
+        {
+            "Arial",
+            "DotumChe",
+            "Dotum",
+            "GulimChe",
+            "Gulim",
+            "Tahoma",
+        };
+        private static readonly Keys[] InitialQuizOwnerEditKeyPriority =
+        {
+            Keys.Back,
+            Keys.Delete,
+            Keys.Left,
+            Keys.Right,
+            Keys.Home,
+            Keys.End,
+        };
+
+        private readonly StringBuilder _initialQuizOwnerInput = new(InitialQuizOwnerInputMaxLength);
+        private int _initialQuizOwnerCursorIndex;
+        private int _initialQuizOwnerCursorBlinkStartedAt;
+        private Keys _initialQuizOwnerHeldEditKey = Keys.None;
+        private int _initialQuizOwnerKeyHoldStartedAt;
+        private int _initialQuizOwnerLastKeyRepeatAt;
+        private bool _initialQuizOwnerHoveringOkButton;
+        private bool _initialQuizOwnerPressedOkButton;
+        private bool _initialQuizOwnerResultSent;
+        private bool _initialQuizOwnerTimeoutCloseArmed;
+        private int _initialQuizOwnerDisplayedRemainingSeconds;
+        private bool _initialQuizOwnerHasDisplayedRemainingSeconds;
+        private int _initialQuizOwnerEditTextElementLimit = InitialQuizOwnerInputMaxLength;
+        private InitialQuizOwnerFocusTarget _initialQuizOwnerFocusTarget = InitialQuizOwnerFocusTarget.Input;
+        private InitialQuizOwnerCaptureState _initialQuizOwnerCaptureState = InitialQuizOwnerCaptureState.None;
+        private InitialQuizOwnerChildControlState _initialQuizOwnerChildControlState = InitialQuizOwnerChildControlState.Inactive;
+        private InitialQuizOwnerControlStackSnapshot _initialQuizOwnerControlStackSnapshot = InitialQuizOwnerControlStackSnapshot.Destroyed;
+        private int _initialQuizOwnerControlStackGeneration;
+        private bool UsingInitialQuizOwnerNativeEditHost => _initialQuizOwnerNativeEditHost?.IsAttached == true;
+
+        private sealed record InitialQuizAnimationFrame(Texture2D Texture, int DelayMs, string ResourcePath);
+        private sealed record InitialQuizButtonFrame(Texture2D Texture, Point Origin);
+        internal readonly record struct InitialQuizOwnerLayerOrder(InitialQuizOwnerLayerKind Layer, int Z);
+        internal enum InitialQuizOwnerFocusTarget
+        {
+            Owner,
+            Input,
+            OkButton
+        }
+
+        internal enum InitialQuizOwnerLayerKind
+        {
+            Backgrnd,
+            Backgrnd2,
+            Backgrnd3
+        }
+
+        internal enum InitialQuizOwnerButtonVisualState
+        {
+            Normal,
+            Hover,
+            Pressed,
+            Disabled,
+            KeyFocused
+        }
+
+        internal enum InitialQuizOwnerCaptureState
+        {
+            None,
+            OwnerOnly,
+            OwnerWithEditFocus
+        }
+
+        internal enum InitialQuizOwnerDrawTextSource
+        {
+            Title,
+            QuestionLabel,
+            QuestionText,
+            HintLabel,
+            HintText,
+            AnswerLabel,
+            AnswerNotice,
+            TimeoutNotice
+        }
+
+        internal enum InitialQuizOwnerDrawTextFont
+        {
+            White,
+            Red
+        }
+
+        internal readonly record struct InitialQuizOwnerDrawTextCall(
+            InitialQuizOwnerDrawTextSource Source,
+            int Left,
+            int Top,
+            int Width,
+            int Height,
+            int StringPoolId,
+            InitialQuizOwnerDrawTextFont Font,
+            string Text)
+        {
+            internal string ClientCanvasMethodName => "IWzCanvas::DrawTextA";
+            internal int ClientMissingVariantArgumentCount => 2;
+            internal bool AcquiresBasicFontPerCall => true;
+            internal bool CreatesBstrPerCall => true;
+            internal bool ReleasesFontAfterCall => true;
+            internal bool ClearsVariantsAfterCall => true;
+            internal bool UsesVtMissingTabOrigin => true;
+            internal bool UsesVtMissingAlpha => true;
+            internal bool ReleasesStringPoolTextAfterCall => StringPoolId != 0;
+            internal bool ReleasesCanvasAtDrawEnd => true;
+        }
+
+        internal readonly record struct InitialQuizOwnerTimerGlyphDrawCall(
+            int Left,
+            int Top,
+            int StringPoolId,
+            int? FormatArgument,
+            string ResourcePath)
+        {
+            internal bool UsesStringPoolFormat => FormatArgument.HasValue;
+            internal string ClientCanvasMethodName => "IWzCanvas::Copy";
+            internal int Alpha => 255;
+            internal bool GetsResourceThroughWzResManObjectA => true;
+            internal bool QueriesCanvasInterfacePerGlyph => true;
+            internal bool ReleasesGlyphCanvasAfterCopy => true;
+            internal bool ClearsResourceVariantAfterCopy => true;
+            internal int ClientMissingVariantArgumentCount => 2;
+            internal bool ClearsAlphaVariantAfterCopy => true;
+        }
+
+        internal readonly record struct InitialQuizOwnerAnimationDrawCall(
+            int FrameIndex,
+            int Left,
+            int Top,
+            int Width,
+            int Height,
+            int DelayMs,
+            string ResourcePath)
+        {
+            internal string ClientCanvasMethodName => "IWzCanvas::Copy";
+            internal int Alpha => 255;
+            internal bool UsesNumericWzChildOrder => true;
+        }
+
+        internal readonly record struct InitialQuizOwnerDrawLifecycleSnapshot(
+            bool CallsBaseCWndDrawFirst,
+            bool AcquiresOwnerCanvasOnce,
+            bool ClampsRemainingSecondsWhenTimeOver,
+            int TimerGlyphCopyCount,
+            bool TimerGlyphsDrawBeforeAnimation,
+            bool AnimationDrawsBeforeText,
+            int TextDrawCallCount,
+            bool TimeoutTextDrawn,
+            bool ReleasesOwnerCanvasOnceAtDrawEnd)
+        {
+            internal string ClientOwnerMethodName => "CUIInitialQuiz::Draw";
+            internal string ClientCanvasMethodName => "CWnd::GetCanvas";
+        }
+
+        internal readonly record struct InitialQuizOwnerUpdateLifecycleSnapshot(
+            bool RemainingSecondsChanged,
+            bool InvalidatesWhenAtOrBelowTwoMinutes,
+            bool HidesEditOnTimeout,
+            bool DisablesEditOnTimeout,
+            bool DisablesOkButtonOnTimeout,
+            bool CapturesOwnerOnTimeout,
+            bool FocusesOwnerOnTimeout,
+            bool SendsEmptyResultOnTimeout,
+            bool DestroysOwnerOnTimeout,
+            bool ClearsContextRemainFlagOnTimeout,
+            bool CallsBaseUpdateAfterChange)
+        {
+            internal string ClientOwnerMethodName => "CUIInitialQuiz::Update";
+            internal string ClientTimeoutSenderMethodName => "CUIInitialQuiz::SendResult";
+        }
+
+        internal readonly record struct InitialQuizOwnerSetValuesSnapshot(
+            string Title,
+            string ProblemText,
+            string HintText,
+            int MinInputCharacters,
+            int MaxInputCharacters,
+            int MinInputByteLength,
+            int MaxInputByteLength,
+            int RemainingMilliseconds,
+            bool CopiesTitleString,
+            bool CopiesProblemString,
+            bool CopiesHintString,
+            bool ReleasesPassedTitleString,
+            bool ReleasesPassedProblemString,
+            bool ReleasesPassedHintString,
+            bool ComputesTimeOverFromTimeGetTime,
+            bool InvalidatesOwnerAfterSetValues)
+        {
+            internal string ClientOwnerMethodName => "CUIInitialQuiz::SetValues";
+        }
+
+        internal readonly record struct InitialQuizOwnerSendResultSnapshot(
+            bool PreviousResultSent,
+            bool SendsPacket,
+            bool SetsResultSentBeforePacketBuild,
+            short OutboundOpcode,
+            byte MessageType,
+            string SubmittedValue,
+            int SubmittedClientByteLength,
+            byte[] RawPacket,
+            bool EncodesSubmittedValueWithClientString,
+            bool SendsThroughClientSocket,
+            bool RemovesSendBufferAfterSend,
+            bool ReleasesSubmittedStringAfterCall)
+        {
+            internal string ClientOwnerMethodName => "CUIInitialQuiz::SendResult";
+            internal string ClientSocketMethodName => "CClientSocket::SendPacket";
+        }
+
+        internal readonly record struct InitialQuizOwnerChildControlState(bool EditVisible, bool EditEnabled, bool OkButtonEnabled)
+        {
+            internal static InitialQuizOwnerChildControlState Active { get; } = new(true, true, true);
+            internal static InitialQuizOwnerChildControlState Inactive { get; } = new(false, false, false);
+        }
+
+        internal readonly record struct InitialQuizOwnerControlStackSnapshot(
+            bool Created,
+            int Generation,
+            bool OwnerCapturedByWindowManager,
+            bool OwnerFocusedByWindowManager,
+            int FocusChildControlId,
+            int EditControlId,
+            int OkButtonControlId,
+            int EditAllocationSize,
+            int EditZRefPointerOffset,
+            int EditCreateOrder,
+            bool EditVisible,
+            bool EditEnabled,
+            bool EditFocused,
+            int EditX,
+            int EditY,
+            int EditWidth,
+            int EditHeight,
+            int EditMaxHorzUnits,
+            string EditWindowClassName,
+            uint EditWindowStyle,
+            uint EditWindowExStyle,
+            int EditCreateParamTextX,
+            int EditCreateParamTextY,
+            int EditCreateParamBackColor,
+            int EditCreateParamFontColor,
+            int EditCreateParamMaxHorzUnits,
+            bool EditCreateParamNumberOnly,
+            int EditLeftMargin,
+            int EditRightMargin,
+            int EditDialogCode,
+            int EditImeCandidateFormCount,
+            uint EditImeCompositionStyle,
+            int EditFontStringPoolId,
+            bool EditCreateParamGetsFontBstrFromStringPool,
+            bool EditCreateParamReleasesFontBstrOnDestroy,
+            bool OkButtonVisible,
+            bool OkButtonEnabled,
+            bool OkButtonFocused,
+            int OkButtonAllocationSize,
+            int OkButtonZRefPointerOffset,
+            int OkButtonCreateOrder,
+            int OkButtonX,
+            int OkButtonY,
+            int OkButtonCreateOption,
+            int OkButtonVisualX,
+            int OkButtonVisualY,
+            int OkButtonVisualWidth,
+            int OkButtonVisualHeight,
+            int OkButtonFrameOriginX,
+            int OkButtonFrameOriginY,
+            string OkButtonResourcePath,
+            bool OkButtonCreateParamGetsUolFromStringPool,
+            bool OkButtonCreateParamReleasesUolOnDestroy)
+        {
+            internal static InitialQuizOwnerControlStackSnapshot Destroyed { get; } = new(
+                Created: false,
+                Generation: 0,
+                OwnerCapturedByWindowManager: false,
+                OwnerFocusedByWindowManager: false,
+                FocusChildControlId: 0,
+                EditControlId: 0,
+                OkButtonControlId: 0,
+                EditAllocationSize: 0,
+                EditZRefPointerOffset: 0,
+                EditCreateOrder: 0,
+                EditVisible: false,
+                EditEnabled: false,
+                EditFocused: false,
+                EditX: 0,
+                EditY: 0,
+                EditWidth: 0,
+                EditHeight: 0,
+                EditMaxHorzUnits: 0,
+                EditWindowClassName: null,
+                EditWindowStyle: 0,
+                EditWindowExStyle: 0,
+                EditCreateParamTextX: 0,
+                EditCreateParamTextY: 0,
+                EditCreateParamBackColor: 0,
+                EditCreateParamFontColor: 0,
+                EditCreateParamMaxHorzUnits: 0,
+                EditCreateParamNumberOnly: false,
+                EditLeftMargin: 0,
+                EditRightMargin: 0,
+                EditDialogCode: 0,
+                EditImeCandidateFormCount: 0,
+                EditImeCompositionStyle: 0,
+                EditFontStringPoolId: 0,
+                EditCreateParamGetsFontBstrFromStringPool: false,
+                EditCreateParamReleasesFontBstrOnDestroy: false,
+                OkButtonVisible: false,
+                OkButtonEnabled: false,
+                OkButtonFocused: false,
+                OkButtonAllocationSize: 0,
+                OkButtonZRefPointerOffset: 0,
+                OkButtonCreateOrder: 0,
+                OkButtonX: 0,
+                OkButtonY: 0,
+                OkButtonCreateOption: 0,
+                OkButtonVisualX: 0,
+                OkButtonVisualY: 0,
+                OkButtonVisualWidth: 0,
+                OkButtonVisualHeight: 0,
+                OkButtonFrameOriginX: 0,
+                OkButtonFrameOriginY: 0,
+                OkButtonResourcePath: null,
+                OkButtonCreateParamGetsUolFromStringPool: false,
+                OkButtonCreateParamReleasesUolOnDestroy: false);
+        }
+
+        internal readonly record struct InitialQuizOwnerWindowCreateSnapshot(
+            bool Created,
+            int WindowX,
+            int WindowY,
+            int WindowWidth,
+            int WindowHeight,
+            int Layer,
+            int Show,
+            int Option,
+            int Enable,
+            string Origin,
+            int BackgroundStringPoolId,
+            string BackgroundResourcePath);
+
+        internal readonly record struct InitialQuizOwnerContextPacketLifecycleSnapshot(
+            byte Mode,
+            bool OwnerAlreadyCreated,
+            bool DecodesPayloadStrings,
+            bool DecodesInputLimits,
+            bool UpdatesContextRemainingMilliseconds,
+            int ContextRemainingMilliseconds,
+            bool CreatesOwnerSingleton,
+            bool SeedsOwnerSetValues,
+            bool DestroysExistingOwner,
+            bool ClearsContextRemainingMilliseconds,
+            bool CapturesOwnerWindow,
+            bool FocusesOwnerWindow,
+            bool IgnoresUnsupportedMode,
+            int MinInputByteLength,
+            int MaxInputByteLength)
+        {
+            internal string ClientContextMethodName => "CWvsContext::OnInitialQuiz";
+            internal string ClientOwnerMethodName => "CUIInitialQuiz::SetValues";
+        }
+
+        private bool TryApplyPacketOwnedInitialQuizPayload(byte[] payload, out string message)
+        {
+            bool applied = _initialQuizTimerRuntime.TryApplyPayload(
+                payload,
+                currTickCount,
+                ResolveInitialQuizOwnerRuntimeCharacterId(),
+                out InitialQuizOwnerApplyDisposition disposition,
+                out message);
+            if (applied)
+            {
+                if (disposition == InitialQuizOwnerApplyDisposition.Started)
+                {
+                    ResetInitialQuizOwnerInputState(currTickCount);
+                }
+                else if (disposition == InitialQuizOwnerApplyDisposition.Cleared)
+                {
+                    ClearInitialQuizOwnerInputState();
+                }
+
+                SyncUtilityChannelSelectorAvailability();
+            }
+
+            return applied;
+        }
+
+        private int ResolveInitialQuizOwnerRuntimeCharacterId()
+        {
+            return Math.Max(0, _playerManager?.Player?.Build?.Id ?? 0);
+        }
+
+        private void SyncInitialQuizOwnerContextLifecycle()
+        {
+            int runtimeCharacterId = ResolveInitialQuizOwnerRuntimeCharacterId();
+            _initialQuizTimerRuntime.ObserveRuntimeCharacterId(runtimeCharacterId);
+            if (_initialQuizTimerRuntime.RequiresCharacterReset(runtimeCharacterId))
+            {
+                _initialQuizTimerRuntime.ResetForRuntimeCharacterChange(runtimeCharacterId);
+                ClearInitialQuizOwnerInputState();
+                SyncUtilityChannelSelectorAvailability();
+            }
+        }
+
+        private void ResetInitialQuizOwnerInputState(int currentTickCount)
+        {
+            _initialQuizOwnerCursorBlinkStartedAt = currentTickCount;
+            _initialQuizOwnerHoveringOkButton = false;
+            _initialQuizOwnerPressedOkButton = false;
+            _initialQuizOwnerResultSent = false;
+            _initialQuizOwnerTimeoutCloseArmed = false;
+            _initialQuizOwnerFocusTarget = InitialQuizOwnerFocusTarget.Input;
+            _initialQuizOwnerInput.Clear();
+            _initialQuizOwnerCursorIndex = 0;
+            _initialQuizOwnerEditTextElementLimit = ResolveInitialQuizOwnerEditTextElementLimit();
+            DestroyInitialQuizOwnerControlStack();
+            EnsureInitialQuizOwnerControlStackCreated();
+            ResetInitialQuizOwnerHeldEditKey();
+            if (_initialQuizTimerRuntime.TryBuildOwnerSnapshot(currentTickCount, out InitialQuizOwnerSnapshot snapshot))
+            {
+                _initialQuizOwnerDisplayedRemainingSeconds = Math.Max(0, snapshot.RemainingSeconds);
+                _initialQuizOwnerHasDisplayedRemainingSeconds = true;
+            }
+            else
+            {
+                _initialQuizOwnerDisplayedRemainingSeconds = 0;
+                _initialQuizOwnerHasDisplayedRemainingSeconds = false;
+            }
+
+            _initialQuizOwnerChildControlState = InitialQuizOwnerChildControlState.Active;
+            _initialQuizOwnerCaptureState = ResolveInitialQuizOwnerCaptureState(
+                ownerActive: true,
+                _initialQuizOwnerFocusTarget);
+            SyncInitialQuizOwnerEditControlState(ownerActive: true, _initialQuizOwnerChildControlState);
+        }
+
+        private void ClearInitialQuizOwnerInputState()
+        {
+            _initialQuizOwnerHoveringOkButton = false;
+            _initialQuizOwnerPressedOkButton = false;
+            _initialQuizOwnerResultSent = false;
+            _initialQuizOwnerTimeoutCloseArmed = false;
+            _initialQuizOwnerFocusTarget = InitialQuizOwnerFocusTarget.Input;
+            _initialQuizOwnerInput.Clear();
+            _initialQuizOwnerCursorIndex = 0;
+            _initialQuizOwnerEditTextElementLimit = InitialQuizOwnerInputMaxLength;
+            DestroyInitialQuizOwnerControlStack();
+            ClearInitialQuizOwnerCompositionText();
+            ClearInitialQuizOwnerImeCandidateList();
+            ResetInitialQuizOwnerHeldEditKey();
+            _initialQuizOwnerDisplayedRemainingSeconds = 0;
+            _initialQuizOwnerHasDisplayedRemainingSeconds = false;
+            _initialQuizOwnerChildControlState = InitialQuizOwnerChildControlState.Inactive;
+            _initialQuizOwnerCaptureState = InitialQuizOwnerCaptureState.None;
+            _initialQuizOwnerControlStackSnapshot = InitialQuizOwnerControlStackSnapshot.Destroyed;
+        }
+
+        private void UpdateInitialQuizOwner(int currentTickCount)
+        {
+            if (!_initialQuizTimerRuntime.TryBuildOwnerSnapshot(currentTickCount, out InitialQuizOwnerSnapshot snapshot))
+            {
+                ClearInitialQuizOwnerInputState();
+                return;
+            }
+
+            _initialQuizOwnerCaptureState = ResolveInitialQuizOwnerCaptureState(
+                ownerActive: true,
+                _initialQuizOwnerFocusTarget);
+            _initialQuizOwnerChildControlState = ResolveInitialQuizOwnerChildControlState(snapshot.RemainingSeconds);
+            SyncInitialQuizOwnerEditControlState(ownerActive: true, _initialQuizOwnerChildControlState);
+            _initialQuizOwnerDisplayedRemainingSeconds = ResolveInitialQuizOwnerDisplayedRemainingSeconds(
+                _initialQuizOwnerHasDisplayedRemainingSeconds
+                    ? _initialQuizOwnerDisplayedRemainingSeconds
+                    : null,
+                snapshot.RemainingSeconds);
+            _initialQuizOwnerHasDisplayedRemainingSeconds = true;
+
+            InitialQuizOwnerTimeoutBehavior timeoutBehavior = ResolveInitialQuizOwnerTimeoutBehavior(
+                snapshot.RemainingSeconds,
+                _initialQuizOwnerResultSent);
+            if (timeoutBehavior == InitialQuizOwnerTimeoutBehavior.Wait)
+            {
+                _initialQuizOwnerTimeoutCloseArmed = false;
+                return;
+            }
+
+            _initialQuizOwnerTimeoutCloseArmed = false;
+            _initialQuizOwnerPressedOkButton = false;
+            _initialQuizOwnerHoveringOkButton = false;
+            SetInitialQuizOwnerFocusTarget(InitialQuizOwnerFocusTarget.Owner);
+            EnsureInitialQuizOwnerEditControl()?.EndMouseSelection();
+            SubmitInitialQuizOwnerResult(string.Empty, currentTickCount, showFeedback: false, validateAnswer: false);
+        }
+
+        private bool HandleInitialQuizOwnerMouse(MouseState mouseState, MouseState previousMouseState, int currentTickCount)
+        {
+            if (!_initialQuizTimerRuntime.TryBuildOwnerSnapshot(currentTickCount, out InitialQuizOwnerSnapshot snapshot))
+            {
+                return false;
+            }
+
+            EnsureInitialQuizOwnerVisualsLoaded();
+            Rectangle ownerBounds = ResolveInitialQuizOwnerBounds();
+            Rectangle okButtonBounds = ResolveInitialQuizOwnerOkButtonHitBounds(ownerBounds);
+            Rectangle inputBounds = ResolveInitialQuizOwnerInputBounds(ownerBounds);
+            Point cursor = new(mouseState.X, mouseState.Y);
+            InitialQuizOwnerChildControlState controlState = ResolveInitialQuizOwnerChildControlState(snapshot.RemainingSeconds);
+            bool showInput = controlState.EditVisible && controlState.EditEnabled;
+            bool cursorInInput = inputBounds.Contains(cursor);
+            bool okButtonEnabled = controlState.OkButtonEnabled;
+            _initialQuizOwnerHoveringOkButton = showInput && okButtonEnabled && okButtonBounds.Contains(cursor);
+            NativeAntiMacroEditHost nativeEditHost = EnsureInitialQuizOwnerNativeEditHost();
+            AntiMacroEditControl editControl = UsingInitialQuizOwnerNativeEditHost
+                ? null
+                : EnsureInitialQuizOwnerEditControl();
+
+            bool leftPressed = mouseState.LeftButton == ButtonState.Pressed;
+            bool justPressed = leftPressed && previousMouseState.LeftButton == ButtonState.Released;
+            bool justReleased = mouseState.LeftButton == ButtonState.Released && previousMouseState.LeftButton == ButtonState.Pressed;
+
+            if (justPressed)
+            {
+                if (showInput
+                    && _initialQuizOwnerFocusTarget == InitialQuizOwnerFocusTarget.Input
+                    && TrySelectInitialQuizOwnerImeCandidateFromMouse(editControl, ownerBounds, cursor))
+                {
+                    _initialQuizOwnerCursorBlinkStartedAt = currentTickCount;
+                    return true;
+                }
+
+                InitialQuizOwnerFocusTarget nextFocusTarget = ResolveInitialQuizOwnerMousePressFocusTarget(
+                    showInput,
+                    _initialQuizOwnerHoveringOkButton,
+                    cursorInInput);
+                SetInitialQuizOwnerFocusTarget(nextFocusTarget);
+                _initialQuizOwnerPressedOkButton = showInput
+                    && okButtonEnabled
+                    && nextFocusTarget == InitialQuizOwnerFocusTarget.OkButton;
+                if (nextFocusTarget == InitialQuizOwnerFocusTarget.Input)
+                {
+                    if (UsingInitialQuizOwnerNativeEditHost && nativeEditHost != null)
+                    {
+                        nativeEditHost.BeginSelectionAtPoint(cursor);
+                        SyncInitialQuizOwnerLegacyInputStateFromEditControl();
+                    }
+                    else if (editControl != null)
+                    {
+                        editControl.BeginSelectionAtMouseX(cursor.X, ownerBounds);
+                        SyncInitialQuizOwnerLegacyInputStateFromEditControl();
+                    }
+                    else
+                    {
+                        _initialQuizOwnerCursorIndex = ResolveInitialQuizOwnerCursorIndexFromClick(
+                            _initialQuizOwnerInput.ToString(),
+                            inputBounds,
+                            cursor.X);
+                    }
+                }
+
+                if (showInput)
+                {
+                    _initialQuizOwnerCursorBlinkStartedAt = currentTickCount;
+                }
+            }
+            if (justReleased)
+            {
+                nativeEditHost?.EndMouseSelection();
+                editControl?.EndMouseSelection();
+                bool confirm = ShouldSubmitInitialQuizOwnerOkButtonRelease(
+                    _initialQuizOwnerPressedOkButton,
+                    _initialQuizOwnerHoveringOkButton,
+                    showInput && okButtonEnabled);
+                _initialQuizOwnerPressedOkButton = false;
+                if (confirm)
+                {
+                    SubmitInitialQuizOwnerResult(GetInitialQuizOwnerSubmittedText(), currentTickCount, showFeedback: true);
+                }
+            }
+            else if (leftPressed && showInput && _initialQuizOwnerFocusTarget == InitialQuizOwnerFocusTarget.Input)
+            {
+                if (UsingInitialQuizOwnerNativeEditHost && nativeEditHost?.IsSelectingWithMouse == true)
+                {
+                    nativeEditHost.UpdateSelectionAtPoint(cursor);
+                    SyncInitialQuizOwnerLegacyInputStateFromEditControl();
+                }
+                else if (editControl?.IsSelectingWithMouse == true)
+                {
+                    editControl.UpdateSelectionAtMouseX(cursor.X, ownerBounds);
+                    SyncInitialQuizOwnerLegacyInputStateFromEditControl();
+                }
+            }
+            else if (!leftPressed)
+            {
+                nativeEditHost?.EndMouseSelection();
+                editControl?.EndMouseSelection();
+                _initialQuizOwnerPressedOkButton = false;
+            }
+
+            return true;
+        }
+
+        private bool HandleInitialQuizOwnerKeyboard(KeyboardState newKeyboardState, KeyboardState oldKeyboardState, int currentTickCount)
+        {
+            if (!_initialQuizTimerRuntime.TryBuildOwnerSnapshot(currentTickCount, out InitialQuizOwnerSnapshot snapshot))
+            {
+                return false;
+            }
+
+            if (ShouldSwallowInitialQuizOwnerCancelKey(newKeyboardState, oldKeyboardState))
+            {
+                // `CUIInitialQuiz::SetRet` returns immediately for ret=2, so cancel is swallowed.
+                return true;
+            }
+
+            if (snapshot.RemainingSeconds <= 0)
+            {
+                return true;
+            }
+
+            if (newKeyboardState.IsKeyDown(Keys.Tab) && oldKeyboardState.IsKeyUp(Keys.Tab))
+            {
+                SetInitialQuizOwnerFocusTarget(ResolveNextInitialQuizOwnerFocusTarget(_initialQuizOwnerFocusTarget));
+                _initialQuizOwnerPressedOkButton = false;
+                _initialQuizOwnerCursorBlinkStartedAt = currentTickCount;
+                return true;
+            }
+
+            bool inputFocused = _initialQuizOwnerFocusTarget == InitialQuizOwnerFocusTarget.Input;
+            bool buttonFocused = _initialQuizOwnerFocusTarget == InitialQuizOwnerFocusTarget.OkButton;
+            InitialQuizOwnerChildControlState controlState = ResolveInitialQuizOwnerChildControlState(snapshot.RemainingSeconds);
+
+            if (newKeyboardState.IsKeyDown(Keys.Enter) && oldKeyboardState.IsKeyUp(Keys.Enter))
+            {
+                if (!controlState.OkButtonEnabled)
+                {
+                    return true;
+                }
+
+                SubmitInitialQuizOwnerResult(GetInitialQuizOwnerSubmittedText(), currentTickCount, showFeedback: true);
+                return true;
+            }
+
+            if (newKeyboardState.IsKeyDown(Keys.Space) && oldKeyboardState.IsKeyUp(Keys.Space) && buttonFocused)
+            {
+                if (!controlState.OkButtonEnabled)
+                {
+                    return true;
+                }
+
+                SubmitInitialQuizOwnerResult(GetInitialQuizOwnerSubmittedText(), currentTickCount, showFeedback: true);
+                return true;
+            }
+
+            if (!inputFocused)
+            {
+                _initialQuizOwnerNativeEditHost?.Blur();
+                EnsureInitialQuizOwnerEditControl()?.SetFocus(false);
+                ResetInitialQuizOwnerHeldEditKey();
+                return true;
+            }
+
+            if (UsingInitialQuizOwnerNativeEditHost)
+            {
+                _initialQuizOwnerNativeEditHost?.SynchronizeState();
+                ResetInitialQuizOwnerHeldEditKey();
+                return true;
+            }
+
+            AntiMacroEditControl editControl = EnsureInitialQuizOwnerEditControl();
+            if (TryDispatchInitialQuizOwnerImeCandidateSelection(
+                    editControl?.CandidateListState ?? ImeCandidateListState.Empty,
+                    newKeyboardState,
+                    oldKeyboardState))
+            {
+                return true;
+            }
+
+            editControl?.SetFocus(true);
+            editControl?.HandleKeyboardInput(newKeyboardState, oldKeyboardState);
+            SyncInitialQuizOwnerLegacyInputStateFromEditControl();
+            ResetInitialQuizOwnerHeldEditKey();
+            return true;
+        }
+
+        private static bool TryResolveInitialQuizOwnerNewEditKey(KeyboardState newKeyboardState, KeyboardState oldKeyboardState, out Keys editKey)
+        {
+            Keys[] pressedKeys = newKeyboardState.GetPressedKeys();
+            foreach (Keys candidate in InitialQuizOwnerEditKeyPriority)
+            {
+                if (newKeyboardState.IsKeyDown(candidate) && oldKeyboardState.IsKeyUp(candidate))
+                {
+                    editKey = candidate;
+                    return true;
+                }
+            }
+
+            bool shiftPressed = newKeyboardState.IsKeyDown(Keys.LeftShift) || newKeyboardState.IsKeyDown(Keys.RightShift);
+            foreach (Keys candidate in pressedKeys)
+            {
+                if (oldKeyboardState.IsKeyDown(candidate) || !TryMapInitialQuizOwnerChar(candidate, shiftPressed).HasValue)
+                {
+                    continue;
+                }
+
+                editKey = candidate;
+                return true;
+            }
+
+            editKey = Keys.None;
+            return false;
+        }
+
+        private void TrackInitialQuizOwnerHeldEditKey(Keys editKey, int currentTickCount)
+        {
+            _initialQuizOwnerHeldEditKey = editKey;
+            _initialQuizOwnerKeyHoldStartedAt = currentTickCount;
+            _initialQuizOwnerLastKeyRepeatAt = currentTickCount;
+        }
+
+        private void ResetInitialQuizOwnerHeldEditKey()
+        {
+            _initialQuizOwnerHeldEditKey = Keys.None;
+            _initialQuizOwnerKeyHoldStartedAt = 0;
+            _initialQuizOwnerLastKeyRepeatAt = 0;
+        }
+
+        private void ApplyInitialQuizOwnerEditKey(Keys editKey, bool shiftPressed, int currentTickCount)
+        {
+            switch (editKey)
+            {
+                case Keys.Back:
+                    if (_initialQuizOwnerCursorIndex > 0)
+                    {
+                        _initialQuizOwnerInput.Remove(_initialQuizOwnerCursorIndex - 1, 1);
+                        _initialQuizOwnerCursorIndex--;
+                    }
+                    break;
+                case Keys.Delete:
+                    if (_initialQuizOwnerCursorIndex < _initialQuizOwnerInput.Length)
+                    {
+                        _initialQuizOwnerInput.Remove(_initialQuizOwnerCursorIndex, 1);
+                    }
+                    break;
+                case Keys.Left:
+                    if (_initialQuizOwnerCursorIndex > 0)
+                    {
+                        _initialQuizOwnerCursorIndex--;
+                    }
+                    break;
+                case Keys.Right:
+                    if (_initialQuizOwnerCursorIndex < _initialQuizOwnerInput.Length)
+                    {
+                        _initialQuizOwnerCursorIndex++;
+                    }
+                    break;
+                case Keys.Home:
+                    _initialQuizOwnerCursorIndex = 0;
+                    break;
+                case Keys.End:
+                    _initialQuizOwnerCursorIndex = _initialQuizOwnerInput.Length;
+                    break;
+                default:
+                    char? typed = TryMapInitialQuizOwnerChar(editKey, shiftPressed);
+                    if (typed.HasValue && _initialQuizOwnerInput.Length < InitialQuizOwnerInputMaxLength)
+                    {
+                        _initialQuizOwnerInput.Insert(_initialQuizOwnerCursorIndex, typed.Value);
+                        _initialQuizOwnerCursorIndex++;
+                    }
+                    break;
+            }
+
+            _initialQuizOwnerCursorBlinkStartedAt = currentTickCount;
+        }
+
+        private void SubmitInitialQuizOwnerResult(string answerText, int currentTickCount, bool showFeedback, bool validateAnswer = true)
+        {
+            if (_initialQuizOwnerResultSent)
+            {
+                return;
+            }
+
+            string submittedValue = answerText ?? string.Empty;
+            InitialQuizOwnerSubmissionValidation validation = ValidateInitialQuizOwnerSubmission(
+                submittedValue,
+                _initialQuizTimerRuntime.TryBuildOwnerSnapshot(currentTickCount, out InitialQuizOwnerSnapshot snapshot)
+                    ? snapshot.MinInputByteLength
+                    : 0,
+                snapshot?.MaxInputByteLength ?? 0,
+                validateAnswer);
+            if (!validation.CanSubmit)
+            {
+                if (showFeedback && !string.IsNullOrWhiteSpace(validation.NoticeMessage))
+                {
+                    ShowUtilityFeedbackMessage(validation.NoticeMessage);
+                }
+
+                if (validation.RefocusInput)
+                {
+                    SetInitialQuizOwnerFocusTarget(InitialQuizOwnerFocusTarget.Input);
+                    _initialQuizOwnerPressedOkButton = false;
+                    _initialQuizOwnerCursorBlinkStartedAt = currentTickCount;
+                }
+
+                return;
+            }
+
+            _initialQuizOwnerResultSent = true;
+            PacketScriptMessageRuntime.PacketScriptResponsePacket responsePacket =
+                _packetScriptMessageRuntime.BuildInitialQuizOwnerResponsePacket(submittedValue);
+            bool dispatched = TryDispatchPacketScriptResponse(responsePacket, out string dispatchStatus);
+            _packetScriptMessageRuntime.RecordResponseDispatch(responsePacket, dispatched, dispatchStatus);
+            if (showFeedback)
+            {
+                ShowUtilityFeedbackMessage($"{responsePacket.Summary} {dispatchStatus}".Trim());
+            }
+
+            _initialQuizTimerRuntime.Clear();
+            ClearInitialQuizOwnerInputState();
+            SyncUtilityChannelSelectorAvailability();
+        }
+
+        private void DrawCenteredPacketOwnedInitialQuizOwner(int currentTickCount, InitialQuizOwnerSnapshot snapshot)
+        {
+            if (_fontChat == null || GraphicsDevice == null || snapshot == null)
+            {
+                return;
+            }
+
+            EnsureInitialQuizOwnerVisualsLoaded();
+            EnsurePacketScriptOwnerVisualsLoaded();
+
+            Rectangle ownerBounds = ResolveInitialQuizOwnerBounds();
+            Rectangle overlayBounds = ResolveInitialQuizOwnerOverlayBounds(ownerBounds);
+            Rectangle okButtonHitBounds = ResolveInitialQuizOwnerOkButtonHitBounds(ownerBounds);
+            Rectangle okButtonVisualBounds = ResolveInitialQuizOwnerOkButtonVisualBounds(ownerBounds);
+            Rectangle inputBounds = ResolveInitialQuizOwnerInputBounds(ownerBounds);
+
+            DrawPacketScriptOwnerFrame(
+                new Rectangle(0, 0, _renderParams.RenderWidth, _renderParams.RenderHeight),
+                new Color(0, 0, 0, InitialQuizOwnerFrameFadeAlpha),
+                Color.Transparent);
+
+            foreach (InitialQuizOwnerLayerOrder layer in ResolveInitialQuizOwnerLayerDrawOrder(
+                         hasBackgrnd: _initialQuizOwnerBackgroundTexture != null,
+                         backgrndZ: _initialQuizOwnerBackgroundZ,
+                         hasBackgrnd2: _initialQuizOwnerBackgroundTexture2 != null,
+                         backgrnd2Z: _initialQuizOwnerBackground2Z,
+                         hasBackgrnd3: _initialQuizOwnerBackgroundTexture3 != null,
+                         backgrnd3Z: _initialQuizOwnerBackground3Z))
+            {
+                DrawInitialQuizOwnerLayer(layer.Layer, ownerBounds, overlayBounds);
+            }
+
+            int displayedRemainingSeconds = _initialQuizOwnerHasDisplayedRemainingSeconds
+                ? _initialQuizOwnerDisplayedRemainingSeconds
+                : snapshot.RemainingSeconds;
+            DrawInitialQuizOwnerTimerDigits(ownerBounds, displayedRemainingSeconds);
+            DrawInitialQuizOwnerAnimationFrame(ownerBounds, currentTickCount);
+
+            _initialQuizOwnerChildControlState = ResolveInitialQuizOwnerChildControlState(snapshot.RemainingSeconds);
+            bool showInput = _initialQuizOwnerChildControlState.EditVisible;
+            foreach (InitialQuizOwnerDrawTextCall textCall in ResolveInitialQuizOwnerDrawTextCalls(snapshot, showInput))
+            {
+                DrawInitialQuizOwnerSingleLineText(
+                    textCall.Text,
+                    new Rectangle(ownerBounds.X + textCall.Left, ownerBounds.Y + textCall.Top, textCall.Width, textCall.Height),
+                    ResolveInitialQuizOwnerDrawTextColor(textCall.Font),
+                    ResolveInitialQuizOwnerDrawTextScale(textCall.Source));
+            }
+
+            if (showInput)
+            {
+                DrawInitialQuizOwnerInputField(ownerBounds, inputBounds, currentTickCount);
+            }
+
+            InitialQuizButtonFrame okButtonFrame = ResolveInitialQuizOwnerOkButtonFrame(_initialQuizOwnerChildControlState.OkButtonEnabled);
+            if (okButtonFrame?.Texture != null)
+            {
+                _spriteBatch.Draw(okButtonFrame.Texture, okButtonVisualBounds, Color.White);
+            }
+            else
+            {
+                DrawPacketScriptOwnerFrame(okButtonHitBounds, new Color(82, 63, 39, 220), new Color(222, 197, 140));
+                DrawPacketScriptOwnerWrappedText("OK", okButtonHitBounds, Color.White, 0.42f, maxLines: 1);
+            }
+        }
+
+        private void DrawInitialQuizOwnerInputField(Rectangle inputBounds, int currentTickCount)
+        {
+            DrawInitialQuizOwnerInputField(Rectangle.Empty, inputBounds, currentTickCount);
+        }
+
+        private void DrawInitialQuizOwnerInputField(Rectangle ownerBounds, Rectangle inputBounds, int currentTickCount)
+        {
+            bool inputEnabled = _initialQuizOwnerChildControlState.EditVisible && _initialQuizOwnerChildControlState.EditEnabled;
+            bool inputFocused = inputEnabled && _initialQuizOwnerFocusTarget == InitialQuizOwnerFocusTarget.Input;
+            if (UsingInitialQuizOwnerNativeEditHost)
+            {
+                _initialQuizOwnerNativeEditHost?.UpdateBounds(inputBounds);
+                _initialQuizOwnerNativeEditHost?.SetVisible(_initialQuizOwnerChildControlState.EditVisible);
+                if (inputFocused)
+                {
+                    _initialQuizOwnerNativeEditHost?.Focus();
+                }
+                else
+                {
+                    _initialQuizOwnerNativeEditHost?.Blur();
+                }
+
+                _initialQuizOwnerNativeEditHost?.SynchronizeState();
+                return;
+            }
+
+            AntiMacroEditControl editControl = EnsureInitialQuizOwnerEditControl();
+            if (editControl != null && ownerBounds != Rectangle.Empty && _initialQuizOwnerChildControlState.EditVisible)
+            {
+                editControl.SetFocus(inputFocused);
+                editControl.Draw(_spriteBatch, ownerBounds, drawChrome: false);
+                editControl.DrawImeCandidateWindow(_spriteBatch, ownerBounds);
+                SyncInitialQuizOwnerLegacyInputStateFromEditControl();
+                return;
+            }
+
+            ClientTextRasterizer inputTextRasterizer = EnsureInitialQuizOwnerInputTextRasterizer();
+            string inputText = _initialQuizOwnerInput.ToString();
+            int textAreaWidth = Math.Max(0, inputBounds.Width - 8);
+            int[] glyphWidths = MeasureInitialQuizOwnerInputGlyphWidths(inputText);
+            int visibleStart = ResolveInitialQuizOwnerVisibleStart(glyphWidths, _initialQuizOwnerCursorIndex, textAreaWidth);
+            int visibleLength = ResolveInitialQuizOwnerVisibleLength(glyphWidths, visibleStart, textAreaWidth);
+            string visibleInputText = visibleLength > 0
+                ? inputText.Substring(visibleStart, visibleLength)
+                : string.Empty;
+            Vector2 drawPosition = new(inputBounds.X + 4, inputBounds.Y - 1);
+            if (!string.IsNullOrEmpty(visibleInputText))
+            {
+                if (inputTextRasterizer != null)
+                {
+                    inputTextRasterizer.DrawString(_spriteBatch, visibleInputText, drawPosition, Color.Black, 1f, textAreaWidth);
+                }
+                else
+                {
+                    ClientTextDrawing.Draw(
+                        _spriteBatch,
+                        visibleInputText,
+                        drawPosition,
+                        Color.Black,
+                        InitialQuizOwnerInputTextScale,
+                        _fontChat,
+                        textAreaWidth);
+                }
+            }
+
+            bool cursorVisible = inputFocused && ShouldDrawInitialQuizOwnerCursor(currentTickCount, _initialQuizOwnerCursorBlinkStartedAt);
+            if (!cursorVisible)
+            {
+                return;
+            }
+
+            int cursorX = inputBounds.X + 4 + SumInitialQuizOwnerGlyphWidths(
+                glyphWidths,
+                visibleStart,
+                Math.Clamp(_initialQuizOwnerCursorIndex, visibleStart, inputText.Length) - visibleStart);
+            Rectangle cursorBounds = new(cursorX, inputBounds.Y + 2, 1, Math.Max(9, inputBounds.Height - 4));
+            _spriteBatch.Draw(_packetScriptOwnerPixelTexture, cursorBounds, Color.Black);
+        }
+
+        private int ResolveInitialQuizOwnerCursorIndexFromClick(string inputText, Rectangle inputBounds, int mouseX)
+        {
+            int textAreaWidth = Math.Max(0, inputBounds.Width - 8);
+            int[] glyphWidths = MeasureInitialQuizOwnerInputGlyphWidths(inputText);
+            int visibleStart = ResolveInitialQuizOwnerVisibleStart(glyphWidths, _initialQuizOwnerCursorIndex, textAreaWidth);
+            int relativeX = Math.Max(0, mouseX - (inputBounds.X + 4));
+            return ResolveInitialQuizOwnerCursorIndexFromRelativeX(glyphWidths, visibleStart, textAreaWidth, relativeX);
+        }
+
+        private int[] MeasureInitialQuizOwnerInputGlyphWidths(string inputText)
+        {
+            if (string.IsNullOrEmpty(inputText))
+            {
+                return Array.Empty<int>();
+            }
+
+            ClientTextRasterizer inputTextRasterizer = EnsureInitialQuizOwnerInputTextRasterizer();
+            int[] glyphWidths = new int[inputText.Length];
+            for (int i = 0; i < inputText.Length; i++)
+            {
+                Vector2 glyphSize = inputTextRasterizer != null
+                    ? inputTextRasterizer.MeasureString(inputText[i].ToString())
+                    : ClientTextDrawing.Measure(
+                        GraphicsDevice,
+                        inputText[i].ToString(),
+                        InitialQuizOwnerInputTextScale,
+                        _fontChat);
+                glyphWidths[i] = Math.Max(1, (int)Math.Ceiling(glyphSize.X));
+            }
+
+            return glyphWidths;
+        }
+
+        private ClientTextRasterizer EnsureInitialQuizOwnerInputTextRasterizer()
+        {
+            if (_initialQuizOwnerInputTextRasterizer != null || GraphicsDevice == null)
+            {
+                return _initialQuizOwnerInputTextRasterizer;
+            }
+
+            try
+            {
+                string requestedFontFamily = MapleStoryStringPool.GetOrFallback(AntiMacroEditControl.ClientFontStringPoolId, "Arial");
+                string resolvedFontFamily = ClientTextRasterizer.ResolvePreferredFontFamily(
+                    requestedFontFamily,
+                    preferredPrivateFontFamilyCandidates: InitialQuizOwnerInputFontFamilyCandidates,
+                    preferEmbeddedPrivateFontSources: true);
+                _initialQuizOwnerInputTextRasterizer = new ClientTextRasterizer(
+                    GraphicsDevice,
+                    resolvedFontFamily,
+                    basePointSize: InitialQuizOwnerInputFontHeightPixels,
+                    preferEmbeddedPrivateFontSources: true);
+            }
+            catch
+            {
+                _initialQuizOwnerInputTextRasterizer = null;
+            }
+
+            return _initialQuizOwnerInputTextRasterizer;
+        }
+
+        private ClientTextRasterizer CreateInitialQuizOwnerTransientLabelRasterizer()
+        {
+            if (GraphicsDevice == null)
+            {
+                return null;
+            }
+
+            try
+            {
+                string requestedFontFamily = MapleStoryStringPool.GetOrFallback(AntiMacroEditControl.ClientFontStringPoolId, "Arial");
+                string resolvedFontFamily = ClientTextRasterizer.ResolvePreferredFontFamily(
+                    requestedFontFamily,
+                    preferredPrivateFontFamilyCandidates: InitialQuizOwnerInputFontFamilyCandidates,
+                    preferEmbeddedPrivateFontSources: true);
+                return new ClientTextRasterizer(
+                    GraphicsDevice,
+                    resolvedFontFamily,
+                    basePointSize: InitialQuizOwnerInputFontHeightPixels,
+                    preferEmbeddedPrivateFontSources: true);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private void EnsureInitialQuizOwnerControlStackCreated()
+        {
+            EnsureInitialQuizOwnerPixelTexture();
+            EnsureInitialQuizOwnerInputTextRasterizer();
+            EnsureInitialQuizOwnerNativeEditHost();
+            AntiMacroEditControl editControl = EnsureInitialQuizOwnerEditControl();
+            editControl?.Reset();
+            _initialQuizOwnerNativeEditHost?.Reset();
+            _initialQuizOwnerControlStackGeneration++;
+            _initialQuizOwnerControlStackSnapshot = BuildInitialQuizOwnerControlStackSnapshot(
+                created: true,
+                generation: _initialQuizOwnerControlStackGeneration,
+                childState: _initialQuizOwnerChildControlState,
+                focusTarget: _initialQuizOwnerFocusTarget,
+                editMaxHorzUnits: _initialQuizOwnerEditTextElementLimit);
+            SyncInitialQuizOwnerEditControlState(ownerActive: true, _initialQuizOwnerChildControlState);
+        }
+
+        private void DestroyInitialQuizOwnerControlStack()
+        {
+            DestroyInitialQuizOwnerEditControl();
+            DestroyInitialQuizOwnerNativeEditHost();
+            if (_initialQuizOwnerInputTextRasterizer != null)
+            {
+                _initialQuizOwnerInputTextRasterizer.Dispose();
+                _initialQuizOwnerInputTextRasterizer = null;
+            }
+
+            _initialQuizOwnerControlStackSnapshot = InitialQuizOwnerControlStackSnapshot.Destroyed;
+        }
+
+        private void DisposeInitialQuizOwnerParityResources()
+        {
+            DestroyInitialQuizOwnerControlStack();
+        }
+
+        private AntiMacroEditControl EnsureInitialQuizOwnerEditControl()
+        {
+            if (_initialQuizOwnerEditControl != null)
+            {
+                return _initialQuizOwnerEditControl;
+            }
+
+            EnsureInitialQuizOwnerPixelTexture();
+            if (_packetScriptOwnerPixelTexture == null)
+            {
+                return null;
+            }
+
+            _initialQuizOwnerEditControl = new AntiMacroEditControl(
+                _packetScriptOwnerPixelTexture,
+                InitialQuizOwnerEditOrigin,
+                150,
+                13,
+                _initialQuizOwnerEditTextElementLimit,
+                InitialQuizTimerRuntime.GetClientMapleStringEncoding());
+            _initialQuizOwnerEditControl.SetFont(_fontChat);
+            _initialQuizOwnerEditControl.UseClientAntiMacroVisualStyle();
+            _initialQuizOwnerEditControl.SetFocus(_initialQuizOwnerFocusTarget == InitialQuizOwnerFocusTarget.Input);
+            return _initialQuizOwnerEditControl;
+        }
+
+        private void DestroyInitialQuizOwnerEditControl()
+        {
+            if (_initialQuizOwnerEditControl == null)
+            {
+                return;
+            }
+
+            _initialQuizOwnerEditControl.Clear();
+            _initialQuizOwnerEditControl.SetFocus(false);
+            _initialQuizOwnerEditControl = null;
+        }
+
+        private NativeAntiMacroEditHost EnsureInitialQuizOwnerNativeEditHost()
+        {
+            if (_initialQuizOwnerNativeEditHost == null)
+            {
+                _initialQuizOwnerNativeEditHost = new NativeAntiMacroEditHost(
+                    _initialQuizOwnerEditTextElementLimit,
+                    InitialQuizTimerRuntime.GetClientMapleStringEncoding());
+                _initialQuizOwnerNativeEditHost.TextChanged += OnInitialQuizOwnerNativeEditHostTextChanged;
+                _initialQuizOwnerNativeEditHost.SubmitRequested += OnInitialQuizOwnerNativeEditHostSubmitRequested;
+                _initialQuizOwnerNativeEditHost.FocusChanged += OnInitialQuizOwnerNativeEditHostFocusChanged;
+            }
+
+            if (!UsingInitialQuizOwnerNativeEditHost)
+            {
+                _initialQuizOwnerNativeEditHost.TryAttach(
+                    Window?.Handle ?? IntPtr.Zero,
+                    ResolveInitialQuizOwnerInputBounds(ResolveInitialQuizOwnerBounds()));
+            }
+
+            return _initialQuizOwnerNativeEditHost;
+        }
+
+        private void DestroyInitialQuizOwnerNativeEditHost()
+        {
+            if (_initialQuizOwnerNativeEditHost == null)
+            {
+                return;
+            }
+
+            _initialQuizOwnerNativeEditHost.TextChanged -= OnInitialQuizOwnerNativeEditHostTextChanged;
+            _initialQuizOwnerNativeEditHost.SubmitRequested -= OnInitialQuizOwnerNativeEditHostSubmitRequested;
+            _initialQuizOwnerNativeEditHost.FocusChanged -= OnInitialQuizOwnerNativeEditHostFocusChanged;
+            _initialQuizOwnerNativeEditHost.Dispose();
+            _initialQuizOwnerNativeEditHost = null;
+        }
+
+        private void OnInitialQuizOwnerNativeEditHostTextChanged(string text)
+        {
+            SyncInitialQuizOwnerLegacyInputStateFromEditControl();
+        }
+
+        private void OnInitialQuizOwnerNativeEditHostSubmitRequested()
+        {
+            if (!_initialQuizTimerRuntime.TryBuildOwnerSnapshot(currTickCount, out InitialQuizOwnerSnapshot snapshot))
+            {
+                return;
+            }
+
+            if (!ResolveInitialQuizOwnerChildControlState(snapshot.RemainingSeconds).OkButtonEnabled)
+            {
+                return;
+            }
+
+            SubmitInitialQuizOwnerResult(GetInitialQuizOwnerSubmittedText(), currTickCount, showFeedback: true);
+        }
+
+        private void OnInitialQuizOwnerNativeEditHostFocusChanged(bool focused)
+        {
+            if (focused)
+            {
+                if (_initialQuizOwnerFocusTarget != InitialQuizOwnerFocusTarget.Input)
+                {
+                    SetInitialQuizOwnerFocusTarget(InitialQuizOwnerFocusTarget.Input);
+                }
+            }
+            else if (_initialQuizOwnerFocusTarget == InitialQuizOwnerFocusTarget.Input)
+            {
+                SetInitialQuizOwnerFocusTarget(InitialQuizOwnerFocusTarget.Owner);
+            }
+        }
+
+        private void SyncInitialQuizOwnerLegacyInputStateFromEditControl()
+        {
+            if (UsingInitialQuizOwnerNativeEditHost)
+            {
+                string nativeText = _initialQuizOwnerNativeEditHost?.Text ?? string.Empty;
+                _initialQuizOwnerInput.Clear();
+                _initialQuizOwnerInput.Append(nativeText);
+                _initialQuizOwnerCursorIndex = nativeText.Length;
+                return;
+            }
+
+            if (_initialQuizOwnerEditControl == null)
+            {
+                return;
+            }
+
+            string text = _initialQuizOwnerEditControl.Text ?? string.Empty;
+            _initialQuizOwnerInput.Clear();
+            _initialQuizOwnerInput.Append(text);
+            _initialQuizOwnerCursorIndex = text.Length;
+        }
+
+        private string GetInitialQuizOwnerSubmittedText()
+        {
+            if (UsingInitialQuizOwnerNativeEditHost)
+            {
+                SyncInitialQuizOwnerLegacyInputStateFromEditControl();
+                return _initialQuizOwnerNativeEditHost?.Text ?? string.Empty;
+            }
+
+            if (_initialQuizOwnerEditControl != null)
+            {
+                SyncInitialQuizOwnerLegacyInputStateFromEditControl();
+                return _initialQuizOwnerEditControl.Text ?? string.Empty;
+            }
+
+            return _initialQuizOwnerInput.ToString();
+        }
+
+        internal static bool ShouldCaptureInitialQuizOwnerTextInput(bool ownerActive, int remainingSeconds, InitialQuizOwnerFocusTarget focusTarget)
+        {
+            return ShouldCaptureInitialQuizOwnerTextInput(
+                ownerActive,
+                ResolveInitialQuizOwnerChildControlState(remainingSeconds),
+                focusTarget);
+        }
+
+        private bool ShouldCaptureInitialQuizOwnerTextInput()
+        {
+            return _initialQuizTimerRuntime.TryBuildOwnerSnapshot(currTickCount, out InitialQuizOwnerSnapshot snapshot)
+                && ShouldCaptureInitialQuizOwnerTextInput(
+                    ownerActive: true,
+                    ResolveInitialQuizOwnerChildControlState(snapshot.RemainingSeconds),
+                    _initialQuizOwnerFocusTarget);
+        }
+
+        internal static bool ShouldCaptureInitialQuizOwnerTextInput(
+            bool ownerActive,
+            InitialQuizOwnerChildControlState controlState,
+            InitialQuizOwnerFocusTarget focusTarget)
+        {
+            return ownerActive
+                && controlState.EditVisible
+                && controlState.EditEnabled
+                && focusTarget == InitialQuizOwnerFocusTarget.Input;
+        }
+
+        private bool DoesInitialQuizOwnerCaptureWindowInput()
+        {
+            return _initialQuizTimerRuntime.TryBuildOwnerSnapshot(currTickCount, out _)
+                && _initialQuizOwnerCaptureState != InitialQuizOwnerCaptureState.None;
+        }
+
+        internal static bool ShouldForwardInitialQuizOwnerInputToActiveWindow(bool ownerCapturesWindowInput)
+        {
+            return !ownerCapturesWindowInput;
+        }
+
+        internal static bool ShouldForwardInitialQuizOwnerImeToNpcOverlay(
+            bool ownerCapturesWindowInput,
+            bool npcOverlayCapturesKeyboardInput)
+        {
+            return !ownerCapturesWindowInput && npcOverlayCapturesKeyboardInput;
+        }
+
+        internal static bool ShouldInitialQuizOwnerOverrideNpcOverlayInput(bool ownerCapturesWindowInput)
+        {
+            return ownerCapturesWindowInput;
+        }
+
+        internal static bool ShouldBlockInitialQuizOwnerInputForNpcOverlayModal(bool ownerCapturesWindowInput, bool npcOverlayBlocksUnderlyingInput)
+        {
+            return !ShouldInitialQuizOwnerOverrideNpcOverlayInput(ownerCapturesWindowInput)
+                && npcOverlayBlocksUnderlyingInput;
+        }
+
+        private void HandleInitialQuizOwnerCommittedText(string text)
+        {
+            if (!ShouldCaptureInitialQuizOwnerTextInput())
+            {
+                return;
+            }
+
+            if (UsingInitialQuizOwnerNativeEditHost)
+            {
+                _initialQuizOwnerNativeEditHost?.SynchronizeState();
+                return;
+            }
+
+            AntiMacroEditControl editControl = EnsureInitialQuizOwnerEditControl();
+            editControl?.HandleCommittedText(text, capturesKeyboardInput: true);
+            SyncInitialQuizOwnerLegacyInputStateFromEditControl();
+        }
+
+        private void HandleInitialQuizOwnerCompositionText(string compositionText)
+        {
+            if (UsingInitialQuizOwnerNativeEditHost)
+            {
+                return;
+            }
+
+            AntiMacroEditControl editControl = EnsureInitialQuizOwnerEditControl();
+            if (editControl == null)
+            {
+                return;
+            }
+
+            editControl.HandleCompositionText(compositionText, ShouldCaptureInitialQuizOwnerTextInput());
+            SyncInitialQuizOwnerLegacyInputStateFromEditControl();
+        }
+
+        private void HandleInitialQuizOwnerCompositionState(ImeCompositionState compositionState)
+        {
+            if (UsingInitialQuizOwnerNativeEditHost)
+            {
+                return;
+            }
+
+            AntiMacroEditControl editControl = EnsureInitialQuizOwnerEditControl();
+            if (editControl == null)
+            {
+                return;
+            }
+
+            editControl.HandleCompositionState(compositionState ?? ImeCompositionState.Empty, ShouldCaptureInitialQuizOwnerTextInput());
+            SyncInitialQuizOwnerLegacyInputStateFromEditControl();
+        }
+
+        private void HandleInitialQuizOwnerImeCandidateList(ImeCandidateListState candidateState)
+        {
+            if (UsingInitialQuizOwnerNativeEditHost)
+            {
+                return;
+            }
+
+            AntiMacroEditControl editControl = EnsureInitialQuizOwnerEditControl();
+            if (editControl == null)
+            {
+                return;
+            }
+
+            editControl.HandleImeCandidateList(candidateState, ShouldCaptureInitialQuizOwnerTextInput());
+        }
+
+        private void ClearInitialQuizOwnerCompositionText()
+        {
+            _initialQuizOwnerEditControl?.ClearCompositionText();
+        }
+
+        private void ClearInitialQuizOwnerImeCandidateList()
+        {
+            _initialQuizOwnerEditControl?.ClearImeCandidateList();
+        }
+
+        private bool TrySelectInitialQuizOwnerImeCandidateFromMouse(AntiMacroEditControl editControl, Rectangle ownerBounds, Point cursor)
+        {
+            if (editControl == null)
+            {
+                return false;
+            }
+
+            int candidateIndex = editControl.ResolveImeCandidateIndexFromMouse(ownerBounds, cursor.X, cursor.Y);
+            if (candidateIndex < 0)
+            {
+                return false;
+            }
+
+            return TrySelectInitialQuizImeCandidate(editControl.CandidateListState?.ListIndex ?? -1, candidateIndex);
+        }
+
+        private bool TryDispatchInitialQuizOwnerImeCandidateSelection(
+            ImeCandidateListState candidateState,
+            KeyboardState newKeyboardState,
+            KeyboardState oldKeyboardState)
+        {
+            return TryResolveInitialQuizOwnerImeCandidateSelection(
+                       candidateState,
+                       newKeyboardState,
+                       oldKeyboardState,
+                       out int listIndex,
+                       out int candidateIndex)
+                   && TrySelectInitialQuizImeCandidate(listIndex, candidateIndex);
+        }
+
+        internal static bool TryResolveInitialQuizOwnerImeCandidateSelection(
+            ImeCandidateListState candidateState,
+            KeyboardState newKeyboardState,
+            KeyboardState oldKeyboardState,
+            out int listIndex,
+            out int candidateIndex)
+        {
+            listIndex = candidateState?.ListIndex ?? -1;
+            candidateIndex = -1;
+            if (candidateState == null || !candidateState.HasCandidates || listIndex < 0)
+            {
+                return false;
+            }
+
+            bool WasPressed(KeyboardState currentState, Keys key)
+            {
+                return currentState.IsKeyDown(key) && oldKeyboardState.IsKeyUp(key);
+            }
+
+            candidateIndex = SkillMacroImeCandidateWindowLayout.ResolveVisibleCandidateIndexFromKeyboard(
+                candidateState,
+                newKeyboardState,
+                WasPressed);
+            if (candidateIndex < 0)
+            {
+                candidateIndex = SkillMacroImeCandidateWindowLayout.ResolveAdjacentCandidateIndexFromKeyboard(
+                    candidateState,
+                    newKeyboardState,
+                    WasPressed);
+            }
+
+            return candidateIndex >= 0;
+        }
+
+        private bool TrySelectInitialQuizImeCandidate(int listIndex, int candidateIndex)
+        {
+            return Window != null
+                && WindowsImeCandidateSelectionBridge.TrySelectCandidate(Window.Handle, listIndex, candidateIndex);
+        }
+
+        private void DrawInitialQuizOwnerAnimationFrame(Rectangle ownerBounds, int currentTickCount)
+        {
+            InitialQuizOwnerAnimationDrawCall? drawCall = ResolveInitialQuizOwnerAnimationDrawCall(
+                currentTickCount,
+                _initialQuizOwnerAnimationFrames.Select(static frame => frame.ResourcePath).ToArray(),
+                _initialQuizOwnerAnimationFrames.Select(static frame => frame.DelayMs).ToArray(),
+                _initialQuizOwnerAnimationFrames.Select(static frame => new Point(frame.Texture?.Width ?? 0, frame.Texture?.Height ?? 0)).ToArray());
+            if (!drawCall.HasValue)
+            {
+                return;
+            }
+
+            InitialQuizAnimationFrame frame = ResolveInitialQuizOwnerAnimationFrameByIndex(drawCall.Value.FrameIndex);
+            if (frame?.Texture == null)
+            {
+                return;
+            }
+
+            Rectangle drawBounds = new(
+                ownerBounds.X + drawCall.Value.Left,
+                ownerBounds.Y + drawCall.Value.Top,
+                drawCall.Value.Width,
+                drawCall.Value.Height);
+            _spriteBatch.Draw(frame.Texture, drawBounds, Color.White);
+        }
+
+        private void DrawInitialQuizOwnerLayer(Texture2D texture, Rectangle bounds, Point origin)
+        {
+            if (texture == null)
+            {
+                return;
+            }
+
+            Rectangle drawBounds = ResolveInitialQuizOwnerLayerBounds(bounds, texture.Width, texture.Height, origin);
+            if (drawBounds == Rectangle.Empty)
+            {
+                return;
+            }
+
+            _spriteBatch.Draw(texture, drawBounds, Color.White);
+        }
+
+        private void DrawInitialQuizOwnerLayer(InitialQuizOwnerLayerKind layer, Rectangle ownerBounds, Rectangle overlayBounds)
+        {
+            switch (layer)
+            {
+                case InitialQuizOwnerLayerKind.Backgrnd:
+                    DrawInitialQuizOwnerLayer(_initialQuizOwnerBackgroundTexture, ownerBounds, _initialQuizOwnerBackgroundOrigin);
+                    break;
+                case InitialQuizOwnerLayerKind.Backgrnd2:
+                    DrawInitialQuizOwnerLayer(_initialQuizOwnerBackgroundTexture2, ownerBounds, _initialQuizOwnerBackground2Origin);
+                    break;
+                case InitialQuizOwnerLayerKind.Backgrnd3:
+                    DrawInitialQuizOwnerLayer(_initialQuizOwnerBackgroundTexture3, overlayBounds, Point.Zero);
+                    break;
+            }
+        }
+
+        private void DrawInitialQuizOwnerTimerDigits(Rectangle ownerBounds, int remainingSeconds)
+        {
+            if (_initialQuizOwnerDigits == null || _initialQuizOwnerDigits.Length == 0)
+            {
+                string timerText = ComposeInitialQuizOwnerTimerText(remainingSeconds);
+                DrawInitialQuizOwnerSingleLineText(
+                    timerText.Replace(',', ':'),
+                    new Rectangle(ownerBounds.X + 111, ownerBounds.Y + 33, 78, 24),
+                    Color.White,
+                    InitialQuizOwnerSecondaryTextScale);
+                return;
+            }
+
+            foreach (InitialQuizOwnerTimerGlyphDrawCall glyphCall in ResolveInitialQuizOwnerTimerGlyphDrawCalls(remainingSeconds))
+            {
+                Texture2D texture = ResolveInitialQuizOwnerTimerGlyphTexture(
+                    glyphCall,
+                    _initialQuizOwnerDigits,
+                    _initialQuizOwnerCommaTexture);
+                if (texture == null)
+                {
+                    continue;
+                }
+
+                Rectangle drawBounds = new(ownerBounds.X + glyphCall.Left, ownerBounds.Y + glyphCall.Top, texture.Width, texture.Height);
+                _spriteBatch.Draw(texture, drawBounds, Color.White);
+            }
+        }
+
+        private InitialQuizButtonFrame ResolveInitialQuizOwnerOkButtonFrame(bool enabled)
+        {
+            InitialQuizOwnerButtonVisualState state = ResolveInitialQuizOwnerButtonVisualState(
+                enabled,
+                _initialQuizOwnerPressedOkButton,
+                _initialQuizOwnerHoveringOkButton,
+                _initialQuizOwnerFocusTarget == InitialQuizOwnerFocusTarget.OkButton);
+
+            return state switch
+            {
+                InitialQuizOwnerButtonVisualState.Disabled => _initialQuizOwnerOkButtonDisabledFrame ?? _initialQuizOwnerOkButtonNormalFrame,
+                InitialQuizOwnerButtonVisualState.Pressed => _initialQuizOwnerOkButtonPressedFrame ?? _initialQuizOwnerOkButtonHoverFrame ?? _initialQuizOwnerOkButtonKeyFocusedFrame ?? _initialQuizOwnerOkButtonNormalFrame,
+                InitialQuizOwnerButtonVisualState.Hover => _initialQuizOwnerOkButtonHoverFrame ?? _initialQuizOwnerOkButtonKeyFocusedFrame ?? _initialQuizOwnerOkButtonNormalFrame,
+                InitialQuizOwnerButtonVisualState.KeyFocused => _initialQuizOwnerOkButtonKeyFocusedFrame ?? _initialQuizOwnerOkButtonHoverFrame ?? _initialQuizOwnerOkButtonNormalFrame,
+                _ => _initialQuizOwnerOkButtonNormalFrame
+            };
+        }
+
+        private InitialQuizAnimationFrame ResolveInitialQuizOwnerAnimationFrame(int currentTickCount)
+        {
+            if (_initialQuizOwnerAnimationFrames.Length == 0)
+            {
+                return null;
+            }
+
+            int frameIndex = ResolveInitialQuizOwnerAnimationFrameIndex(
+                currentTickCount,
+                _initialQuizOwnerAnimationFrames.Select(static frame => frame.DelayMs).ToArray());
+            return frameIndex >= 0 && frameIndex < _initialQuizOwnerAnimationFrames.Length
+                ? _initialQuizOwnerAnimationFrames[frameIndex]
+                : _initialQuizOwnerAnimationFrames[0];
+        }
+
+        private InitialQuizAnimationFrame ResolveInitialQuizOwnerAnimationFrameByIndex(int frameIndex)
+        {
+            return frameIndex >= 0 && frameIndex < _initialQuizOwnerAnimationFrames.Length
+                ? _initialQuizOwnerAnimationFrames[frameIndex]
+                : null;
+        }
+
+        private Rectangle ResolveInitialQuizOwnerBounds()
+        {
+            int ownerWidth = _initialQuizOwnerBackgroundTexture?.Width > 0
+                ? _initialQuizOwnerBackgroundTexture.Width
+                : InitialQuizOwnerWidth;
+            int ownerHeight = _initialQuizOwnerBackgroundTexture?.Height > 0
+                ? _initialQuizOwnerBackgroundTexture.Height
+                : InitialQuizOwnerHeight;
+            return ResolveInitialQuizOwnerBounds(
+                _renderParams.RenderWidth,
+                _renderParams.RenderHeight,
+                ownerWidth,
+                ownerHeight);
+        }
+
+        internal static Rectangle ResolveInitialQuizOwnerBounds(int renderWidth, int renderHeight, int ownerWidth, int ownerHeight)
+        {
+            InitialQuizOwnerWindowCreateSnapshot createSnapshot =
+                BuildInitialQuizOwnerWindowCreateSnapshot(ownerWidth, ownerHeight);
+            int resolvedWidth = createSnapshot.WindowWidth;
+            int resolvedHeight = createSnapshot.WindowHeight;
+            return new Rectangle(
+                (renderWidth - resolvedWidth) / 2,
+                (renderHeight - resolvedHeight) / 2,
+                resolvedWidth,
+                resolvedHeight);
+        }
+
+        private Rectangle ResolveInitialQuizOwnerOkButtonHitBounds(Rectangle ownerBounds)
+        {
+            Point buttonSize = ResolveInitialQuizOwnerOkButtonHitSize(
+                _initialQuizOwnerOkButtonNormalFrame?.Texture?.Width ?? 0,
+                _initialQuizOwnerOkButtonNormalFrame?.Texture?.Height ?? 0,
+                _initialQuizOwnerOkButtonHoverFrame?.Texture?.Width ?? 0,
+                _initialQuizOwnerOkButtonHoverFrame?.Texture?.Height ?? 0,
+                _initialQuizOwnerOkButtonPressedFrame?.Texture?.Width ?? 0,
+                _initialQuizOwnerOkButtonPressedFrame?.Texture?.Height ?? 0,
+                _initialQuizOwnerOkButtonDisabledFrame?.Texture?.Width ?? 0,
+                _initialQuizOwnerOkButtonDisabledFrame?.Texture?.Height ?? 0,
+                _initialQuizOwnerOkButtonKeyFocusedFrame?.Texture?.Width ?? 0,
+                _initialQuizOwnerOkButtonKeyFocusedFrame?.Texture?.Height ?? 0);
+            return ResolveInitialQuizOwnerOkButtonHitBounds(ownerBounds, buttonSize.X, buttonSize.Y);
+        }
+
+        private Rectangle ResolveInitialQuizOwnerOkButtonVisualBounds(Rectangle ownerBounds)
+        {
+            Point buttonSize = ResolveInitialQuizOwnerOkButtonHitSize(
+                _initialQuizOwnerOkButtonNormalFrame?.Texture?.Width ?? 0,
+                _initialQuizOwnerOkButtonNormalFrame?.Texture?.Height ?? 0,
+                _initialQuizOwnerOkButtonHoverFrame?.Texture?.Width ?? 0,
+                _initialQuizOwnerOkButtonHoverFrame?.Texture?.Height ?? 0,
+                _initialQuizOwnerOkButtonPressedFrame?.Texture?.Width ?? 0,
+                _initialQuizOwnerOkButtonPressedFrame?.Texture?.Height ?? 0,
+                _initialQuizOwnerOkButtonDisabledFrame?.Texture?.Width ?? 0,
+                _initialQuizOwnerOkButtonDisabledFrame?.Texture?.Height ?? 0,
+                _initialQuizOwnerOkButtonKeyFocusedFrame?.Texture?.Width ?? 0,
+                _initialQuizOwnerOkButtonKeyFocusedFrame?.Texture?.Height ?? 0);
+            Point buttonOrigin = ResolveInitialQuizOwnerOkButtonHitOrigin(
+                _initialQuizOwnerOkButtonNormalFrame?.Origin ?? Point.Zero,
+                _initialQuizOwnerOkButtonHoverFrame?.Origin ?? Point.Zero,
+                _initialQuizOwnerOkButtonPressedFrame?.Origin ?? Point.Zero,
+                _initialQuizOwnerOkButtonDisabledFrame?.Origin ?? Point.Zero,
+                _initialQuizOwnerOkButtonKeyFocusedFrame?.Origin ?? Point.Zero);
+            Rectangle visualBounds = ResolveInitialQuizOwnerOkButtonVisualBounds(
+                InitialQuizOwnerOkButtonLeft,
+                InitialQuizOwnerOkButtonTop,
+                buttonSize.X,
+                buttonSize.Y,
+                buttonOrigin);
+            return new Rectangle(
+                ownerBounds.X + visualBounds.X,
+                ownerBounds.Y + visualBounds.Y,
+                visualBounds.Width,
+                visualBounds.Height);
+        }
+
+        internal static Rectangle ResolveInitialQuizOwnerOkButtonBounds(Rectangle ownerBounds, int buttonWidth, int buttonHeight)
+        {
+            return ResolveInitialQuizOwnerOkButtonHitBounds(ownerBounds, buttonWidth, buttonHeight);
+        }
+
+        internal static Rectangle ResolveInitialQuizOwnerOkButtonHitBounds(Rectangle ownerBounds, int buttonWidth, int buttonHeight)
+        {
+            int resolvedWidth = Math.Max(1, buttonWidth);
+            int resolvedHeight = Math.Max(1, buttonHeight);
+            return new Rectangle(
+                ownerBounds.X + InitialQuizOwnerOkButtonLeft,
+                ownerBounds.Y + InitialQuizOwnerOkButtonTop,
+                resolvedWidth,
+                resolvedHeight);
+        }
+
+        internal static Point ResolveInitialQuizOwnerOkButtonHitOrigin(
+            Point normalOrigin,
+            Point hoverOrigin,
+            Point pressedOrigin,
+            Point disabledOrigin,
+            Point keyFocusedOrigin)
+        {
+            if (normalOrigin != Point.Zero)
+            {
+                return normalOrigin;
+            }
+
+            if (hoverOrigin != Point.Zero)
+            {
+                return hoverOrigin;
+            }
+
+            if (pressedOrigin != Point.Zero)
+            {
+                return pressedOrigin;
+            }
+
+            if (disabledOrigin != Point.Zero)
+            {
+                return disabledOrigin;
+            }
+
+            return keyFocusedOrigin;
+        }
+
+        internal static Point ResolveInitialQuizOwnerOkButtonHitSize(
+            int normalWidth,
+            int normalHeight,
+            int hoverWidth,
+            int hoverHeight,
+            int pressedWidth,
+            int pressedHeight,
+            int disabledWidth,
+            int disabledHeight,
+            int keyFocusedWidth,
+            int keyFocusedHeight)
+        {
+            if (normalWidth > 0 && normalHeight > 0)
+            {
+                return new Point(normalWidth, normalHeight);
+            }
+
+            if (hoverWidth > 0 && hoverHeight > 0)
+            {
+                return new Point(hoverWidth, hoverHeight);
+            }
+
+            if (pressedWidth > 0 && pressedHeight > 0)
+            {
+                return new Point(pressedWidth, pressedHeight);
+            }
+
+            if (disabledWidth > 0 && disabledHeight > 0)
+            {
+                return new Point(disabledWidth, disabledHeight);
+            }
+
+            if (keyFocusedWidth > 0 && keyFocusedHeight > 0)
+            {
+                return new Point(keyFocusedWidth, keyFocusedHeight);
+            }
+
+            return new Point(InitialQuizOwnerOkButtonWidth, InitialQuizOwnerOkButtonHeight);
+        }
+
+        private static Rectangle ResolveInitialQuizOwnerInputBounds(Rectangle ownerBounds)
+        {
+            return new Rectangle(ownerBounds.X + 109, ownerBounds.Y + 157, 150, 13);
+        }
+
+        internal static IReadOnlyList<InitialQuizOwnerDrawTextCall> ResolveInitialQuizOwnerDrawTextCalls(
+            InitialQuizOwnerSnapshot snapshot,
+            bool showInput)
+        {
+            if (snapshot == null)
+            {
+                return Array.Empty<InitialQuizOwnerDrawTextCall>();
+            }
+
+            var calls = new List<InitialQuizOwnerDrawTextCall>
+            {
+                new(
+                    InitialQuizOwnerDrawTextSource.Title,
+                    34,
+                    18,
+                    198,
+                    18,
+                    0,
+                    InitialQuizOwnerDrawTextFont.White,
+                    snapshot.Title)
+            };
+
+            if (ShouldShowInitialQuizOwnerQuestion(snapshot.ProblemText))
+            {
+                calls.Add(new InitialQuizOwnerDrawTextCall(
+                    InitialQuizOwnerDrawTextSource.QuestionLabel,
+                    52,
+                    110,
+                    40,
+                    14,
+                    InitialQuizQuestionLabelStringPoolId,
+                    InitialQuizOwnerDrawTextFont.White,
+                    MapleStoryStringPool.GetOrFallback(InitialQuizQuestionLabelStringPoolId, "Question")));
+                calls.Add(new InitialQuizOwnerDrawTextCall(
+                    InitialQuizOwnerDrawTextSource.QuestionText,
+                    92,
+                    110,
+                    132,
+                    14,
+                    0,
+                    InitialQuizOwnerDrawTextFont.White,
+                    snapshot.ProblemText));
+            }
+
+            if (ShouldShowInitialQuizOwnerHint(snapshot.HintText))
+            {
+                calls.Add(new InitialQuizOwnerDrawTextCall(
+                    InitialQuizOwnerDrawTextSource.HintLabel,
+                    52,
+                    130,
+                    40,
+                    14,
+                    InitialQuizHintLabelStringPoolId,
+                    InitialQuizOwnerDrawTextFont.White,
+                    MapleStoryStringPool.GetOrFallback(InitialQuizHintLabelStringPoolId, "Hint")));
+                calls.Add(new InitialQuizOwnerDrawTextCall(
+                    InitialQuizOwnerDrawTextSource.HintText,
+                    92,
+                    130,
+                    132,
+                    14,
+                    0,
+                    InitialQuizOwnerDrawTextFont.White,
+                    snapshot.HintText));
+            }
+
+            calls.Add(new InitialQuizOwnerDrawTextCall(
+                InitialQuizOwnerDrawTextSource.AnswerLabel,
+                45,
+                157,
+                64,
+                14,
+                InitialQuizAnswerLabelStringPoolId,
+                InitialQuizOwnerDrawTextFont.White,
+                MapleStoryStringPool.GetOrFallback(InitialQuizAnswerLabelStringPoolId, "Answer")));
+            calls.Add(new InitialQuizOwnerDrawTextCall(
+                InitialQuizOwnerDrawTextSource.AnswerNotice,
+                38,
+                202,
+                190,
+                14,
+                InitialQuizAnswerNoticeStringPoolId,
+                InitialQuizOwnerDrawTextFont.Red,
+                MapleStoryStringPool.GetOrFallback(InitialQuizAnswerNoticeStringPoolId, string.Empty)));
+
+            if (showInput)
+            {
+                return calls;
+            }
+
+            calls.Add(new InitialQuizOwnerDrawTextCall(
+                InitialQuizOwnerDrawTextSource.TimeoutNotice,
+                119,
+                158,
+                105,
+                14,
+                InitialQuizTimeoutNoticeStringPoolId,
+                InitialQuizOwnerDrawTextFont.Red,
+                MapleStoryStringPool.GetOrFallback(InitialQuizTimeoutNoticeStringPoolId, "Time over")));
+
+            return calls;
+        }
+
+        internal static InitialQuizOwnerDrawLifecycleSnapshot BuildInitialQuizOwnerDrawLifecycleSnapshot(
+            InitialQuizOwnerSnapshot snapshot,
+            bool showInput)
+        {
+            if (snapshot == null)
+            {
+                return new InitialQuizOwnerDrawLifecycleSnapshot(
+                    CallsBaseCWndDrawFirst: false,
+                    AcquiresOwnerCanvasOnce: false,
+                    ClampsRemainingSecondsWhenTimeOver: false,
+                    TimerGlyphCopyCount: 0,
+                    TimerGlyphsDrawBeforeAnimation: false,
+                    AnimationDrawsBeforeText: false,
+                    TextDrawCallCount: 0,
+                    TimeoutTextDrawn: false,
+                    ReleasesOwnerCanvasOnceAtDrawEnd: false);
+            }
+
+            int remainingSeconds = Math.Max(0, snapshot.RemainingSeconds);
+            IReadOnlyList<InitialQuizOwnerDrawTextCall> textCalls =
+                ResolveInitialQuizOwnerDrawTextCalls(snapshot, showInput);
+
+            return new InitialQuizOwnerDrawLifecycleSnapshot(
+                CallsBaseCWndDrawFirst: true,
+                AcquiresOwnerCanvasOnce: true,
+                ClampsRemainingSecondsWhenTimeOver: snapshot.RemainingMs <= 0 || snapshot.RemainingSeconds <= 0,
+                TimerGlyphCopyCount: ResolveInitialQuizOwnerTimerGlyphDrawCalls(remainingSeconds).Count,
+                TimerGlyphsDrawBeforeAnimation: true,
+                AnimationDrawsBeforeText: true,
+                TextDrawCallCount: textCalls.Count,
+                TimeoutTextDrawn: textCalls.Any(static call => call.Source == InitialQuizOwnerDrawTextSource.TimeoutNotice),
+                ReleasesOwnerCanvasOnceAtDrawEnd: true);
+        }
+
+        internal static Color ResolveInitialQuizOwnerDrawTextColor(InitialQuizOwnerDrawTextFont font)
+        {
+            return font == InitialQuizOwnerDrawTextFont.Red
+                ? new Color(196, 65, 45)
+                : new Color(255, 255, 255);
+        }
+
+        internal static InitialQuizOwnerUpdateLifecycleSnapshot BuildInitialQuizOwnerUpdateLifecycleSnapshot(
+            int previousRemainingSeconds,
+            int currentRemainingSeconds)
+        {
+            int previous = Math.Max(0, previousRemainingSeconds);
+            int current = Math.Max(0, currentRemainingSeconds);
+            bool changed = previous != current;
+            bool timedOut = changed && current <= 0;
+            return new InitialQuizOwnerUpdateLifecycleSnapshot(
+                RemainingSecondsChanged: changed,
+                InvalidatesWhenAtOrBelowTwoMinutes: changed && current <= 120,
+                HidesEditOnTimeout: timedOut,
+                DisablesEditOnTimeout: timedOut,
+                DisablesOkButtonOnTimeout: timedOut,
+                CapturesOwnerOnTimeout: timedOut,
+                FocusesOwnerOnTimeout: timedOut,
+                SendsEmptyResultOnTimeout: timedOut,
+                DestroysOwnerOnTimeout: timedOut,
+                ClearsContextRemainFlagOnTimeout: timedOut,
+                CallsBaseUpdateAfterChange: changed);
+        }
+
+        internal static InitialQuizOwnerSetValuesSnapshot BuildInitialQuizOwnerSetValuesSnapshot(
+            string title,
+            string problemText,
+            string hintText,
+            int minInputCharacters,
+            int maxInputCharacters,
+            int remainingMilliseconds)
+        {
+            int minimum = Math.Max(0, minInputCharacters);
+            int maximum = Math.Max(0, maxInputCharacters);
+            return new InitialQuizOwnerSetValuesSnapshot(
+                Title: title ?? string.Empty,
+                ProblemText: problemText ?? string.Empty,
+                HintText: hintText ?? string.Empty,
+                MinInputCharacters: minimum,
+                MaxInputCharacters: maximum,
+                MinInputByteLength: minimum * 2,
+                MaxInputByteLength: maximum * 2,
+                RemainingMilliseconds: Math.Max(0, remainingMilliseconds),
+                CopiesTitleString: true,
+                CopiesProblemString: true,
+                CopiesHintString: true,
+                ReleasesPassedTitleString: true,
+                ReleasesPassedProblemString: true,
+                ReleasesPassedHintString: true,
+                ComputesTimeOverFromTimeGetTime: true,
+                InvalidatesOwnerAfterSetValues: true);
+        }
+
+        internal static InitialQuizOwnerSendResultSnapshot BuildInitialQuizOwnerSendResultSnapshot(
+            string submittedValue,
+            bool previousResultSent)
+        {
+            submittedValue ??= string.Empty;
+            bool sendsPacket = !previousResultSent;
+            byte[] rawPacket = sendsPacket
+                ? PacketScriptMessageRuntime.BuildInitialQuizOwnerResponsePacketBytes(submittedValue)
+                : Array.Empty<byte>();
+            return new InitialQuizOwnerSendResultSnapshot(
+                PreviousResultSent: previousResultSent,
+                SendsPacket: sendsPacket,
+                SetsResultSentBeforePacketBuild: sendsPacket,
+                OutboundOpcode: 65,
+                MessageType: 6,
+                SubmittedValue: submittedValue,
+                SubmittedClientByteLength: InitialQuizTimerRuntime.GetClientMapleStringByteCount(submittedValue),
+                RawPacket: rawPacket,
+                EncodesSubmittedValueWithClientString: sendsPacket,
+                SendsThroughClientSocket: sendsPacket,
+                RemovesSendBufferAfterSend: sendsPacket,
+                ReleasesSubmittedStringAfterCall: true);
+        }
+
+        internal static float ResolveInitialQuizOwnerDrawTextScale(InitialQuizOwnerDrawTextSource source)
+        {
+            return source switch
+            {
+                InitialQuizOwnerDrawTextSource.Title => InitialQuizOwnerTextScale,
+                InitialQuizOwnerDrawTextSource.QuestionLabel
+                    or InitialQuizOwnerDrawTextSource.HintLabel
+                    or InitialQuizOwnerDrawTextSource.AnswerLabel => InitialQuizOwnerLabelTextScale,
+                InitialQuizOwnerDrawTextSource.AnswerNotice
+                    or InitialQuizOwnerDrawTextSource.TimeoutNotice => InitialQuizOwnerSecondaryTextScale,
+                _ => InitialQuizOwnerSecondaryTextScale
+            };
+        }
+
+        private void EnsureInitialQuizOwnerPixelTexture()
+        {
+            if (_packetScriptOwnerPixelTexture != null || GraphicsDevice == null)
+            {
+                return;
+            }
+
+            _packetScriptOwnerPixelTexture = new Texture2D(GraphicsDevice, 1, 1);
+            _packetScriptOwnerPixelTexture.SetData(new[] { Color.White });
+        }
+
+        private void EnsureInitialQuizOwnerVisualsLoaded()
+        {
+            if (_initialQuizOwnerVisualsLoaded || GraphicsDevice == null)
+            {
+                return;
+            }
+
+            _initialQuizOwnerVisualsLoaded = true;
+            EnsureInitialQuizOwnerPixelTexture();
+
+            WzImage uiWindowImage = Program.FindImage("UI", "UIWindow.img");
+            WzImage uiWindow2Image = Program.FindImage("UI", "UIWindow2.img") ?? uiWindowImage;
+            WzSubProperty preferred = uiWindow2Image?["InitialQuiz"] as WzSubProperty;
+            WzSubProperty fallback = uiWindowImage?["InitialQuiz"] as WzSubProperty;
+            WzCanvasProperty preferredBackground3 = preferred?["backgrnd3"] as WzCanvasProperty;
+            WzCanvasProperty fallbackBackground3 = fallback?["backgrnd3"] as WzCanvasProperty;
+            WzSubProperty okButtonProperty = ResolveInitialQuizOwnerOkButtonProperty(preferred, fallback);
+
+            _initialQuizOwnerBackgroundTexture = LoadUiCanvasTexture(
+                ResolveInitialQuizOwnerCanvasFromStringPool(InitialQuizBackgroundUolStringPoolId)
+                ?? (preferred?["backgrnd"] ?? fallback?["backgrnd"]) as WzCanvasProperty);
+            _initialQuizOwnerBackgroundTexture2 = LoadUiCanvasTexture((preferred?["backgrnd2"] ?? fallback?["backgrnd2"]) as WzCanvasProperty);
+            _initialQuizOwnerBackgroundTexture3 = LoadUiCanvasTexture(preferredBackground3 ?? fallbackBackground3);
+            _initialQuizOwnerBackgroundOrigin = ResolveCanvasOrigin((preferred?["backgrnd"] ?? fallback?["backgrnd"]) as WzCanvasProperty);
+            _initialQuizOwnerBackground2Origin = ResolveCanvasOrigin((preferred?["backgrnd2"] ?? fallback?["backgrnd2"]) as WzCanvasProperty);
+            _initialQuizOwnerBackgroundZ = ResolveCanvasZ((preferred?["backgrnd"] ?? fallback?["backgrnd"]) as WzCanvasProperty, -5);
+            _initialQuizOwnerBackground2Z = ResolveCanvasZ((preferred?["backgrnd2"] ?? fallback?["backgrnd2"]) as WzCanvasProperty, -4);
+            _initialQuizOwnerBackground3Z = ResolveCanvasZ(preferredBackground3 ?? fallbackBackground3, -3);
+            _initialQuizOwnerOkButtonNormalFrame = LoadInitialQuizOwnerButtonFrame(okButtonProperty, "normal");
+            _initialQuizOwnerOkButtonHoverFrame = LoadInitialQuizOwnerButtonFrame(okButtonProperty, "mouseOver");
+            _initialQuizOwnerOkButtonPressedFrame = LoadInitialQuizOwnerButtonFrame(okButtonProperty, "pressed");
+            _initialQuizOwnerOkButtonDisabledFrame = LoadInitialQuizOwnerButtonFrame(okButtonProperty, "disabled");
+            _initialQuizOwnerOkButtonKeyFocusedFrame = LoadInitialQuizOwnerButtonFrame(okButtonProperty, "keyFocused");
+            _initialQuizOwnerDigits = LoadInitialQuizOwnerDigits(preferred?["num1"] as WzSubProperty, fallback?["num1"] as WzSubProperty, out _initialQuizOwnerCommaTexture);
+            _initialQuizOwnerAnimationFrames = LoadInitialQuizOwnerAnimationFrames(preferred?["ani"] as WzSubProperty, fallback?["ani"] as WzSubProperty);
+            _initialQuizOwnerBackground3Origin = ResolveCanvasOrigin(preferredBackground3 ?? fallbackBackground3);
+        }
+
+        private void SyncInitialQuizOwnerEditControlState(bool ownerActive, InitialQuizOwnerChildControlState controlState)
+        {
+            _initialQuizOwnerControlStackSnapshot = BuildInitialQuizOwnerControlStackSnapshot(
+                created: ownerActive && _initialQuizOwnerControlStackSnapshot.Created,
+                generation: _initialQuizOwnerControlStackSnapshot.Generation,
+                childState: ownerActive ? controlState : InitialQuizOwnerChildControlState.Inactive,
+                focusTarget: ownerActive ? _initialQuizOwnerFocusTarget : InitialQuizOwnerFocusTarget.Owner,
+                editMaxHorzUnits: ownerActive ? _initialQuizOwnerEditTextElementLimit : 0,
+                okButtonFrameOrigin: ResolveInitialQuizOwnerOkButtonHitOrigin(
+                    _initialQuizOwnerOkButtonNormalFrame?.Origin ?? Point.Zero,
+                    _initialQuizOwnerOkButtonHoverFrame?.Origin ?? Point.Zero,
+                    _initialQuizOwnerOkButtonPressedFrame?.Origin ?? Point.Zero,
+                    _initialQuizOwnerOkButtonDisabledFrame?.Origin ?? Point.Zero,
+                    _initialQuizOwnerOkButtonKeyFocusedFrame?.Origin ?? Point.Zero),
+                okButtonFrameSize: ResolveInitialQuizOwnerOkButtonHitSize(
+                    _initialQuizOwnerOkButtonNormalFrame?.Texture?.Width ?? 0,
+                    _initialQuizOwnerOkButtonNormalFrame?.Texture?.Height ?? 0,
+                    _initialQuizOwnerOkButtonHoverFrame?.Texture?.Width ?? 0,
+                    _initialQuizOwnerOkButtonHoverFrame?.Texture?.Height ?? 0,
+                    _initialQuizOwnerOkButtonPressedFrame?.Texture?.Width ?? 0,
+                    _initialQuizOwnerOkButtonPressedFrame?.Texture?.Height ?? 0,
+                    _initialQuizOwnerOkButtonDisabledFrame?.Texture?.Width ?? 0,
+                    _initialQuizOwnerOkButtonDisabledFrame?.Texture?.Height ?? 0,
+                    _initialQuizOwnerOkButtonKeyFocusedFrame?.Texture?.Width ?? 0,
+                    _initialQuizOwnerOkButtonKeyFocusedFrame?.Texture?.Height ?? 0));
+            NativeAntiMacroEditHost nativeEditHost = EnsureInitialQuizOwnerNativeEditHost();
+            if (nativeEditHost != null && nativeEditHost.IsAttached)
+            {
+                Rectangle inputBounds = ResolveInitialQuizOwnerInputBounds(ResolveInitialQuizOwnerBounds());
+                nativeEditHost.UpdateBounds(inputBounds);
+                bool showInput = ownerActive && controlState.EditVisible;
+                nativeEditHost.SetVisible(showInput);
+                bool nativeInputFocused = ShouldCaptureInitialQuizOwnerTextInput(ownerActive, controlState, _initialQuizOwnerFocusTarget);
+                if (showInput && nativeInputFocused)
+                {
+                    nativeEditHost.Focus();
+                }
+                else
+                {
+                    nativeEditHost.Blur();
+                }
+
+                nativeEditHost.SynchronizeState();
+            }
+
+            AntiMacroEditControl editControl = EnsureInitialQuizOwnerEditControl();
+            if (editControl == null)
+            {
+                return;
+            }
+
+            bool inputFocused = ShouldCaptureInitialQuizOwnerTextInput(ownerActive, controlState, _initialQuizOwnerFocusTarget);
+            editControl.SetFocus(inputFocused);
+            if (!inputFocused)
+            {
+                editControl.EndMouseSelection();
+            }
+        }
+
+        internal static InitialQuizOwnerControlStackSnapshot BuildInitialQuizOwnerControlStackSnapshot(
+            bool created,
+            int generation,
+            InitialQuizOwnerChildControlState childState,
+            InitialQuizOwnerFocusTarget focusTarget,
+            int editMaxHorzUnits = InitialQuizOwnerInputMaxLength,
+            Point? okButtonFrameOrigin = null,
+            Point? okButtonFrameSize = null)
+        {
+            if (!created)
+            {
+                return InitialQuizOwnerControlStackSnapshot.Destroyed;
+            }
+
+            bool editVisible = childState.EditVisible;
+            bool editEnabled = childState.EditEnabled;
+            bool okButtonEnabled = childState.OkButtonEnabled;
+            bool okButtonVisible = true;
+            int editControlId = AntiMacroEditControl.ClientControlId;
+            int okButtonControlId = InitialQuizOwnerOkButtonControlId;
+            int focusChildControlId = ResolveInitialQuizOwnerFocusChildControlId(
+                childState,
+                focusTarget,
+                editControlId,
+                okButtonControlId);
+            Point resolvedOkButtonFrameOrigin = okButtonFrameOrigin ?? Point.Zero;
+            Point resolvedOkButtonFrameSize = okButtonFrameSize ?? new Point(InitialQuizOwnerOkButtonWidth, InitialQuizOwnerOkButtonHeight);
+            Rectangle okButtonVisualBounds = ResolveInitialQuizOwnerOkButtonVisualBounds(
+                InitialQuizOwnerOkButtonLeft,
+                InitialQuizOwnerOkButtonTop,
+                resolvedOkButtonFrameSize.X,
+                resolvedOkButtonFrameSize.Y,
+                resolvedOkButtonFrameOrigin);
+            return new InitialQuizOwnerControlStackSnapshot(
+                Created: true,
+                Generation: Math.Max(1, generation),
+                OwnerCapturedByWindowManager: true,
+                OwnerFocusedByWindowManager: true,
+                FocusChildControlId: focusChildControlId,
+                EditControlId: editControlId,
+                OkButtonControlId: okButtonControlId,
+                EditAllocationSize: InitialQuizOwnerEditAllocationSize,
+                EditZRefPointerOffset: InitialQuizOwnerZRefPointerOffset,
+                EditCreateOrder: InitialQuizOwnerEditCreateOrder,
+                EditVisible: editVisible,
+                EditEnabled: editEnabled,
+                EditFocused: editVisible && editEnabled && focusTarget == InitialQuizOwnerFocusTarget.Input,
+                EditX: InitialQuizOwnerEditOrigin.X,
+                EditY: InitialQuizOwnerEditOrigin.Y,
+                EditWidth: 150,
+                EditHeight: 13,
+                EditMaxHorzUnits: Math.Max(1, editMaxHorzUnits),
+                EditWindowClassName: NativeAntiMacroEditHost.ClientEditWindowClassName,
+                EditWindowStyle: NativeAntiMacroEditHost.ClientEditWindowStyle,
+                EditWindowExStyle: NativeAntiMacroEditHost.ClientEditWindowExStyle,
+                EditCreateParamTextX: NativeAntiMacroEditHost.ClientEditCreateParamTextX,
+                EditCreateParamTextY: NativeAntiMacroEditHost.ClientEditCreateParamTextY,
+                EditCreateParamBackColor: NativeAntiMacroEditHost.ClientEditCreateParamBackColor,
+                EditCreateParamFontColor: NativeAntiMacroEditHost.ClientEditCreateParamFontColor,
+                EditCreateParamMaxHorzUnits: NativeAntiMacroEditHost.ClientEditCreateParamMaxHorzUnits,
+                EditCreateParamNumberOnly: NativeAntiMacroEditHost.ClientEditCreateParamNumberOnly,
+                EditLeftMargin: NativeAntiMacroEditHost.ClientEditLeftMargin,
+                EditRightMargin: NativeAntiMacroEditHost.ClientEditRightMargin,
+                EditDialogCode: NativeAntiMacroEditHost.GetClientOwnedAntiMacroDialogCode(),
+                EditImeCandidateFormCount: NativeAntiMacroEditHost.CandidateListCount,
+                EditImeCompositionStyle: NativeAntiMacroEditHost.ImeExcludeStyle,
+                EditFontStringPoolId: AntiMacroEditControl.ClientFontStringPoolId,
+                EditCreateParamGetsFontBstrFromStringPool: true,
+                EditCreateParamReleasesFontBstrOnDestroy: true,
+                OkButtonVisible: okButtonVisible,
+                OkButtonEnabled: okButtonEnabled,
+                OkButtonFocused: okButtonEnabled && focusTarget == InitialQuizOwnerFocusTarget.OkButton,
+                OkButtonAllocationSize: InitialQuizOwnerOkButtonAllocationSize,
+                OkButtonZRefPointerOffset: InitialQuizOwnerZRefPointerOffset,
+                OkButtonCreateOrder: InitialQuizOwnerOkButtonCreateOrder,
+                OkButtonX: InitialQuizOwnerOkButtonLeft,
+                OkButtonY: InitialQuizOwnerOkButtonTop,
+                OkButtonCreateOption: InitialQuizOwnerOkButtonCreateOption,
+                OkButtonVisualX: okButtonVisualBounds.X,
+                OkButtonVisualY: okButtonVisualBounds.Y,
+                OkButtonVisualWidth: okButtonVisualBounds.Width,
+                OkButtonVisualHeight: okButtonVisualBounds.Height,
+                OkButtonFrameOriginX: resolvedOkButtonFrameOrigin.X,
+                OkButtonFrameOriginY: resolvedOkButtonFrameOrigin.Y,
+                OkButtonResourcePath: MapleStoryStringPool.GetOrFallback(
+                    InitialQuizOwnerOkButtonStringPoolId,
+                    "UI/UIWindow2.img/InitialQuiz/BtOK"),
+                OkButtonCreateParamGetsUolFromStringPool: true,
+                OkButtonCreateParamReleasesUolOnDestroy: true);
+        }
+
+        internal static InitialQuizOwnerWindowCreateSnapshot BuildInitialQuizOwnerWindowCreateSnapshot(
+            int backgroundWidth,
+            int backgroundHeight)
+        {
+            int resolvedWidth = backgroundWidth > 0 ? backgroundWidth : InitialQuizOwnerWidth;
+            int resolvedHeight = backgroundHeight > 0 ? backgroundHeight : InitialQuizOwnerHeight;
+            return new InitialQuizOwnerWindowCreateSnapshot(
+                Created: true,
+                WindowX: DivideTowardZero(resolvedWidth, -2),
+                WindowY: DivideTowardZero(resolvedHeight, -2),
+                WindowWidth: resolvedWidth,
+                WindowHeight: resolvedHeight,
+                Layer: InitialQuizOwnerCreateWndLayer,
+                Show: InitialQuizOwnerCreateWndShow,
+                Option: InitialQuizOwnerCreateWndOption,
+                Enable: InitialQuizOwnerCreateWndEnable,
+                Origin: InitialQuizOwnerCreateWndOrigin,
+                BackgroundStringPoolId: InitialQuizBackgroundUolStringPoolId,
+                BackgroundResourcePath: MapleStoryStringPool.GetOrFallback(
+                    InitialQuizBackgroundUolStringPoolId,
+                    "UI/UIWindow2.img/InitialQuiz/backgrnd"));
+        }
+
+        internal static InitialQuizOwnerContextPacketLifecycleSnapshot BuildInitialQuizOwnerContextPacketLifecycleSnapshot(
+            byte mode,
+            bool ownerAlreadyCreated,
+            int minInputCharacters,
+            int maxInputCharacters,
+            int remainingSeconds)
+        {
+            bool requestMode = mode == 0;
+            bool closeMode = mode == 1;
+            int contextRemainingMilliseconds = requestMode
+                ? Math.Max(0, remainingSeconds) * 1000
+                : 0;
+            bool createsOwnerSingleton = requestMode && !ownerAlreadyCreated;
+            return new InitialQuizOwnerContextPacketLifecycleSnapshot(
+                Mode: mode,
+                OwnerAlreadyCreated: ownerAlreadyCreated,
+                DecodesPayloadStrings: requestMode,
+                DecodesInputLimits: requestMode,
+                UpdatesContextRemainingMilliseconds: requestMode,
+                ContextRemainingMilliseconds: contextRemainingMilliseconds,
+                CreatesOwnerSingleton: createsOwnerSingleton,
+                SeedsOwnerSetValues: createsOwnerSingleton,
+                DestroysExistingOwner: closeMode && ownerAlreadyCreated,
+                ClearsContextRemainingMilliseconds: closeMode,
+                CapturesOwnerWindow: createsOwnerSingleton,
+                FocusesOwnerWindow: createsOwnerSingleton,
+                IgnoresUnsupportedMode: !requestMode && !closeMode,
+                MinInputByteLength: requestMode ? Math.Max(0, minInputCharacters) * 2 : 0,
+                MaxInputByteLength: requestMode ? Math.Max(0, maxInputCharacters) * 2 : 0);
+        }
+
+        private static int DivideTowardZero(int dividend, int divisor)
+        {
+            return dividend / divisor;
+        }
+
+        internal static Rectangle ResolveInitialQuizOwnerOkButtonVisualBounds(
+            int controlX,
+            int controlY,
+            int frameWidth,
+            int frameHeight,
+            Point frameOrigin)
+        {
+            int resolvedWidth = Math.Max(1, frameWidth);
+            int resolvedHeight = Math.Max(1, frameHeight);
+            if (frameOrigin != Point.Zero)
+            {
+                return new Rectangle(
+                    -frameOrigin.X,
+                    -frameOrigin.Y,
+                    resolvedWidth,
+                    resolvedHeight);
+            }
+
+            return new Rectangle(
+                controlX,
+                controlY,
+                resolvedWidth,
+                resolvedHeight);
+        }
+
+        internal static int ResolveInitialQuizOwnerFocusChildControlId(
+            InitialQuizOwnerChildControlState childState,
+            InitialQuizOwnerFocusTarget focusTarget,
+            int editControlId = AntiMacroEditControl.ClientControlId,
+            int okButtonControlId = InitialQuizOwnerOkButtonControlId)
+        {
+            if (childState.EditVisible && childState.EditEnabled && focusTarget == InitialQuizOwnerFocusTarget.Input)
+            {
+                return editControlId;
+            }
+
+            if (childState.OkButtonEnabled && focusTarget == InitialQuizOwnerFocusTarget.OkButton)
+            {
+                return okButtonControlId;
+            }
+
+            return 0;
+        }
+
+        private Texture2D[] LoadInitialQuizOwnerDigits(WzSubProperty preferred, WzSubProperty fallback, out Texture2D commaTexture)
+        {
+            Texture2D[] digits = new Texture2D[10];
+            for (int i = 0; i < digits.Length; i++)
+            {
+                digits[i] = LoadUiCanvasTexture(
+                    ResolveInitialQuizOwnerTimerDigitCanvas(i)
+                    ?? (preferred?[i.ToString()] ?? fallback?[i.ToString()]) as WzCanvasProperty);
+            }
+
+            commaTexture = LoadUiCanvasTexture(
+                ResolveInitialQuizOwnerCanvasFromStringPool(InitialQuizTimerCommaUolStringPoolId)
+                ?? (preferred?["comma"] ?? fallback?["comma"]) as WzCanvasProperty);
+            return digits;
+        }
+
+        private InitialQuizAnimationFrame[] LoadInitialQuizOwnerAnimationFrames(WzSubProperty preferred, WzSubProperty fallback)
+        {
+            List<InitialQuizAnimationFrame> frames = new();
+            bool usingPreferred = preferred != null;
+            IEnumerable<WzCanvasProperty> canvases = usingPreferred
+                ? preferred.WzProperties.OfType<WzCanvasProperty>()
+                : fallback?.WzProperties.OfType<WzCanvasProperty>()
+                    ?? Enumerable.Empty<WzCanvasProperty>();
+            Dictionary<string, WzCanvasProperty> canvasByName = canvases.ToDictionary(static canvas => canvas.Name, StringComparer.Ordinal);
+            foreach (string frameName in ResolveInitialQuizOwnerAnimationFrameNames(canvasByName.Keys))
+            {
+                WzCanvasProperty canvas = canvasByName[frameName];
+                Texture2D texture = LoadUiCanvasTexture(canvas);
+                if (texture == null)
+                {
+                    continue;
+                }
+
+                int delay = (canvas["delay"] as WzIntProperty)?.Value ?? 60;
+                frames.Add(new InitialQuizAnimationFrame(
+                    texture,
+                    Math.Max(1, delay),
+                    $"{(usingPreferred ? "UI/UIWindow2.img" : "UI/UIWindow.img")}/InitialQuiz/ani/{frameName}"));
+            }
+
+            return frames.ToArray();
+        }
+
+        internal static string[] ResolveInitialQuizOwnerAnimationFrameNames(IEnumerable<string> frameNames)
+        {
+            return (frameNames ?? Enumerable.Empty<string>())
+                .OrderBy(static frameName => int.TryParse(frameName, out int frameIndex) ? frameIndex : int.MaxValue)
+                .ThenBy(static frameName => frameName, StringComparer.Ordinal)
+                .ToArray();
+        }
+
+        private InitialQuizButtonFrame LoadInitialQuizOwnerButtonFrame(WzSubProperty buttonProperty, string stateName)
+        {
+            WzCanvasProperty canvas = ResolveInitialQuizOwnerButtonCanvas(buttonProperty, stateName);
+            Texture2D texture = LoadUiCanvasTexture(canvas);
+            return texture == null
+                ? null
+                : new InitialQuizButtonFrame(texture, ResolveInitialQuizOwnerButtonOrigin(canvas));
+        }
+
+        private static WzSubProperty ResolveInitialQuizOwnerOkButtonProperty(WzSubProperty preferred, WzSubProperty fallback)
+        {
+            if (MapleStoryStringPool.TryGet(InitialQuizOkButtonUolStringPoolId, out string okButtonUol)
+                && TryResolveInitialQuizOwnerUiSubPropertyPath(okButtonUol, out WzSubProperty stringPoolButton))
+            {
+                return stringPoolButton;
+            }
+
+            return preferred?["BtOK"] as WzSubProperty
+                ?? fallback?["BtOK"] as WzSubProperty;
+        }
+
+        internal static bool TryDecodeInitialQuizOwnerUiResourcePath(
+            string resourcePath,
+            out string imageName,
+            out string propertyPath)
+        {
+            imageName = null;
+            propertyPath = null;
+            if (string.IsNullOrWhiteSpace(resourcePath))
+            {
+                return false;
+            }
+
+            string normalized = resourcePath.Trim().Replace('\\', '/');
+            const string categoryPrefix = "UI/";
+            if (normalized.StartsWith(categoryPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                normalized = normalized[categoryPrefix.Length..];
+            }
+
+            int separatorIndex = normalized.IndexOf('/');
+            if (separatorIndex <= 0 || separatorIndex >= normalized.Length - 1)
+            {
+                return false;
+            }
+
+            imageName = normalized[..separatorIndex];
+            propertyPath = normalized[(separatorIndex + 1)..];
+            return !string.IsNullOrWhiteSpace(imageName) && !string.IsNullOrWhiteSpace(propertyPath);
+        }
+
+        private static bool TryResolveInitialQuizOwnerUiSubPropertyPath(string resourcePath, out WzSubProperty property)
+        {
+            property = null;
+            if (!TryDecodeInitialQuizOwnerUiResourcePath(resourcePath, out string imageName, out string propertyPath))
+            {
+                return false;
+            }
+
+            WzImage image = Program.FindImage("UI", imageName.Trim());
+            property = image?[propertyPath.Trim()] as WzSubProperty;
+            return property != null;
+        }
+
+        private static WzCanvasProperty ResolveInitialQuizOwnerTimerDigitCanvas(int digit)
+        {
+            return ResolveInitialQuizOwnerCanvasFromStringPool(InitialQuizTimerDigitUolStringPoolId, digit);
+        }
+
+        private static WzCanvasProperty ResolveInitialQuizOwnerCanvasFromStringPool(int stringPoolId, int? formatArgument = null)
+        {
+            return TryResolveInitialQuizOwnerStringPoolResourcePath(stringPoolId, formatArgument, out string resourcePath)
+                && TryResolveInitialQuizOwnerUiCanvasPath(resourcePath, out WzCanvasProperty canvas)
+                    ? canvas
+                    : null;
+        }
+
+        internal static bool TryResolveInitialQuizOwnerStringPoolResourcePath(int stringPoolId, int? formatArgument, out string resourcePath)
+        {
+            resourcePath = null;
+            if (!MapleStoryStringPool.TryGet(stringPoolId, out string template) || string.IsNullOrWhiteSpace(template))
+            {
+                return false;
+            }
+
+            resourcePath = formatArgument.HasValue
+                ? template.Replace("%d", formatArgument.Value.ToString(), StringComparison.Ordinal)
+                : template;
+            return !string.IsNullOrWhiteSpace(resourcePath);
+        }
+
+        private static bool TryResolveInitialQuizOwnerUiCanvasPath(string resourcePath, out WzCanvasProperty canvas)
+        {
+            canvas = null;
+            if (!TryDecodeInitialQuizOwnerUiResourcePath(resourcePath, out string imageName, out string propertyPath))
+            {
+                return false;
+            }
+
+            WzImage image = Program.FindImage("UI", imageName.Trim());
+            canvas = image?[propertyPath.Trim()] as WzCanvasProperty;
+            return canvas != null;
+        }
+
+        private static WzCanvasProperty ResolveInitialQuizOwnerButtonCanvas(WzSubProperty buttonProperty, string stateName)
+        {
+            if (buttonProperty == null)
+            {
+                return null;
+            }
+
+            return buttonProperty[stateName]?["0"] as WzCanvasProperty
+                ?? buttonProperty[stateName]?.WzProperties.OfType<WzCanvasProperty>().FirstOrDefault()
+                ?? buttonProperty[stateName == "mouseOver" ? "keyFocused" : stateName]?["0"] as WzCanvasProperty
+                ?? buttonProperty.WzProperties.OfType<WzSubProperty>()
+                    .FirstOrDefault(property => string.Equals(property.Name, stateName, StringComparison.OrdinalIgnoreCase))
+                    ?.WzProperties.OfType<WzCanvasProperty>()
+                    .FirstOrDefault();
+        }
+
+        private static Point ResolveInitialQuizOwnerButtonOrigin(WzCanvasProperty canvas)
+        {
+            return ResolveCanvasOrigin(canvas);
+        }
+
+        internal static bool ShouldShowInitialQuizOwnerHint(string hintText)
+        {
+            return !string.IsNullOrEmpty(hintText);
+        }
+
+        internal static bool ShouldShowInitialQuizOwnerQuestion(string problemText)
+        {
+            return !string.IsNullOrEmpty(problemText);
+        }
+
+        internal static bool ShouldShowInitialQuizOwnerInput(int remainingSeconds)
+        {
+            return ResolveInitialQuizOwnerChildControlState(remainingSeconds).EditVisible;
+        }
+
+        internal static InitialQuizOwnerChildControlState ResolveInitialQuizOwnerChildControlState(int remainingSeconds)
+        {
+            return remainingSeconds > 0
+                ? InitialQuizOwnerChildControlState.Active
+                : InitialQuizOwnerChildControlState.Inactive;
+        }
+
+        internal static int ResolveInitialQuizOwnerEditTextElementLimit()
+        {
+            return InitialQuizOwnerInputMaxLength;
+        }
+
+        internal static InitialQuizOwnerFocusTarget ResolveInitialQuizOwnerMousePressFocusTarget(
+            bool showInput,
+            bool hoveringOkButton,
+            bool cursorInInput)
+        {
+            if (!showInput)
+            {
+                return InitialQuizOwnerFocusTarget.Owner;
+            }
+
+            if (hoveringOkButton)
+            {
+                return InitialQuizOwnerFocusTarget.OkButton;
+            }
+
+            return cursorInInput
+                ? InitialQuizOwnerFocusTarget.Input
+                : InitialQuizOwnerFocusTarget.Owner;
+        }
+
+        internal static InitialQuizOwnerFocusTarget ResolveNextInitialQuizOwnerFocusTarget(InitialQuizOwnerFocusTarget currentFocus)
+        {
+            return currentFocus switch
+            {
+                InitialQuizOwnerFocusTarget.Input => InitialQuizOwnerFocusTarget.OkButton,
+                InitialQuizOwnerFocusTarget.OkButton => InitialQuizOwnerFocusTarget.Input,
+                _ => InitialQuizOwnerFocusTarget.Input
+            };
+        }
+
+        internal static bool ShouldClearInitialQuizOwnerImeOnFocusChange(
+            InitialQuizOwnerFocusTarget previousFocus,
+            InitialQuizOwnerFocusTarget nextFocus)
+        {
+            return previousFocus == InitialQuizOwnerFocusTarget.Input
+                && nextFocus != InitialQuizOwnerFocusTarget.Input;
+        }
+
+        private void SetInitialQuizOwnerFocusTarget(InitialQuizOwnerFocusTarget focusTarget)
+        {
+            InitialQuizOwnerFocusTarget previousFocus = _initialQuizOwnerFocusTarget;
+            _initialQuizOwnerFocusTarget = focusTarget;
+            _initialQuizOwnerCaptureState = ResolveInitialQuizOwnerCaptureState(
+                _initialQuizOwnerCaptureState != InitialQuizOwnerCaptureState.None,
+                focusTarget);
+            SyncInitialQuizOwnerEditControlState(
+                _initialQuizOwnerCaptureState != InitialQuizOwnerCaptureState.None,
+                _initialQuizOwnerChildControlState);
+            if (!ShouldClearInitialQuizOwnerImeOnFocusChange(previousFocus, focusTarget))
+            {
+                return;
+            }
+
+            EnsureInitialQuizOwnerEditControl()?.SetFocus(false);
+            ClearInitialQuizOwnerCompositionText();
+            ClearInitialQuizOwnerImeCandidateList();
+        }
+
+        internal static InitialQuizOwnerTimeoutBehavior ResolveInitialQuizOwnerTimeoutBehavior(
+            int remainingSeconds,
+            bool resultSent)
+        {
+            if (resultSent || remainingSeconds > 0)
+            {
+                return InitialQuizOwnerTimeoutBehavior.Wait;
+            }
+
+            return InitialQuizOwnerTimeoutBehavior.SubmitAndClose;
+        }
+
+        internal static InitialQuizOwnerButtonVisualState ResolveInitialQuizOwnerButtonVisualState(bool enabled, bool pressed, bool hover, bool keyFocused)
+        {
+            if (!enabled)
+            {
+                return InitialQuizOwnerButtonVisualState.Disabled;
+            }
+
+            if (pressed)
+            {
+                return InitialQuizOwnerButtonVisualState.Pressed;
+            }
+
+            if (hover)
+            {
+                return InitialQuizOwnerButtonVisualState.Hover;
+            }
+
+            return keyFocused
+                ? InitialQuizOwnerButtonVisualState.KeyFocused
+                : InitialQuizOwnerButtonVisualState.Normal;
+        }
+
+        internal static IReadOnlyList<InitialQuizOwnerLayerOrder> ResolveInitialQuizOwnerLayerDrawOrder(
+            bool hasBackgrnd,
+            int backgrndZ,
+            bool hasBackgrnd2,
+            int backgrnd2Z,
+            bool hasBackgrnd3,
+            int backgrnd3Z)
+        {
+            List<(InitialQuizOwnerLayerOrder Order, int SourceIndex)> layers = new(3);
+            if (hasBackgrnd)
+            {
+                layers.Add((new InitialQuizOwnerLayerOrder(InitialQuizOwnerLayerKind.Backgrnd, backgrndZ), 0));
+            }
+
+            if (hasBackgrnd2)
+            {
+                layers.Add((new InitialQuizOwnerLayerOrder(InitialQuizOwnerLayerKind.Backgrnd2, backgrnd2Z), 1));
+            }
+
+            if (hasBackgrnd3)
+            {
+                layers.Add((new InitialQuizOwnerLayerOrder(InitialQuizOwnerLayerKind.Backgrnd3, backgrnd3Z), 2));
+            }
+
+            return layers
+                .OrderBy(static layer => layer.Order.Z)
+                .ThenBy(static layer => layer.SourceIndex)
+                .Select(static layer => layer.Order)
+                .ToArray();
+        }
+
+        internal static bool ShouldSubmitInitialQuizOwnerOkButtonRelease(bool pressedOkButton, bool hoveringOkButton, bool enabled)
+        {
+            return enabled && pressedOkButton && hoveringOkButton;
+        }
+
+        internal static bool ShouldSwallowInitialQuizOwnerCancelKey(KeyboardState newKeyboardState, KeyboardState oldKeyboardState)
+        {
+            return newKeyboardState.IsKeyDown(Keys.Escape)
+                && oldKeyboardState.IsKeyUp(Keys.Escape);
+        }
+
+        internal static InitialQuizOwnerCaptureState ResolveInitialQuizOwnerCaptureState(
+            bool ownerActive,
+            InitialQuizOwnerFocusTarget focusTarget)
+        {
+            if (!ownerActive)
+            {
+                return InitialQuizOwnerCaptureState.None;
+            }
+
+            return focusTarget == InitialQuizOwnerFocusTarget.Input
+                ? InitialQuizOwnerCaptureState.OwnerWithEditFocus
+                : InitialQuizOwnerCaptureState.OwnerOnly;
+        }
+
+        internal static bool ShouldDrawInitialQuizOwnerCursor(int currentTickCount, int cursorBlinkStartedAt)
+        {
+            return ((currentTickCount - cursorBlinkStartedAt) / 500) % 2 == 0;
+        }
+
+        internal static int ResolveInitialQuizOwnerDisplayedRemainingSeconds(
+            int? previousDisplayedRemainingSeconds,
+            int currentRemainingSeconds)
+        {
+            int current = Math.Max(0, currentRemainingSeconds);
+            if (!previousDisplayedRemainingSeconds.HasValue)
+            {
+                return current;
+            }
+
+            int previous = Math.Max(0, previousDisplayedRemainingSeconds.Value);
+            if (current == previous)
+            {
+                return previous;
+            }
+
+            // `CUIInitialQuiz::Update` invalidates countdown changes only once the clock reaches <= 120s.
+            return current <= 120
+                ? current
+                : previous;
+        }
+
+        internal static int ResolveInitialQuizOwnerVisibleStart(IReadOnlyList<int> glyphWidths, int cursorIndex, int maxWidth)
+        {
+            if (glyphWidths == null || glyphWidths.Count == 0 || maxWidth <= 0)
+            {
+                return 0;
+            }
+
+            int clampedCursorIndex = Math.Clamp(cursorIndex, 0, glyphWidths.Count);
+            int start = clampedCursorIndex;
+            int width = 0;
+            while (start > 0)
+            {
+                int nextWidth = width + Math.Max(1, glyphWidths[start - 1]);
+                if (nextWidth > maxWidth)
+                {
+                    break;
+                }
+
+                start--;
+                width = nextWidth;
+            }
+
+            return start;
+        }
+
+        internal static int ResolveInitialQuizOwnerVisibleLength(IReadOnlyList<int> glyphWidths, int visibleStart, int maxWidth)
+        {
+            if (glyphWidths == null || glyphWidths.Count == 0 || maxWidth <= 0)
+            {
+                return 0;
+            }
+
+            int start = Math.Clamp(visibleStart, 0, glyphWidths.Count);
+            int width = 0;
+            int end = start;
+            while (end < glyphWidths.Count)
+            {
+                int nextWidth = width + Math.Max(1, glyphWidths[end]);
+                if (nextWidth > maxWidth)
+                {
+                    break;
+                }
+
+                width = nextWidth;
+                end++;
+            }
+
+            return end - start;
+        }
+
+        internal static int ResolveInitialQuizOwnerCursorIndexFromRelativeX(
+            IReadOnlyList<int> glyphWidths,
+            int visibleStart,
+            int maxWidth,
+            int relativeX)
+        {
+            if (glyphWidths == null || glyphWidths.Count == 0)
+            {
+                return 0;
+            }
+
+            int start = Math.Clamp(visibleStart, 0, glyphWidths.Count);
+            int visibleLength = ResolveInitialQuizOwnerVisibleLength(glyphWidths, start, maxWidth);
+            int clampedX = Math.Max(0, relativeX);
+            int offset = 0;
+            for (int i = 0; i < visibleLength; i++)
+            {
+                int glyphWidth = Math.Max(1, glyphWidths[start + i]);
+                if (clampedX < offset + (glyphWidth / 2))
+                {
+                    return start + i;
+                }
+
+                offset += glyphWidth;
+                if (clampedX < offset)
+                {
+                    return start + i + 1;
+                }
+            }
+
+            return start + visibleLength;
+        }
+
+        internal static int SumInitialQuizOwnerGlyphWidths(IReadOnlyList<int> glyphWidths, int start, int count)
+        {
+            if (glyphWidths == null || glyphWidths.Count == 0 || count <= 0)
+            {
+                return 0;
+            }
+
+            int begin = Math.Clamp(start, 0, glyphWidths.Count);
+            int end = Math.Clamp(begin + count, begin, glyphWidths.Count);
+            int total = 0;
+            for (int i = begin; i < end; i++)
+            {
+                total += Math.Max(1, glyphWidths[i]);
+            }
+
+            return total;
+        }
+
+        internal static IReadOnlyList<InitialQuizOwnerTimerGlyphDrawCall> ResolveInitialQuizOwnerTimerGlyphDrawCalls(int remainingSeconds)
+        {
+            int clampedSeconds = Math.Max(0, remainingSeconds);
+            int minutes = clampedSeconds / 60;
+            int seconds = clampedSeconds % 60;
+            int minuteTens = minutes / 10;
+            int minuteUnits = minutes % 10;
+            int secondTens = seconds / 10;
+            int secondUnits = seconds % 10;
+
+            return new[]
+            {
+                BuildInitialQuizOwnerTimerGlyphDrawCall(111, 33, InitialQuizTimerDigitUolStringPoolId, minuteTens),
+                BuildInitialQuizOwnerTimerGlyphDrawCall(132, 33, InitialQuizTimerDigitUolStringPoolId, minuteUnits),
+                BuildInitialQuizOwnerTimerGlyphDrawCall(148, 36, InitialQuizTimerCommaUolStringPoolId, null),
+                BuildInitialQuizOwnerTimerGlyphDrawCall(153, 33, InitialQuizTimerDigitUolStringPoolId, secondTens),
+                BuildInitialQuizOwnerTimerGlyphDrawCall(174, 33, InitialQuizTimerDigitUolStringPoolId, secondUnits),
+            };
+        }
+
+        private static InitialQuizOwnerTimerGlyphDrawCall BuildInitialQuizOwnerTimerGlyphDrawCall(
+            int left,
+            int top,
+            int stringPoolId,
+            int? formatArgument)
+        {
+            TryResolveInitialQuizOwnerStringPoolResourcePath(
+                stringPoolId,
+                formatArgument,
+                out string resourcePath);
+            return new InitialQuizOwnerTimerGlyphDrawCall(
+                left,
+                top,
+                stringPoolId,
+                formatArgument,
+                resourcePath ?? string.Empty);
+        }
+
+        internal static int ResolveInitialQuizOwnerAnimationFrameIndex(int currentTickCount, IReadOnlyList<int> frameDelaysMs)
+        {
+            if (frameDelaysMs == null || frameDelaysMs.Count == 0)
+            {
+                return -1;
+            }
+
+            int totalDuration = 0;
+            for (int i = 0; i < frameDelaysMs.Count; i++)
+            {
+                totalDuration += Math.Max(1, frameDelaysMs[i]);
+            }
+
+            if (totalDuration <= 0)
+            {
+                return 0;
+            }
+
+            uint frameTime = unchecked((uint)currentTickCount) % (uint)totalDuration;
+            int accumulated = 0;
+            for (int i = 0; i < frameDelaysMs.Count; i++)
+            {
+                accumulated += Math.Max(1, frameDelaysMs[i]);
+                if (frameTime < accumulated)
+                {
+                    return i;
+                }
+            }
+
+            return frameDelaysMs.Count - 1;
+        }
+
+        internal static InitialQuizOwnerAnimationDrawCall? ResolveInitialQuizOwnerAnimationDrawCall(
+            int currentTickCount,
+            IReadOnlyList<string> frameResourcePaths,
+            IReadOnlyList<int> frameDelaysMs,
+            IReadOnlyList<Point> frameSizes)
+        {
+            int frameIndex = ResolveInitialQuizOwnerAnimationFrameIndex(currentTickCount, frameDelaysMs);
+            if (frameIndex < 0)
+            {
+                return null;
+            }
+
+            Point frameSize = frameSizes != null && frameIndex < frameSizes.Count
+                ? frameSizes[frameIndex]
+                : Point.Zero;
+            if (frameSize.X <= 0 || frameSize.Y <= 0)
+            {
+                return null;
+            }
+
+            int delayMs = frameDelaysMs != null && frameIndex < frameDelaysMs.Count
+                ? Math.Max(1, frameDelaysMs[frameIndex])
+                : 1;
+            string resourcePath = frameResourcePaths != null && frameIndex < frameResourcePaths.Count
+                ? frameResourcePaths[frameIndex] ?? string.Empty
+                : string.Empty;
+
+            return new InitialQuizOwnerAnimationDrawCall(
+                frameIndex,
+                InitialQuizOwnerAnimationLeft,
+                InitialQuizOwnerAnimationTop,
+                frameSize.X,
+                frameSize.Y,
+                delayMs,
+                resourcePath);
+        }
+
+        internal static InitialQuizOwnerSubmissionValidation ValidateInitialQuizOwnerSubmission(
+            string answerText,
+            int minInputByteLength,
+            int maxInputByteLength,
+            bool validateAnswer)
+        {
+            if (!validateAnswer)
+            {
+                return InitialQuizOwnerSubmissionValidation.Accepted;
+            }
+
+            if (string.IsNullOrWhiteSpace(answerText))
+            {
+                // `CUIInitialQuiz::SetRet` early-outs for trimmed-empty answers without
+                // forcing focus back to the edit control.
+                return new InitialQuizOwnerSubmissionValidation(false, null, false);
+            }
+
+            int inputByteLength = InitialQuizTimerRuntime.GetClientMapleStringByteCount(answerText);
+            int minimum = Math.Max(0, minInputByteLength);
+            if (inputByteLength < minimum)
+            {
+                return new InitialQuizOwnerSubmissionValidation(
+                    false,
+                    FormatInitialQuizOwnerInputLengthNotice(
+                        InitialQuizMinInputNoticeStringPoolId,
+                        "You must enter atleast {0} letters. (Korean)",
+                        minimum),
+                    true);
+            }
+
+            int maximum = Math.Max(0, maxInputByteLength);
+            if (inputByteLength > maximum)
+            {
+                return new InitialQuizOwnerSubmissionValidation(
+                    false,
+                    FormatInitialQuizOwnerInputLengthNotice(
+                        InitialQuizMaxInputNoticeStringPoolId,
+                        "You must enter less than {0} letters. (Korean)",
+                        maximum),
+                    true);
+            }
+
+            return InitialQuizOwnerSubmissionValidation.Accepted;
+        }
+
+        private static string FormatInitialQuizOwnerInputLengthNotice(int stringPoolId, string fallbackFormat, int byteLength)
+        {
+            string format = MapleStoryStringPool.GetOrFallback(stringPoolId, fallbackFormat);
+            return string.Format(format.Replace("%d", "{0}", StringComparison.Ordinal), byteLength);
+        }
+
+        internal static string ComposeInitialQuizOwnerTimerText(int remainingSeconds)
+        {
+            int minutes = Math.Max(0, remainingSeconds) / 60;
+            int seconds = Math.Max(0, remainingSeconds) % 60;
+            return $"{minutes:D2},{seconds:D2}";
+        }
+
+        internal static string NormalizeInitialQuizOwnerSingleLineText(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return string.Empty;
+            }
+
+            return string.Join(
+                " ",
+                text.Replace("\r", " ", StringComparison.Ordinal)
+                    .Replace("\n", " ", StringComparison.Ordinal)
+                    .Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries));
+        }
+
+        private void DrawInitialQuizOwnerSingleLineText(string text, Rectangle bounds, Color color, float scale)
+        {
+            if (_spriteBatch == null || bounds == Rectangle.Empty)
+            {
+                return;
+            }
+
+            string displayText = NormalizeInitialQuizOwnerSingleLineText(text);
+            if (string.IsNullOrEmpty(displayText))
+            {
+                return;
+            }
+
+            using ClientTextRasterizer transientRasterizer = CreateInitialQuizOwnerTransientLabelRasterizer();
+            if (transientRasterizer != null)
+            {
+                // `CUIInitialQuiz::Draw` acquires/releases draw resources per text call.
+                transientRasterizer.DrawString(
+                    _spriteBatch,
+                    displayText,
+                    new Vector2(bounds.X, bounds.Y),
+                    color,
+                    scale,
+                    bounds.Width);
+                return;
+            }
+
+            displayText = FitInitialQuizOwnerTextToBounds(displayText, bounds.Width, scale, null);
+            if (string.IsNullOrEmpty(displayText))
+            {
+                return;
+            }
+
+            ClientTextDrawing.Draw(
+                _spriteBatch,
+                displayText,
+                new Vector2(bounds.X, bounds.Y),
+                color,
+                scale,
+                _fontChat,
+                bounds.Width);
+        }
+
+        private string FitInitialQuizOwnerTextToBounds(string text, int maxWidth, float scale, ClientTextRasterizer rasterizer)
+        {
+            if ((rasterizer == null && _fontChat == null) || string.IsNullOrEmpty(text) || maxWidth <= 0)
+            {
+                return string.Empty;
+            }
+
+            if (MeasureInitialQuizOwnerTextWidth(text, scale, rasterizer, _fontChat) <= maxWidth)
+            {
+                return text;
+            }
+
+            int length = text.Length;
+            while (length > 0)
+            {
+                string candidate = text[..length];
+                if (MeasureInitialQuizOwnerTextWidth(candidate, scale, rasterizer, _fontChat) <= maxWidth)
+                {
+                    return candidate.TrimEnd();
+                }
+
+                length--;
+            }
+
+            return string.Empty;
+        }
+
+        private static float MeasureInitialQuizOwnerTextWidth(
+            string text,
+            float scale,
+            ClientTextRasterizer rasterizer,
+            SpriteFont fallbackFont)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return 0f;
+            }
+
+            return rasterizer != null
+                ? rasterizer.MeasureString(text, scale).X
+                : (fallbackFont?.MeasureString(text).X ?? 0f) * scale;
+        }
+
+        private void DrawInitialQuizOwnerDigitGlyph(Rectangle ownerBounds, char ch, int relativeX, int relativeY)
+        {
+            Texture2D texture = ResolveInitialQuizOwnerDigitTexture(ch, _initialQuizOwnerDigits, _initialQuizOwnerCommaTexture);
+            if (texture == null)
+            {
+                return;
+            }
+
+            Rectangle drawBounds = new(ownerBounds.X + relativeX, ownerBounds.Y + relativeY, texture.Width, texture.Height);
+            _spriteBatch.Draw(texture, drawBounds, Color.White);
+        }
+
+        private static Texture2D ResolveInitialQuizOwnerTimerGlyphTexture(
+            InitialQuizOwnerTimerGlyphDrawCall glyphCall,
+            Texture2D[] digits,
+            Texture2D commaTexture)
+        {
+            if (glyphCall.FormatArgument.HasValue)
+            {
+                int index = glyphCall.FormatArgument.Value;
+                return index >= 0 && digits != null && index < digits.Length
+                    ? digits[index]
+                    : null;
+            }
+
+            return commaTexture;
+        }
+
+        private static Texture2D ResolveInitialQuizOwnerDigitTexture(char ch, Texture2D[] digits, Texture2D commaTexture)
+        {
+            if (char.IsDigit(ch))
+            {
+                int index = ch - '0';
+                return index >= 0 && digits != null && index < digits.Length
+                    ? digits[index]
+                    : null;
+            }
+
+            return ch is ',' or ':'
+                ? commaTexture
+                : null;
+        }
+
+        private Rectangle ResolveInitialQuizOwnerOverlayBounds(Rectangle ownerBounds)
+        {
+            if (_initialQuizOwnerBackgroundTexture3 == null)
+            {
+                return new Rectangle(ownerBounds.X + 22, ownerBounds.Y + 67, 234, 118);
+            }
+
+            return ResolveInitialQuizOwnerLayerBounds(
+                ownerBounds,
+                _initialQuizOwnerBackgroundTexture3.Width,
+                _initialQuizOwnerBackgroundTexture3.Height,
+                _initialQuizOwnerBackground3Origin);
+        }
+
+        internal static Rectangle ResolveInitialQuizOwnerLayerBounds(Rectangle ownerBounds, int textureWidth, int textureHeight, Point origin)
+        {
+            if (ownerBounds == Rectangle.Empty || textureWidth <= 0 || textureHeight <= 0)
+            {
+                return Rectangle.Empty;
+            }
+
+            return new Rectangle(
+                ownerBounds.X - origin.X,
+                ownerBounds.Y - origin.Y,
+                textureWidth,
+                textureHeight);
+        }
+
+        private static Point ResolveCanvasOrigin(WzCanvasProperty canvas)
+        {
+            if (canvas == null)
+            {
+                return Point.Zero;
+            }
+
+            System.Drawing.PointF origin = canvas.GetCanvasOriginPosition();
+            return new Point((int)Math.Round(origin.X), (int)Math.Round(origin.Y));
+        }
+
+        private static int ResolveCanvasZ(WzCanvasProperty canvas, int fallback)
+        {
+            return (canvas?["z"] as WzIntProperty)?.Value ?? fallback;
+        }
+
+        private static char? TryMapInitialQuizOwnerChar(Keys key, bool shiftPressed)
+        {
+            if (key >= Keys.A && key <= Keys.Z)
+            {
+                char value = (char)('a' + (key - Keys.A));
+                return shiftPressed ? char.ToUpperInvariant(value) : value;
+            }
+
+            if (key >= Keys.D0 && key <= Keys.D9)
+            {
+                return shiftPressed
+                    ? new[] { ')', '!', '@', '#', '$', '%', '^', '&', '*', '(' }[key - Keys.D0]
+                    : (char)('0' + (key - Keys.D0));
+            }
+
+            if (key >= Keys.NumPad0 && key <= Keys.NumPad9)
+            {
+                return (char)('0' + (key - Keys.NumPad0));
+            }
+
+            return key switch
+            {
+                Keys.Space => ' ',
+                Keys.OemPeriod => shiftPressed ? '>' : '.',
+                Keys.OemComma => shiftPressed ? '<' : ',',
+                Keys.OemMinus => shiftPressed ? '_' : '-',
+                Keys.OemPlus => shiftPressed ? '+' : '=',
+                Keys.OemQuestion => shiftPressed ? '?' : '/',
+                Keys.OemSemicolon => shiftPressed ? ':' : ';',
+                Keys.OemQuotes => shiftPressed ? '"' : '\'',
+                Keys.OemOpenBrackets => shiftPressed ? '{' : '[',
+                Keys.OemCloseBrackets => shiftPressed ? '}' : ']',
+                Keys.OemPipe => shiftPressed ? '|' : '\\',
+                Keys.OemTilde => shiftPressed ? '~' : '`',
+                _ => null
+            };
+        }
+
+        internal sealed record InitialQuizOwnerSubmissionValidation(bool CanSubmit, string NoticeMessage, bool RefocusInput)
+        {
+            internal static InitialQuizOwnerSubmissionValidation Accepted { get; } = new(true, null, false);
+        }
+
+        internal enum InitialQuizOwnerTimeoutBehavior
+        {
+            Wait,
+            SubmitAndClose
+        }
+    }
+}

@@ -1,0 +1,1565 @@
+using HaCreator.MapSimulator.Interaction;
+using System;
+using System.Collections.Concurrent;
+
+namespace HaCreator.MapSimulator.Managers
+{
+    public sealed class LocalUtilityPacketInboxMessage
+    {
+        public LocalUtilityPacketInboxMessage(int packetType, byte[] payload, string source, string rawText)
+        {
+            PacketType = packetType;
+            Payload = payload ?? Array.Empty<byte>();
+            Source = string.IsNullOrWhiteSpace(source) ? "local-utility-inbox" : source;
+            RawText = rawText ?? string.Empty;
+        }
+
+        public int PacketType { get; }
+        public byte[] Payload { get; }
+        public string Source { get; }
+        public string RawText { get; }
+    }
+
+    /// <summary>
+    /// Adapter inbox for packet-owned local utility handlers that sit under
+    /// CUserLocal::OnPacket. Each line is either a numeric packet type or one
+    /// of the named aliases and an optional payload:
+    /// "274 payloadhex=...", "questguide payloadb64=...", or "classcompetition".
+    /// </summary>
+    public sealed class LocalUtilityPacketInboxManager : IDisposable
+    {
+        public const int OpenUiPacketType = 1000;
+        public const int OpenUiWithOptionPacketType = 1001;
+        public const int GoToCommoditySnPacketType = 1002;
+        public const int NoticeMsgPacketType = 1003;
+        public const int ChatMsgPacketType = 1004;
+        public const int BuffzoneEffectPacketType = 1005;
+        public const int PlayEventSoundPacketType = 1006;
+        public const int PlayMinigameSoundPacketType = 1007;
+        public const int AskApspEventPacketType = 1008;
+        public const int FollowCharacterFailedPacketType = 1009;
+        public const int RadioSchedulePacketType = 1010;
+        public const int AntiMacroResultPacketType = 1011;
+        public const int RadioCreateLayerContextPacketType = 1035;
+        public const int DragonBoxClientPacketType = 164;
+        public const int NewYearCardResultClientPacketType = 122;
+        public const int AccountMoreInfoPacketType = 133;
+        public const int SetGenderPacketType = 58;
+        public const int FollowCharacterPacketType = 1012;
+        public const int SetDirectionModePacketType = 1013;
+        public const int SetStandAloneModePacketType = 1014;
+        public const int FollowCharacterPromptPacketType = 1022;
+        public const int FollowCharacterClientPacketType = 193;
+        public const int SitResultPacketType = 231;
+        public const int ActiveEffectItemPacketType = 220;
+        public const int EmotionPacketType = 232;
+        public const int TeleportClientPacketType = 234;
+        public const int MessageClientPacketType = 38;
+        public const int InventoryOperationClientPacketType = 28;
+        public const int MesoGiveSucceededPacketType = 236;
+        public const int MesoGiveFailedPacketType = 237;
+        public const int RandomMesobagSucceededPacketType = 238;
+        public const int RandomMesobagFailedPacketType = 239;
+        public const int FieldFadeInOutClientPacketType = 240;
+        public const int FieldFadeOutForceClientPacketType = 241;
+        public const int SkillLearnItemResultClientPacketType = 50;
+        public const int OpenSkillGuideClientPacketType = 262;
+        public const int BalloonMsgClientPacketType = 245;
+        public const int PlayEventSoundClientPacketType = 246;
+        public const int PlayMinigameSoundClientPacketType = 247;
+        public const int AdminShopResultClientPacketType = 366;
+        public const int AdminShopOpenClientPacketType = 367;
+        public const int ShopScannerResultClientPacketType = 73;
+        public const int ShopScannerLinkResultClientPacketType = 74;
+        public const int OpenClassCompetitionPagePacketType = 250;
+        public const int MakerResultClientPacketType = PacketOwnedItemMakerResultRuntime.ClientPacketType;
+        public const int OpenUiClientPacketType = 251;
+        public const int OpenUiWithOptionClientPacketType = 252;
+        public const int SetDirectionModeClientPacketType = 253;
+        public const int SetStandAloneModeClientPacketType = 254;
+        public const int HireTutorClientPacketType = 255;
+        public const int TutorMsgClientPacketType = 256;
+        public const int RandomEmotionPacketType = 258;
+        public const int ResignQuestReturnClientPacketType = 259;
+        public const int PassMateNameClientPacketType = 260;
+        public const int EngagementRequestPacketType = 161;
+        public const int QuestResultPacketType = 242;
+        public const int NotifyHpDecByFieldPacketType = 243;
+        public const int NoticeMsgClientPacketType = 263;
+        public const int ChatMsgClientPacketType = 264;
+        public const int BuffzoneEffectClientPacketType = 265;
+        public const int GoToCommoditySnClientPacketType = 266;
+        public const int RadioScheduleClientPacketType = 261;
+        public const int QuestGuideResultPacketType = 274;
+        public const int DeliveryQuestPacketType = 275;
+        public const int ClassCompetitionAuthCachePacketType = 291;
+        public const int DamageMeterPacketType = 267;
+        public const int TimeBombAttackPacketType = 268;
+        public const int PassiveMoveClientPacketType = 269;
+        public const int FollowCharacterFailedClientPacketType = 270;
+        public const int VengeanceSkillApplyPacketType = 271;
+        public const int ExJablinApplyPacketType = 272;
+        public const int AskApspEventClientPacketType = 273;
+        public const int SkillCooltimeSetPacketType = 276;
+        public const int LogoutGiftClientPacketType = 432;
+        public const int FuncKeyMapInitPacketType = 398;
+        public const int PetConsumeItemInitPacketType = 399;
+        public const int PetConsumeMpItemInitPacketType = 400;
+        public const int ParcelDialogPacketType = 1015;
+        public const int TrunkDialogPacketType = 1016;
+        public const int MessengerDispatchPacketType = 1017;
+        public const int MarriageResultPacketType = 1018;
+        public const int ItemMakerHiddenRecipeUnlockPacketType = PacketOwnedItemMakerHiddenRecipeUnlockRuntime.PacketType;
+        public const int ItemMakerSessionPacketType = PacketOwnedItemMakerSessionRuntime.PacketType;
+        public const int RepeatSkillModeEndAckPacketType = PacketOwnedMechanicRepeatSkillRuntime.RepeatSkillModeEndAckPacketType;
+        public const int Sg88ManualAttackConfirmPacketType = PacketOwnedMechanicRepeatSkillRuntime.Sg88ManualAttackConfirmPacketType;
+        public const int MechanicEquipStatePacketType = 1023;
+        public const int CharacterEquipStatePacketType = 1034;
+        public const int RepairDurabilityResultPacketType = 1025;
+        public const int PetConsumeResultPacketType = 1026;
+        public const int EventAlarmTextPacketType = 1031;
+        public const int EventCalendarEntriesPacketType = 1032;
+        public const int RankingPagePacketType = 1033;
+        public const int UserInfoPopularityResultPacketType = 1050;
+        public const int UserInfoRemoteProfilePacketType = 1051;
+        public const int UserInfoCollectionClaimResultPacketType = 1052;
+        public const int QuestRewardRaiseOwnerSyncPacketType = 1036;
+        public const int QuestRewardRaisePutItemAddResultPacketType = 1037;
+        public const int QuestRewardRaisePutItemReleaseResultPacketType = 1038;
+        public const int QuestRewardRaisePutItemConfirmResultPacketType = 1039;
+        public const int QuestRewardRaiseOwnerDestroyResultPacketType = 1040;
+        public const int QuestRewardRaiseQuestRecordMessagePacketType = 1041;
+        public const int QuestRewardRaiseClientOpenOwnerPacketType = QuestRewardRaiseOutboundRequest.ClientOpenOwnerOpcode;
+        public const int QuestRewardRaiseClientPutItemReleasePacketType = QuestRewardRaiseOutboundRequest.ClientPutItemReleaseOpcode;
+        public const int QuestRewardRaiseClientPutItemAddOrConfirmPacketType = QuestRewardRaiseOutboundRequest.ClientPutItemOpcode;
+        public const int RandomMorphResultClientPacketType = 123;
+        public const int RandomMorphRequestAckPacketType = 1042;
+        public const int QuestAlarmTitleTooltipPacketType = 1043;
+        public const int ClassCompetitionRemotePagePacketType = 1044;
+        public const int QuestAlarmRegistrationSyncPacketType = 1045;
+        public const int ItemUpgradeResultClientPacketType = 425;
+        public const int ItemUpgradeResultPacketType = 1046;
+        public const int MonsterBookRegistrationResultPacketType = 1047;
+        public const int MonsterBookOwnershipSyncPacketType = 1048;
+        public const int RevivePremiumSafetyCharmContextPacketType = 1049;
+        public const int RevivePremiumSafetyCharmAuthenCodeChangedClientPacketType = 0x12;
+        public const int RevivePremiumSafetyCharmAuthenMessageClientPacketType = 0x13;
+        public const int ConsumeCashItemUseRequestPacketType = 0x55;
+        public const int VegaLaunchPacketType = 1031;
+        public const int VegaResultClientPacketType = 429;
+
+        private readonly ConcurrentQueue<LocalUtilityPacketInboxMessage> _pendingMessages = new();
+        public int ReceivedCount { get; private set; }
+        public int ProxyIngressReceivedCount { get; private set; }
+        public int LocalIngressReceivedCount { get; private set; }
+        public string LastIngressMode { get; private set; } = "none";
+        public string LastStatus { get; private set; } = "Local utility packet inbox ready for role-session/local ingress.";
+
+        public void EnqueueLocal(int packetType, byte[] payload, string source)
+        {
+            string packetSource = string.IsNullOrWhiteSpace(source) ? "local-utility-ui" : source;
+            EnqueueMessage(
+                new LocalUtilityPacketInboxMessage(packetType, payload, packetSource, packetType.ToString()),
+                MapSimulatorNetworkIngressMode.Local,
+                packetSource);
+        }
+
+        public void EnqueueProxy(LocalUtilityPacketInboxMessage message)
+        {
+            if (message == null)
+            {
+                return;
+            }
+
+            EnqueueMessage(message, MapSimulatorNetworkIngressMode.Proxy, message.Source);
+        }
+
+        public bool TryDequeue(out LocalUtilityPacketInboxMessage message)
+        {
+            return _pendingMessages.TryDequeue(out message);
+        }
+
+        public void RecordDispatchResult(LocalUtilityPacketInboxMessage message, bool success, string detail)
+        {
+            string summary = DescribePacketType(message?.PacketType ?? 0);
+            LastStatus = success
+                ? $"Applied {summary} from {message?.Source ?? "local-utility-inbox"}."
+                : $"Ignored {summary} from {message?.Source ?? "local-utility-inbox"}: {detail}";
+        }
+
+        public void Dispose()
+        {
+        }
+
+        public static bool TryParseLine(string text, out LocalUtilityPacketInboxMessage message, out string error)
+        {
+            message = null;
+            error = null;
+
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                error = "Local utility inbox line is empty.";
+                return false;
+            }
+
+            string trimmed = text.Trim();
+            if (trimmed.StartsWith("/localutilitypacket", StringComparison.OrdinalIgnoreCase))
+            {
+                trimmed = trimmed["/localutilitypacket".Length..].TrimStart();
+            }
+
+            if (trimmed.Length == 0)
+            {
+                error = "Local utility inbox line is empty.";
+                return false;
+            }
+
+            if (trimmed.StartsWith("packetclientraw", StringComparison.OrdinalIgnoreCase))
+            {
+                string rawHex = trimmed["packetclientraw".Length..].Trim();
+                if (!TryParsePayload(rawHex, out byte[] rawPacket, out error))
+                {
+                    return false;
+                }
+
+                if (!TryDecodeOpcodeFramedPacket(rawPacket, out int clientPacketType, out byte[] clientPayload, out error))
+                {
+                    return false;
+                }
+
+                message = new LocalUtilityPacketInboxMessage(clientPacketType, clientPayload, "local-utility-inbox", text);
+                return true;
+            }
+
+            int splitIndex = FindTokenSeparatorIndex(trimmed);
+            string packetToken = splitIndex >= 0 ? trimmed[..splitIndex].Trim() : trimmed;
+            string payloadToken = splitIndex >= 0 ? trimmed[(splitIndex + 1)..].Trim() : string.Empty;
+
+            if (!TryParsePacketType(packetToken, out int packetType))
+            {
+                error = $"Unsupported local utility packet '{packetToken}'.";
+                return false;
+            }
+
+            byte[] payload = Array.Empty<byte>();
+            if (!string.IsNullOrWhiteSpace(payloadToken))
+            {
+                if (!TryParsePayload(payloadToken, out payload, out error))
+                {
+                    return false;
+                }
+            }
+
+            message = new LocalUtilityPacketInboxMessage(packetType, payload, "local-utility-inbox", text);
+            return true;
+        }
+
+        public static bool TryParsePacketType(string token, out int packetType)
+        {
+            packetType = 0;
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+
+            if (int.TryParse(token, out packetType))
+            {
+                return IsSupportedPacketType(packetType);
+            }
+
+            if (token.Equals("openui", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onopenui", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = OpenUiPacketType;
+                return true;
+            }
+
+            if (token.Equals("openuiwithoption", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("openuioption", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onopenuiwithoption", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = OpenUiWithOptionPacketType;
+                return true;
+            }
+
+            if (token.Equals("commodity", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("gotocommoditysn", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("ongotocommoditysn", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = GoToCommoditySnPacketType;
+                return true;
+            }
+
+            if (token.Equals("notice", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("noticemsg", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onnoticemsg", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = NoticeMsgPacketType;
+                return true;
+            }
+
+            if (token.Equals("chat", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("chatmsg", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onchatmsg", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = ChatMsgPacketType;
+                return true;
+            }
+
+            if (token.Equals("buffzone", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("buffzoneeffect", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onbuffzoneeffect", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = BuffzoneEffectPacketType;
+                return true;
+            }
+
+            if (token.Equals("eventalarmtext", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("eventalarm", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("eventct", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("cuieventalarmtext", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = EventAlarmTextPacketType;
+                return true;
+            }
+
+            if (token.Equals("eventcalendar", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("eventcalendarentries", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("attendancecalendar", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("eventlistentries", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = EventCalendarEntriesPacketType;
+                return true;
+            }
+
+            if (token.Equals("ranking", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("rankingpage", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("rankingentries", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("cuiranking", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = RankingPagePacketType;
+                return true;
+            }
+
+            if (token.Equals("userinfofame", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("userinfopopularity", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("givepopularityresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("cuigivepopularityresult", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = UserInfoPopularityResultPacketType;
+                return true;
+            }
+
+            if (token.Equals("userinfoprofile", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("userinforemoteprofile", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("remoteuserprofile", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("cuiuserinfoprofile", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = UserInfoRemoteProfilePacketType;
+                return true;
+            }
+
+            if (token.Equals("userinfocollectionclaim", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("userinfoarrayget", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("btarraygetresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("cuiuserinfoarraygetresult", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = UserInfoCollectionClaimResultPacketType;
+                return true;
+            }
+
+            if (token.Equals("questalarmtooltip", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("questalarmtitletooltip", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("questhelpertooltip", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("cuiquestalarmtooltip", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = QuestAlarmTitleTooltipPacketType;
+                return true;
+            }
+
+            if (token.Equals("questalarmsync", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("questalarmregistrationsync", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("questhelperregistrationsync", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("cuiquestalarmsync", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = QuestAlarmRegistrationSyncPacketType;
+                return true;
+            }
+
+            if (token.Equals("eventsound", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("playeventsound", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onplayeventsound", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = PlayEventSoundPacketType;
+                return true;
+            }
+
+            if (token.Equals("minigamesound", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("playminigamesound", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onplayminigamesound", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = PlayMinigameSoundPacketType;
+                return true;
+            }
+
+            if (token.Equals("apspevent", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("askapspevent", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onaskapspevent", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = AskApspEventPacketType;
+                return true;
+            }
+
+            if (token.Equals("followfail", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("followcharacterfailed", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onfollowcharacterfailed", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = FollowCharacterFailedPacketType;
+                return true;
+            }
+
+            if (token.Equals("dragonbox", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("dragonballbox", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("ondragonballbox", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("ondragonbox", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = DragonBoxClientPacketType;
+                return true;
+            }
+
+            if (token.Equals("adminshopresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("adminshopreply", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("adminshoponpacket366", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("cadminshopdlg366", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("adminshop366", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = AdminShopResultClientPacketType;
+                return true;
+            }
+
+            if (token.Equals("adminshopopen", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("adminshop", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("adminshopset", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("adminshoponpacket367", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("cadminshopdlg367", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("adminshop367", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = AdminShopOpenClientPacketType;
+                return true;
+            }
+
+            if (token.Equals("shopscanner", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("shopscannerresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("shopscanresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("cuishopscannerresult", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = ShopScannerResultClientPacketType;
+                return true;
+            }
+
+            if (token.Equals("shopscannerlink", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("shopscannerlinkresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("shopscanlinkresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("cuishopscanresultlink", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = ShopScannerLinkResultClientPacketType;
+                return true;
+            }
+
+            if (token.Equals("accountmoreinfo", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("moreinfo", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onaccountmoreinfo", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = AccountMoreInfoPacketType;
+                return true;
+            }
+
+            if (token.Equals("newyearcard", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("newyearcardresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onnewyearcardres", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("cwvscontextnewyearcard", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = NewYearCardResultClientPacketType;
+                return true;
+            }
+
+            if (token.Equals("setgender", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onsetgender", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = SetGenderPacketType;
+                return true;
+            }
+
+            if (token.Equals("follow", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("followcharacter", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onfollowcharacter", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = FollowCharacterPacketType;
+                return true;
+            }
+
+            if (token.Equals("passivemove", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onpassivemove", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = PassiveMoveClientPacketType;
+                return true;
+            }
+
+            if (token.Equals("followask", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("followprompt", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("followrequestprompt", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = FollowCharacterPromptPacketType;
+                return true;
+            }
+
+            if (token.Equals("sitresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("chairsit", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onsitresult", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = SitResultPacketType;
+                return true;
+            }
+
+            if (token.Equals("teleport", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onteleport", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("teleportresult", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = TeleportClientPacketType;
+                return true;
+            }
+
+            if (token.Equals("emotion", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onemotion", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = EmotionPacketType;
+                return true;
+            }
+
+            if (token.Equals("activeeffect", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("activeeffectitem", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("setactiveeffectitem", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onsetactiveeffectitem", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = ActiveEffectItemPacketType;
+                return true;
+            }
+
+            if (token.Equals("message", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onmessage", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("pickupnotice", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("droppickupmessage", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("ondroppickupmessage", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = MessageClientPacketType;
+                return true;
+            }
+
+            if (token.Equals("randomemotion", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("randemotion", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onrandomemotion", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = RandomEmotionPacketType;
+                return true;
+            }
+
+            if (token.Equals("mesogivesucceeded", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("mesogiveok", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onmesogive_succeeded", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onmesogivesucceeded", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = MesoGiveSucceededPacketType;
+                return true;
+            }
+
+            if (token.Equals("mesogivefailed", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("mesogivefail", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onmesogive_failed", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onmesogivefailed", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = MesoGiveFailedPacketType;
+                return true;
+            }
+
+            if (token.Equals("randommesobagsucceeded", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("mesobagok", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("randommesosacksucceeded", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("mesosackok", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onrandommesobag_succeeded", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onrandommesobagsucceeded", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = RandomMesobagSucceededPacketType;
+                return true;
+            }
+
+            if (token.Equals("randommesobagfailed", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("mesobagfail", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("randommesosackfailed", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("mesosackfail", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onrandommesobag_failed", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onrandommesobagfailed", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = RandomMesobagFailedPacketType;
+                return true;
+            }
+
+            if (token.Equals("directionmode", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("setdirectionmode", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = SetDirectionModePacketType;
+                return true;
+            }
+
+            if (token.Equals("standalone", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("standalonemode", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("setstandalonemode", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = SetStandAloneModePacketType;
+                return true;
+            }
+
+            if (token.Equals("radio", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("radioschedule", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = RadioSchedulePacketType;
+                return true;
+            }
+
+            if (token.Equals("clientradio", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("radioscheduleclient", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("clientradioschedule", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onradioschedule", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("cuserlocalonradioschedule", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = RadioScheduleClientPacketType;
+                return true;
+            }
+
+            if (token.Equals("radioctx", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("radiocontext", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("radiocreatelayer", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("cwvscontext3562", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = RadioCreateLayerContextPacketType;
+                return true;
+            }
+
+            if (token.Equals("revivectx", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("revivecontext", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("premiumsafetycharmctx", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("cwvscontext2073", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = RevivePremiumSafetyCharmContextPacketType;
+                return true;
+            }
+
+            if (token.Equals("authenmessage", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onauthenmessage", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("reviveauthenmessage", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("premiumsafetycharmauthenmessage", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = RevivePremiumSafetyCharmAuthenMessageClientPacketType;
+                return true;
+            }
+
+            if (token.Equals("authencodechanged", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onauthencodechanged", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("reviveauthencodechanged", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("premiumsafetycharmauthencodechanged", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = RevivePremiumSafetyCharmAuthenCodeChangedClientPacketType;
+                return true;
+            }
+
+            if (token.Equals("logoutgift", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onlogoutgift", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = LogoutGiftClientPacketType;
+                return true;
+            }
+
+            if (token.Equals("mapletvset", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("mapletvmessage", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = MapleTvRuntime.PacketTypeSetMessage;
+                return true;
+            }
+
+            if (token.Equals("mapletvclear", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = MapleTvRuntime.PacketTypeClearMessage;
+                return true;
+            }
+
+            if (token.Equals("mapletvresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("mapletvsendresult", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = MapleTvRuntime.PacketTypeSendMessageResult;
+                return true;
+            }
+
+            if (token.Equals("parcel", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("parceldialog", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("parcelpacket", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = ParcelDialogPacketType;
+                return true;
+            }
+
+            if (token.Equals("trunk", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("trunkdialog", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("storage", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = TrunkDialogPacketType;
+                return true;
+            }
+
+            if (token.Equals("messengerdispatch", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("messengeronpacket", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("messengerpacket", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = MessengerDispatchPacketType;
+                return true;
+            }
+
+            if (token.Equals("marriageresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("weddinginvitation", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onmarriageresult", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = MarriageResultPacketType;
+                return true;
+            }
+
+            if (token.Equals("antimacro", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("antimacroresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("liedetector", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = AntiMacroResultPacketType;
+                return true;
+            }
+
+            if (token.Equals("skillguide", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("openskillguide", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = OpenSkillGuideClientPacketType;
+                return true;
+            }
+
+            if (token.Equals("makerresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onmakerresult", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = MakerResultClientPacketType;
+                return true;
+            }
+
+            if (token.Equals("makerhiddenunlock", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("itemmakerhiddenunlock", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("itemmakerunlock", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("makerhiddenlistunlock", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onmakerhiddenunlock", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = ItemMakerHiddenRecipeUnlockPacketType;
+                return true;
+            }
+
+            if (token.Equals("makersession", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("itemmakersession", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("makerdelta", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("itemmakerdelta", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("makersessiondelta", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("itemmakersessiondelta", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("itemmakerinfo", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("makerinfo", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("citemmakerinfo", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("professioninfo", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("professionsession", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("professiondelta", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("professionsessiondelta", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onitemmakerinfo", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onitemmakersession", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onitemmakerdelta", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onprofessioninfo", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onprofessionsession", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onprofessiondelta", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = ItemMakerSessionPacketType;
+                return true;
+            }
+
+            if (token.Equals("questresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onquestresult", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = QuestResultPacketType;
+                return true;
+            }
+
+            if (token.Equals("resignquest", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("resignquestreturn", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onresignquestreturn", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = ResignQuestReturnClientPacketType;
+                return true;
+            }
+
+            if (token.Equals("passmatename", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("matename", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onpassmatename", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = PassMateNameClientPacketType;
+                return true;
+            }
+
+            if (token.Equals("engagementrequest", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("engagerequest", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onengagementrequest", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("marriagerequest", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = EngagementRequestPacketType;
+                return true;
+            }
+
+            if (token.Equals("hiretutor", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("tutorhire", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onhiretutor", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = HireTutorClientPacketType;
+                return true;
+            }
+
+            if (token.Equals("tutormsg", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("ontutormsg", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = TutorMsgClientPacketType;
+                return true;
+            }
+
+            if (token.Equals("hpdec", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("hazard", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("notifyhpdecbyfield", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onnotifyhpdecbyfield", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = NotifyHpDecByFieldPacketType;
+                return true;
+            }
+
+            if (token.Equals("damagemeter", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("damage", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("ondamagemeter", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = DamageMeterPacketType;
+                return true;
+            }
+
+            if (token.Equals("petconsumeresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onpetconsumeresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("petitemuseresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onpetitemuseresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("petuseresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onpetuseresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("raiseownersync", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onraiseownersync", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("hpresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("hazardresult", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = PetConsumeResultPacketType;
+                return true;
+            }
+
+            if (token.Equals("classcompetition", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("openclasscompetitionpage", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onopenclasscompetitionpage", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("classpage", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = OpenClassCompetitionPagePacketType;
+                return true;
+            }
+
+            if (token.Equals("classcompetitionauth", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("classcompetitionkey", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("auth291", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("classauth", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = ClassCompetitionAuthCachePacketType;
+                return true;
+            }
+
+            if (token.Equals("classcompetitionpage", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("classcompetitionweb", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("classcompetitionremote", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("classcompetitionladder", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("classpagepayload", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = ClassCompetitionRemotePagePacketType;
+                return true;
+            }
+
+            if (token.Equals("questguide", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("questguideresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onquestguideresult", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = QuestGuideResultPacketType;
+                return true;
+            }
+
+            if (token.Equals("deliveryquest", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("questdelivery", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("delivery", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("ondeliveryquest", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = DeliveryQuestPacketType;
+                return true;
+            }
+
+            if (token.Equals("timebomb", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("timebombattack", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("ontimebombattack", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = TimeBombAttackPacketType;
+                return true;
+            }
+
+            if (token.Equals("vengeance", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("vengeanceskillapply", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onvengeanceskillapply", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = VengeanceSkillApplyPacketType;
+                return true;
+            }
+
+            if (token.Equals("exjablin", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onexjablinapply", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = ExJablinApplyPacketType;
+                return true;
+            }
+
+            if (token.Equals("repeatskillmodeend", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("repeatskillmodeendack", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("tanksiegeend", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("tanksiegemodeend", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = RepeatSkillModeEndAckPacketType;
+                return true;
+            }
+
+            if (token.Equals("sg88manual", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("sg88manualattack", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("sg88manualconfirm", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("summonattackconfirm", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = Sg88ManualAttackConfirmPacketType;
+                return true;
+            }
+
+            if (token.Equals("mechanicequip", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("mechequip", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("mechanicpane", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = MechanicEquipStatePacketType;
+                return true;
+            }
+
+            if (token.Equals("characterequip", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("equipauthority", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("equipwindowauthority", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = CharacterEquipStatePacketType;
+                return true;
+            }
+
+            if (token.Equals("inventoryoperation", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("oninventoryoperation", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("inventoryop", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = InventoryOperationClientPacketType;
+                return true;
+            }
+
+            if (token.Equals("repairresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("repairdurabilityresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("repairreply", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = RepairDurabilityResultPacketType;
+                return true;
+            }
+
+            if (token.Equals("vegalaunch", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("vegaopen", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("openvega", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("cuivegaopen", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = VegaLaunchPacketType;
+                return true;
+            }
+
+            if (token.Equals("consumecash", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("consumecashitem", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("consume-cash-item", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("sendconsumecashitemuserequest", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = ConsumeCashItemUseRequestPacketType;
+                return true;
+            }
+
+            if (token.Equals("vegaresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onvegaresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("cuivegaresult", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = VegaResultClientPacketType;
+                return true;
+            }
+
+            if (token.Equals("raiseownersync", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("raiseowner", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("raiseroot", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = QuestRewardRaiseOwnerSyncPacketType;
+                return true;
+            }
+
+            if (token.Equals("raiseopen", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("raisecreatewindow", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("raiseclient284", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("raiseowner284", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = QuestRewardRaiseClientOpenOwnerPacketType;
+                return true;
+            }
+
+            if (token.Equals("raiseputitemadd", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("raiseaddresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("raisepieceadd", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = QuestRewardRaisePutItemAddResultPacketType;
+                return true;
+            }
+
+            if (token.Equals("raiseputitemrelease", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("raisereleaseresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("raisepieceremove", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = QuestRewardRaisePutItemReleaseResultPacketType;
+                return true;
+            }
+
+            if (token.Equals("raiseputitemrelease-client", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("raiseputitem285", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("raiseclient285", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = QuestRewardRaiseClientPutItemReleasePacketType;
+                return true;
+            }
+
+            if (token.Equals("raiseputitemconfirm", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("raiseconfirmresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("raiseconfirm", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = QuestRewardRaisePutItemConfirmResultPacketType;
+                return true;
+            }
+
+            if (token.Equals("raiseputitemadd-client", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("raiseputitem286", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("raiseclient286", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = QuestRewardRaiseClientPutItemAddOrConfirmPacketType;
+                return true;
+            }
+
+            if (token.Equals("raisedestroy", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("raiseownerdestroy", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("raisedestroyresult", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = QuestRewardRaiseOwnerDestroyResultPacketType;
+                return true;
+            }
+
+            if (token.Equals("raisequestrecord", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("raiseqr", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("raisequestrecordmessage", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onquestrecordmessage-raise", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = QuestRewardRaiseQuestRecordMessagePacketType;
+                return true;
+            }
+
+            if (token.Equals("skillcooltime", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("skillcooltimeset", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("cooltime", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onskillcooltimeset", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = SkillCooltimeSetPacketType;
+                return true;
+            }
+
+            if (token.Equals("skilllearnitem", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("skilllearnitemresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("masterybookresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onskilllearnitemresult", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = SkillLearnItemResultClientPacketType;
+                return true;
+            }
+
+            if (token.Equals("randommorphresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onrandommorphres", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("cwvscontextonrandommorphres", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("cuirandommorphresult", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = RandomMorphResultClientPacketType;
+                return true;
+            }
+
+            if (token.Equals("randommorphack", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("randommorphrequestack", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = RandomMorphRequestAckPacketType;
+                return true;
+            }
+
+            if (token.Equals("funckeymap", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("keymap", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("funckeyinit", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("funckeymapinit", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("oninit", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("cfunckeymappedmanoninit", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = FuncKeyMapInitPacketType;
+                return true;
+            }
+
+            if (token.Equals("itemupgrade", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("itemupgraderesult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("itemupgraderes", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("itemupgraderesultpacket", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = ItemUpgradeResultPacketType;
+                return true;
+            }
+
+            if (token.Equals("itemupgraderesultclient", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("itemupgradeclientresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onitemupgraderesult", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = ItemUpgradeResultClientPacketType;
+                return true;
+            }
+
+            if (token.Equals("monsterbookregister", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("monsterbookregistration", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("monsterbookregistrationresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("monsterbookresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("bookcollectionregister", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = MonsterBookRegistrationResultPacketType;
+                return true;
+            }
+
+            if (token.Equals("monsterbooksync", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("monsterbookownershipsync", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("monsterbookownersync", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("monsterbooksave", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("monsterbooksaveapply", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("monsterbooksaveresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("monsterbookownershipsave", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("bookcollectionsync", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("bookownershipsync", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = MonsterBookOwnershipSyncPacketType;
+                return true;
+            }
+
+            if (token.Equals("petconsumehp", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("petconsumeitem", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("petautohp", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("petconsumeitemid", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onpetconsumeiteminit", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("cfunckeymappedmanonpetconsumeiteminit", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = PetConsumeItemInitPacketType;
+                return true;
+            }
+
+            if (token.Equals("petconsumemp", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("petautomp", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("petconsumempitemid", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onpetconsumempiteminit", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("cfunckeymappedmanonpetconsumempiteminit", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = PetConsumeMpItemInitPacketType;
+                return true;
+            }
+
+            return false;
+        }
+
+        public static bool IsSupportedPacketType(int packetType)
+        {
+            return packetType == OpenUiPacketType
+                || packetType == OpenUiClientPacketType
+                || packetType == OpenUiWithOptionPacketType
+                || packetType == OpenUiWithOptionClientPacketType
+                || packetType == HireTutorClientPacketType
+                || packetType == TutorMsgClientPacketType
+                || packetType == GoToCommoditySnPacketType
+                || packetType == GoToCommoditySnClientPacketType
+                || packetType == NoticeMsgPacketType
+                || packetType == NoticeMsgClientPacketType
+                || packetType == ChatMsgPacketType
+                || packetType == ChatMsgClientPacketType
+                || packetType == BuffzoneEffectPacketType
+                || packetType == BuffzoneEffectClientPacketType
+                || packetType == EventAlarmTextPacketType
+                || packetType == EventCalendarEntriesPacketType
+                || packetType == RankingPagePacketType
+                || packetType == UserInfoPopularityResultPacketType
+                || packetType == UserInfoRemoteProfilePacketType
+                || packetType == UserInfoCollectionClaimResultPacketType
+                || packetType == PlayEventSoundPacketType
+                || packetType == PlayEventSoundClientPacketType
+                || packetType == PlayMinigameSoundPacketType
+                || packetType == PlayMinigameSoundClientPacketType
+                || packetType == AskApspEventPacketType
+                || packetType == AskApspEventClientPacketType
+                || packetType == FollowCharacterFailedPacketType
+                || packetType == FollowCharacterFailedClientPacketType
+                || packetType == FollowCharacterPacketType
+                || packetType == FollowCharacterPromptPacketType
+                || packetType == SetDirectionModePacketType
+                || packetType == SetStandAloneModePacketType
+                || packetType == SetDirectionModeClientPacketType
+                || packetType == SetStandAloneModeClientPacketType
+                || packetType == FollowCharacterClientPacketType
+                || packetType == SitResultPacketType
+                || packetType == ActiveEffectItemPacketType
+                || packetType == TeleportClientPacketType
+                || packetType == EmotionPacketType
+                || packetType == InventoryOperationClientPacketType
+                || packetType == MessageClientPacketType
+                || packetType == MesoGiveSucceededPacketType
+                || packetType == MesoGiveFailedPacketType
+                || packetType == RandomMesobagSucceededPacketType
+                || packetType == RandomMesobagFailedPacketType
+                || packetType == RandomEmotionPacketType
+                || packetType == DragonBoxClientPacketType
+                || packetType == AccountMoreInfoPacketType
+                || packetType == SetGenderPacketType
+                || packetType == RadioSchedulePacketType
+                || packetType == RadioScheduleClientPacketType
+                || packetType == RadioCreateLayerContextPacketType
+                || packetType == LogoutGiftClientPacketType
+                || packetType == AntiMacroResultPacketType
+                || packetType == InitialQuizTimerRuntime.PacketType
+                || packetType == OpenSkillGuideClientPacketType
+                || packetType == QuestResultPacketType
+                || packetType == ResignQuestReturnClientPacketType
+                || packetType == PassMateNameClientPacketType
+                || packetType == EngagementRequestPacketType
+                || packetType == NotifyHpDecByFieldPacketType
+                || packetType == OpenClassCompetitionPagePacketType
+                || packetType == MakerResultClientPacketType
+                || packetType == AdminShopResultClientPacketType
+                || packetType == AdminShopOpenClientPacketType
+                || packetType == ShopScannerResultClientPacketType
+                || packetType == ShopScannerLinkResultClientPacketType
+                || packetType == ItemMakerHiddenRecipeUnlockPacketType
+                || packetType == ItemMakerSessionPacketType
+                || packetType == MechanicEquipStatePacketType
+                || packetType == CharacterEquipStatePacketType
+                || packetType == RepairDurabilityResultPacketType
+                || packetType == ConsumeCashItemUseRequestPacketType
+                || packetType == VegaLaunchPacketType
+                || packetType == VegaResultClientPacketType
+                || packetType == DamageMeterPacketType
+                || packetType == TimeBombAttackPacketType
+                || packetType == VengeanceSkillApplyPacketType
+                || packetType == ExJablinApplyPacketType
+                || packetType == QuestGuideResultPacketType
+                || packetType == DeliveryQuestPacketType
+                || packetType == ClassCompetitionAuthCachePacketType
+                || packetType == SkillCooltimeSetPacketType
+                || packetType == SkillLearnItemResultClientPacketType
+                || packetType == FuncKeyMapInitPacketType
+                || packetType == PetConsumeItemInitPacketType
+                || packetType == PetConsumeMpItemInitPacketType
+                || packetType == PetConsumeResultPacketType
+                || packetType == MapleTvRuntime.PacketTypeSetMessage
+                || packetType == MapleTvRuntime.PacketTypeClearMessage
+                || packetType == MapleTvRuntime.PacketTypeSendMessageResult
+                || packetType == ParcelDialogPacketType
+                || packetType == TrunkDialogPacketType
+                || packetType == MessengerDispatchPacketType
+                || packetType == MarriageResultPacketType
+                || packetType == QuestRewardRaiseOwnerSyncPacketType
+                || packetType == QuestRewardRaisePutItemAddResultPacketType
+                || packetType == QuestRewardRaisePutItemReleaseResultPacketType
+                || packetType == QuestRewardRaisePutItemConfirmResultPacketType
+                || packetType == QuestRewardRaiseOwnerDestroyResultPacketType
+                || packetType == QuestRewardRaiseQuestRecordMessagePacketType
+                || packetType == QuestRewardRaiseClientOpenOwnerPacketType
+                || packetType == QuestRewardRaiseClientPutItemReleasePacketType
+                || packetType == QuestRewardRaiseClientPutItemAddOrConfirmPacketType
+                || packetType == RandomMorphResultClientPacketType
+                || packetType == RandomMorphRequestAckPacketType
+                || packetType == QuestAlarmTitleTooltipPacketType
+                || packetType == QuestAlarmRegistrationSyncPacketType
+                || packetType == ItemUpgradeResultClientPacketType
+                || packetType == ItemUpgradeResultPacketType
+                || packetType == MonsterBookRegistrationResultPacketType
+                || packetType == MonsterBookOwnershipSyncPacketType
+                || packetType == RevivePremiumSafetyCharmContextPacketType
+                || packetType == RevivePremiumSafetyCharmAuthenCodeChangedClientPacketType
+                || packetType == RevivePremiumSafetyCharmAuthenMessageClientPacketType
+                || packetType == ClassCompetitionRemotePagePacketType;
+        }
+
+        public static bool TryDecodeOpcodeFramedPacket(byte[] rawPacket, out int packetType, out byte[] payload, out string error)
+        {
+            packetType = 0;
+            payload = Array.Empty<byte>();
+            error = null;
+
+            if (rawPacket == null || rawPacket.Length < sizeof(ushort))
+            {
+                error = "Local utility client packet must include a 2-byte opcode.";
+                return false;
+            }
+
+            packetType = BitConverter.ToUInt16(rawPacket, 0);
+            if (!IsSupportedPacketType(packetType))
+            {
+                error = $"Unsupported local utility client opcode {packetType}.";
+                return false;
+            }
+
+            payload = rawPacket.Length == sizeof(ushort)
+                ? Array.Empty<byte>()
+                : rawPacket[sizeof(ushort)..];
+            return true;
+        }
+
+        private static bool TryParsePayload(string text, out byte[] payload, out string error)
+        {
+            payload = Array.Empty<byte>();
+            error = null;
+
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return true;
+            }
+
+            const string payloadHexPrefix = "payloadhex=";
+            const string payloadBase64Prefix = "payloadb64=";
+            if (text.StartsWith(payloadHexPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                string hex = text[payloadHexPrefix.Length..].Trim();
+                if (hex.Length == 0 || (hex.Length % 2) != 0)
+                {
+                    error = "payloadhex= must contain an even-length hexadecimal byte string.";
+                    return false;
+                }
+
+                try
+                {
+                    payload = Convert.FromHexString(hex);
+                    return true;
+                }
+                catch (FormatException)
+                {
+                    error = "payloadhex= must contain only hexadecimal characters.";
+                    return false;
+                }
+            }
+
+            if (text.StartsWith(payloadBase64Prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                string base64 = text[payloadBase64Prefix.Length..].Trim();
+                if (base64.Length == 0)
+                {
+                    error = "payloadb64= must not be empty.";
+                    return false;
+                }
+
+                try
+                {
+                    payload = Convert.FromBase64String(base64);
+                    return true;
+                }
+                catch (FormatException)
+                {
+                    error = "payloadb64= must contain a valid base64 payload.";
+                    return false;
+                }
+            }
+
+            try
+            {
+                payload = Convert.FromHexString(text.Replace(" ", string.Empty, StringComparison.Ordinal));
+                return true;
+            }
+            catch (FormatException)
+            {
+                error = "Packet payload must use payloadhex=.., payloadb64=.., or a compact raw hex byte string.";
+                return false;
+            }
+        }
+
+        private static int FindTokenSeparatorIndex(string text)
+        {
+            for (int i = 0; i < text.Length; i++)
+            {
+                if (char.IsWhiteSpace(text[i]) || text[i] == ':' || text[i] == '=')
+                {
+                    return i;
+                }
+            }
+
+            return -1;
+        }
+
+        private static string DescribePacketType(int packetType)
+        {
+            return packetType switch
+            {
+                SitResultPacketType => "OnSitResult(231)",
+                ActiveEffectItemPacketType => "OnSetActiveEffectItem(220)",
+                EmotionPacketType => "OnEmotion(232)",
+                TeleportClientPacketType => "OnTeleport(234)",
+                MessageClientPacketType => "OnMessage(38)",
+                InventoryOperationClientPacketType => "OnInventoryOperation(28)",
+                OpenUiPacketType => "OpenUI(1000)",
+                OpenUiWithOptionPacketType => "OpenUIWithOption(1001)",
+                GoToCommoditySnPacketType => "GoToCommoditySN(1002)",
+                NoticeMsgPacketType => "NoticeMsg(1003)",
+                ChatMsgPacketType => "ChatMsg(1004)",
+                BuffzoneEffectPacketType => "BuffzoneEffect(1005)",
+                PlayEventSoundPacketType => "PlayEventSound(1006)",
+                PlayMinigameSoundPacketType => "PlayMinigameSound(1007)",
+                AskApspEventPacketType => "AskAPSPEvent(1008)",
+                FollowCharacterFailedPacketType => "FollowCharacterFailed(1009)",
+                RadioSchedulePacketType => "RadioSchedule(1010)",
+                LogoutGiftClientPacketType => "OnLogoutGift(432)",
+                AntiMacroResultPacketType => "AntiMacroResult(1011)",
+                RadioCreateLayerContextPacketType => "RadioCreateLayerContext(1035)",
+                RankingPagePacketType => "RankingPage(1033)",
+                UserInfoPopularityResultPacketType => "CUIUserInfo::OnGivePopularityResult(1050)",
+                UserInfoRemoteProfilePacketType => "CUIUserInfo::RemoteProfile(1051)",
+                UserInfoCollectionClaimResultPacketType => "CUIUserInfo::BtArrayGetResult(1052)",
+                InitialQuizTimerRuntime.PacketType => "InitialQuizStart(43)",
+                FollowCharacterPacketType => "FollowCharacter(1012)",
+                SetDirectionModePacketType => "SetDirectionMode(1013)",
+                SetStandAloneModePacketType => "SetStandAloneMode(1014)",
+                FollowCharacterPromptPacketType => "FollowCharacterPrompt(1022)",
+                FollowCharacterClientPacketType => "FollowCharacter(193)",
+                MesoGiveSucceededPacketType => "OnMesoGive_Succeeded(236)",
+                MesoGiveFailedPacketType => "OnMesoGive_Failed(237)",
+                RandomMesobagSucceededPacketType => "OnRandomMesobag_Succeeded(238)",
+                RandomMesobagFailedPacketType => "OnRandomMesobag_Failed(239)",
+                DragonBoxClientPacketType => "OnDragonBallBox(164)",
+                SkillLearnItemResultClientPacketType => "OnSkillLearnItemResult(50)",
+                PlayEventSoundClientPacketType => "PlayEventSound(246)",
+                PlayMinigameSoundClientPacketType => "PlayMinigameSound(247)",
+                QuestResultPacketType => "OnQuestResult(242)",
+                NotifyHpDecByFieldPacketType => "NotifyHPDecByField(243)",
+                OpenClassCompetitionPagePacketType => "OpenClassCompetitionPage(250)",
+                MakerResultClientPacketType => "OnMakerResult(248)",
+                AdminShopResultClientPacketType => "CAdminShopDlg::OnPacket Result(366)",
+                AdminShopOpenClientPacketType => "CAdminShopDlg::OnPacket Open(367)",
+                ShopScannerResultClientPacketType => "CUIShopScanner::OnResult(73)",
+                ShopScannerLinkResultClientPacketType => "CUIShopScanResult::OnShopLinkResult(74)",
+                OpenUiClientPacketType => "OpenUI(251)",
+                OpenUiWithOptionClientPacketType => "OpenUIWithOption(252)",
+                SetDirectionModeClientPacketType => "SetDirectionMode(253)",
+                SetStandAloneModeClientPacketType => "SetStandAloneMode(254)",
+                HireTutorClientPacketType => "HireTutor(255)",
+                TutorMsgClientPacketType => "TutorMsg(256)",
+                RandomEmotionPacketType => "OnRandomEmotion(258)",
+                ResignQuestReturnClientPacketType => "OnResignQuestReturn(259)",
+                PassMateNameClientPacketType => "OnPassMateName(260)",
+                EngagementRequestPacketType => "SendEngagementRequest(161)",
+                NoticeMsgClientPacketType => "NoticeMsg(263)",
+                ChatMsgClientPacketType => "ChatMsg(264)",
+                BuffzoneEffectClientPacketType => "BuffzoneEffect(265)",
+                GoToCommoditySnClientPacketType => "GoToCommoditySN(266)",
+                RadioScheduleClientPacketType => "CUserLocal::OnRadioSchedule(261)",
+                OpenSkillGuideClientPacketType => "OpenSkillGuide(262)",
+                DamageMeterPacketType => "DamageMeter(267)",
+                TimeBombAttackPacketType => "OnTimeBombAttack(268)",
+                FollowCharacterFailedClientPacketType => "FollowCharacterFailed(270)",
+                VengeanceSkillApplyPacketType => "OnVengeanceSkillApply(271)",
+                ExJablinApplyPacketType => "OnExJablinApply(272)",
+                AskApspEventClientPacketType => "AskAPSPEvent(273)",
+                QuestGuideResultPacketType => "QuestGuideResult(274)",
+                DeliveryQuestPacketType => "DeliveryQuest(275)",
+                ClassCompetitionAuthCachePacketType => "ClassCompetitionAuthCache(291)",
+                SkillCooltimeSetPacketType => "SkillCooltimeSet(276)",
+                FuncKeyMapInitPacketType => "FuncKeyMapInit(398)",
+                PetConsumeItemInitPacketType => "PetConsumeItemInit(399)",
+                PetConsumeMpItemInitPacketType => "PetConsumeMPItemInit(400)",
+                MapleTvRuntime.PacketTypeSetMessage => "MapleTV SetMessage(405)",
+                MapleTvRuntime.PacketTypeClearMessage => "MapleTV ClearMessage(406)",
+                MapleTvRuntime.PacketTypeSendMessageResult => "MapleTV SendMessageResult(407)",
+                ParcelDialogPacketType => "ParcelDialog OnPacket(1015)",
+                TrunkDialogPacketType => "TrunkDialog OnPacket(1016)",
+                MessengerDispatchPacketType => "Messenger OnPacket(1017)",
+                MarriageResultPacketType => "MarriageResult OnMarriageResult(1018)",
+                ItemMakerHiddenRecipeUnlockPacketType => "ItemMakerHiddenRecipeUnlock(1019)",
+                ItemMakerSessionPacketType => "ItemMakerSession(1024)",
+                PetConsumeResultPacketType => "PetConsumeResult(1026)",
+                RepeatSkillModeEndAckPacketType => "RepeatSkillModeEndAck(1020)",
+                Sg88ManualAttackConfirmPacketType => "Sg88ManualAttackConfirm(1021)",
+                MechanicEquipStatePacketType => "MechanicEquipState(1023)",
+                CharacterEquipStatePacketType => "CharacterEquipState(1034)",
+                RepairDurabilityResultPacketType => "RepairDurabilityResult(1025)",
+                ConsumeCashItemUseRequestPacketType => "SendConsumeCashItemUseRequest(85)",
+                QuestRewardRaiseOwnerSyncPacketType => "RaiseOwnerSync(1036)",
+                QuestRewardRaisePutItemAddResultPacketType => "RaisePutItemAddResult(1037)",
+                QuestRewardRaisePutItemReleaseResultPacketType => "RaisePutItemReleaseResult(1038)",
+                QuestRewardRaisePutItemConfirmResultPacketType => "RaisePutItemConfirmResult(1039)",
+                QuestRewardRaiseOwnerDestroyResultPacketType => "RaiseOwnerDestroyResult(1040)",
+                QuestRewardRaiseQuestRecordMessagePacketType => "RaiseQuestRecordMessage(1041)",
+                QuestRewardRaiseClientOpenOwnerPacketType => "RaiseCreateWindow(284)",
+                QuestRewardRaiseClientPutItemReleasePacketType => "RaisePutItemReleaseResult(285)",
+                QuestRewardRaiseClientPutItemAddOrConfirmPacketType => "RaisePutItemAddOrConfirmResult(286)",
+                RandomMorphResultClientPacketType => "OnRandomMorphRes(123)",
+                RandomMorphRequestAckPacketType => "RandomMorphRequestAck(1042)",
+                QuestAlarmTitleTooltipPacketType => "QuestAlarmTitleTooltip(1043)",
+                QuestAlarmRegistrationSyncPacketType => "QuestAlarmRegistrationSync(1045)",
+                ItemUpgradeResultClientPacketType => "OnItemUpgradeResult(425)",
+                ItemUpgradeResultPacketType => "ItemUpgradeResult(1046)",
+                MonsterBookRegistrationResultPacketType => "MonsterBookRegistrationResult(1047)",
+                MonsterBookOwnershipSyncPacketType => "MonsterBookOwnershipSync(1048)",
+                RevivePremiumSafetyCharmContextPacketType => "RevivePremiumSafetyCharmContext(1049)",
+                RevivePremiumSafetyCharmAuthenCodeChangedClientPacketType => "CClientSocket::OnAuthenCodeChanged(18)",
+                RevivePremiumSafetyCharmAuthenMessageClientPacketType => "CClientSocket::OnAuthenMessage(19)",
+                ClassCompetitionRemotePagePacketType => "ClassCompetitionRemotePage(1044)",
+                _ => $"packet {packetType}"
+            };
+        }
+
+        private void EnqueueMessage(LocalUtilityPacketInboxMessage message, string ingressMode, string sourceLabel)
+        {
+            if (message == null)
+            {
+                return;
+            }
+
+            _pendingMessages.Enqueue(message);
+            ReceivedCount++;
+            LastIngressMode = string.IsNullOrWhiteSpace(ingressMode) ? "unknown" : ingressMode;
+            switch (LastIngressMode)
+            {
+                case MapSimulatorNetworkIngressMode.Proxy:
+                    ProxyIngressReceivedCount++;
+                    break;
+                case MapSimulatorNetworkIngressMode.Local:
+                    LocalIngressReceivedCount++;
+                    break;
+            }
+
+            string packetSource = string.IsNullOrWhiteSpace(sourceLabel) ? "local-utility-inbox" : sourceLabel;
+            LastStatus = $"Queued {DescribePacketType(message.PacketType)} from {packetSource} via {LastIngressMode}.";
+        }
+    }
+}
+

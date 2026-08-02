@@ -1,0 +1,837 @@
+﻿using MapleLib.PacketLib;
+using HaCreator.MapSimulator.Interaction;
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
+using System.Net;
+using System.Net.Sockets;
+
+namespace HaCreator.MapSimulator.Managers
+{
+    /// <summary>
+    /// Proxies a live Maple session and forwards opcode-wrapped trading-room traffic
+    /// into the existing CTradingRoomDlg::OnPacket payload seam.
+    /// </summary>
+    public sealed class TradingRoomOfficialSessionBridgeManager : IDisposable
+    {
+        public const int DefaultListenPort = 18492;
+        public const ushort OutboundTradingRoomOpcode = 144;
+        public const ushort AutoDetectInboundTradingRoomOpcode = ushort.MaxValue;
+        private const int MaxRecentOutboundPackets = 32;
+        private const int MaxPendingResultExpectations = 32;
+
+        private readonly ConcurrentQueue<TradingRoomPacketInboxMessage> _pendingMessages = new();
+        private readonly object _sync = new();
+        private readonly Queue<OutboundPacketTrace> _recentOutboundPackets = new();
+        private readonly List<PendingResultExpectation> _pendingResultExpectations = new();
+        private readonly MapleRoleSessionProxy _roleSessionProxy;
+        private bool _useRecoveredInboundOpcodeTable;
+        private long? _currentInitializedProxySessionId;
+        private short? _currentInitializedSessionVersion;
+
+        private readonly record struct PendingResultExpectation(
+            int RequestOpcode,
+            byte RequestSubtype,
+            string Source,
+            string PayloadHex,
+            int[] ExpectedInboundOpcodes,
+            byte[] ExpectedInboundSubtypes,
+            string ExpectationSummary);
+
+        public readonly record struct OutboundPacketTrace(
+            int Opcode,
+            byte PacketType,
+            int PayloadLength,
+            string PayloadHex,
+            string RawPacketHex,
+            string Source,
+            string Summary);
+
+        private int _expectedResultRequestCount;
+        private int _expectedResultMatchCount;
+        private int _expectedResultMismatchCount;
+        private int _expectedResultUnexpectedCount;
+        private int _expectedResultEvictedCount;
+        public int ListenPort { get; private set; } = DefaultListenPort;
+        public string RemoteHost { get; private set; } = IPAddress.Loopback.ToString();
+        public int RemotePort { get; private set; }
+        public ushort InboundTradingRoomOpcode { get; private set; }
+        public ushort AutoDetectedInboundTradingRoomOpcode { get; private set; }
+        public bool UsesRecoveredInboundOpcodeTable => _useRecoveredInboundOpcodeTable;
+        public bool IsRunning => _roleSessionProxy.IsRunning;
+        public bool HasAttachedClient => _roleSessionProxy.HasAttachedClient;
+        public bool HasConnectedSession => _roleSessionProxy.HasConnectedSession;
+        public int ReceivedCount => _roleSessionProxy.ReceivedCount;
+        public int ForwardedOutboundCount { get; private set; }
+        public int ForwardedOutboundCrcCount { get; private set; }
+        public int SentCount { get; private set; }
+        public int LastSentOpcode { get; private set; } = -1;
+        public string LastStatus { get; private set; } = "Trading-room official-session bridge inactive.";
+
+        public TradingRoomOfficialSessionBridgeManager(Func<MapleRoleSessionProxy> roleSessionProxyFactory = null)
+        {
+            _roleSessionProxy = (roleSessionProxyFactory ?? (() => MapleRoleSessionProxyFactory.GlobalV95.CreateChannel()))();
+            _roleSessionProxy.ServerPacketReceived += OnRoleSessionServerPacketReceived;
+            _roleSessionProxy.ClientPacketReceived += OnRoleSessionClientPacketReceived;
+        }
+
+        public string DescribeStatus()
+        {
+            string lifecycle = IsRunning
+                ? $"listening on 127.0.0.1:{ListenPort} -> {RemoteHost}:{RemotePort}"
+                : "inactive";
+            string session = HasConnectedSession
+                ? "connected Maple session"
+                : "no active Maple session";
+            string inboundOpcode = InboundTradingRoomOpcode > 0
+                ? $"inbound opcode={InboundTradingRoomOpcode}"
+                : _useRecoveredInboundOpcodeTable
+                    ? $"recovered inbound opcode set={string.Join("/", TradingRoomPacketTable.GetRecoveredInboundOpcodes())}"
+                : AutoDetectedInboundTradingRoomOpcode > 0
+                    ? $"auto-detected inbound opcode={AutoDetectedInboundTradingRoomOpcode}"
+                : "inbound opcode unset";
+            string initializedSession = _currentInitializedProxySessionId.HasValue
+                ? $"proxySession={_currentInitializedProxySessionId.Value}, version={_currentInitializedSessionVersion?.ToString() ?? "unknown"}"
+                : "proxySession=none";
+            int pendingExpectationCount;
+            lock (_sync)
+            {
+                pendingExpectationCount = _pendingResultExpectations.Count;
+            }
+
+            return $"Trading-room official-session bridge {lifecycle}; {session}; {initializedSession}; received={ReceivedCount}; forwardedOutbound={ForwardedOutboundCount}; forwardedOutboundCrc={ForwardedOutboundCrcCount}; injected={SentCount}; expectedRequests={_expectedResultRequestCount}; matched={_expectedResultMatchCount}; mismatched={_expectedResultMismatchCount}; unexpected={_expectedResultUnexpectedCount}; evicted={_expectedResultEvictedCount}; pending={pendingExpectationCount}; {inboundOpcode}. {LastStatus}";
+        }
+
+        public string DescribeRecentOutboundPackets(int maxCount = 10)
+        {
+            int normalizedCount = Math.Clamp(maxCount, 1, MaxRecentOutboundPackets);
+            lock (_sync)
+            {
+                if (_recentOutboundPackets.Count == 0)
+                {
+                    return "Trading-room official-session bridge outbound history is empty.";
+                }
+
+                OutboundPacketTrace[] entries = _recentOutboundPackets
+                    .Reverse()
+                    .Take(normalizedCount)
+                    .ToArray();
+                return "Trading-room official-session bridge outbound history:"
+                    + Environment.NewLine
+                    + string.Join(
+                        Environment.NewLine,
+                        entries.Select(entry =>
+                            $"opcode={entry.Opcode} type={entry.PacketType} payloadLen={entry.PayloadLength} source={entry.Source} summary={entry.Summary} payloadHex={entry.PayloadHex} raw={entry.RawPacketHex}"));
+            }
+        }
+
+        public string DescribeTradingRoomOpcodeMap()
+        {
+            string inbound = InboundTradingRoomOpcode > 0
+                ? $"inbound opcode {InboundTradingRoomOpcode} is configured"
+                : _useRecoveredInboundOpcodeTable
+                    ? $"recovered inbound opcode set {string.Join("/", TradingRoomPacketTable.GetRecoveredInboundOpcodes())} is active from targeted IDA packet-table recovery"
+                : AutoDetectedInboundTradingRoomOpcode > 0
+                    ? $"inbound opcode {AutoDetectedInboundTradingRoomOpcode} was auto-detected from modeled CTradingRoomDlg::OnPacket payloads"
+                : "inbound opcode is not mapped yet; auto-detection shape-checks modeled CTradingRoomDlg::OnPacket payloads";
+            return
+                $"Trading-room opcode map: outbound CTradingRoomDlg client requests use opcode {OutboundTradingRoomOpcode}; subtype 17 is the Trade request and subtype 20 is the CRC reply emitted by CTradingRoomDlg::OnTrade. Server-owned CTradingRoomDlg::OnPacket payloads currently model direct switch subtypes 15 put-item, 16 put-money, 17 trade handoff, and 21 exceed-limit; subtype 20 remains the OnTrade CRC follow-up branch; {inbound}. {TradingRoomPacketTable.DescribeRecoveredPacketTable()}";
+        }
+
+        public string ClearRecentOutboundPackets()
+        {
+            lock (_sync)
+            {
+                _recentOutboundPackets.Clear();
+                _pendingResultExpectations.Clear();
+            }
+
+            LastStatus = "Trading-room official-session bridge outbound history cleared.";
+            return LastStatus;
+        }
+
+        public bool TryReplayRecentOutboundPacket(int historyIndexFromNewest, out string status)
+        {
+            if (historyIndexFromNewest <= 0)
+            {
+                status = "Trading-room replay index must be 1 or greater.";
+                LastStatus = status;
+                return false;
+            }
+
+            OutboundPacketTrace[] entries;
+            lock (_sync)
+            {
+                if (_recentOutboundPackets.Count == 0)
+                {
+                    status = "No captured trading-room outbound client packets are available to replay.";
+                    LastStatus = status;
+                    return false;
+                }
+
+                if (historyIndexFromNewest > _recentOutboundPackets.Count)
+                {
+                    status = $"Trading-room replay index {historyIndexFromNewest} exceeds the {_recentOutboundPackets.Count} captured outbound packet(s).";
+                    LastStatus = status;
+                    return false;
+                }
+
+                entries = _recentOutboundPackets.ToArray();
+            }
+
+            OutboundPacketTrace trace = entries[^historyIndexFromNewest];
+            if (string.IsNullOrWhiteSpace(trace.RawPacketHex))
+            {
+                status = $"Captured trading-room outbound packet {historyIndexFromNewest} has no raw payload to replay.";
+                LastStatus = status;
+                return false;
+            }
+
+            try
+            {
+                byte[] rawPacket = Convert.FromHexString(trace.RawPacketHex);
+                return TrySendOutboundRawPacket(rawPacket, out status);
+            }
+            catch (FormatException ex)
+            {
+                status = $"Captured trading-room outbound packet {historyIndexFromNewest} could not be replayed: {ex.Message}";
+                LastStatus = status;
+                return false;
+            }
+        }
+
+        public void Start(int listenPort, string remoteHost, int remotePort, ushort inboundTradingRoomOpcode = 0)
+        {
+            lock (_sync)
+            {
+                StopInternal(clearPending: false);
+                ResetInboundState();
+
+                try
+                {
+                    ListenPort = listenPort <= 0 ? DefaultListenPort : listenPort;
+                    RemoteHost = string.IsNullOrWhiteSpace(remoteHost) ? IPAddress.Loopback.ToString() : remoteHost.Trim();
+                    RemotePort = remotePort;
+                    _useRecoveredInboundOpcodeTable =
+                        inboundTradingRoomOpcode == 0
+                        || (inboundTradingRoomOpcode != AutoDetectInboundTradingRoomOpcode
+                            && TradingRoomPacketTable.IsRecoveredInboundOpcode(inboundTradingRoomOpcode));
+                    InboundTradingRoomOpcode = inboundTradingRoomOpcode == AutoDetectInboundTradingRoomOpcode
+                        ? (ushort)0
+                        : _useRecoveredInboundOpcodeTable
+                            ? (ushort)0
+                            : inboundTradingRoomOpcode;
+                    if (!_roleSessionProxy.Start(ListenPort, RemoteHost, RemotePort, out string proxyStatus))
+                    {
+                        StopInternal(clearPending: false);
+                        LastStatus = proxyStatus;
+                        return;
+                    }
+
+                    LastStatus = InboundTradingRoomOpcode > 0
+                        ? $"Trading-room official-session bridge listening on 127.0.0.1:{ListenPort}, proxying to {RemoteHost}:{RemotePort}, and filtering inbound opcode {InboundTradingRoomOpcode}. {proxyStatus}"
+                        : _useRecoveredInboundOpcodeTable
+                            ? $"Trading-room official-session bridge listening on 127.0.0.1:{ListenPort}, proxying to {RemoteHost}:{RemotePort}, and filtering the recovered CTradingRoomDlg::OnPacket inbound opcode set {string.Join("/", TradingRoomPacketTable.GetRecoveredInboundOpcodes())}. {proxyStatus}"
+                            : $"Trading-room official-session bridge listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}; inbound opcode is unset so server packets are shape-checked for CTradingRoomDlg::OnPacket subtypes 15, 16, 17, 20, and 21. {proxyStatus}";
+                }
+                catch (Exception ex)
+                {
+                    StopInternal(clearPending: false);
+                    LastStatus = $"Trading-room official-session bridge failed to start: {ex.Message}";
+                }
+            }
+        }
+
+        public bool TryStartFromDiscovery(int listenPort, int remotePort, ushort inboundTradingRoomOpcode, string processSelector, int? localPort, out string status)
+        {
+            if (!TryResolveProcessSelector(processSelector, out int? owningProcessId, out string owningProcessName, out string selectorError))
+            {
+                status = selectorError;
+                LastStatus = status;
+                return false;
+            }
+
+            IReadOnlyList<MemoryGameOfficialSessionBridgeManager.SessionDiscoveryCandidate> candidates =
+                MemoryGameOfficialSessionBridgeManager.DiscoverEstablishedSessions(remotePort, owningProcessId, owningProcessName);
+            if (!MemoryGameOfficialSessionBridgeManager.TryResolveDiscoveryCandidate(
+                    candidates,
+                    remotePort,
+                    owningProcessId,
+                    owningProcessName,
+                    localPort,
+                    out MemoryGameOfficialSessionBridgeManager.SessionDiscoveryCandidate candidate,
+                    out status))
+            {
+                LastStatus = status;
+                return false;
+            }
+
+            Start(listenPort, candidate.RemoteEndpoint.Address.ToString(), candidate.RemoteEndpoint.Port, inboundTradingRoomOpcode);
+            status =
+                $"Trading-room official-session bridge discovered {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}. {LastStatus}";
+            LastStatus = status;
+            return true;
+        }
+
+        public string DescribeDiscoveredSessions(int remotePort, string processSelector = null, int? localPort = null)
+        {
+            if (!TryResolveProcessSelector(processSelector, out int? owningProcessId, out string owningProcessName, out string selectorError))
+            {
+                return selectorError;
+            }
+
+            IReadOnlyList<MemoryGameOfficialSessionBridgeManager.SessionDiscoveryCandidate> candidates =
+                MemoryGameOfficialSessionBridgeManager.DiscoverEstablishedSessions(remotePort, owningProcessId, owningProcessName);
+            return MemoryGameOfficialSessionBridgeManager.DescribeDiscoveryCandidates(candidates, remotePort, owningProcessId, owningProcessName, localPort);
+        }
+
+        public void Stop()
+        {
+            lock (_sync)
+            {
+                StopInternal(clearPending: false);
+                LastStatus = "Trading-room official-session bridge stopped.";
+            }
+        }
+
+        public bool TryDequeue(out TradingRoomPacketInboxMessage message)
+        {
+            return _pendingMessages.TryDequeue(out message);
+        }
+
+        public void RecordDispatchResult(string source, bool success, string detail)
+        {
+            string summary = string.IsNullOrWhiteSpace(detail) ? "trading-room payload" : detail;
+            LastStatus = success
+                ? $"Applied {summary} from {source}."
+                : $"Ignored {summary} from {source}.";
+        }
+
+        public bool TrySendOutboundRawPacket(byte[] rawPacket, out string status)
+        {
+            if (!TryValidateOutboundRawPacket(rawPacket, out int opcode, out byte packetType, out string error))
+            {
+                status = error;
+                LastStatus = status;
+                return false;
+            }
+
+            if (!_roleSessionProxy.HasConnectedSession)
+            {
+                status = "Trading-room official-session bridge has no connected Maple session for outbound injection.";
+                LastStatus = status;
+                return false;
+            }
+
+            byte[] clonedRawPacket = (byte[])rawPacket.Clone();
+            if (!_roleSessionProxy.TrySendToServer(clonedRawPacket, out string proxyStatus))
+            {
+                status = proxyStatus;
+                LastStatus = status;
+                return false;
+            }
+
+            SentCount++;
+            LastSentOpcode = opcode;
+            RecordObservedOutboundPacket(clonedRawPacket, "simulator-send");
+            status = $"Injected trading-room outbound opcode {opcode} subtype {packetType} into live session.";
+            LastStatus = status;
+            return true;
+        }
+
+        public void Dispose()
+        {
+            lock (_sync)
+            {
+                StopInternal(clearPending: false);
+            }
+        }
+
+        public bool MatchesInboundOpcodeConfiguration(ushort configuredInboundTradingRoomOpcode)
+        {
+            if (configuredInboundTradingRoomOpcode == AutoDetectInboundTradingRoomOpcode)
+            {
+                return !_useRecoveredInboundOpcodeTable && InboundTradingRoomOpcode == 0;
+            }
+
+            if (configuredInboundTradingRoomOpcode == 0
+                || TradingRoomPacketTable.IsRecoveredInboundOpcode(configuredInboundTradingRoomOpcode))
+            {
+                return _useRecoveredInboundOpcodeTable && InboundTradingRoomOpcode == 0;
+            }
+
+            return !_useRecoveredInboundOpcodeTable && InboundTradingRoomOpcode == configuredInboundTradingRoomOpcode;
+        }
+
+        private void OnRoleSessionServerPacketReceived(object sender, MapleSessionPacketEventArgs e)
+        {
+            if (e == null)
+            {
+                return;
+            }
+
+            if (e.IsInit)
+            {
+                int cleared = ClearSessionScopedEvidenceForInitializedProxySession(e.ProxySessionId, e.SessionVersion);
+                LastStatus = _roleSessionProxy.LastStatus;
+                if (cleared > 0)
+                {
+                    LastStatus = $"Trading-room official-session bridge initialized Maple crypto for proxy session {DescribeProxySession(e.ProxySessionId, e.SessionVersion)} and cleared {cleared} stale session-scoped evidence item(s).";
+                }
+
+                return;
+            }
+
+            if (!IsCurrentInitializedProxySession(e.ProxySessionId, e.SessionVersion))
+            {
+                LastStatus = $"Ignored stale live trading-room server packet from proxy session {DescribeProxySession(e.ProxySessionId, e.SessionVersion)}; current initialized session is {DescribeProxySession(_currentInitializedProxySessionId, _currentInitializedSessionVersion)}.";
+                return;
+            }
+
+            if (!TryDecodeOpcode(e.RawPacket, out int opcode, out byte[] payload)
+                || !ShouldQueueInboundTradingRoomPacket(opcode, payload, out string autoMapDetail))
+            {
+                LastStatus = _roleSessionProxy.LastStatus;
+                return;
+            }
+
+            _pendingMessages.Enqueue(new TradingRoomPacketInboxMessage(
+                (byte[])e.RawPacket.Clone(),
+                $"official-session:{e.SourceEndpoint}",
+                $"packetrecv {opcode} {Convert.ToHexString(payload)}"));
+            string expectationDetail = RecordRecoveredInboundExpectationResult(opcode, payload);
+            LastStatus = $"Queued trading-room opcode {opcode} subtype {payload[0]} from live session {e.SourceEndpoint}. {autoMapDetail} {expectationDetail}";
+        }
+
+        private void OnRoleSessionClientPacketReceived(object sender, MapleSessionPacketEventArgs e)
+        {
+            if (e == null)
+            {
+                return;
+            }
+
+            if (e.IsInit)
+            {
+                LastStatus = _roleSessionProxy.LastStatus;
+                return;
+            }
+
+            if (!IsCurrentInitializedProxySession(e.ProxySessionId, e.SessionVersion))
+            {
+                if (TryDecodeOpcode(e.RawPacket, out int staleOpcode, out byte[] stalePayload)
+                    && staleOpcode == OutboundTradingRoomOpcode
+                    && stalePayload.Length > 0)
+                {
+                    LastStatus = $"Forwarded live trading-room outbound opcode {staleOpcode} subtype {stalePayload[0]} from {e.SourceEndpoint}; ignored it as stale request/result evidence for proxy session {DescribeProxySession(e.ProxySessionId, e.SessionVersion)}.";
+                }
+                else
+                {
+                    LastStatus = _roleSessionProxy.LastStatus;
+                }
+
+                return;
+            }
+
+            RecordObservedOutboundPacket(e.RawPacket, $"official-session-client:{e.SourceEndpoint}");
+        }
+
+        private void RecordObservedOutboundPacket(byte[] rawPacket, string source)
+        {
+            if (!TryDecodeOpcode(rawPacket, out int opcode, out byte[] payload)
+                || opcode != OutboundTradingRoomOpcode
+                || payload.Length == 0)
+            {
+                return;
+            }
+
+            ForwardedOutboundCount++;
+            if (payload[0] == 20)
+            {
+                ForwardedOutboundCrcCount++;
+            }
+
+            string summary = "observed";
+            lock (_sync)
+            {
+                if (TradingRoomPacketTable.TryBuildRecoveredResultExpectation(
+                        opcode,
+                        payload,
+                        out int[] expectedInboundOpcodes,
+                        out byte[] expectedInboundSubtypes,
+                        out string expectationSummary))
+                {
+                    AddPendingResultExpectation(new PendingResultExpectation(
+                        opcode,
+                        payload[0],
+                        source,
+                        Convert.ToHexString(payload),
+                        expectedInboundOpcodes,
+                        expectedInboundSubtypes,
+                        expectationSummary));
+                    summary = expectationSummary;
+                }
+
+                while (_recentOutboundPackets.Count >= MaxRecentOutboundPackets)
+                {
+                    _recentOutboundPackets.Dequeue();
+                }
+
+                _recentOutboundPackets.Enqueue(new OutboundPacketTrace(
+                    opcode,
+                    payload[0],
+                    payload.Length,
+                    Convert.ToHexString(payload),
+                    Convert.ToHexString(rawPacket),
+                    source,
+                    summary));
+            }
+
+            LastStatus = $"Forwarded live trading-room outbound opcode {opcode} subtype {payload[0]} from {source}. {summary}";
+        }
+
+        private void AddPendingResultExpectation(PendingResultExpectation expectation)
+        {
+            _pendingResultExpectations.Add(expectation);
+            _expectedResultRequestCount++;
+            while (_pendingResultExpectations.Count > MaxPendingResultExpectations)
+            {
+                _pendingResultExpectations.RemoveAt(0);
+                _expectedResultEvictedCount++;
+            }
+        }
+
+        private string RecordRecoveredInboundExpectationResult(int inboundOpcode, byte[] payload)
+        {
+            if (payload == null || payload.Length == 0)
+            {
+                return "No recovered-table expectation was evaluated for an empty trading-room payload.";
+            }
+
+            if (!TradingRoomPacketTable.TryDecodeRecoveredInboundBranch(
+                    inboundOpcode,
+                    payload,
+                    out byte inboundSubtype,
+                    out string branchSummary))
+            {
+                return "No recovered-table expectation was evaluated for an unknown trading-room branch.";
+            }
+
+            lock (_sync)
+            {
+                for (int i = 0; i < _pendingResultExpectations.Count; i++)
+                {
+                    PendingResultExpectation expectation = _pendingResultExpectations[i];
+                    if ((expectation.ExpectedInboundOpcodes?.Length ?? 0) > 0
+                        && !expectation.ExpectedInboundOpcodes.Contains(inboundOpcode))
+                    {
+                        continue;
+                    }
+
+                    if ((expectation.ExpectedInboundSubtypes?.Length ?? 0) == 0
+                        || expectation.ExpectedInboundSubtypes.Contains(inboundSubtype))
+                    {
+                        _pendingResultExpectations.RemoveAt(i);
+                        _expectedResultMatchCount++;
+                        return $"{branchSummary}; matched {expectation.ExpectationSummary} from {expectation.Source}.";
+                    }
+                }
+
+                int mismatchIndex = _pendingResultExpectations.FindIndex(expectation =>
+                    (expectation.ExpectedInboundOpcodes?.Length ?? 0) == 0
+                    || expectation.ExpectedInboundOpcodes.Contains(inboundOpcode));
+                if (mismatchIndex >= 0)
+                {
+                    PendingResultExpectation expectation = _pendingResultExpectations[mismatchIndex];
+                    _pendingResultExpectations.RemoveAt(mismatchIndex);
+                    _expectedResultMismatchCount++;
+                    return $"{branchSummary}; mismatched pending {expectation.ExpectationSummary} from {expectation.Source}.";
+                }
+
+                _expectedResultUnexpectedCount++;
+                return $"{branchSummary}; no pending recovered-table request expectation.";
+            }
+        }
+
+        private void StopInternal(bool clearPending)
+        {
+            _roleSessionProxy.Stop(resetCounters: clearPending);
+
+            if (clearPending)
+            {
+                while (_pendingMessages.TryDequeue(out _))
+                {
+                }
+            }
+        }
+
+        private void ResetInboundState()
+        {
+            ForwardedOutboundCount = 0;
+            ForwardedOutboundCrcCount = 0;
+            SentCount = 0;
+            LastSentOpcode = -1;
+            AutoDetectedInboundTradingRoomOpcode = 0;
+            _useRecoveredInboundOpcodeTable = false;
+            _currentInitializedProxySessionId = null;
+            _currentInitializedSessionVersion = null;
+            _expectedResultRequestCount = 0;
+            _expectedResultMatchCount = 0;
+            _expectedResultMismatchCount = 0;
+            _expectedResultUnexpectedCount = 0;
+            _expectedResultEvictedCount = 0;
+            lock (_sync)
+            {
+                _recentOutboundPackets.Clear();
+                _pendingResultExpectations.Clear();
+            }
+
+            while (_pendingMessages.TryDequeue(out _))
+            {
+            }
+        }
+
+        private static bool TryResolveProcessSelector(string selector, out int? owningProcessId, out string owningProcessName, out string error)
+        {
+            owningProcessId = null;
+            owningProcessName = null;
+            error = null;
+            if (string.IsNullOrWhiteSpace(selector))
+            {
+                owningProcessName = "MapleStory";
+                return true;
+            }
+
+            if (int.TryParse(selector, out int pid) && pid > 0)
+            {
+                owningProcessId = pid;
+                return true;
+            }
+
+            string normalized = NormalizeProcessSelector(selector);
+            if (normalized.Length == 0)
+            {
+                error = "Trading-room official-session discovery requires a process name or pid when a selector is provided.";
+                return false;
+            }
+
+            owningProcessName = normalized;
+            return true;
+        }
+
+        private static string NormalizeProcessSelector(string selector)
+        {
+            string trimmed = selector?.Trim() ?? string.Empty;
+            return trimmed.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+                ? trimmed[..^4]
+                : trimmed;
+        }
+
+        private static bool TryDecodeOpcode(byte[] rawPacket, out int opcode, out byte[] payload)
+        {
+            opcode = 0;
+            payload = Array.Empty<byte>();
+            if (rawPacket == null || rawPacket.Length < sizeof(short))
+            {
+                return false;
+            }
+
+            opcode = BitConverter.ToUInt16(rawPacket, 0);
+            payload = rawPacket.Skip(sizeof(short)).ToArray();
+            return true;
+        }
+
+        private static bool TryValidateOutboundRawPacket(byte[] rawPacket, out int opcode, out byte packetType, out string error)
+        {
+            opcode = 0;
+            packetType = 0;
+            error = null;
+            if (!TryDecodeOpcode(rawPacket, out opcode, out byte[] payload))
+            {
+                error = "Trading-room outbound packet requires an opcode-wrapped frame.";
+                return false;
+            }
+
+            if (opcode != OutboundTradingRoomOpcode)
+            {
+                error = $"Trading-room outbound packet opcode must be {OutboundTradingRoomOpcode}, but was {opcode}.";
+                return false;
+            }
+
+            if (payload.Length == 0)
+            {
+                error = "Trading-room outbound payload is empty.";
+                return false;
+            }
+
+            packetType = payload[0];
+            return true;
+        }
+
+        private static bool IsTradingRoomInboundSubtype(byte packetType)
+        {
+            return packetType is 15 or 16 or 17 or 20 or 21;
+        }
+
+        private int ClearSessionScopedEvidenceForInitializedProxySession(long? proxySessionId, short? sessionVersion)
+        {
+            if (!proxySessionId.HasValue)
+            {
+                return 0;
+            }
+
+            if (_currentInitializedProxySessionId == proxySessionId
+                && _currentInitializedSessionVersion == sessionVersion)
+            {
+                return 0;
+            }
+
+            _currentInitializedProxySessionId = proxySessionId;
+            _currentInitializedSessionVersion = sessionVersion;
+            int cleared = 0;
+            while (_pendingMessages.TryDequeue(out _))
+            {
+                cleared++;
+            }
+
+            lock (_sync)
+            {
+                cleared += _recentOutboundPackets.Count;
+                cleared += _pendingResultExpectations.Count;
+                _recentOutboundPackets.Clear();
+                _pendingResultExpectations.Clear();
+            }
+
+            return cleared;
+        }
+
+        private bool IsCurrentInitializedProxySession(long? proxySessionId, short? sessionVersion)
+        {
+            if (!_currentInitializedProxySessionId.HasValue)
+            {
+                return true;
+            }
+
+            if (!proxySessionId.HasValue || _currentInitializedProxySessionId.Value != proxySessionId.Value)
+            {
+                return false;
+            }
+
+            return !_currentInitializedSessionVersion.HasValue
+                   || (sessionVersion.HasValue && _currentInitializedSessionVersion.Value == sessionVersion.Value);
+        }
+
+        private static string DescribeProxySession(long? proxySessionId, short? sessionVersion)
+        {
+            string sessionId = proxySessionId?.ToString() ?? "unknown";
+            string version = sessionVersion?.ToString() ?? "unknown";
+            return $"{sessionId}/v{version}";
+        }
+
+        private bool ShouldQueueInboundTradingRoomPacket(int opcode, byte[] payload, out string detail)
+        {
+            detail = string.Empty;
+            if (payload == null || payload.Length == 0)
+            {
+                return false;
+            }
+
+            if (_useRecoveredInboundOpcodeTable)
+            {
+                if (!TradingRoomPacketTable.IsRecoveredInboundOpcode((ushort)opcode) || !IsTradingRoomInboundSubtype(payload[0]))
+                {
+                    return false;
+                }
+
+                detail = TradingRoomPacketTable.IsRecoveredOnTradeFollowUpSubtype(payload[0])
+                    ? $"Recovered inbound opcode set {string.Join("/", TradingRoomPacketTable.GetRecoveredInboundOpcodes())} matched the CTradingRoomDlg::OnTrade follow-up subtype table."
+                    : $"Recovered inbound opcode set {string.Join("/", TradingRoomPacketTable.GetRecoveredInboundOpcodes())} matched the CTradingRoomDlg::OnPacket subtype table.";
+                return true;
+            }
+
+            if (InboundTradingRoomOpcode > 0)
+            {
+                if (opcode != InboundTradingRoomOpcode || !IsTradingRoomInboundSubtype(payload[0]))
+                {
+                    return false;
+                }
+
+                detail = TradingRoomPacketTable.IsRecoveredOnTradeFollowUpSubtype(payload[0])
+                    ? $"Configured inbound opcode {InboundTradingRoomOpcode} matched the CTradingRoomDlg::OnTrade follow-up subtype table."
+                    : $"Configured inbound opcode {InboundTradingRoomOpcode} matched the CTradingRoomDlg::OnPacket subtype table.";
+                return true;
+            }
+
+            if (!TryIdentifyTradingRoomInboundPayloadForAutoMapping(payload, out detail))
+            {
+                return false;
+            }
+
+            if (AutoDetectedInboundTradingRoomOpcode == 0)
+            {
+                AutoDetectedInboundTradingRoomOpcode = (ushort)Math.Clamp(opcode, ushort.MinValue, ushort.MaxValue);
+                detail = $"Auto-detected inbound opcode {AutoDetectedInboundTradingRoomOpcode} because {detail}";
+                return true;
+            }
+
+            if (opcode != AutoDetectedInboundTradingRoomOpcode)
+            {
+                return false;
+            }
+
+            detail = $"Auto-detected inbound opcode {AutoDetectedInboundTradingRoomOpcode} matched again because {detail}";
+            return true;
+        }
+
+        public static bool TryIdentifyTradingRoomInboundPayloadForAutoMapping(byte[] payload, out string detail)
+        {
+            detail = string.Empty;
+            if (payload == null || payload.Length == 0)
+            {
+                detail = "the payload is empty";
+                return false;
+            }
+
+            byte packetType = payload[0];
+            switch (packetType)
+            {
+                case 15:
+                    if (payload.Length >= 5)
+                    {
+                        detail = "subtype 15 has trader, one-based trade slot, and GW_ItemSlotBase body bytes for CTradingRoomDlg::OnPutItem.";
+                        return true;
+                    }
+
+                    break;
+                case 16:
+                    if (payload.Length == 6)
+                    {
+                        detail = "subtype 16 has the exact trader plus 32-bit meso offer shape for CTradingRoomDlg::OnPutMoney.";
+                        return true;
+                    }
+
+                    break;
+                case 17:
+                    detail = "subtype 17 is the CTradingRoomDlg::OnTrade CRC handoff.";
+                    return true;
+                case 20:
+                    if (payload.Length >= 2
+                        && ((payload.Length - 2) % 8) == 0
+                        && payload[1] == (payload.Length - 2) / 8)
+                    {
+                        detail = "subtype 20 has the OnTrade checksum follow-up row-count shape.";
+                        return true;
+                    }
+
+                    break;
+                case 21:
+                    detail = "subtype 21 is the CTradingRoomDlg::OnExceedLimit failure branch.";
+                    return true;
+            }
+
+            detail = $"subtype {packetType} does not match a modeled CTradingRoomDlg::OnPacket payload shape.";
+            return false;
+        }
+
+    }
+}

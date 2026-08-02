@@ -1,0 +1,1693 @@
+using MapleLib.WzLib.WzStructure.Data;
+using MapleLib.WzLib.WzStructure;
+using HaCreator.MapSimulator.Interaction;
+using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
+using Microsoft.Xna.Framework.Input;
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Text;
+
+using BinaryReader = MapleLib.PacketLib.PacketReader;
+namespace HaCreator.MapSimulator.Fields
+{
+    public enum TournamentPacketType
+    {
+        Tournament = 374,
+        MatchTable = 375,
+        SetPrize = 376,
+        Uew = 377,
+        NoOp = 378
+    }
+
+    public enum TournamentLifecyclePhase
+    {
+        Lobby = 0,
+        EntryGate = 1,
+        MatchTable = 2,
+        RestPeriod = 3,
+        PrizePodium = 4,
+        SessionNotice = 5
+    }
+
+    internal readonly record struct TournamentClientMessage(int StringPoolId, string FallbackText);
+    public enum TournamentSessionPhase
+    {
+        None = 0,
+        Lobby = 1,
+        Notice = 2,
+        MatchTable = 3,
+        Prize = 4,
+        Uew = 5,
+        NoOp = 6,
+        Forwarded = 7
+    }
+
+    public sealed class TournamentField
+    {
+        private const int StatusDurationMs = 9000;
+        private const int PostFinalExitGraceMs = 5 * 60 * 1000;
+        private const string MatchTableDialogOwner = "CMatchTableDlg";
+        private const string TournamentContractSummary = "32-player bracket, resting period between rounds, prize podium after finals, five-minute exit grace.";
+        private const int PacketTrailCapacity = 6;
+        private const int ForwardedRawPacketTrailCapacity = 6;
+        private const int OwnedWrapperPacketTrailCapacity = 6;
+
+        private int _mapId;
+        private bool _isActive;
+        private int _lastPacketType;
+        private string _statusMessage;
+        private int _statusMessageUntil;
+        private string _lastPacketSummary;
+        private string _lastPayloadHex;
+        private string _lastDialogOwner;
+        private string _lastPacketOwner;
+        private int[] _lastStringPoolIds = Array.Empty<int>();
+        private int[] _lastPrizeItemIds = Array.Empty<int>();
+        private TournamentLifecyclePhase _lifecyclePhase;
+        private string _lifecycleSummary;
+        private int? _podiumExitDeadlineTick;
+        private readonly Queue<string> _packetActionTrail = new();
+        private TournamentSessionPhase _sessionPhase;
+        private string _sessionPhaseSummary;
+        private bool _clientTournamentFlagBitContext;
+        private bool _clientTournamentRegistrationContext;
+        private readonly TournamentMatchTableDialogState _matchTableDialog = new();
+        private int _ownedWrapperPacketCount;
+        private int _ownedStructuredPacketCount;
+        private int _ownedRawPacketCount;
+        private readonly Queue<int> _ownedWrapperPacketTrail = new();
+        private readonly Queue<string> _ownedWrapperOwnerTrail = new();
+        private int _forwardedRawPacketCount;
+        private readonly Queue<int> _forwardedRawPacketTrail = new();
+
+        public bool IsActive => _isActive;
+        public int MapId => _mapId;
+        public int LastPacketType => _lastPacketType;
+        public string CurrentStatusMessage => _statusMessage;
+        public string LastPacketSummary => _lastPacketSummary;
+        public string LastDialogOwner => _lastDialogOwner;
+        public string LastPacketOwner => _lastPacketOwner;
+        public IReadOnlyList<int> LastStringPoolIds => _lastStringPoolIds;
+        public IReadOnlyList<int> LastPrizeItemIds => _lastPrizeItemIds;
+        public TournamentLifecyclePhase LifecyclePhase => _lifecyclePhase;
+        public TournamentSessionPhase SessionPhase => _sessionPhase;
+        public bool ClientTournamentParticipationContext => HasClientTournamentParticipationContext();
+        public bool ClientTournamentFlagBitContext => _clientTournamentFlagBitContext;
+        public bool ClientTournamentRegistrationContext => _clientTournamentRegistrationContext;
+        public TournamentMatchTableDialogState MatchTableDialog => _matchTableDialog;
+        public IReadOnlyList<string> PacketActionTrail => _packetActionTrail.ToArray();
+        public int OwnedWrapperPacketCount => _ownedWrapperPacketCount;
+        public int OwnedStructuredPacketCount => _ownedStructuredPacketCount;
+        public int OwnedRawPacketCount => _ownedRawPacketCount;
+        public int ForwardedRawPacketCount => _forwardedRawPacketCount;
+
+        public void Configure(MapInfo mapInfo)
+        {
+            Reset();
+            _mapId = mapInfo?.id ?? 0;
+            _isActive = mapInfo?.fieldType == FieldType.FIELDTYPE_TOURNAMENT;
+            if (_isActive)
+            {
+                _clientTournamentFlagBitContext = true;
+                _clientTournamentRegistrationContext = true;
+                SetLifecyclePhase(
+                    TournamentLifecyclePhase.Lobby,
+                    "String/Map.img/victoria/109070000/help0 keeps the Tournament wrapper anchored to the bracket lobby, resting period, prize podium, and five-minute post-finals exit flow.");
+                SetSessionPhase(
+                    TournamentSessionPhase.Lobby,
+                    "Tournament wrapper entered its bracket-lobby contract from the map help text.");
+                _statusMessage = $"Tournament wrapper ready for map {_mapId} ({TournamentContractSummary})";
+                _statusMessageUntil = Environment.TickCount + StatusDurationMs;
+            }
+        }
+
+        public void SetClientTournamentParticipationContext(bool isParticipantOrRegistered)
+        {
+            _clientTournamentFlagBitContext = isParticipantOrRegistered;
+            _clientTournamentRegistrationContext = isParticipantOrRegistered;
+        }
+
+        public void SetClientTournamentParticipationContext(bool hasParticipationFlagBit, bool hasRegistrationContext)
+        {
+            _clientTournamentFlagBitContext = hasParticipationFlagBit;
+            _clientTournamentRegistrationContext = hasRegistrationContext;
+        }
+
+        public string DescribeParticipationContext()
+        {
+            return $"CWvsContext tournament gate: flagBit={_clientTournamentFlagBitContext}, registration={_clientTournamentRegistrationContext}, active={HasClientTournamentParticipationContext()}.";
+        }
+
+        public void Update(int tickCount)
+        {
+            if (_statusMessage != null && tickCount >= _statusMessageUntil)
+            {
+                _statusMessage = null;
+            }
+
+            if (_podiumExitDeadlineTick.HasValue && tickCount >= _podiumExitDeadlineTick.Value)
+            {
+                _podiumExitDeadlineTick = null;
+            }
+
+            _matchTableDialog.Update(tickCount);
+        }
+
+        public void Draw(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font)
+        {
+            if (!_isActive || spriteBatch == null || pixelTexture == null || font == null)
+            {
+                return;
+            }
+
+            Viewport viewport = spriteBatch.GraphicsDevice.Viewport;
+            const int panelWidth = 388;
+            const int panelHeight = 164;
+            int panelX = viewport.Width - panelWidth - 18;
+            int panelY = 18;
+
+            spriteBatch.Draw(pixelTexture, new Rectangle(panelX, panelY, panelWidth, panelHeight), new Color(18, 23, 33, 225));
+            spriteBatch.Draw(pixelTexture, new Rectangle(panelX, panelY, panelWidth, 30), new Color(82, 59, 44, 255));
+            DrawShadowedText(spriteBatch, font, "Tournament", new Vector2(panelX + 12, panelY + 7), Color.White);
+
+            DrawShadowedText(
+                spriteBatch,
+                font,
+                $"map={_mapId} | packets=374-378 | owner=CField_Tournament | phase={GetLifecyclePhaseLabel()}",
+                new Vector2(panelX + 12, panelY + 38),
+                Color.Gainsboro,
+                0.85f);
+
+            DrawShadowedText(
+                spriteBatch,
+                font,
+                string.IsNullOrWhiteSpace(_lastPacketSummary)
+                    ? "No tournament packet has been applied yet."
+                    : _lastPacketSummary,
+                new Vector2(panelX + 12, panelY + 60),
+                Color.White,
+                0.85f);
+
+            string stringPoolText = _lastStringPoolIds.Length == 0
+                ? "StringPool ids: none"
+                : $"StringPool ids: {string.Join(", ", _lastStringPoolIds.Select(id => $"0x{id:X}"))}";
+            DrawShadowedText(spriteBatch, font, stringPoolText, new Vector2(panelX + 12, panelY + 80), Color.Silver, 0.85f);
+
+            string dialogText = string.IsNullOrWhiteSpace(_lastDialogOwner)
+                ? "dialog: none"
+                : $"dialog: {_lastDialogOwner}";
+            string handlerText = string.IsNullOrWhiteSpace(_lastPacketOwner)
+                ? "handler: none"
+                : $"handler: {_lastPacketOwner}";
+            DrawShadowedText(
+                spriteBatch,
+                font,
+                TrimForDisplay($"{handlerText} | {dialogText}", 52),
+                new Vector2(panelX + 12, panelY + 100),
+                Color.Silver,
+                0.85f);
+
+            DrawShadowedText(
+                spriteBatch,
+                font,
+                TrimForDisplay(BuildLifecycleStatusText(Environment.TickCount), 72),
+                new Vector2(panelX + 12, panelY + 120),
+                Color.LightSteelBlue,
+                0.82f);
+
+            if (!string.IsNullOrWhiteSpace(_statusMessage))
+            {
+                DrawShadowedText(spriteBatch, font, TrimForDisplay(_statusMessage, 72), new Vector2(panelX + 12, panelY + 140), Color.LightGoldenrodYellow, 0.82f);
+            }
+
+            _matchTableDialog.Draw(spriteBatch, pixelTexture, font);
+        }
+
+        public bool TryApplyPacket(TournamentPacketType packetType, byte[] payload, int currentTimeMs, out string errorMessage)
+        {
+            return TryApplyPacketCore(packetType, payload, currentTimeMs, isRawTransport: false, out errorMessage);
+        }
+
+        public bool TryApplyRawPacket(int packetType, byte[] payload, int currentTimeMs, out string errorMessage)
+        {
+            if (!Enum.IsDefined(typeof(TournamentPacketType), packetType))
+            {
+                if (!_isActive)
+                {
+                    errorMessage = "Tournament runtime inactive.";
+                    return false;
+                }
+
+                SetStatus(
+                    $"Tournament raw packet {packetType} stayed outside 374-378 and was forwarded through CField::OnPacket(raw).",
+                    currentTimeMs,
+                    Array.Empty<int>(),
+                    $"forwarded raw packet {packetType}",
+                    "CField::OnPacket(raw)");
+                RecordForwardedRawPacket(packetType);
+                SetSessionPhase(
+                    TournamentSessionPhase.Forwarded,
+                    $"CField_Tournament::OnPacket forwarded raw packet {packetType} to CField::OnPacket(raw).");
+                errorMessage = null;
+                return true;
+            }
+
+            return TryApplyPacketCore((TournamentPacketType)packetType, payload, currentTimeMs, isRawTransport: true, out errorMessage);
+        }
+
+        public string DescribeStatus()
+        {
+            if (!_isActive)
+            {
+                return "Tournament runtime is inactive on this map.";
+            }
+
+            string packetText = _lastPacketType > 0 ? DescribePacketType(_lastPacketType) : "none";
+            string stringPoolText = _lastStringPoolIds.Length == 0
+                ? "none"
+                : string.Join("/", _lastStringPoolIds.Select(id => $"0x{id:X}"));
+            string dialogText = string.IsNullOrWhiteSpace(_lastDialogOwner) ? "none" : _lastDialogOwner;
+            string handlerText = string.IsNullOrWhiteSpace(_lastPacketOwner) ? "none" : _lastPacketOwner;
+            string summary = string.IsNullOrWhiteSpace(_lastPacketSummary) ? "No packet applied yet." : _lastPacketSummary;
+            string matchTableText = _matchTableDialog.DescribeStatus();
+            string phaseText = BuildLifecycleStatusText(Environment.TickCount);
+            return $"Tournament: active | map={_mapId} | phase={GetLifecyclePhaseLabel()} | session={DescribeSessionPhase()} | contract={TournamentContractSummary} | context={DescribeParticipationContext()} | last={packetText} | handler={handlerText} | dialog={dialogText} | stringPool={stringPoolText} | summary={summary} | lifecycle={phaseText} | trail={BuildPacketTrailSummary()} | owned={_ownedWrapperPacketCount} | ownedPacket={_ownedStructuredPacketCount} | ownedRaw={_ownedRawPacketCount} | ownedTrail={BuildOwnedWrapperPacketTrailSummary()} | ownedOwnerTrail={BuildOwnedWrapperOwnerTrailSummary()} | forwardedRaw={_forwardedRawPacketCount} | forwardedTrail={BuildForwardedRawPacketTrailSummary()}{Environment.NewLine}{matchTableText}";
+        }
+
+        public string DescribeMatchTableDialog()
+        {
+            return _matchTableDialog.DescribeStatus();
+        }
+
+        public bool TryScrollMatchTableDialog(int delta, out string message)
+        {
+            return _matchTableDialog.TryScroll(delta, out message);
+        }
+
+        public bool HandleMatchTableDialogMouse(
+            Point mousePosition,
+            int viewportWidth,
+            int viewportHeight,
+            int scrollWheelDelta,
+            bool leftClickReleased,
+            out string message)
+        {
+            return _matchTableDialog.HandleMouse(mousePosition, viewportWidth, viewportHeight, scrollWheelDelta, leftClickReleased, out message);
+        }
+
+        public void CloseMatchTableDialog()
+        {
+            _matchTableDialog.Close("Tournament match-table dialog closed locally.");
+        }
+
+        public void Reset()
+        {
+            _mapId = 0;
+            _isActive = false;
+            _lastPacketType = 0;
+            _statusMessage = null;
+            _statusMessageUntil = 0;
+            _lastPacketSummary = null;
+            _lastPayloadHex = null;
+            _lastDialogOwner = null;
+            _lastPacketOwner = null;
+            _lastStringPoolIds = Array.Empty<int>();
+            _lastPrizeItemIds = Array.Empty<int>();
+            _lifecyclePhase = TournamentLifecyclePhase.Lobby;
+            _lifecycleSummary = null;
+            _podiumExitDeadlineTick = null;
+            _packetActionTrail.Clear();
+            _sessionPhase = TournamentSessionPhase.None;
+            _sessionPhaseSummary = null;
+            _clientTournamentFlagBitContext = true;
+            _clientTournamentRegistrationContext = true;
+            _matchTableDialog.Reset();
+            _ownedWrapperPacketCount = 0;
+            _ownedStructuredPacketCount = 0;
+            _ownedRawPacketCount = 0;
+            _ownedWrapperPacketTrail.Clear();
+            _ownedWrapperOwnerTrail.Clear();
+            _forwardedRawPacketCount = 0;
+            _forwardedRawPacketTrail.Clear();
+        }
+
+        private void ApplyTournamentNotice(BinaryReader reader, int currentTimeMs)
+        {
+            byte branch = reader.ReadByte();
+            byte noticeCode = reader.ReadByte();
+
+            if (branch == 0 && HasClientTournamentParticipationContext())
+            {
+                if (!TryResolveBlockedEntryNotice(noticeCode, out TournamentClientMessage blockedEntryNotice))
+                {
+                    SetLifecyclePhase(
+                        TournamentLifecyclePhase.EntryGate,
+                        $"Blocked entry branch={branch} code={noticeCode} fell outside the client's recovered 0/1 notice branches and was ignored.");
+                    RecordIgnoredPacket($"notice (374) branch={branch} ignored blocked-entry code={noticeCode}", currentTimeMs);
+                    return;
+                }
+
+                SetLifecyclePhase(
+                    TournamentLifecyclePhase.EntryGate,
+                    $"Blocked entry branch={branch} code={noticeCode} stayed inside the Tournament lobby gate ({DescribeParticipationContext()}).");
+                SetStatus(
+                    FormatStringPoolMessage(blockedEntryNotice),
+                    currentTimeMs,
+                    new[] { blockedEntryNotice.StringPoolId },
+                    $"notice (374) branch={branch} blocked-entry code={noticeCode} ctx(flag={_clientTournamentFlagBitContext},reg={_clientTournamentRegistrationContext})",
+                    "CUtilDlg::Notice");
+                SetSessionPhase(
+                    TournamentSessionPhase.Notice,
+                    $"CField_Tournament::OnTournament handled blocked-entry branch={branch} code={noticeCode} with blocked-entry context ({DescribeParticipationContext()}).");
+                return;
+            }
+
+            if (branch == 0)
+            {
+                SetLifecyclePhase(
+                    TournamentLifecyclePhase.RestPeriod,
+                    $"CField_Tournament::OnTournament treated branch 0 as the round-result path because both CWvsContext participation gates were absent ({DescribeParticipationContext()}).");
+            }
+
+            if (noticeCode > 0x10)
+            {
+                SetLifecyclePhase(
+                    TournamentLifecyclePhase.RestPeriod,
+                    $"Round-result branch={branch} code={noticeCode} exceeded the client's recovered Tournament notice range and was ignored.");
+                RecordIgnoredPacket($"notice (374) branch={branch} ignored round-result code={noticeCode}", currentTimeMs);
+                return;
+            }
+
+            TournamentClientMessage message = noticeCode switch
+            {
+                1 => new TournamentClientMessage(0x3A7, "Tournament round-result branch selected notice code 1."),
+                2 => new TournamentClientMessage(0x3A6, "Tournament round-result branch selected notice code 2."),
+                _ => new TournamentClientMessage(0x3A5, string.Format(CultureInfo.InvariantCulture, "Tournament round-result branch selected code {0}.", noticeCode))
+            };
+
+            SetLifecyclePhase(
+                TournamentLifecyclePhase.RestPeriod,
+                $"Round-result branch={branch} notice entered the resting-period seam described by String/Map.img/victoria/109070000/help0.");
+            SetStatus(
+                noticeCode switch
+                {
+                    1 => FormatStringPoolMessage(message),
+                    2 => FormatStringPoolMessage(message),
+                    _ => FormatStringPoolMessage(message, noticeCode)
+                },
+                currentTimeMs,
+                new[] { message.StringPoolId },
+                $"notice (374) branch={branch} round-result code={noticeCode} ctx(flag={_clientTournamentFlagBitContext},reg={_clientTournamentRegistrationContext})",
+                "CUtilDlg::Notice");
+            SetSessionPhase(
+                TournamentSessionPhase.Notice,
+                $"CField_Tournament::OnTournament handled round-result branch={branch} code={noticeCode}.");
+        }
+
+        private bool HasClientTournamentParticipationContext()
+        {
+            return _clientTournamentFlagBitContext || _clientTournamentRegistrationContext;
+        }
+
+        private void ApplyMatchTable(byte[] payload, int currentTimeMs)
+        {
+            if (!_matchTableDialog.TryOpen(payload, out string dialogSummary, out string errorMessage))
+            {
+                throw new InvalidDataException(errorMessage);
+            }
+
+            SetLifecyclePhase(
+                TournamentLifecyclePhase.MatchTable,
+                $"CField_Tournament::OnTournamentMatchTable opened {MatchTableDialogOwner} for the live bracket preview.");
+            SetStatus(
+                dialogSummary,
+                currentTimeMs,
+                Array.Empty<int>(),
+                $"match-table (375) bytes={payload.Length}",
+                $"{MatchTableDialogOwner}::DoModal");
+            SetSessionPhase(
+                TournamentSessionPhase.MatchTable,
+                $"CField_Tournament::OnTournamentMatchTable routed state-byte={_matchTableDialog.Stage} [{_matchTableDialog.StageLabel}] into {MatchTableDialogOwner}.");
+        }
+
+        private void ApplyPrize(BinaryReader reader, int currentTimeMs)
+        {
+            byte prizeCode = reader.ReadByte();
+            bool hasItems = reader.ReadByte() != 0;
+            _lastPrizeItemIds = Array.Empty<int>();
+            _podiumExitDeadlineTick = unchecked(currentTimeMs + PostFinalExitGraceMs);
+            if (_matchTableDialog.IsVisible)
+            {
+                _matchTableDialog.Close("Tournament match-table dialog closed for the prize podium.");
+            }
+
+            SetLifecyclePhase(
+                TournamentLifecyclePhase.PrizePodium,
+                "Tournament prize flow moved the finalists to the podium and armed the five-minute exit grace from String/Map.img/victoria/109070000/help0.");
+            SetSessionPhase(
+                TournamentSessionPhase.Prize,
+                "CField_Tournament::OnTournamentSetPrize advanced the wrapper from bracket transport into the prize podium flow.");
+            if (hasItems)
+            {
+                int firstItemId = reader.ReadInt32();
+                int secondItemId = reader.ReadInt32();
+                _lastPrizeItemIds = new[] { firstItemId, secondItemId };
+                string firstItemName = ResolveItemName(firstItemId);
+                string secondItemName = ResolveItemName(secondItemId);
+                TournamentClientMessage message = new(
+                    0x3AA,
+                    $"Tournament prize notice awarded {FormatItemLabel(firstItemId, firstItemName)} and {FormatItemLabel(secondItemId, secondItemName)}.");
+                string firstItemNoticeLabel = string.IsNullOrWhiteSpace(firstItemName)
+                    ? $"item {firstItemId}"
+                    : firstItemName;
+                string secondItemNoticeLabel = string.IsNullOrWhiteSpace(secondItemName)
+                    ? $"item {secondItemId}"
+                    : secondItemName;
+                SetStatus(
+                    FormatStringPoolMessage(message, firstItemNoticeLabel, secondItemNoticeLabel),
+                    currentTimeMs,
+                    new[] { message.StringPoolId },
+                    $"set-prize (376) code={prizeCode} items={FormatSummaryItemList(_lastPrizeItemIds)}",
+                    "CUtilDlg::Notice");
+                return;
+            }
+
+            TournamentClientMessage fallbackMessage = prizeCode != 0
+                ? new TournamentClientMessage(0x3A8, $"Tournament prize notice without items selected branch code {prizeCode}.")
+                : new TournamentClientMessage(0x3A9, "Tournament prize notice reported no item rewards for the local branch.");
+
+            if (!HasClientTournamentParticipationContext())
+            {
+                SetStatus(
+                    null,
+                    currentTimeMs,
+                    Array.Empty<int>(),
+                    $"set-prize (376) code={prizeCode} items=none suppressed by missing local tournament participation context");
+                SetSessionPhase(
+                    TournamentSessionPhase.Prize,
+                    "CField_Tournament::OnTournamentSetPrize decoded the podium transition but suppressed the no-item CUtilDlg::Notice because the local CWvsContext tournament participation flags were not set.");
+                return;
+            }
+
+            SetStatus(
+                FormatStringPoolMessage(fallbackMessage),
+                currentTimeMs,
+                new[] { fallbackMessage.StringPoolId },
+                $"set-prize (376) code={prizeCode} items=none",
+                "CUtilDlg::Notice");
+        }
+
+        private void ApplyUew(BinaryReader reader, int currentTimeMs)
+        {
+            byte uewCode = reader.ReadByte();
+            SetLifecyclePhase(
+                TournamentLifecyclePhase.SessionNotice,
+                $"Tournament UEW branch reported client notice code {uewCode}.");
+            TournamentClientMessage? message = uewCode switch
+            {
+                2 => new TournamentClientMessage(0x9F8, "Tournament UEW branch reported code 2."),
+                4 => new TournamentClientMessage(0x9F7, "Tournament UEW branch reported code 4."),
+                8 or 16 => new TournamentClientMessage(0x9F6, string.Format(CultureInfo.InvariantCulture, "Tournament UEW branch reported code {0}.", uewCode)),
+                _ => null
+            };
+
+            if (!message.HasValue)
+            {
+                SetStatus(
+                    string.Empty,
+                    currentTimeMs,
+                    Array.Empty<int>(),
+                    $"uew (377) code={uewCode} produced an empty CUtilDlg::Notice payload",
+                    "CUtilDlg::Notice");
+                SetSessionPhase(
+                    TournamentSessionPhase.Uew,
+                    $"CField_Tournament::OnTournamentUEW emitted an empty notice payload for unknown code {uewCode}.");
+                return;
+            }
+
+            string fallback = uewCode is 8 or 16
+                ? FormatStringPoolMessage(message.Value, uewCode)
+                : FormatStringPoolMessage(message.Value);
+            SetStatus(fallback, currentTimeMs, new[] { message.Value.StringPoolId }, $"uew (377) code={uewCode}", "CUtilDlg::Notice");
+            SetSessionPhase(
+                TournamentSessionPhase.Uew,
+                $"CField_Tournament::OnTournamentUEW handled code {uewCode}.");
+        }
+
+        private void SetStatus(string text, int currentTimeMs, IReadOnlyList<int> stringPoolIds, string packetSummary, string dialogOwner = null)
+        {
+            _statusMessage = text;
+            _statusMessageUntil = string.IsNullOrWhiteSpace(text)
+                ? 0
+                : currentTimeMs + StatusDurationMs;
+            _lastPacketSummary = packetSummary;
+            _lastDialogOwner = dialogOwner;
+            _lastStringPoolIds = stringPoolIds?.Where(id => id > 0).Distinct().ToArray() ?? Array.Empty<int>();
+            _lastPacketOwner = ResolvePacketOwner(_lastPacketType);
+            RecordPacketTrail(_lastPacketSummary);
+        }
+
+        private void RecordIgnoredPacket(string packetSummary, int currentTimeMs)
+        {
+            SetStatus(null, currentTimeMs, Array.Empty<int>(), packetSummary);
+        }
+
+        private void SetLifecyclePhase(TournamentLifecyclePhase phase, string summary)
+        {
+            _lifecyclePhase = phase;
+            _lifecycleSummary = string.IsNullOrWhiteSpace(summary) ? null : summary.Trim();
+        }
+
+        private void SetSessionPhase(TournamentSessionPhase phase, string summary)
+        {
+            _sessionPhase = phase;
+            _sessionPhaseSummary = string.IsNullOrWhiteSpace(summary) ? null : summary.Trim();
+        }
+
+        private string BuildLifecycleStatusText(int currentTimeMs)
+        {
+            string phaseText = string.IsNullOrWhiteSpace(_lifecycleSummary)
+                ? GetLifecyclePhaseLabel()
+                : _lifecycleSummary;
+
+            if (_lifecyclePhase != TournamentLifecyclePhase.PrizePodium || !_podiumExitDeadlineTick.HasValue)
+            {
+                return phaseText;
+            }
+
+            int remainingMs = _podiumExitDeadlineTick.Value - currentTimeMs;
+            if (remainingMs <= 0)
+            {
+                return $"{phaseText} Exit grace elapsed locally.";
+            }
+
+            int totalSeconds = (int)Math.Ceiling(remainingMs / 1000d);
+            int minutes = totalSeconds / 60;
+            int seconds = totalSeconds % 60;
+            return $"{phaseText} Exit grace {minutes}:{seconds:D2} remaining.";
+        }
+
+        private string GetLifecyclePhaseLabel()
+        {
+            return _lifecyclePhase switch
+            {
+                TournamentLifecyclePhase.EntryGate => "entry-gate",
+                TournamentLifecyclePhase.MatchTable => "match-table",
+                TournamentLifecyclePhase.RestPeriod => "rest-period",
+                TournamentLifecyclePhase.PrizePodium => "prize-podium",
+                TournamentLifecyclePhase.SessionNotice => "session-notice",
+                _ => "lobby"
+            };
+        }
+
+        private string DescribeSessionPhase()
+        {
+            string label = _sessionPhase switch
+            {
+                TournamentSessionPhase.Lobby => "lobby",
+                TournamentSessionPhase.Notice => "notice",
+                TournamentSessionPhase.MatchTable => "match-table",
+                TournamentSessionPhase.Prize => "prize",
+                TournamentSessionPhase.Uew => "uew",
+                TournamentSessionPhase.NoOp => "noop",
+                TournamentSessionPhase.Forwarded => "forwarded",
+                _ => "none"
+            };
+
+            return string.IsNullOrWhiteSpace(_sessionPhaseSummary)
+                ? label
+                : $"{label} ({_sessionPhaseSummary})";
+        }
+
+        private void RecordPacketTrail(string summary)
+        {
+            if (string.IsNullOrWhiteSpace(summary))
+            {
+                return;
+            }
+
+            _packetActionTrail.Enqueue(summary.Trim());
+            while (_packetActionTrail.Count > PacketTrailCapacity)
+            {
+                _packetActionTrail.Dequeue();
+            }
+        }
+
+        private string BuildPacketTrailSummary()
+        {
+            if (_packetActionTrail.Count == 0)
+            {
+                return "none";
+            }
+
+            return string.Join(" => ", _packetActionTrail.Select(entry => TrimForDisplay(entry, 44)));
+        }
+
+        private void RecordForwardedRawPacket(int packetType)
+        {
+            _forwardedRawPacketCount++;
+            _forwardedRawPacketTrail.Enqueue(packetType);
+            while (_forwardedRawPacketTrail.Count > ForwardedRawPacketTrailCapacity)
+            {
+                _forwardedRawPacketTrail.Dequeue();
+            }
+        }
+
+        private bool TryApplyPacketCore(
+            TournamentPacketType packetType,
+            byte[] payload,
+            int currentTimeMs,
+            bool isRawTransport,
+            out string errorMessage)
+        {
+            errorMessage = null;
+
+            if (!_isActive)
+            {
+                errorMessage = "Tournament runtime inactive.";
+                return false;
+            }
+
+            payload ??= Array.Empty<byte>();
+            _lastPacketType = (int)packetType;
+            _lastPayloadHex = Convert.ToHexString(payload);
+
+            try
+            {
+                using var stream = new MemoryStream(payload, writable: false);
+                using var reader = new BinaryReader(stream, Encoding.Default, leaveOpen: false);
+
+                switch (packetType)
+                {
+                    case TournamentPacketType.Tournament:
+                        ApplyTournamentNotice(reader, currentTimeMs);
+                        EnsurePacketConsumed(stream, "tournament");
+                        RecordOwnedWrapperPacket((int)packetType, isRawTransport, "CField_Tournament::OnTournament");
+                        return true;
+
+                    case TournamentPacketType.MatchTable:
+                        ApplyMatchTable(payload, currentTimeMs);
+                        RecordOwnedWrapperPacket((int)packetType, isRawTransport, "CField_Tournament::OnTournamentMatchTable");
+                        return true;
+
+                    case TournamentPacketType.SetPrize:
+                        ApplyPrize(reader, currentTimeMs);
+                        EnsurePacketConsumed(stream, "set-prize");
+                        RecordOwnedWrapperPacket((int)packetType, isRawTransport, "CField_Tournament::OnTournamentSetPrize");
+                        return true;
+
+                    case TournamentPacketType.Uew:
+                        ApplyUew(reader, currentTimeMs);
+                        EnsurePacketConsumed(stream, "uew");
+                        RecordOwnedWrapperPacket((int)packetType, isRawTransport, "CField_Tournament::OnTournamentUEW");
+                        return true;
+
+                    case TournamentPacketType.NoOp:
+                        SetStatus(
+                            payload.Length == 0
+                                ? "Tournament packet 378 reached the dedicated client wrapper and intentionally performed no local UI action."
+                                : $"Tournament packet 378 reached the dedicated client wrapper and returned immediately with {payload.Length} trailing byte(s) left unread.",
+                            currentTimeMs,
+                            Array.Empty<int>(),
+                            payload.Length == 0
+                                ? "noop (378)"
+                                : $"noop (378) unreadBytes={payload.Length}");
+                        SetSessionPhase(
+                            TournamentSessionPhase.NoOp,
+                            payload.Length == 0
+                                ? "CField_Tournament::OnPacket returned from opcode 378 and intentionally performed no local action."
+                                : $"CField_Tournament::OnPacket returned from opcode 378 without decoding {payload.Length} trailing byte(s).");
+                        RecordOwnedWrapperPacket((int)packetType, isRawTransport, "CField_Tournament::OnPacket(noop)");
+                        return true;
+
+                    default:
+                        errorMessage = $"Unsupported Tournament packet type: {(int)packetType}";
+                        return false;
+                }
+            }
+            catch (Exception ex) when (ex is EndOfStreamException || ex is IOException || ex is InvalidDataException)
+            {
+                errorMessage = ex.Message;
+                return false;
+            }
+        }
+
+        private void RecordOwnedWrapperPacket(int packetType, bool isRawTransport, string ownerRoute)
+        {
+            _ownedWrapperPacketCount++;
+            if (isRawTransport)
+            {
+                _ownedRawPacketCount++;
+            }
+            else
+            {
+                _ownedStructuredPacketCount++;
+            }
+            _ownedWrapperPacketTrail.Enqueue(packetType);
+            while (_ownedWrapperPacketTrail.Count > OwnedWrapperPacketTrailCapacity)
+            {
+                _ownedWrapperPacketTrail.Dequeue();
+            }
+
+            if (!string.IsNullOrWhiteSpace(ownerRoute))
+            {
+                string transport = isRawTransport ? "raw" : "packet";
+                _ownedWrapperOwnerTrail.Enqueue($"{transport}:{packetType}->{ownerRoute}");
+                while (_ownedWrapperOwnerTrail.Count > OwnedWrapperPacketTrailCapacity)
+                {
+                    _ownedWrapperOwnerTrail.Dequeue();
+                }
+            }
+        }
+
+        private string BuildOwnedWrapperPacketTrailSummary()
+        {
+            if (_ownedWrapperPacketTrail.Count == 0)
+            {
+                return "none";
+            }
+
+            return string.Join("->", _ownedWrapperPacketTrail.Select(id => id.ToString(CultureInfo.InvariantCulture)));
+        }
+
+        private string BuildOwnedWrapperOwnerTrailSummary()
+        {
+            if (_ownedWrapperOwnerTrail.Count == 0)
+            {
+                return "none";
+            }
+
+            return string.Join(" => ", _ownedWrapperOwnerTrail.Select(entry => TrimForDisplay(entry, 52)));
+        }
+
+        private string BuildForwardedRawPacketTrailSummary()
+        {
+            if (_forwardedRawPacketTrail.Count == 0)
+            {
+                return "none";
+            }
+
+            return string.Join("->", _forwardedRawPacketTrail.Select(id => id.ToString(CultureInfo.InvariantCulture)));
+        }
+
+        private static string FormatSummaryItemList(IEnumerable<int> itemIds)
+        {
+            int[] items = itemIds?.Where(id => id > 0).ToArray() ?? Array.Empty<int>();
+            return items.Length == 0
+                ? "none"
+                : string.Join(",", items);
+        }
+
+        private static string FormatItemLabel(int itemId, string itemName)
+        {
+            return string.IsNullOrWhiteSpace(itemName)
+                ? $"item {itemId}"
+                : $"{itemName} ({itemId})";
+        }
+
+        private static string ResolveItemName(int itemId)
+        {
+            if (itemId <= 0
+                || Program.InfoManager?.ItemNameCache == null
+                || !Program.InfoManager.ItemNameCache.TryGetValue(itemId, out Tuple<string, string, string> itemInfo))
+            {
+                return null;
+            }
+
+            return string.IsNullOrWhiteSpace(itemInfo.Item2) ? null : itemInfo.Item2.Trim();
+        }
+
+        private static string DescribePacketType(int packetType)
+        {
+            return packetType switch
+            {
+                374 => "tournament (374)",
+                375 => "matchtable (375)",
+                376 => "setprize (376)",
+                377 => "uew (377)",
+                378 => "noop (378)",
+                _ => packetType.ToString(CultureInfo.InvariantCulture)
+            };
+        }
+
+        private static string ResolvePacketOwner(int packetType)
+        {
+            return packetType switch
+            {
+                374 => "CField_Tournament::OnTournament",
+                375 => "CField_Tournament::OnTournamentMatchTable",
+                376 => "CField_Tournament::OnTournamentSetPrize",
+                377 => "CField_Tournament::OnTournamentUEW",
+                378 => "CField_Tournament::OnPacket(no-op)",
+                _ => null
+            };
+        }
+
+        private static bool TryResolveBlockedEntryNotice(byte noticeCode, out TournamentClientMessage message)
+        {
+            switch (noticeCode)
+            {
+                case 0:
+                    message = new TournamentClientMessage(0x3A4, "Tournament entry notice branch 0 reported that the current session cannot proceed.");
+                    return true;
+                case 1:
+                    message = new TournamentClientMessage(0x3A3, "Tournament entry notice branch 1 reported that the current session cannot proceed.");
+                    return true;
+                default:
+                    message = default;
+                    return false;
+            }
+        }
+
+        private static string FormatStringPoolMessage(TournamentClientMessage definition, params object[] args)
+        {
+            string format = GetTournamentCompositeFormat(definition.StringPoolId, definition.FallbackText, args?.Length ?? 0);
+            string text = args == null || args.Length == 0
+                ? format
+                : string.Format(CultureInfo.InvariantCulture, format, args);
+            return $"{text} [StringPool 0x{definition.StringPoolId:X}]";
+        }
+
+        private static string GetTournamentCompositeFormat(int stringPoolId, string fallbackText, int maxPlaceholderCount)
+        {
+            if (!MapleStoryStringPool.TryGet(stringPoolId, out string text))
+            {
+                return fallbackText;
+            }
+
+            for (int tokenIndex = 0; tokenIndex < maxPlaceholderCount; tokenIndex++)
+            {
+                int markerIndex = text.IndexOf("%s", StringComparison.Ordinal);
+                if (markerIndex < 0)
+                {
+                    markerIndex = text.IndexOf("%d", StringComparison.Ordinal);
+                }
+
+                if (markerIndex < 0)
+                {
+                    markerIndex = text.IndexOf("%n", StringComparison.Ordinal);
+                }
+
+                if (markerIndex < 0)
+                {
+                    break;
+                }
+
+                string replacement = $"{{{tokenIndex}}}";
+                text = text.Remove(markerIndex, 2).Insert(markerIndex, replacement);
+            }
+
+            return text;
+        }
+
+        private static void EnsurePacketConsumed(Stream stream, string packetLabel)
+        {
+            if (stream.Position != stream.Length)
+            {
+                throw new InvalidDataException($"Unexpected trailing bytes in Tournament {packetLabel} payload.");
+            }
+        }
+
+        internal static void DrawShadowedText(SpriteBatch spriteBatch, SpriteFont font, string text, Vector2 position, Color color, float scale = 1f)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return;
+            }
+
+            Vector2 shadowOffset = new Vector2(1f, 1f);
+            spriteBatch.DrawString(font, text, position + shadowOffset, Color.Black * 0.75f, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+            spriteBatch.DrawString(font, text, position, color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+        }
+
+        private static string TrimForDisplay(string text, int maxLength)
+        {
+            if (string.IsNullOrWhiteSpace(text) || text.Length <= maxLength)
+            {
+                return text ?? string.Empty;
+            }
+
+            return text[..Math.Max(0, maxLength - 3)] + "...";
+        }
+    }
+
+    public sealed class TournamentMatchTableDialogState
+    {
+        private const int RawTableByteCount = 0x300;
+        private const int EntrantCount = 32;
+        private const int VisibleEntrantCount = 8;
+        private const int EntryValueCount = 6;
+        private const int ExactPayloadLength = RawTableByteCount + 1;
+        private const int DialogWidth = 758;
+        private const int DialogHeight = 470;
+        private const int MatchTableWidth = 714;
+        private const int MatchTableHeight = 406;
+        private const int DrawOffsetX = 22;
+        private const int DrawOffsetY = 38;
+        private const int AvatarLineOffsetY = 28;
+        private const int HeaderHeight = 28;
+        private const int CloseButtonWidth = 36;
+        private const int CloseButtonHeight = 18;
+        private const int ScrollButtonWidth = 24;
+        private const int ScrollButtonHeight = 18;
+        private const int MatchTableStatusMin = 2;
+        private const int MatchTableStatusMax = 5;
+        private const int InitialScroll = 2;
+        private const int MaxScroll = (EntrantCount / VisibleEntrantCount) - 1;
+        private const int MatchTableDialogTitleStringPoolId = 0x752;
+        private const int MatchTableSurfaceStringPoolId = 0x753;
+        private const int MatchTableUpButtonStringPoolId = 0x754;
+        private const int MatchTableDownButtonStringPoolId = 0x755;
+        private const int MatchTableCloseButtonStringPoolId = 0x746;
+        private const int MatchTableStateBadgeStringPoolId = 0x75B;
+        private const int MatchTableStateBadgeStride = 103;
+        private const string DialogTitleFallback = "Tournament Match Table";
+
+        private static readonly Point[] RoundOneNamePoints =
+        {
+            new(42, 393),
+            new(125, 393),
+            new(216, 393),
+            new(299, 393),
+            new(390, 393),
+            new(473, 393),
+            new(564, 393),
+            new(647, 393)
+        };
+
+        private static readonly Point[] RoundTwoNamePoints =
+        {
+            new(81, 289),
+            new(256, 289),
+            new(431, 289),
+            new(606, 289)
+        };
+
+        private static readonly Point[] SemiFinalNamePoints =
+        {
+            new(277, 185),
+            new(411, 185)
+        };
+
+        private static readonly Point ChampionNamePoint = new(341, 81);
+        private static readonly Point[] RoundOneDebugPoints =
+        {
+            new(42, 410),
+            new(125, 410),
+            new(216, 410),
+            new(299, 410),
+            new(390, 410),
+            new(473, 410),
+            new(564, 410),
+            new(647, 410)
+        };
+
+        private readonly int[,] _matchValues = new int[EntrantCount, EntryValueCount];
+        private readonly string[] _slotNames = new string[EntrantCount];
+        private byte[] _rawTable = Array.Empty<byte>();
+
+        public bool IsVisible { get; private set; }
+        public byte Stage { get; private set; }
+        public int Scroll { get; private set; } = InitialScroll;
+        public int PayloadLength { get; private set; }
+        public int RawTableLength => _rawTable.Length;
+        public string Summary { get; private set; }
+        public string DialogTitle { get; private set; }
+        public int DialogTitleStringPoolId => IsVisible ? MatchTableDialogTitleStringPoolId : 0;
+        public int SurfaceStringPoolId => IsVisible ? MatchTableSurfaceStringPoolId : 0;
+        public int UpButtonStringPoolId => IsVisible ? MatchTableUpButtonStringPoolId : 0;
+        public int DownButtonStringPoolId => IsVisible ? MatchTableDownButtonStringPoolId : 0;
+        public int CloseButtonStringPoolId => IsVisible ? MatchTableCloseButtonStringPoolId : 0;
+        public int StateBadgeStringPoolId => IsVisible ? MatchTableStateBadgeStringPoolId : 0;
+        public IReadOnlyList<string> SlotNames => _slotNames;
+        public bool HasExactCtorPayloadShape => PayloadLength == ExactPayloadLength && _rawTable.Length == RawTableByteCount;
+        public string StageLabel => ResolveStateLabel();
+        public int EntrantCapacity => EntrantCount;
+        public int VisibleSlotOffset => Scroll * VisibleEntrantCount;
+        public bool UsesRecoveredStateBadgeSeam => IsVisible && Scroll == InitialScroll && Stage >= MatchTableStatusMin && Stage <= MatchTableStatusMax;
+        public int? StateBadgeSourceYOffset => UsesRecoveredStateBadgeSeam
+            ? MatchTableStateBadgeStride * (MatchTableStatusMax - Stage)
+            : null;
+
+        public void Reset()
+        {
+            IsVisible = false;
+            Stage = 0;
+            Scroll = InitialScroll;
+            PayloadLength = 0;
+            Summary = null;
+            DialogTitle = null;
+            _rawTable = Array.Empty<byte>();
+            Array.Clear(_matchValues, 0, _matchValues.Length);
+            Array.Fill(_slotNames, string.Empty);
+        }
+
+        public void Update(int tickCount)
+        {
+        }
+
+        public bool TryOpen(byte[] payload, out string summary, out string errorMessage)
+        {
+            summary = null;
+            errorMessage = null;
+
+            if (payload == null || payload.Length != ExactPayloadLength)
+            {
+                errorMessage = $"Tournament match-table payload must be exactly {ExactPayloadLength} byte(s) (0x300-byte match buffer + state byte); received {payload?.Length ?? 0}.";
+                return false;
+            }
+
+            PayloadLength = payload.Length;
+            _rawTable = payload.Take(RawTableByteCount).ToArray();
+            Stage = payload[RawTableByteCount];
+            Scroll = InitialScroll;
+            IsVisible = true;
+
+            DecodeMatchValues();
+            DecodeSlotNames();
+            DialogTitle = ResolveDialogTitle();
+
+            string firstNames = string.Join(", ", _slotNames.Where(name => !string.IsNullOrWhiteSpace(name)).Take(4));
+            if (string.IsNullOrWhiteSpace(firstNames))
+            {
+                firstNames = "no printable entrant names recovered";
+            }
+
+            Summary = $"Tournament match table opened in a dedicated {MatchTableDialogOwnerText} dialog (0x300-byte match buffer + state byte, payload={PayloadLength} byte(s), decodedCapacity={EntrantCapacity} entrants x {EntryValueCount} ints, state-byte={Stage} [{StageLabel}], title StringPool=0x{DialogTitleStringPoolId:X}, title=\"{DialogTitle}\", surface StringPool=0x{SurfaceStringPoolId:X}, stateBadge={DescribeStateBadgeSeam()}, buttons up/down/close=0x{UpButtonStringPoolId:X}/0x{DownButtonStringPoolId:X}/0x{CloseButtonStringPoolId:X}, scroll={Scroll}, visibleOffset={VisibleSlotOffset}, preview={firstNames}).";
+            summary = Summary;
+            return true;
+        }
+
+        public void Close(string reason = null)
+        {
+            IsVisible = false;
+            Summary = string.IsNullOrWhiteSpace(reason) ? "Tournament match-table dialog is closed." : reason;
+        }
+
+        public bool TryScroll(int delta, out string message)
+        {
+            if (!IsVisible)
+            {
+                message = "Tournament match-table dialog is not open.";
+                return false;
+            }
+
+            int nextScroll = Math.Clamp(Scroll + delta, 0, MaxScroll);
+            Scroll = nextScroll;
+            message = $"Tournament match-table dialog scroll set to {Scroll}.";
+            return true;
+        }
+
+        public string DescribeStatus()
+        {
+            if (!IsVisible)
+            {
+                return "Tournament match-table dialog: closed.";
+            }
+
+            string names = string.Join(", ", _slotNames.Where(name => !string.IsNullOrWhiteSpace(name)).Take(4));
+            if (string.IsNullOrWhiteSpace(names))
+            {
+                names = "none recovered";
+            }
+
+            return $"Tournament match-table dialog: open | payload={PayloadLength} bytes (0x300-byte match buffer + state byte) | exactCtorShape={HasExactCtorPayloadShape} | capacity={EntrantCapacity} entrants x {EntryValueCount} ints | state-byte={Stage} [{StageLabel}] | title=0x{DialogTitleStringPoolId:X} \"{DialogTitle}\" | surface=0x{SurfaceStringPoolId:X} | stateBadge={DescribeStateBadgeSeam()} | buttons up/down/close=0x{UpButtonStringPoolId:X}/0x{DownButtonStringPoolId:X}/0x{CloseButtonStringPoolId:X} | scroll={Scroll} | visibleOffset={VisibleSlotOffset} | entrants={names}";
+        }
+
+        public int GetMatchValue(int slotIndex, int valueIndex)
+        {
+            if (slotIndex < 0 || slotIndex >= EntrantCount)
+            {
+                throw new ArgumentOutOfRangeException(nameof(slotIndex));
+            }
+
+            if (valueIndex < 0 || valueIndex >= EntryValueCount)
+            {
+                throw new ArgumentOutOfRangeException(nameof(valueIndex));
+            }
+
+            return _matchValues[slotIndex, valueIndex];
+        }
+
+        public bool HandleMouse(
+            Point mousePosition,
+            int viewportWidth,
+            int viewportHeight,
+            int scrollWheelDelta,
+            bool leftClickReleased,
+            out string message)
+        {
+            message = null;
+            if (!IsVisible)
+            {
+                return false;
+            }
+
+            GetLayout(viewportWidth, viewportHeight, out Rectangle panelRect, out Rectangle closeButtonRect, out Rectangle upButtonRect, out Rectangle downButtonRect);
+            if (!panelRect.Contains(mousePosition))
+            {
+                return false;
+            }
+
+            if (scrollWheelDelta != 0)
+            {
+                int step = Math.Sign(scrollWheelDelta);
+                return TryScroll(-step, out message);
+            }
+
+            if (!leftClickReleased)
+            {
+                message = null;
+                return true;
+            }
+
+            if (closeButtonRect.Contains(mousePosition))
+            {
+                Close("Tournament match-table dialog closed via CMatchTableDlg::BtClose.");
+                message = Summary;
+                return true;
+            }
+
+            if (upButtonRect.Contains(mousePosition))
+            {
+                return TryScroll(-1, out message);
+            }
+
+            if (downButtonRect.Contains(mousePosition))
+            {
+                return TryScroll(1, out message);
+            }
+
+            message = "Tournament match-table dialog captured the click.";
+            return true;
+        }
+
+        public void Draw(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font)
+        {
+            if (!IsVisible || spriteBatch == null || pixelTexture == null || font == null)
+            {
+                return;
+            }
+
+            Viewport viewport = spriteBatch.GraphicsDevice.Viewport;
+            GetLayout(viewport.Width, viewport.Height, out Rectangle panelRect, out Rectangle closeButtonRect, out Rectangle upButtonRect, out Rectangle downButtonRect, out float scale);
+            int panelX = panelRect.X;
+            int panelY = panelRect.Y;
+            int scaledWidth = panelRect.Width;
+            int scaledHeight = panelRect.Height;
+
+            DrawFilled(spriteBatch, pixelTexture, new Rectangle(panelX, panelY, scaledWidth, scaledHeight), new Color(14, 18, 27, 238));
+            DrawBorder(spriteBatch, pixelTexture, new Rectangle(panelX, panelY, scaledWidth, scaledHeight), new Color(205, 182, 119, 255));
+            DrawFilled(spriteBatch, pixelTexture, new Rectangle(panelX, panelY, scaledWidth, Scale(HeaderHeight, scale)), new Color(79, 57, 39, 255));
+
+            float titleScale = Math.Max(0.82f, 0.92f * scale);
+            TournamentField.DrawShadowedText(spriteBatch, font, "Tournament Match Table", new Vector2(panelX + Scale(12, scale), panelY + Scale(6, scale)), Color.White, titleScale);
+
+            DrawButton(spriteBatch, pixelTexture, font, closeButtonRect, "X", true, scale);
+            DrawButton(spriteBatch, pixelTexture, font, upButtonRect, "Up", Scroll > 0, Math.Max(0.68f, 0.78f * scale));
+            DrawButton(spriteBatch, pixelTexture, font, downButtonRect, "Dn", Scroll < MaxScroll, Math.Max(0.68f, 0.78f * scale));
+
+            Rectangle tableRect = new(
+                panelX + Scale(DrawOffsetX, scale),
+                panelY + Scale(DrawOffsetY, scale),
+                Scale(MatchTableWidth, scale),
+                Scale(MatchTableHeight, scale));
+            DrawFilled(spriteBatch, pixelTexture, tableRect, new Color(35, 41, 56, 240));
+            DrawBorder(spriteBatch, pixelTexture, tableRect, new Color(139, 168, 201, 210));
+
+            Rectangle stageRect = new(tableRect.X, tableRect.Y, tableRect.Width, Scale(28, scale));
+            DrawFilled(spriteBatch, pixelTexture, stageRect, ResolveStageColor());
+            TournamentField.DrawShadowedText(
+                spriteBatch,
+                font,
+                $"stage={Stage} | scroll={Scroll} | title=0x{DialogTitleStringPoolId:X} | client owner={MatchTableDialogOwnerText}",
+                new Vector2(tableRect.X + Scale(10, scale), tableRect.Y + Scale(6, scale)),
+                Color.White,
+                Math.Max(0.7f, 0.82f * scale));
+
+            DrawBracketSkeleton(spriteBatch, pixelTexture, tableRect, scale);
+            DrawRoundOne(spriteBatch, font, tableRect, scale);
+            DrawRoundSummary(spriteBatch, font, tableRect, scale);
+        }
+
+        private void GetLayout(
+            int viewportWidth,
+            int viewportHeight,
+            out Rectangle panelRect,
+            out Rectangle closeButtonRect,
+            out Rectangle upButtonRect,
+            out Rectangle downButtonRect)
+        {
+            GetLayout(viewportWidth, viewportHeight, out panelRect, out closeButtonRect, out upButtonRect, out downButtonRect, out _);
+        }
+
+        private void GetLayout(
+            int viewportWidth,
+            int viewportHeight,
+            out Rectangle panelRect,
+            out Rectangle closeButtonRect,
+            out Rectangle upButtonRect,
+            out Rectangle downButtonRect,
+            out float scale)
+        {
+            scale = Math.Min(1f, Math.Min((viewportWidth - 48f) / DialogWidth, (viewportHeight - 64f) / DialogHeight));
+            scale = Math.Max(0.72f, scale);
+
+            int scaledWidth = Scale(DialogWidth, scale);
+            int scaledHeight = Scale(DialogHeight, scale);
+            int panelX = Math.Max(18, (viewportWidth - scaledWidth) / 2);
+            int panelY = Math.Max(18, (viewportHeight - scaledHeight) / 2);
+            panelRect = new Rectangle(panelX, panelY, scaledWidth, scaledHeight);
+            closeButtonRect = new Rectangle(panelX + Scale(710, scale), panelY + Scale(9, scale), Scale(CloseButtonWidth, scale), Scale(CloseButtonHeight, scale));
+            upButtonRect = new Rectangle(panelX + Scale(729, scale), panelY + Scale(36, scale), Scale(ScrollButtonWidth, scale), Scale(ScrollButtonHeight, scale));
+            downButtonRect = new Rectangle(panelX + Scale(729, scale), panelY + Scale(433, scale), Scale(ScrollButtonWidth, scale), Scale(ScrollButtonHeight, scale));
+        }
+
+        private void DecodeMatchValues()
+        {
+            Array.Clear(_matchValues, 0, _matchValues.Length);
+
+            int bytesToDecode = Math.Min(_rawTable.Length, EntrantCount * EntryValueCount * sizeof(int));
+            for (int slotIndex = 0; slotIndex < EntrantCount; slotIndex++)
+            {
+                for (int valueIndex = 0; valueIndex < EntryValueCount; valueIndex++)
+                {
+                    int byteOffset = (slotIndex * EntryValueCount + valueIndex) * sizeof(int);
+                    if (byteOffset + sizeof(int) > bytesToDecode)
+                    {
+                        return;
+                    }
+
+                    _matchValues[slotIndex, valueIndex] = BitConverter.ToInt32(_rawTable, byteOffset);
+                }
+            }
+        }
+
+        private void DecodeSlotNames()
+        {
+            Array.Fill(_slotNames, string.Empty);
+
+            List<string> candidates = ExtractLikelyNames(_rawTable)
+                .Distinct(StringComparer.Ordinal)
+                .Take(EntrantCount)
+                .ToList();
+
+            for (int index = 0; index < EntrantCount; index++)
+            {
+                _slotNames[index] = index < candidates.Count
+                    ? candidates[index]
+                    : $"Slot {index + 1}";
+            }
+        }
+
+        private static IEnumerable<string> ExtractLikelyNames(byte[] data)
+        {
+            if (data == null || data.Length == 0)
+            {
+                yield break;
+            }
+
+            foreach (string ascii in ExtractPrintableAscii(data))
+            {
+                yield return ascii;
+            }
+
+            foreach (string unicode in ExtractPrintableUnicode(data))
+            {
+                yield return unicode;
+            }
+        }
+
+        private static IEnumerable<string> ExtractPrintableAscii(byte[] data)
+        {
+            StringBuilder builder = new();
+            foreach (byte value in data)
+            {
+                if (value is >= 32 and <= 126)
+                {
+                    builder.Append((char)value);
+                    continue;
+                }
+
+                if (builder.Length >= 3)
+                {
+                    string candidate = builder.ToString().Trim();
+                    if (LooksLikeName(candidate))
+                    {
+                        yield return candidate;
+                    }
+                }
+
+                builder.Clear();
+            }
+
+            if (builder.Length >= 3)
+            {
+                string candidate = builder.ToString().Trim();
+                if (LooksLikeName(candidate))
+                {
+                    yield return candidate;
+                }
+            }
+        }
+
+        private static IEnumerable<string> ExtractPrintableUnicode(byte[] data)
+        {
+            StringBuilder builder = new();
+            for (int index = 0; index + 1 < data.Length; index += 2)
+            {
+                char value = BitConverter.ToChar(data, index);
+                if (value is >= ' ' and <= '~')
+                {
+                    builder.Append(value);
+                    continue;
+                }
+
+                if (builder.Length >= 3)
+                {
+                    string candidate = builder.ToString().Trim();
+                    if (LooksLikeName(candidate))
+                    {
+                        yield return candidate;
+                    }
+                }
+
+                builder.Clear();
+            }
+
+            if (builder.Length >= 3)
+            {
+                string candidate = builder.ToString().Trim();
+                if (LooksLikeName(candidate))
+                {
+                    yield return candidate;
+                }
+            }
+        }
+
+        private static bool LooksLikeName(string candidate)
+        {
+            if (string.IsNullOrWhiteSpace(candidate) || candidate.Length > 18)
+            {
+                return false;
+            }
+
+            int alphaNumericCount = candidate.Count(char.IsLetterOrDigit);
+            return alphaNumericCount >= 3 && candidate.Any(char.IsLetter);
+        }
+
+        private void DrawBracketSkeleton(SpriteBatch spriteBatch, Texture2D pixelTexture, Rectangle tableRect, float scale)
+        {
+            Color activeLine = new(204, 214, 239, 220);
+            Color inactiveLine = new(88, 97, 122, 180);
+
+            Point[] roundOne = RoundOneNamePoints.Select(point => ScaleAndOffset(point, tableRect, scale)).ToArray();
+            Point[] roundTwo = RoundTwoNamePoints.Select(point => ScaleAndOffset(point, tableRect, scale)).ToArray();
+            Point[] semiFinal = SemiFinalNamePoints.Select(point => ScaleAndOffset(point, tableRect, scale)).ToArray();
+            Point champion = ScaleAndOffset(ChampionNamePoint, tableRect, scale);
+
+            for (int pairIndex = 0; pairIndex < 4; pairIndex++)
+            {
+                Color lineColor = Stage > 2 ? activeLine : inactiveLine;
+                DrawBracketPair(spriteBatch, pixelTexture, roundOne[pairIndex * 2], roundOne[pairIndex * 2 + 1], roundTwo[pairIndex], lineColor, scale);
+            }
+
+            for (int pairIndex = 0; pairIndex < 2; pairIndex++)
+            {
+                Color lineColor = Stage > 3 ? activeLine : inactiveLine;
+                DrawBracketPair(spriteBatch, pixelTexture, roundTwo[pairIndex * 2], roundTwo[pairIndex * 2 + 1], semiFinal[pairIndex], lineColor, scale);
+            }
+
+            DrawBracketPair(spriteBatch, pixelTexture, semiFinal[0], semiFinal[1], champion, Stage > 4 ? activeLine : inactiveLine, scale);
+        }
+
+        private void DrawRoundOne(SpriteBatch spriteBatch, SpriteFont font, Rectangle tableRect, float scale)
+        {
+            float nameScale = Math.Max(0.56f, 0.72f * scale);
+            float debugScale = Math.Max(0.48f, 0.58f * scale);
+            Color currentColor = new(255, 247, 212);
+            Color normalColor = Color.Gainsboro;
+            Color debugColor = new(182, 191, 209);
+
+            int slotOffset = VisibleSlotOffset;
+            for (int visibleIndex = 0; visibleIndex < VisibleEntrantCount; visibleIndex++)
+            {
+                int slotIndex = Math.Min(slotOffset + visibleIndex, EntrantCount - 1);
+                Vector2 namePosition = ToVector2(ScaleAndOffset(RoundOneNamePoints[visibleIndex], tableRect, scale));
+                DrawCenteredText(spriteBatch, font, _slotNames[slotIndex], namePosition, normalColor, nameScale);
+
+                string dataSummary = $"[{_matchValues[slotIndex, 0]},{_matchValues[slotIndex, 1]},{_matchValues[slotIndex, 4]}]";
+                Vector2 debugPosition = ToVector2(ScaleAndOffset(RoundOneDebugPoints[visibleIndex], tableRect, scale));
+                DrawCenteredText(spriteBatch, font, dataSummary, debugPosition, debugColor, debugScale);
+            }
+
+            DrawCenteredText(spriteBatch, font, ResolveRoundLabel(1), ToVector2(ScaleAndOffset(new Point(83, 362), tableRect, scale)), currentColor, nameScale);
+            DrawCenteredText(spriteBatch, font, ResolveRoundLabel(2), ToVector2(ScaleAndOffset(new Point(255, 258), tableRect, scale)), currentColor, nameScale);
+            DrawCenteredText(spriteBatch, font, ResolveRoundLabel(3), ToVector2(ScaleAndOffset(new Point(341, 154), tableRect, scale)), currentColor, nameScale);
+            DrawCenteredText(spriteBatch, font, ResolveRoundLabel(4), ToVector2(ScaleAndOffset(new Point(341, 50), tableRect, scale)), currentColor, nameScale);
+        }
+
+        private void DrawRoundSummary(SpriteBatch spriteBatch, SpriteFont font, Rectangle tableRect, float scale)
+        {
+            float summaryScale = Math.Max(0.56f, 0.66f * scale);
+            Color summaryColor = Color.WhiteSmoke;
+
+            string[] roundTwo = BuildRoundSummaries(0, 4, 2);
+            string[] semiFinal = BuildRoundSummaries(4, 2, 1);
+            string champion = BuildChampionSummary();
+
+            for (int index = 0; index < roundTwo.Length; index++)
+            {
+                DrawCenteredText(
+                    spriteBatch,
+                    font,
+                    roundTwo[index],
+                    ToVector2(ScaleAndOffset(RoundTwoNamePoints[index], tableRect, scale)),
+                    Stage > 2 ? summaryColor : Color.SlateGray,
+                    summaryScale);
+            }
+
+            for (int index = 0; index < semiFinal.Length; index++)
+            {
+                DrawCenteredText(
+                    spriteBatch,
+                    font,
+                    semiFinal[index],
+                    ToVector2(ScaleAndOffset(SemiFinalNamePoints[index], tableRect, scale)),
+                    Stage > 3 ? summaryColor : Color.SlateGray,
+                    summaryScale);
+            }
+
+            DrawCenteredText(
+                spriteBatch,
+                font,
+                champion,
+                ToVector2(ScaleAndOffset(ChampionNamePoint, tableRect, scale)),
+                Stage > 4 ? Color.White : Color.SlateGray,
+                summaryScale);
+        }
+
+        private string[] BuildRoundSummaries(int keyIndex, int pairCount, int nextIndex)
+        {
+            string[] result = new string[pairCount];
+            for (int pairIndex = 0; pairIndex < pairCount; pairIndex++)
+            {
+                int leftSlot = pairIndex * 2;
+                int rightSlot = leftSlot + 1;
+                string leftName = leftSlot < _slotNames.Length ? _slotNames[leftSlot] : string.Empty;
+                string rightName = rightSlot < _slotNames.Length ? _slotNames[rightSlot] : string.Empty;
+                int leftKey = keyIndex < EntryValueCount ? _matchValues[leftSlot, keyIndex] : 0;
+                int rightKey = keyIndex < EntryValueCount ? _matchValues[rightSlot, keyIndex] : 0;
+                int nextKey = nextIndex < EntryValueCount && pairIndex < EntrantCount ? _matchValues[Math.Min(pairIndex, EntrantCount - 1), nextIndex] : 0;
+                result[pairIndex] = ResolvePairSummary(leftName, rightName, leftKey, rightKey, nextKey);
+            }
+
+            return result;
+        }
+
+        private string BuildChampionSummary()
+        {
+            string left = SemiFinalNamePoints.Length > 0 ? BuildRoundSummaries(4, 2, 5)[0] : "Pending";
+            string right = SemiFinalNamePoints.Length > 1 ? BuildRoundSummaries(4, 2, 5)[1] : "Pending";
+            int leftKey = _matchValues[0, 5];
+            int rightKey = _matchValues[1, 5];
+            return ResolvePairSummary(left, right, leftKey, rightKey, 0);
+        }
+
+        private static string ResolvePairSummary(string leftName, string rightName, int leftKey, int rightKey, int nextKey)
+        {
+            if (nextKey > 0)
+            {
+                if (leftKey == nextKey && !string.IsNullOrWhiteSpace(leftName))
+                {
+                    return leftName;
+                }
+
+                if (rightKey == nextKey && !string.IsNullOrWhiteSpace(rightName))
+                {
+                    return rightName;
+                }
+            }
+
+            if (leftKey > 0 && rightKey <= 0 && !string.IsNullOrWhiteSpace(leftName))
+            {
+                return leftName;
+            }
+
+            if (rightKey > 0 && leftKey <= 0 && !string.IsNullOrWhiteSpace(rightName))
+            {
+                return rightName;
+            }
+
+            if (!string.IsNullOrWhiteSpace(leftName) && !string.IsNullOrWhiteSpace(rightName))
+            {
+                return $"{TrimLabel(leftName, 8)}/{TrimLabel(rightName, 8)}";
+            }
+
+            return "Pending";
+        }
+
+        private Color ResolveStageColor()
+        {
+            return Stage switch
+            {
+                <= 1 => new Color(98, 84, 126, 220),
+                2 => new Color(69, 111, 159, 220),
+                3 => new Color(75, 131, 106, 220),
+                4 => new Color(160, 119, 56, 220),
+                _ => new Color(168, 78, 63, 220)
+            };
+        }
+
+        private string ResolveRoundLabel(int round)
+        {
+            return round switch
+            {
+                1 => $"Round of 32 [{VisibleSlotOffset + 1}-{Math.Min(VisibleSlotOffset + VisibleEntrantCount, EntrantCount)}]",
+                2 => "Final 4",
+                3 => "Semi Final",
+                _ => "Champion"
+            };
+        }
+
+        private string ResolveStateLabel()
+        {
+            return Stage switch
+            {
+                2 => "state-2 (badge row 3)",
+                3 => "state-3 (badge row 2)",
+                4 => "state-4 (badge row 1)",
+                5 => "state-5 (badge row 0)",
+                _ => "raw"
+            };
+        }
+
+        private string DescribeStateBadgeSeam()
+        {
+            if (!UsesRecoveredStateBadgeSeam || !StateBadgeSourceYOffset.HasValue)
+            {
+                return "none";
+            }
+
+            return $"0x{StateBadgeStringPoolId:X}@y={StateBadgeSourceYOffset.Value}";
+        }
+
+        private static string ResolveDialogTitle()
+        {
+            return MapleStoryStringPool.TryGet(MatchTableDialogTitleStringPoolId, out string title)
+                && !string.IsNullOrWhiteSpace(title)
+                ? title.Trim()
+                : DialogTitleFallback;
+        }
+
+        private static string TrimLabel(string text, int maxLength)
+        {
+            if (string.IsNullOrWhiteSpace(text) || text.Length <= maxLength)
+            {
+                return text;
+            }
+
+            return text[..Math.Max(1, maxLength - 3)] + "...";
+        }
+
+        private static void DrawBracketPair(SpriteBatch spriteBatch, Texture2D pixelTexture, Point left, Point right, Point target, Color color, float scale)
+        {
+            int thickness = Math.Max(1, Scale(2, scale));
+            int middleX = (left.X + target.X) / 2;
+            DrawFilled(spriteBatch, pixelTexture, new Rectangle(left.X, left.Y, Math.Max(1, middleX - left.X), thickness), color);
+            DrawFilled(spriteBatch, pixelTexture, new Rectangle(right.X, right.Y, Math.Max(1, middleX - right.X), thickness), color);
+            DrawFilled(spriteBatch, pixelTexture, new Rectangle(middleX, Math.Min(left.Y, right.Y), thickness, Math.Abs(right.Y - left.Y) + thickness), color);
+            DrawFilled(spriteBatch, pixelTexture, new Rectangle(middleX, target.Y, Math.Max(1, target.X - middleX), thickness), color);
+        }
+
+        private static void DrawButton(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font, Rectangle bounds, string label, bool enabled, float scale)
+        {
+            Color fill = enabled ? new Color(81, 96, 126, 220) : new Color(52, 58, 72, 220);
+            Color border = enabled ? new Color(210, 216, 229, 220) : new Color(116, 123, 137, 180);
+            DrawFilled(spriteBatch, pixelTexture, bounds, fill);
+            DrawBorder(spriteBatch, pixelTexture, bounds, border);
+
+            Vector2 size = font.MeasureString(label) * scale;
+            Vector2 position = new(
+                bounds.X + (bounds.Width - size.X) / 2f,
+                bounds.Y + (bounds.Height - size.Y) / 2f);
+            TournamentField.DrawShadowedText(spriteBatch, font, label, position, enabled ? Color.White : Color.Gainsboro, scale);
+        }
+
+        private static void DrawCenteredText(SpriteBatch spriteBatch, SpriteFont font, string text, Vector2 center, Color color, float scale)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return;
+            }
+
+            Vector2 size = font.MeasureString(text) * scale;
+            Vector2 position = new(center.X - size.X / 2f, center.Y - size.Y / 2f);
+            TournamentField.DrawShadowedText(spriteBatch, font, text, position, color, scale);
+        }
+
+        private static Point ScaleAndOffset(Point point, Rectangle tableRect, float scale)
+        {
+            return new Point(tableRect.X + Scale(point.X, scale), tableRect.Y + Scale(point.Y, scale));
+        }
+
+        private static Vector2 ToVector2(Point point)
+        {
+            return new Vector2(point.X, point.Y);
+        }
+
+        private static int Scale(int value, float scale)
+        {
+            return (int)Math.Round(value * scale, MidpointRounding.AwayFromZero);
+        }
+
+        private static void DrawFilled(SpriteBatch spriteBatch, Texture2D pixelTexture, Rectangle bounds, Color color)
+        {
+            if (bounds.Width <= 0 || bounds.Height <= 0)
+            {
+                return;
+            }
+
+            spriteBatch.Draw(pixelTexture, bounds, color);
+        }
+
+        private static void DrawBorder(SpriteBatch spriteBatch, Texture2D pixelTexture, Rectangle bounds, Color color)
+        {
+            if (bounds.Width <= 0 || bounds.Height <= 0)
+            {
+                return;
+            }
+
+            DrawFilled(spriteBatch, pixelTexture, new Rectangle(bounds.X, bounds.Y, bounds.Width, 2), color);
+            DrawFilled(spriteBatch, pixelTexture, new Rectangle(bounds.X, bounds.Bottom - 2, bounds.Width, 2), color);
+            DrawFilled(spriteBatch, pixelTexture, new Rectangle(bounds.X, bounds.Y, 2, bounds.Height), color);
+            DrawFilled(spriteBatch, pixelTexture, new Rectangle(bounds.Right - 2, bounds.Y, 2, bounds.Height), color);
+        }
+
+        private const string MatchTableDialogOwnerText = "CMatchTableDlg";
+    }
+}

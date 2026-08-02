@@ -1,0 +1,1489 @@
+using HaCreator.MapSimulator.Managers;
+using HaCreator.MapSimulator.Interaction;
+using HaCreator.MapSimulator.UI;
+using MapleLib.WzLib;
+using MapleLib.WzLib.WzProperties;
+using MapleLib.WzLib.WzStructure.Data;
+using MapleLib.WzLib.WzStructure.Data.ItemStructure;
+using MapleLib.WzLib.WzStructure;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace HaCreator.MapSimulator.Fields
+{
+    public static class FieldInteractionRestrictionEvaluator
+    {
+        private const string GenericMapTransferRegistrationRestrictionMessage = "This destination cannot be saved in a teleport slot.";
+        private const string RegularFieldMapTransferRegistrationRestrictionMessage = "Only regular field maps can be saved in a teleport slot.";
+        private const int PortalScrollItemGroup = 203;
+        private const int UpgradeScrollItemGroup = 204;
+        private const int SummonSackItemGroup = 210;
+        private const int AntiMacroItemGroup = 219;
+        private const int CashWeatherItemGroup = 512;
+        private const int PetNameTagItemGroup = 517;
+        private const int PetReviveItemGroup = 518;
+        private const int PetSkillItemGroup = 519;
+        private const int NearestTownPortalScrollItemId = 2030000;
+        private const int NpcSummonScriptItemId = 2430011;
+        private const int NpcSummonQuestItemId = 4032363;
+        private const string SummonEventNpcScriptName = "summonEventNpc";
+        private const int CashPetItemGroup = 500;
+        private const int PetLifeRecoveryItemGroup = 513;
+        private const int PetFoodItemGroup = 524;
+
+        public static bool CanTransferField(long fieldLimit)
+        {
+            return GetTransferRestrictionMessage(fieldLimit) == null;
+        }
+
+        public static bool CanJump(long fieldLimit)
+        {
+            return GetJumpRestrictionMessage(fieldLimit) == null;
+        }
+
+        public static string GetTeleportItemRestrictionMessage(long fieldLimit)
+        {
+            return FieldLimitType.Unable_To_Use_Teleport_Item.Check(fieldLimit)
+                ? "Teleport items cannot be used in this map."
+                : null;
+        }
+
+        public static string GetTamingMobRestrictionMessage(long fieldLimit)
+        {
+            return FieldLimitType.Unable_To_Use_Taming_Mob.Check(fieldLimit)
+                ? "Taming-mob and mechanic vehicle interactions are disabled in this map."
+                : null;
+        }
+
+        public static bool CanUseTamingMob(long fieldLimit)
+        {
+            return GetTamingMobRestrictionMessage(fieldLimit) == null;
+        }
+
+        public static string GetTransferRestrictionMessage(long fieldLimit)
+        {
+            return FieldLimitType.Unable_To_Migrate.Check(fieldLimit)
+                ? "This field forbids map transfer."
+                : null;
+        }
+
+        public static string GetChannelShiftRestrictionMessage(long fieldLimit)
+        {
+            return FieldLimitType.Unable_To_Migrate.Check(fieldLimit)
+                ? "This field forbids channel changes."
+                : null;
+        }
+
+        public static string GetChannelShiftRestrictionMessage(long fieldLimit, MapInfo mapInfo)
+        {
+            string fieldLimitRestrictionMessage = GetChannelShiftRestrictionMessage(fieldLimit);
+            if (!string.IsNullOrWhiteSpace(fieldLimitRestrictionMessage))
+            {
+                return fieldLimitRestrictionMessage;
+            }
+
+            return IsInfoFlagSet(mapInfo, "shiftChannelForbidden")
+                ? "This map forbids channel changes."
+                : null;
+        }
+
+        public static string GetFollowCharacterRestrictionMessage(MapInfo mapInfo)
+        {
+            return mapInfo?.nofollowCharacter == true || IsInfoFlagSet(mapInfo, "nofollowCharacter")
+                ? "Follow-character requests are disabled in this map."
+                : null;
+        }
+
+        public static string GetMiniGameRestrictionMessage(long fieldLimit)
+        {
+            return FieldLimitType.Unable_To_Open_Mini_Game.Check(fieldLimit)
+                ? "Mini-game and shop rooms cannot be opened in this map."
+                : null;
+        }
+
+        public static string GetSocialRoomRestrictionMessage(
+            long fieldLimit,
+            MapInfo mapInfo,
+            SocialRoomKind kind)
+        {
+            if (!IsFieldRestrictedSocialRoomKind(kind))
+            {
+                return null;
+            }
+
+            string fieldLimitRestriction = GetMiniGameRestrictionMessage(fieldLimit);
+            if (!string.IsNullOrWhiteSpace(fieldLimitRestriction))
+            {
+                return fieldLimitRestriction;
+            }
+
+            return kind switch
+            {
+                SocialRoomKind.PersonalShop when ResolveInfoBool(mapInfo, "personalShop", GetMapleBoolValue(mapInfo?.personalShop)) == false =>
+                    "Personal shops cannot be opened in this map.",
+                SocialRoomKind.EntrustedShop when ResolveInfoBool(mapInfo, "entrustedShop", GetMapleBoolValue(mapInfo?.entrustedShop)) == false =>
+                    "Entrusted shops cannot be opened in this map.",
+                _ => null
+            };
+        }
+
+        public static bool IsFieldRestrictedSocialRoomKind(SocialRoomKind kind)
+        {
+            return kind is SocialRoomKind.MiniRoom
+                or SocialRoomKind.PersonalShop
+                or SocialRoomKind.EntrustedShop
+                or SocialRoomKind.TradingRoom;
+        }
+
+        public static string GetParcelOpenRestrictionMessage(long fieldLimit)
+        {
+            return FieldLimitType.Parcel_Open_Limit.Check(fieldLimit)
+                ? "Parcel-owned delivery and mailbox windows cannot be opened in this map."
+                : null;
+        }
+
+        public static string GetQuestAlertRestrictionMessage(long fieldLimit)
+        {
+            return FieldLimitType.No_Quest_Alert.Check(fieldLimit)
+                ? "Quest alert windows are disabled in this map."
+                : null;
+        }
+
+        public static string GetCashWeatherRestrictionMessage(long fieldLimit)
+        {
+            return FieldLimitType.Unable_To_Use_Cash_Weather.Check(fieldLimit)
+                ? "Cash weather items cannot be used in this field."
+                : null;
+        }
+
+        public static string GetAndroidRestrictionMessage(long fieldLimit)
+        {
+            return FieldLimitType.No_Android.Check(fieldLimit)
+                ? "Android companion features are disabled in this map."
+                : null;
+        }
+
+        public static string GetAndroidRestrictionMessage(long fieldLimit, MapInfo mapInfo)
+        {
+            string fieldLimitRestrictionMessage = GetAndroidRestrictionMessage(fieldLimit);
+            if (!string.IsNullOrWhiteSpace(fieldLimitRestrictionMessage))
+            {
+                return fieldLimitRestrictionMessage;
+            }
+
+            return IsInfoFlagSet(mapInfo, "vanishAndroid")
+                ? "Android companion features are disabled in this map."
+                : null;
+        }
+
+        public static string GetDragonCompanionRestrictionMessage(MapInfo mapInfo)
+        {
+            return GetInfoFieldType(mapInfo) == FieldType.FIELDTYPE_NODRAGON
+                   || mapInfo?.vanishDragon == true
+                   || IsInfoFlagSet(mapInfo, "vanishDragon")
+                ? "Dragon companion features are disabled in this map."
+                : null;
+        }
+
+        public static bool CanUseDragonCompanion(MapInfo mapInfo)
+        {
+            return GetDragonCompanionRestrictionMessage(mapInfo) == null;
+        }
+
+        public static string GetPartyBossRestrictionMessage(long fieldLimit)
+        {
+            return GetPartyBossRestrictionMessage(fieldLimit, mapInfo: null);
+        }
+
+        public static string GetPartyBossRestrictionMessage(long fieldLimit, MapInfo mapInfo)
+        {
+            return FieldLimitType.Unable_To_Change_Party_Boss.Check(fieldLimit)
+                || mapInfo?.blockPBossChange == true
+                || IsInfoFlagSet(mapInfo, "blockPBossChange")
+                ? "Party leader changes are disabled in this map."
+                : null;
+        }
+
+        public static string GetShopOpenRestrictionMessage(MapInfo mapInfo)
+        {
+            return IsInfoFlagSet(mapInfo, "limitUseShop")
+                ? "Shop windows cannot be opened in this map."
+                : null;
+        }
+
+        public static string GetTrunkOpenRestrictionMessage(MapInfo mapInfo)
+        {
+            return IsInfoFlagSet(mapInfo, "limitUseTrunk")
+                ? "Storage windows cannot be opened in this map."
+                : null;
+        }
+
+        public static string GetPortableChairRestrictionMessage(MapInfo mapInfo)
+        {
+            return IsInfoFlagSet(mapInfo, "noChair")
+                ? "Portable chairs cannot be used in this map."
+                : null;
+        }
+
+        public static string GetLandingRestrictionMessage(MapInfo mapInfo)
+        {
+            return IsInfoFlagSet(mapInfo, "noLanding")
+                ? "Foothold landing is disabled in this map."
+                : null;
+        }
+
+        public static bool CanLandOnFoothold(MapInfo mapInfo)
+        {
+            return GetLandingRestrictionMessage(mapInfo) == null;
+        }
+
+        public static bool IsFlyingMap(MapInfo mapInfo)
+        {
+            return ResolveInfoBool(mapInfo, "fly", GetMapleBoolValue(mapInfo?.fly)) == true;
+        }
+
+        public static bool RequiresFlyingSkillForMap(MapInfo mapInfo)
+        {
+            return ResolveInfoBool(mapInfo, "needSkillForFly", GetMapleBoolValue(mapInfo?.needSkillForFly)) == true;
+        }
+
+        public static int GetConsumeItemCooldownSeconds(MapInfo mapInfo)
+        {
+            return Math.Max(0, mapInfo?.consumeItemCoolTime ?? GetInfoInt(mapInfo, "consumeItemCoolTime") ?? 0);
+        }
+
+        public static string GetConsumeItemCooldownEntryMessage(MapInfo mapInfo)
+        {
+            int cooldownSeconds = GetConsumeItemCooldownSeconds(mapInfo);
+            return cooldownSeconds > 0
+                ? $"Consumable item cooldown active: {cooldownSeconds}s between use-item activations."
+                : null;
+        }
+
+        public static string GetMapEffectName(MapInfo mapInfo)
+        {
+            if (!string.IsNullOrWhiteSpace(mapInfo?.effect))
+            {
+                return mapInfo.effect.Trim();
+            }
+
+            string effectName = GetInfoString(mapInfo, "effect");
+            return string.IsNullOrWhiteSpace(effectName)
+                ? null
+                : effectName.Trim();
+        }
+
+        public static string GetMapEffectEntryMessage(MapInfo mapInfo)
+        {
+            string effectName = GetMapEffectName(mapInfo);
+            return !string.IsNullOrWhiteSpace(effectName)
+                ? $"Map effect metadata is active: {effectName}."
+                : null;
+        }
+
+        public static int GetDropExpireSeconds(MapInfo mapInfo)
+        {
+            return Math.Max(0, mapInfo?.dropExpire ?? GetInfoInt(mapInfo, "dropExpire") ?? 0);
+        }
+
+        public static string GetDropExpireEntryMessage(MapInfo mapInfo)
+        {
+            int dropExpireSeconds = GetDropExpireSeconds(mapInfo);
+            return dropExpireSeconds > 0
+                ? $"Field drop expiration metadata is active: local drops expire after {dropExpireSeconds}s."
+                : null;
+        }
+
+        public static string GetFlyingMapEntryMessage(MapInfo mapInfo)
+        {
+            return IsFlyingMap(mapInfo)
+                ? "Flying-map movement metadata is active in this map."
+                : null;
+        }
+
+        public static string GetNeedSkillForFlyEntryMessage(MapInfo mapInfo)
+        {
+            return RequiresFlyingSkillForMap(mapInfo)
+                ? "Flying-map movement requires the WZ-authored flight skill gate."
+                : null;
+        }
+
+        public static string GetZakumJumpQuestMoveCheckEntryMessage(MapInfo mapInfo)
+        {
+            return ResolveInfoBool(mapInfo, "zakum2Hack", GetMapleBoolValue(mapInfo?.zakum2Hack)) == true
+                ? "Zakum jump-quest movement-check metadata is active in this map."
+                : null;
+        }
+
+        public static string GetAllMoveCheckEntryMessage(MapInfo mapInfo)
+        {
+            return ResolveInfoBool(mapInfo, "allMoveCheck", GetMapleBoolValue(mapInfo?.allMoveCheck)) == true
+                ? "All-move movement-check metadata is active in this map."
+                : null;
+        }
+
+        public static string GetActiveSkillCancelRestrictionMessage(MapInfo mapInfo)
+        {
+            return IsInfoFlagSetWithCopiedBranchFallback(mapInfo, "noCancelSkill")
+                ? "Active skill cancellation is disabled in this field."
+                : null;
+        }
+
+        public static string GetStandAloneModeEntryMessage(MapInfo mapInfo)
+        {
+            return IsInfoFlagSet(mapInfo, "standAlone")
+                ? "Stand-alone field control is active in this map."
+                : null;
+        }
+
+        public static bool ShouldApplyStandAloneMode(MapInfo mapInfo)
+        {
+            return GetStandAloneModeEntryMessage(mapInfo) != null;
+        }
+
+        public static string GetPartyStandAloneEntryMessage(MapInfo mapInfo)
+        {
+            return IsInfoFlagSet(mapInfo, "partyStandAlone")
+                ? "Party stand-alone field metadata is active in this map."
+                : null;
+        }
+
+        public static bool ShouldApplyPartyStandAloneMode(
+            MapInfo mapInfo,
+            bool hasParty,
+            bool usesPacketOwnedPartyAdmissionContext = false,
+            bool hasPacketOwnedPartyAdmission = false)
+        {
+            if (GetPartyStandAloneEntryMessage(mapInfo) == null)
+            {
+                return false;
+            }
+
+            return usesPacketOwnedPartyAdmissionContext
+                ? hasPacketOwnedPartyAdmission
+                : hasParty;
+        }
+
+        public static string GetTakeOffItemRestrictionMessage(MapInfo mapInfo, int itemId)
+        {
+            if (itemId <= 0)
+            {
+                return null;
+            }
+
+            int? blockedItemId = GetInfoInt(mapInfo, "blockTakeOffItem");
+            return blockedItemId == itemId
+                ? $"Item {itemId} cannot be unequipped in this field."
+                : null;
+        }
+
+        public static string GetTakeOffItemEntryRestrictionMessage(MapInfo mapInfo)
+        {
+            int? blockedItemId = GetInfoInt(mapInfo, "blockTakeOffItem");
+            return blockedItemId is > 0
+                ? $"Field equipment lock active: item {blockedItemId.Value} cannot be unequipped here."
+                : null;
+        }
+
+        internal static string GetExpeditionPartyBossChangeRestrictionMessage(
+            long fieldLimit,
+            ExpeditionIntermediaryOutboundRequestKind requestKind)
+        {
+            return GetExpeditionPartyBossChangeRestrictionMessage(fieldLimit, mapInfo: null, requestKind);
+        }
+
+        internal static string GetExpeditionPartyBossChangeRestrictionMessage(
+            long fieldLimit,
+            MapInfo mapInfo,
+            ExpeditionIntermediaryOutboundRequestKind requestKind)
+        {
+            return requestKind == ExpeditionIntermediaryOutboundRequestKind.ChangePartyBoss
+                ? GetPartyBossRestrictionMessage(fieldLimit, mapInfo)
+                : null;
+        }
+
+        public static string GetDropRestrictionMessage(long fieldLimit)
+        {
+            return FieldLimitType.Drop_Limit.Check(fieldLimit)
+                ? "Field drop interactions are restricted in this map."
+                : null;
+        }
+
+        public static string GetDropPickupRestrictionMessage(long fieldLimit)
+        {
+            return FieldLimitType.Drop_Limit.Check(fieldLimit)
+                ? "Drops cannot be looted in this map."
+                : null;
+        }
+
+        public static string GetDropRequestRestrictionMessage(long fieldLimit)
+        {
+            return FieldLimitType.Drop_Limit.Check(fieldLimit)
+                ? "Items cannot be dropped in this map."
+                : null;
+        }
+
+        public static string GetDropSpawnRestrictionMessage(long fieldLimit)
+        {
+            return FieldLimitType.Drop_Limit.Check(fieldLimit)
+                ? "Field drops cannot spawn in this map."
+                : null;
+        }
+
+        public static string GetMonsterCapacityLimitMessage(long fieldLimit)
+        {
+            return FieldLimitType.No_Monster_Capacity_Limit.Check(fieldLimit)
+                ? "Monster capacity limits are disabled in this map."
+                : null;
+        }
+
+        public static string GetMobRegenRestrictionMessage(MapInfo mapInfo)
+        {
+            return mapInfo?.noRegenMap == true || IsInfoFlagSet(mapInfo, "noRegenMap")
+                ? "Monster regeneration is disabled in this map."
+                : null;
+        }
+
+        public static bool CanRegenerateMobs(MapInfo mapInfo)
+        {
+            return GetMobRegenRestrictionMessage(mapInfo) == null;
+        }
+
+        public static string GetExpDecreaseRestrictionMessage(long fieldLimit)
+        {
+            return FieldLimitType.No_EXP_Decrease.Check(fieldLimit)
+                ? "EXP loss on death is disabled in this map."
+                : null;
+        }
+
+        public static string GetItemOptionLimitMessage(long fieldLimit)
+        {
+            return FieldLimitType.No_Item_Option_Limit.Check(fieldLimit)
+                ? "Item option limits are disabled in this map."
+                : null;
+        }
+
+        public static string GetJumpDownRestrictionMessage(long fieldLimit)
+        {
+            return FieldLimitType.Unable_To_Fall_Down.Check(fieldLimit)
+                ? "Dropping down through footholds is disabled in this map."
+                : null;
+        }
+
+        public static string GetFallingDamageRestrictionMessage(long fieldLimit)
+        {
+            return FieldLimitType.No_Damage_On_Falling.Check(fieldLimit)
+                ? "Falling damage is disabled in this map."
+                : null;
+        }
+
+        public static string GetFallingDamageRestrictionMessage(long fieldLimit, MapInfo mapInfo)
+        {
+            string fieldLimitRestrictionMessage = GetFallingDamageRestrictionMessage(fieldLimit);
+            if (!string.IsNullOrWhiteSpace(fieldLimitRestrictionMessage))
+            {
+                return fieldLimitRestrictionMessage;
+            }
+
+            return mapInfo?.damageCheckFree == true || IsInfoFlagSet(mapInfo, "damageCheckFree")
+                ? "Local damage checks are disabled in this map."
+                : null;
+        }
+
+        internal static string GetWindowRestrictionMessage(long fieldLimit, string windowName)
+        {
+            if (string.Equals(windowName, MapSimulatorWindowNames.QuestTimer, StringComparison.Ordinal) ||
+                string.Equals(windowName, MapSimulatorWindowNames.QuestTimerAction, StringComparison.Ordinal) ||
+                MapSimulatorWindowNames.IsQuestTimerRuntimeWindowName(windowName))
+            {
+                return GetQuestAlertRestrictionMessage(fieldLimit);
+            }
+
+            return windowName switch
+            {
+                MapSimulatorWindowNames.MemoMailbox or
+                MapSimulatorWindowNames.MemoSend or
+                MapSimulatorWindowNames.MemoGet or
+                MapSimulatorWindowNames.QuestDelivery =>
+                    GetParcelOpenRestrictionMessage(fieldLimit),
+                MapSimulatorWindowNames.QuestAlarm =>
+                    GetQuestAlertRestrictionMessage(fieldLimit),
+                _ => null
+            };
+        }
+
+        public static string GetWindowOpenRestrictionMessage(
+            long fieldLimit,
+            MapInfo mapInfo,
+            string windowName)
+        {
+            if (string.IsNullOrWhiteSpace(windowName))
+            {
+                return null;
+            }
+
+            string windowRestrictionMessage = GetWindowRestrictionMessage(fieldLimit, windowName);
+            if (!string.IsNullOrWhiteSpace(windowRestrictionMessage))
+            {
+                return windowRestrictionMessage;
+            }
+
+            string socialRoomRestrictionMessage = windowName switch
+            {
+                MapSimulatorWindowNames.MiniRoom => GetSocialRoomRestrictionMessage(fieldLimit, mapInfo, SocialRoomKind.MiniRoom),
+                MapSimulatorWindowNames.PersonalShop => GetSocialRoomRestrictionMessage(fieldLimit, mapInfo, SocialRoomKind.PersonalShop),
+                MapSimulatorWindowNames.EntrustedShop => GetSocialRoomRestrictionMessage(fieldLimit, mapInfo, SocialRoomKind.EntrustedShop),
+                MapSimulatorWindowNames.TradingRoom => GetSocialRoomRestrictionMessage(fieldLimit, mapInfo, SocialRoomKind.TradingRoom),
+                MapSimulatorWindowNames.CashTradingRoom => GetSocialRoomRestrictionMessage(fieldLimit, mapInfo, SocialRoomKind.TradingRoom),
+                _ => null
+            };
+            if (!string.IsNullOrWhiteSpace(socialRoomRestrictionMessage))
+            {
+                return socialRoomRestrictionMessage;
+            }
+
+            string fieldMetadataWindowRestrictionMessage = windowName switch
+            {
+                MapSimulatorWindowNames.NpcShop or
+                MapSimulatorWindowNames.CashShop =>
+                    GetShopOpenRestrictionMessage(mapInfo),
+                MapSimulatorWindowNames.StoreBank or
+                MapSimulatorWindowNames.Trunk =>
+                    GetTrunkOpenRestrictionMessage(mapInfo),
+                _ => null
+            };
+            if (!string.IsNullOrWhiteSpace(fieldMetadataWindowRestrictionMessage))
+            {
+                return fieldMetadataWindowRestrictionMessage;
+            }
+
+            return windowName == MapSimulatorWindowNames.MapTransfer
+                ? GetMapTransferWindowRestrictionMessage(fieldLimit, mapInfo)
+                : null;
+        }
+
+        public static bool CanTakeFallingDamage(long fieldLimit)
+        {
+            return !FieldLimitType.No_Damage_On_Falling.Check(fieldLimit);
+        }
+
+        public static bool CanTakeFallingDamage(long fieldLimit, MapInfo mapInfo)
+        {
+            return GetFallingDamageRestrictionMessage(fieldLimit, mapInfo) == null;
+        }
+
+        public static bool ShouldAutoExpandMinimap(long fieldLimit)
+        {
+            return FieldLimitType.Auto_Expand_Minimap.Check(fieldLimit);
+        }
+
+        public static string GetAutoExpandMinimapMessage(long fieldLimit)
+        {
+            return ShouldAutoExpandMinimap(fieldLimit)
+                ? "The minimap automatically expands in this map."
+                : null;
+        }
+
+        public static bool ShouldHideMinimap(MapInfo mapInfo)
+        {
+            return mapInfo?.hideMinimap == true || IsInfoFlagSet(mapInfo, "hideMinimap");
+        }
+
+        public static bool ShouldCreateStartupMinimap(bool isLoginMap, bool isCashShopMap, MapInfo mapInfo)
+        {
+            return !isLoginMap
+                   && !isCashShopMap
+                   && !ShouldHideMinimap(mapInfo);
+        }
+
+        public static string GetMinimapHiddenMessage(MapInfo mapInfo)
+        {
+            return ShouldHideMinimap(mapInfo)
+                ? "Map metadata keeps the minimap hidden in this field."
+                : null;
+        }
+
+        public static bool ResolvePacketOwnedMiniMapVisibility(
+            long fieldLimit,
+            MapInfo mapInfo,
+            bool requestedVisible,
+            out string overrideMessage)
+        {
+            string minimapHiddenMessage = GetMinimapHiddenMessage(mapInfo);
+            if (!string.IsNullOrWhiteSpace(minimapHiddenMessage))
+            {
+                overrideMessage = minimapHiddenMessage;
+                return false;
+            }
+
+            if (!requestedVisible && ShouldAutoExpandMinimap(fieldLimit))
+            {
+                overrideMessage = "Field rules keep the minimap expanded in this map.";
+                return true;
+            }
+
+            overrideMessage = null;
+            return requestedVisible;
+        }
+
+        public static string GetPetRuntimeRestrictionMessage(long fieldLimit)
+        {
+            return FieldLimitType.Unable_To_Use_Pet.Check(fieldLimit)
+                ? "Pet runtime interactions are disabled in this map."
+                : null;
+        }
+
+        public static string GetPetRuntimeRestrictionMessage(long fieldLimit, MapInfo mapInfo)
+        {
+            string fieldLimitRestrictionMessage = GetPetRuntimeRestrictionMessage(fieldLimit);
+            if (!string.IsNullOrWhiteSpace(fieldLimitRestrictionMessage))
+            {
+                return fieldLimitRestrictionMessage;
+            }
+
+            return IsInfoFlagSet(mapInfo, "vanishPet")
+                ? "Pet runtime interactions are disabled in this map."
+                : null;
+        }
+
+        public static string GetMapTransferRestrictionMessage(long fieldLimit)
+        {
+            return GetTeleportItemRestrictionMessage(fieldLimit) ?? GetTransferRestrictionMessage(fieldLimit);
+        }
+
+        public static string GetMapTransferRestrictionMessage(long fieldLimit, MapInfo mapInfo)
+        {
+            return GetMapTransferEntryRestrictionMessage(mapInfo, context: null)
+                ?? GetMapTransferRestrictionMessage(fieldLimit);
+        }
+
+        private static string GetMapTransferWindowRestrictionMessage(long fieldLimit, MapInfo mapInfo)
+        {
+            string entryRestrictionMessage = GetMapTransferEntryRestrictionMessage(mapInfo, context: null);
+            if (!string.IsNullOrWhiteSpace(entryRestrictionMessage))
+            {
+                return entryRestrictionMessage;
+            }
+
+            return GetMapTransferRestrictionMessage(fieldLimit);
+        }
+
+        public static bool CanPickupDrops(long fieldLimit)
+        {
+            return GetDropPickupRestrictionMessage(fieldLimit) == null;
+        }
+
+        public static bool CanRequestDrop(long fieldLimit)
+        {
+            return GetDropRequestRestrictionMessage(fieldLimit) == null;
+        }
+
+        public static bool CanSpawnDrops(long fieldLimit)
+        {
+            return GetDropSpawnRestrictionMessage(fieldLimit) == null;
+        }
+
+        public static bool CanUseAndroid(long fieldLimit)
+        {
+            return GetAndroidRestrictionMessage(fieldLimit) == null;
+        }
+
+        public static bool CanUseAndroid(long fieldLimit, MapInfo mapInfo)
+        {
+            return GetAndroidRestrictionMessage(fieldLimit, mapInfo) == null;
+        }
+
+        public static bool CanChangePartyLeader(long fieldLimit)
+        {
+            return CanChangePartyLeader(fieldLimit, mapInfo: null);
+        }
+
+        public static bool CanChangePartyLeader(long fieldLimit, MapInfo mapInfo)
+        {
+            return GetPartyBossRestrictionMessage(fieldLimit, mapInfo) == null;
+        }
+
+        public static string GetItemUseRestrictionMessage(
+            long fieldLimit,
+            MapInfo mapInfo,
+            InventoryType inventoryType,
+            int itemId,
+            string itemName,
+            string itemDescription,
+            bool isStatChangeConsumable)
+        {
+            string fieldLimitRestrictionMessage = GetItemUseRestrictionMessage(
+                fieldLimit,
+                inventoryType,
+                itemId,
+                itemName,
+                itemDescription,
+                isStatChangeConsumable);
+            if (!string.IsNullOrWhiteSpace(fieldLimitRestrictionMessage))
+            {
+                return fieldLimitRestrictionMessage;
+            }
+
+            return GetScrollUseRestrictionMessage(mapInfo, inventoryType, itemId);
+        }
+
+        public static string GetItemUseRestrictionMessage(
+            long fieldLimit,
+            InventoryType inventoryType,
+            int itemId,
+            string itemName,
+            string itemDescription,
+            bool isStatChangeConsumable)
+        {
+            if (itemId <= 0 || inventoryType == InventoryType.NONE)
+            {
+                return null;
+            }
+
+            if (FieldLimitType.Unable_To_Use_Portal_Scroll.Check(fieldLimit) && IsPortalScrollItem(inventoryType, itemId))
+            {
+                return "Portal scrolls cannot be used in this field.";
+            }
+
+            if (FieldLimitType.Unable_To_Use_Specific_Portal_Scroll.Check(fieldLimit) && IsSpecificPortalScrollItem(inventoryType, itemId))
+            {
+                return "Destination portal scrolls cannot be used in this field.";
+            }
+
+            if (FieldLimitType.Unable_To_Use_Summon_Item.Check(fieldLimit) && IsSummonItem(inventoryType, itemId))
+            {
+                return "The summon item cannot be used in this field.";
+            }
+
+            if (FieldLimitType.Unable_To_Consume_Stat_Change_Item.Check(fieldLimit) && isStatChangeConsumable)
+            {
+                return "Stat-change consumables cannot be used in this field.";
+            }
+
+            if (FieldLimitType.Unable_To_Use_Wedding_Invitation_Item.Check(fieldLimit) && IsWeddingInvitationItem(inventoryType, itemId, itemName, itemDescription))
+            {
+                return "Wedding invitation items cannot be used in this field.";
+            }
+
+            if (IsCashWeatherItem(inventoryType, itemId))
+            {
+                return GetCashWeatherRestrictionMessage(fieldLimit);
+            }
+
+            if (FieldLimitType.Unable_To_Use_Pet.Check(fieldLimit) && IsPetInteractionItem(inventoryType, itemId, itemName, itemDescription))
+            {
+                return "Pet items cannot be used in this field.";
+            }
+
+            if (FieldLimitType.Unable_To_Use_AntiMacro_Item.Check(fieldLimit) && IsAntiMacroItem(inventoryType, itemId, itemName, itemDescription))
+            {
+                return "Anti-macro items cannot be used in this field.";
+            }
+
+            if (FieldLimitType.Unable_To_Summon_NPC.Check(fieldLimit) && IsNpcSummonItem(itemId, itemName, itemDescription))
+            {
+                return "NPC-summon items cannot be used in this field.";
+            }
+
+            return null;
+        }
+
+        public static string GetScrollUseRestrictionMessage(MapInfo mapInfo, InventoryType inventoryType, int itemId)
+        {
+            return IsInfoFlagSet(mapInfo, "scrollDisable") && IsUpgradeScrollItem(inventoryType, itemId)
+                ? "Upgrade scrolls cannot be used in this map."
+                : null;
+        }
+
+        public static bool IsStatChangeConsumable(
+            bool hasRecoveryEffect,
+            bool hasTemporaryBuffEffect,
+            bool hasMorphEffect,
+            bool hasCureEffect,
+            bool hasEnvironmentalProtectionEffect = false)
+        {
+            return hasRecoveryEffect
+                || hasTemporaryBuffEffect
+                || hasMorphEffect
+                || hasCureEffect
+                || hasEnvironmentalProtectionEffect;
+        }
+
+        public static IReadOnlyList<string> GetFieldEntryItemRestrictionMessages(long fieldLimit)
+        {
+            return GetFieldEntryItemRestrictionMessages(fieldLimit, mapInfo: null);
+        }
+
+        public static IReadOnlyList<string> GetFieldEntryItemRestrictionMessages(long fieldLimit, MapInfo mapInfo)
+        {
+            List<string> messages = new();
+
+            if (FieldLimitType.Unable_To_Use_Portal_Scroll.Check(fieldLimit))
+            {
+                messages.Add("Portal scroll use is disabled in this map.");
+            }
+
+            if (FieldLimitType.Unable_To_Use_Specific_Portal_Scroll.Check(fieldLimit))
+            {
+                messages.Add("Destination portal scroll use is disabled in this map.");
+            }
+
+            if (FieldLimitType.Unable_To_Use_Summon_Item.Check(fieldLimit))
+            {
+                messages.Add("Monster summon items are disabled in this map.");
+            }
+
+            if (FieldLimitType.Unable_To_Consume_Stat_Change_Item.Check(fieldLimit))
+            {
+                messages.Add("Stat-change consumables are disabled in this map.");
+            }
+
+            if (FieldLimitType.Unable_To_Use_Wedding_Invitation_Item.Check(fieldLimit))
+            {
+                messages.Add("Wedding invitation items are disabled in this map.");
+            }
+
+            string cashWeatherRestrictionMessage = GetCashWeatherRestrictionMessage(fieldLimit);
+            if (!string.IsNullOrWhiteSpace(cashWeatherRestrictionMessage))
+            {
+                messages.Add("Cash weather items are disabled in this map.");
+            }
+
+            if (FieldLimitType.Unable_To_Use_Pet.Check(fieldLimit))
+            {
+                messages.Add("Pet item interactions are disabled in this map.");
+            }
+
+            string petRuntimeMessage = GetPetRuntimeRestrictionMessage(fieldLimit);
+            if (!string.IsNullOrWhiteSpace(petRuntimeMessage))
+            {
+                messages.Add(petRuntimeMessage);
+            }
+
+            if (FieldLimitType.Unable_To_Use_AntiMacro_Item.Check(fieldLimit))
+            {
+                messages.Add("Anti-macro items are disabled in this map.");
+            }
+
+            if (FieldLimitType.Unable_To_Summon_NPC.Check(fieldLimit))
+            {
+                messages.Add("NPC-summon items are disabled in this map.");
+            }
+
+            string scrollRestrictionMessage = GetScrollUseRestrictionMessage(mapInfo, InventoryType.USE, UpgradeScrollItemGroup * 10000);
+            if (!string.IsNullOrWhiteSpace(scrollRestrictionMessage))
+            {
+                messages.Add("Upgrade scrolls are disabled in this map.");
+            }
+
+            string miniGameMessage = GetMiniGameRestrictionMessage(fieldLimit);
+            if (!string.IsNullOrWhiteSpace(miniGameMessage))
+            {
+                messages.Add(miniGameMessage);
+            }
+
+            return messages;
+        }
+
+        public static IReadOnlyList<string> GetFieldEntryInteractionRestrictionMessages(long fieldLimit)
+        {
+            return GetFieldEntryInteractionRestrictionMessages(fieldLimit, mapInfo: null);
+        }
+
+        public static IReadOnlyList<string> GetFieldEntryInteractionRestrictionMessages(long fieldLimit, MapInfo mapInfo)
+        {
+            List<string> messages = new();
+            AddFieldEntryMessage(messages, GetParcelOpenRestrictionMessage(fieldLimit));
+            AddFieldEntryMessage(messages, GetQuestAlertRestrictionMessage(fieldLimit));
+            AddFieldEntryMessage(messages, GetAndroidRestrictionMessage(fieldLimit, mapInfo));
+            AddFieldEntryMessage(messages, GetDragonCompanionRestrictionMessage(mapInfo));
+            AddFieldEntryMessage(messages, GetTamingMobRestrictionMessage(fieldLimit));
+            AddFieldEntryMessage(messages, GetPartyBossRestrictionMessage(fieldLimit, mapInfo));
+            AddFieldEntryMessage(messages, GetDropRestrictionMessage(fieldLimit));
+            AddFieldEntryMessage(messages, GetMonsterCapacityLimitMessage(fieldLimit));
+            AddFieldEntryMessage(messages, GetMobRegenRestrictionMessage(mapInfo));
+            AddFieldEntryMessage(messages, GetExpDecreaseRestrictionMessage(fieldLimit));
+            AddFieldEntryMessage(messages, GetItemOptionLimitMessage(fieldLimit));
+            AddFieldEntryMessage(messages, GetJumpDownRestrictionMessage(fieldLimit));
+            AddFieldEntryMessage(messages, GetFallingDamageRestrictionMessage(fieldLimit, mapInfo));
+            AddFieldEntryMessage(messages, GetShopOpenRestrictionMessage(mapInfo));
+            AddFieldEntryMessage(messages, GetTrunkOpenRestrictionMessage(mapInfo));
+            AddFieldEntryMessage(messages, GetPortableChairRestrictionMessage(mapInfo));
+            AddFieldEntryMessage(messages, GetMinimapHiddenMessage(mapInfo));
+            AddFieldEntryMessage(messages, GetLandingRestrictionMessage(mapInfo));
+            AddFieldEntryMessage(messages, GetFlyingMapEntryMessage(mapInfo));
+            AddFieldEntryMessage(messages, GetNeedSkillForFlyEntryMessage(mapInfo));
+            AddFieldEntryMessage(messages, GetMapEffectEntryMessage(mapInfo));
+            AddFieldEntryMessage(messages, GetDropExpireEntryMessage(mapInfo));
+            AddFieldEntryMessage(messages, GetConsumeItemCooldownEntryMessage(mapInfo));
+            AddFieldEntryMessage(messages, GetZakumJumpQuestMoveCheckEntryMessage(mapInfo));
+            AddFieldEntryMessage(messages, GetAllMoveCheckEntryMessage(mapInfo));
+            AddFieldEntryMessage(messages, GetActiveSkillCancelRestrictionMessage(mapInfo));
+            AddFieldEntryMessage(messages, FieldEntryRestrictionEvaluator.GetLevelLimitEntryMessage(mapInfo));
+            AddFieldEntryMessage(messages, FieldEntryRestrictionEvaluator.GetLevelForceMoveEntryMessage(mapInfo));
+            AddFieldEntryMessage(messages, FieldEntryRestrictionEvaluator.GetPartyOnlyEntryMessage(mapInfo));
+            AddFieldEntryMessage(messages, FieldEntryRestrictionEvaluator.GetExpeditionOnlyEntryMessage(mapInfo));
+            AddFieldEntryMessage(messages, GetStandAloneModeEntryMessage(mapInfo));
+            AddFieldEntryMessage(messages, GetPartyStandAloneEntryMessage(mapInfo));
+            AddFieldEntryMessage(messages, GetTakeOffItemEntryRestrictionMessage(mapInfo));
+            AddFieldEntryMessage(messages, GetFollowCharacterRestrictionMessage(mapInfo));
+            if (GetPetRuntimeRestrictionMessage(fieldLimit) == null)
+            {
+                AddFieldEntryMessage(messages, GetPetRuntimeRestrictionMessage(fieldLimit, mapInfo));
+            }
+            return messages;
+        }
+
+        public static bool CanRegisterMapTransferDestination(int mapId)
+        {
+            return CanRegisterMapTransferDestination(mapId, null, null);
+        }
+
+        public static bool CanRegisterMapTransferDestination(int mapId, MapInfo mapInfo)
+        {
+            return CanRegisterMapTransferDestination(mapId, mapInfo, null);
+        }
+
+        public static bool CanRegisterMapTransferDestination(
+            int mapId,
+            MapInfo mapInfo,
+            FieldEntryRestrictionContext? context)
+        {
+            return GetMapTransferRegistrationRestrictionMessage(mapId, mapInfo, context) == null;
+        }
+
+        public static string GetMapTransferRegisterPreflightRestrictionMessage(int mapId)
+        {
+            if (mapId <= 0 || mapId == MapConstants.MaxMap)
+            {
+                return GenericMapTransferRegistrationRestrictionMessage;
+            }
+
+            if (mapId < 100_000_000)
+            {
+                return RegularFieldMapTransferRegistrationRestrictionMessage;
+            }
+
+            int millionGroup = (mapId / 1_000_000) % 100;
+            return millionGroup == 9
+                ? GenericMapTransferRegistrationRestrictionMessage
+                : null;
+        }
+
+        public static string GetMapTransferRegistrationRestrictionMessage(int mapId)
+        {
+            return GetMapTransferRegistrationRestrictionMessage(mapId, null, null);
+        }
+
+        public static string GetMapTransferRegistrationRestrictionMessage(int mapId, MapInfo mapInfo)
+        {
+            return GetMapTransferRegistrationRestrictionMessage(mapId, mapInfo, null);
+        }
+
+        public static string GetMapTransferRegistrationRestrictionMessage(
+            int mapId,
+            MapInfo mapInfo,
+            FieldEntryRestrictionContext? context)
+        {
+            string preflightRestrictionMessage = GetMapTransferRegisterPreflightRestrictionMessage(mapId);
+            if (!string.IsNullOrWhiteSpace(preflightRestrictionMessage))
+            {
+                return preflightRestrictionMessage;
+            }
+
+            MapTransferRuntimePacketResultCode? runtimeResultCode = GetMapTransferRegistrationResultCode(mapId, mapInfo, context);
+            return runtimeResultCode switch
+            {
+                MapTransferRuntimePacketResultCode.OfficialFailure11 => MapTransferClientParityText.ResolveFailureMessage(MapTransferRuntimePacketResultCode.OfficialFailure11),
+                MapTransferRuntimePacketResultCode.CannotSaveDestination => GenericMapTransferRegistrationRestrictionMessage,
+                _ => null
+            };
+        }
+
+        public static string GetMapTransferEntryRestrictionMessage(
+            MapInfo mapInfo,
+            FieldEntryRestrictionContext? context)
+        {
+            return GetSharedMapTransferDestinationRestrictionMessage(mapInfo, context);
+        }
+
+        public static string GetJumpRestrictionMessage(long fieldLimit)
+        {
+            return FieldLimitType.Unable_To_Jump.Check(fieldLimit)
+                ? "Jumping is disabled in this map."
+                : null;
+        }
+
+        private static void AddFieldEntryMessage(ICollection<string> messages, string message)
+        {
+            if (!string.IsNullOrWhiteSpace(message))
+            {
+                messages.Add(message);
+            }
+        }
+
+        private static string GetSharedMapTransferDestinationRestrictionMessage(
+            MapInfo mapInfo,
+            FieldEntryRestrictionContext? context)
+        {
+            if (mapInfo == null)
+            {
+                return null;
+            }
+
+            string entryRestrictionMessage = context.HasValue
+                ? FieldEntryRestrictionEvaluator.GetRestrictionMessage(mapInfo, context.Value)
+                : null;
+            if (!string.IsNullOrWhiteSpace(entryRestrictionMessage))
+            {
+                return entryRestrictionMessage;
+            }
+
+            string transferRestrictionMessage = GetTransferRestrictionMessage(mapInfo.fieldLimit);
+            if (!string.IsNullOrWhiteSpace(transferRestrictionMessage))
+            {
+                return transferRestrictionMessage;
+            }
+
+            if (HasNoMapCommand(mapInfo) ||
+                GetMoveLimit(mapInfo) > 0 ||
+                IsNonDefaultFieldType(mapInfo))
+            {
+                return GenericMapTransferRegistrationRestrictionMessage;
+            }
+
+            return null;
+        }
+
+        public static MapTransferRuntimePacketResultCode? GetMapTransferRegistrationResultCode(
+            int mapId,
+            MapInfo mapInfo,
+            FieldEntryRestrictionContext? context)
+        {
+            if (mapInfo == null)
+            {
+                return null;
+            }
+
+            string entryRestrictionMessage = context.HasValue
+                ? FieldEntryRestrictionEvaluator.GetRestrictionMessage(mapInfo, context.Value)
+                : null;
+            if (!string.IsNullOrWhiteSpace(entryRestrictionMessage))
+            {
+                return context.HasValue &&
+                       IsEntryRestrictionRequestRejectedForMapTransfer(mapInfo, context.Value)
+                    ? MapTransferRuntimePacketResultCode.OfficialFailure11
+                    : MapTransferRuntimePacketResultCode.CannotSaveDestination;
+            }
+
+            string transferRestrictionMessage = GetTransferRestrictionMessage(mapInfo.fieldLimit);
+            if (!string.IsNullOrWhiteSpace(transferRestrictionMessage))
+            {
+                return MapTransferRuntimePacketResultCode.CannotSaveDestination;
+            }
+
+            if (HasNoMapCommand(mapInfo) ||
+                GetMoveLimit(mapInfo) > 0 ||
+                IsNonDefaultFieldType(mapInfo))
+            {
+                return MapTransferRuntimePacketResultCode.CannotSaveDestination;
+            }
+
+            return null;
+        }
+
+        private static bool IsEntryRestrictionRequestRejectedForMapTransfer(
+            MapInfo mapInfo,
+            FieldEntryRestrictionContext context)
+        {
+            if (mapInfo == null)
+            {
+                return false;
+            }
+
+            FieldEntryRestrictionType restrictionType = FieldEntryRestrictionEvaluator.GetRestrictionType(mapInfo, context);
+            if (restrictionType != FieldEntryRestrictionType.LevelLimit)
+            {
+                return false;
+            }
+
+            int requiredLevel = FieldEntryRestrictionEvaluator.GetLevelLimit(mapInfo);
+            return requiredLevel >= 7 && context.PlayerLevel < 7;
+        }
+
+        private static bool IsPortalScrollItem(InventoryType inventoryType, int itemId)
+        {
+            return inventoryType == InventoryType.USE && (itemId / 10000) == PortalScrollItemGroup;
+        }
+
+        private static bool IsSpecificPortalScrollItem(InventoryType inventoryType, int itemId)
+        {
+            return IsPortalScrollItem(inventoryType, itemId) && itemId != NearestTownPortalScrollItemId;
+        }
+
+        private static bool IsUpgradeScrollItem(InventoryType inventoryType, int itemId)
+        {
+            return inventoryType == InventoryType.USE && (itemId / 10000) == UpgradeScrollItemGroup;
+        }
+
+        private static bool IsSummonItem(InventoryType inventoryType, int itemId)
+        {
+            return inventoryType == InventoryType.USE && (itemId / 10000) == SummonSackItemGroup;
+        }
+
+        private static bool IsCashWeatherItem(InventoryType inventoryType, int itemId)
+        {
+            return inventoryType == InventoryType.CASH && (itemId / 10000) == CashWeatherItemGroup;
+        }
+
+        private static bool IsAntiMacroItem(InventoryType inventoryType, int itemId, string itemName, string itemDescription)
+        {
+            return (inventoryType == InventoryType.USE && (itemId / 10000) == AntiMacroItemGroup)
+                   || ContainsPhrase(itemName, "lie detector")
+                   || ContainsPhrase(itemDescription, "lie detector");
+        }
+
+        private static bool IsWeddingInvitationItem(InventoryType inventoryType, int itemId, string itemName, string itemDescription)
+        {
+            return InventoryItemMetadataResolver.IsWeddingInvitationItem(
+                itemId,
+                inventoryType,
+                itemName,
+                itemDescription);
+        }
+
+        private static bool IsNpcSummonItem(int itemId, string itemName, string itemDescription)
+        {
+            bool hasNpcReference = InventoryItemMetadataResolver.TryResolveNpcReference(itemId, out int npcId) && npcId > 0;
+            bool hasSummonScript = InventoryItemMetadataResolver.TryResolveSpecScripts(itemId, out IReadOnlyList<string> scriptNames)
+                                   && scriptNames.Any(scriptName =>
+                                       string.Equals(scriptName, SummonEventNpcScriptName, StringComparison.OrdinalIgnoreCase));
+            return IsNpcSummonItem(
+                itemId is NpcSummonScriptItemId or NpcSummonQuestItemId,
+                hasNpcReference,
+                hasSummonScript,
+                itemName,
+                itemDescription);
+        }
+
+        internal static bool IsNpcSummonItem(
+            bool isKnownNpcSummonItem,
+            bool hasNpcReference,
+            bool hasSummonEventNpcScript,
+            string itemName,
+            string itemDescription)
+        {
+            if (isKnownNpcSummonItem || hasNpcReference || hasSummonEventNpcScript)
+            {
+                return true;
+            }
+
+            return ContainsPhrase(itemName, "summon npc")
+                   || ContainsPhrase(itemDescription, "summon npc")
+                   || ContainsPhrase(itemDescription, "summons NPC");
+        }
+
+        private static bool IsPetInteractionItem(InventoryType inventoryType, int itemId, string itemName, string itemDescription)
+        {
+            int itemGroup = itemId / 10000;
+            if (inventoryType == InventoryType.CASH
+                && itemGroup is CashPetItemGroup
+                    or PetLifeRecoveryItemGroup
+                    or PetNameTagItemGroup
+                    or PetReviveItemGroup
+                    or PetSkillItemGroup
+                    or PetFoodItemGroup)
+            {
+                return true;
+            }
+
+            if (InventoryItemMetadataResolver.IsPetFoodItem(itemId))
+            {
+                return true;
+            }
+
+            return ContainsWholeWord(itemName, "pet") || ContainsWholeWord(itemDescription, "pet");
+        }
+
+        private static bool ContainsPhrase(string text, string phrase)
+        {
+            return !string.IsNullOrWhiteSpace(text)
+                   && text.IndexOf(phrase, StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static bool ContainsWholeWord(string text, string word)
+        {
+            if (string.IsNullOrWhiteSpace(text) || string.IsNullOrWhiteSpace(word))
+            {
+                return false;
+            }
+
+            int startIndex = 0;
+            while (true)
+            {
+                int index = text.IndexOf(word, startIndex, StringComparison.OrdinalIgnoreCase);
+                if (index < 0)
+                {
+                    return false;
+                }
+
+                bool startBoundary = index == 0 || !char.IsLetterOrDigit(text[index - 1]);
+                int endIndex = index + word.Length;
+                bool endBoundary = endIndex >= text.Length || !char.IsLetterOrDigit(text[endIndex]);
+                if (startBoundary && endBoundary)
+                {
+                    return true;
+                }
+
+                startIndex = index + word.Length;
+            }
+        }
+
+        private static bool IsInfoFlagSet(MapInfo mapInfo, string propertyName)
+        {
+            foreach (WzImageProperty property in EnumerateInfoProperties(mapInfo, propertyName))
+            {
+                if (TryReadInfoFlag(property, out bool enabled))
+                {
+                    return enabled;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool IsInfoFlagSetWithCopiedBranchFallback(MapInfo mapInfo, string propertyName)
+        {
+            foreach (WzImageProperty property in EnumerateInfoProperties(mapInfo, propertyName))
+            {
+                if (TryReadInfoFlag(property, out bool enabled))
+                {
+                    return enabled;
+                }
+            }
+
+            return false;
+        }
+
+        private static IEnumerable<WzImageProperty> EnumerateInfoProperties(MapInfo mapInfo, string propertyName)
+        {
+            if (mapInfo == null || string.IsNullOrWhiteSpace(propertyName))
+            {
+                yield break;
+            }
+
+            foreach (WzImageProperty property in EnumerateNamedProperties(mapInfo.additionalProps, propertyName))
+            {
+                yield return property;
+            }
+
+            foreach (WzImageProperty property in EnumerateNamedProperties(mapInfo.unsupportedInfoProperties, propertyName))
+            {
+                yield return property;
+            }
+
+            if (FindImageInfoProperty(mapInfo, propertyName) is WzImageProperty imageProperty)
+            {
+                yield return imageProperty;
+            }
+        }
+
+        private static IEnumerable<WzImageProperty> EnumerateNamedProperties(IEnumerable<WzImageProperty> properties, string propertyName)
+        {
+            if (properties == null)
+            {
+                yield break;
+            }
+
+            foreach (WzImageProperty property in properties)
+            {
+                if (string.Equals(property?.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+                {
+                    yield return property;
+                }
+            }
+        }
+
+        private static bool TryReadInfoFlag(WzImageProperty property, out bool enabled)
+        {
+            enabled = false;
+            if (property == null)
+            {
+                return false;
+            }
+
+            try
+            {
+                enabled = property.GetInt() != 0;
+                return true;
+            }
+            catch
+            {
+                if (property is WzStringProperty stringProperty
+                    && int.TryParse(stringProperty.Value, out int value))
+                {
+                    enabled = value != 0;
+                    return true;
+                }
+
+                return false;
+            }
+        }
+
+        private static WzImageProperty FindInfoProperty(MapInfo mapInfo, string propertyName)
+        {
+            WzImageProperty property = FindNamedProperty(mapInfo.additionalProps, propertyName)
+                ?? FindNamedProperty(mapInfo.unsupportedInfoProperties, propertyName);
+
+            return property ?? FindImageInfoProperty(mapInfo, propertyName);
+        }
+
+        private static int? GetInfoInt(MapInfo mapInfo, string propertyName)
+        {
+            foreach (WzImageProperty property in EnumerateInfoProperties(mapInfo, propertyName))
+            {
+                if (TryReadInfoInt(property, out int value))
+                {
+                    return value;
+                }
+            }
+
+            return null;
+        }
+
+        private static string GetInfoString(MapInfo mapInfo, string propertyName)
+        {
+            foreach (WzImageProperty property in EnumerateInfoProperties(mapInfo, propertyName))
+            {
+                if (TryReadInfoString(property, out string value))
+                {
+                    return value;
+                }
+            }
+
+            return null;
+        }
+
+        private static bool? ResolveInfoBool(MapInfo mapInfo, string propertyName, bool? typedValue)
+        {
+            if (typedValue.HasValue)
+            {
+                return typedValue.Value;
+            }
+
+            int? infoValue = GetInfoInt(mapInfo, propertyName);
+            return infoValue.HasValue
+                ? infoValue.Value != 0
+                : null;
+        }
+
+        private static bool HasNoMapCommand(MapInfo mapInfo)
+        {
+            return ResolveInfoBool(mapInfo, "noMapCmd", GetMapleBoolValue(mapInfo?.noMapCmd)) == true;
+        }
+
+        private static int GetMoveLimit(MapInfo mapInfo)
+        {
+            return Math.Max(0, mapInfo?.moveLimit ?? GetInfoInt(mapInfo, "moveLimit") ?? 0);
+        }
+
+        private static FieldType? GetInfoFieldType(MapInfo mapInfo)
+        {
+            return MapInfoFieldTypeResolver.Resolve(mapInfo);
+        }
+
+        private static bool IsNonDefaultFieldType(MapInfo mapInfo)
+        {
+            FieldType? fieldType = GetInfoFieldType(mapInfo);
+            return fieldType.HasValue && fieldType.Value != FieldType.FIELDTYPE_DEFAULT;
+        }
+
+        private static bool? GetMapleBoolValue(MapleBool? value)
+        {
+            return value.HasValue && value.Value.HasValue
+                ? value.Value.Value
+                : null;
+        }
+
+        private static bool TryReadInfoInt(WzImageProperty property, out int value)
+        {
+            value = 0;
+            if (property == null)
+            {
+                return false;
+            }
+
+            try
+            {
+                value = property.GetInt();
+                return true;
+            }
+            catch
+            {
+                if (property is WzStringProperty stringProperty
+                    && int.TryParse(stringProperty.Value, out value))
+                {
+                    return true;
+                }
+
+                value = 0;
+                return false;
+            }
+        }
+
+        private static bool TryReadInfoString(WzImageProperty property, out string value)
+        {
+            value = null;
+            if (property == null)
+            {
+                return false;
+            }
+
+            try
+            {
+                value = property.GetString();
+                return !string.IsNullOrWhiteSpace(value);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static WzImageProperty FindNamedProperty(IEnumerable<WzImageProperty> properties, string propertyName)
+        {
+            if (properties == null)
+            {
+                return null;
+            }
+
+            foreach (WzImageProperty property in properties)
+            {
+                if (string.Equals(property?.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return property;
+                }
+            }
+
+            return null;
+        }
+
+        private static WzImageProperty FindImageInfoProperty(MapInfo mapInfo, string propertyName)
+        {
+            WzImageProperty info = mapInfo?.Image?["info"];
+            if (info == null || string.IsNullOrWhiteSpace(propertyName))
+            {
+                return null;
+            }
+
+            WzImageProperty exactProperty = info[propertyName] as WzImageProperty;
+            if (exactProperty != null)
+            {
+                return exactProperty;
+            }
+
+            return FindNamedProperty(info.WzProperties, propertyName);
+        }
+    }
+}

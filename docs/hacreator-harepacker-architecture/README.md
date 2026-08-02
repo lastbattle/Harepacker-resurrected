@@ -326,7 +326,6 @@ With the Foothold tool active, a normal left click creates the next anchor and
 clicking an existing anchor continues the current polyline. Press `Escape` to
 cancel the unfinished segment; clicking the Foothold tool button again
 re-enters the mode even when the button is already selected.
-
 ---
 
 ## See Also

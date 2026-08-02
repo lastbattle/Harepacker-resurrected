@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Text;
 using HaCreator.MapEditor;
@@ -64,13 +65,26 @@ namespace HaCreator.MapSimulator.Managers
 
         // Map objects (layered)
         private BaseDXDrawableItem[][] _mapObjectsArray;
-
+        private BaseDXDrawableItem[] _visibleMapObjects;
+        private int _visibleMapObjectsCount;
         // Entities
         private MobItem[] _mobsArray;
         private NpcItem[] _npcsArray;
         private PortalItem[] _portalsArray;
         private ReactorItem[] _reactorsArray;
         private TooltipItem[] _tooltipsArray;
+        private MobItem[] _visibleMobs;
+        private int _visibleMobsCount;
+        private NpcItem[] _visibleNpcs;
+        private int _visibleNpcsCount;
+        private PortalItem[] _visiblePortals;
+        private int _visiblePortalsCount;
+        private ReactorItem[] _visibleReactors;
+        private int _visibleReactorsCount;
+        private TooltipItem[] _visibleTooltips;
+        private int _visibleTooltipsCount;
+        private readonly List<DropItem> _renderableDropsBuffer = new List<DropItem>();
+        private readonly List<ReactorItem> _renderableReactorsBuffer = new List<ReactorItem>();
 
         #endregion
 
@@ -167,6 +181,34 @@ namespace HaCreator.MapSimulator.Managers
             _tooltipsArray = tooltips ?? Array.Empty<TooltipItem>();
         }
 
+        public void SetVisibleRenderSets(
+            BaseDXDrawableItem[] visibleMapObjects,
+            int visibleMapObjectsCount,
+            MobItem[] visibleMobs,
+            int visibleMobsCount,
+            NpcItem[] visibleNpcs,
+            int visibleNpcsCount,
+            PortalItem[] visiblePortals,
+            int visiblePortalsCount,
+            ReactorItem[] visibleReactors,
+            int visibleReactorsCount,
+            TooltipItem[] visibleTooltips,
+            int visibleTooltipsCount)
+        {
+            _visibleMapObjects = visibleMapObjects;
+            _visibleMapObjectsCount = visibleMapObjectsCount;
+            _visibleMobs = visibleMobs;
+            _visibleMobsCount = visibleMobsCount;
+            _visibleNpcs = visibleNpcs;
+            _visibleNpcsCount = visibleNpcsCount;
+            _visiblePortals = visiblePortals;
+            _visiblePortalsCount = visiblePortalsCount;
+            _visibleReactors = visibleReactors;
+            _visibleReactorsCount = visibleReactorsCount;
+            _visibleTooltips = visibleTooltips;
+            _visibleTooltipsCount = visibleTooltipsCount;
+        }
+
         /// <summary>
         /// Set VR border rendering data
         /// </summary>
@@ -220,6 +262,24 @@ namespace HaCreator.MapSimulator.Managers
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void DrawMapObjects(in RenderContext context)
         {
+            if (_visibleMapObjects != null)
+            {
+                for (int i = 0; i < _visibleMapObjectsCount; i++)
+                {
+                    BaseDXDrawableItem item = _visibleMapObjects[i];
+                    if (item == null || !item.IsVisible)
+                        continue;
+
+                    item.Draw(context.SpriteBatch, context.SkeletonMeshRenderer, context.GameTime,
+                        context.MapShiftX, context.MapShiftY, context.MapCenterX, context.MapCenterY,
+                        null,
+                        context.RenderParams,
+                        context.TickCount);
+                }
+
+                return;
+            }
+
             if (_mapObjectsArray == null) return;
 
             for (int layer = 0; layer < _mapObjectsArray.Length; layer++)
@@ -248,6 +308,28 @@ namespace HaCreator.MapSimulator.Managers
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void DrawMobs(in RenderContext context)
         {
+            if (_visibleMobs != null)
+            {
+                for (int i = 0; i < _visibleMobsCount; i++)
+                {
+                    MobItem mobItem = _visibleMobs[i];
+                    if (mobItem == null)
+                    {
+                        continue;
+                    }
+
+                    ReflectionDrawableBoundary mirrorFieldData = mobItem.CachedMirrorBoundary;
+
+                    mobItem.Draw(context.SpriteBatch, context.SkeletonMeshRenderer, context.GameTime,
+                        context.MapShiftX, context.MapShiftY, context.MapCenterX, context.MapCenterY,
+                        mirrorFieldData,
+                        context.RenderParams,
+                        context.TickCount);
+                }
+
+                return;
+            }
+
             if (_mobsArray == null) return;
 
             for (int i = 0; i < _mobsArray.Length; i++)
@@ -272,6 +354,28 @@ namespace HaCreator.MapSimulator.Managers
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void DrawNpcs(in RenderContext context)
         {
+            if (_visibleNpcs != null)
+            {
+                for (int i = 0; i < _visibleNpcsCount; i++)
+                {
+                    NpcItem npcItem = _visibleNpcs[i];
+                    if (npcItem == null)
+                    {
+                        continue;
+                    }
+
+                    ReflectionDrawableBoundary mirrorFieldData = npcItem.CachedMirrorBoundary;
+
+                    npcItem.Draw(context.SpriteBatch, context.SkeletonMeshRenderer, context.GameTime,
+                        context.MapShiftX, context.MapShiftY, context.MapCenterX, context.MapCenterY,
+                        mirrorFieldData,
+                        context.RenderParams,
+                        context.TickCount);
+                }
+
+                return;
+            }
+
             if (_npcsArray == null) return;
 
             for (int i = 0; i < _npcsArray.Length; i++)
@@ -293,6 +397,24 @@ namespace HaCreator.MapSimulator.Managers
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void DrawPortals(in RenderContext context)
         {
+            if (_visiblePortals != null)
+            {
+                for (int i = 0; i < _visiblePortalsCount; i++)
+                {
+                    PortalItem portalItem = _visiblePortals[i];
+                    if (portalItem == null || !portalItem.IsVisible)
+                        continue;
+
+                    portalItem.Draw(context.SpriteBatch, context.SkeletonMeshRenderer, context.GameTime,
+                        context.MapShiftX, context.MapShiftY, context.MapCenterX, context.MapCenterY,
+                        null,
+                        context.RenderParams,
+                        context.TickCount);
+                }
+
+                return;
+            }
+
             if (_portalsArray == null) return;
 
             for (int i = 0; i < _portalsArray.Length; i++)
@@ -315,20 +437,53 @@ namespace HaCreator.MapSimulator.Managers
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void DrawReactors(in RenderContext context)
         {
-            if (_reactorsArray == null) return;
+            _renderableReactorsBuffer.Clear();
 
-            for (int i = 0; i < _reactorsArray.Length; i++)
+            if (_visibleReactors != null)
             {
-                ReactorItem reactorItem = _reactorsArray[i];
-                if (!reactorItem.IsVisible)
-                    continue;
+                for (int i = 0; i < _visibleReactorsCount; i++)
+                {
+                    ReactorItem reactorItem = _visibleReactors[i];
+                    if (reactorItem == null || !reactorItem.IsVisible)
+                        continue;
 
+                    _renderableReactorsBuffer.Add(reactorItem);
+                }
+            }
+            else if (_reactorsArray != null)
+            {
+                for (int i = 0; i < _reactorsArray.Length; i++)
+                {
+                    ReactorItem reactorItem = _reactorsArray[i];
+                    if (reactorItem == null || !reactorItem.IsVisible)
+                        continue;
+
+                    _renderableReactorsBuffer.Add(reactorItem);
+                }
+            }
+
+            _renderableReactorsBuffer.Sort(CompareRenderableReactors);
+
+            for (int i = 0; i < _renderableReactorsBuffer.Count; i++)
+            {
+                ReactorItem reactorItem = _renderableReactorsBuffer[i];
                 reactorItem.Draw(context.SpriteBatch, context.SkeletonMeshRenderer, context.GameTime,
                     context.MapShiftX, context.MapShiftY, context.MapCenterX, context.MapCenterY,
                     null,
                     context.RenderParams,
                     context.TickCount);
             }
+        }
+
+        internal static int CompareRenderableReactors(ReactorItem left, ReactorItem right)
+        {
+            int result = left.RenderSortKey.CompareTo(right.RenderSortKey);
+            if (result != 0)
+            {
+                return result;
+            }
+
+            return left.CurrentWorldY.CompareTo(right.CurrentWorldY);
         }
 
         /// <summary>
@@ -364,7 +519,7 @@ namespace HaCreator.MapSimulator.Managers
         /// Draws all item/meso drops
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void DrawDrops(in RenderContext context)
+        public void DrawDrops(in RenderContext context, bool elevatedOnly = false)
         {
             if (_dropPool == null || _dropPool.ActiveDropCount == 0)
                 return;
@@ -372,11 +527,19 @@ namespace HaCreator.MapSimulator.Managers
             int screenWidth = context.RenderWidth;
             int screenHeight = context.RenderHeight;
 
-            foreach (var drop in _dropPool.GetRenderableDrops(0, screenWidth, 0, screenHeight,
-                context.MapShiftX, context.MapShiftY, context.MapCenterX, context.MapCenterY))
+            _dropPool.GetRenderableDrops(_renderableDropsBuffer, 0, screenWidth, 0, screenHeight,
+                context.MapShiftX, context.MapShiftY, context.MapCenterX, context.MapCenterY, elevatedOnly);
+
+            for (int i = 0; i < _renderableDropsBuffer.Count; i++)
             {
+                DropItem drop = _renderableDropsBuffer[i];
                 int screenX = (int)drop.X - context.MapShiftX + context.MapCenterX;
                 int screenY = (int)drop.Y - context.MapShiftY + context.MapCenterY;
+
+                if (TryDrawLayeredPacketMeso(drop, screenX, screenY, context))
+                {
+                    continue;
+                }
 
                 IDXObject currentFrame = null;
                 if (drop.AnimFrames != null && drop.AnimFrames.Count > 0)
@@ -392,8 +555,9 @@ namespace HaCreator.MapSimulator.Managers
                 if (currentFrame != null)
                 {
                     Color iconColor = Color.White * drop.Alpha;
+                    ResolveDropDrawPosition(drop, currentFrame, screenX, screenY, out int drawX, out int drawY);
                     currentFrame.DrawBackground(context.SpriteBatch, context.SkeletonMeshRenderer, null,
-                        screenX, screenY, iconColor, false, null);
+                        drawX, drawY, iconColor, false, null);
                 }
                 else if (context.DebugTexture != null)
                 {
@@ -414,6 +578,85 @@ namespace HaCreator.MapSimulator.Managers
                     }
                 }
             }
+        }
+
+        internal static void ResolveDropDrawPosition(DropItem drop, IDXObject frame, int screenX, int screenY, out int drawX, out int drawY)
+        {
+            drawX = screenX;
+            drawY = screenY;
+
+            if (drop?.IsPacketControlled != true || frame == null)
+            {
+                return;
+            }
+
+            // CDropPool::OnDropEnterField anchors packet-owned GR2D layers at the drop vector
+            // and applies a -width/2, -height/2 relative move before insertion.
+            drawX -= frame.Width / 2;
+            drawY -= frame.Height / 2;
+        }
+
+        private static bool TryDrawLayeredPacketMeso(DropItem drop, int screenX, int screenY, in RenderContext context)
+        {
+            if (drop?.UseLayeredMesoAnimation != true
+                || drop.AnimFrames == null
+                || drop.AnimFrames.Count == 0
+                || drop.MesoAnimationLayerCount <= 0)
+            {
+                return false;
+            }
+
+            int layerCount = Math.Min(drop.MesoAnimationLayerCount, drop.AnimFrames.Count);
+
+            for (int layerIndex = 0; layerIndex < layerCount; layerIndex++)
+            {
+                IDXObject frame = drop.AnimFrames[layerIndex];
+                if (frame == null)
+                {
+                    continue;
+                }
+
+                int layerTick = drop.FreezeAnimationDuringRemovalFade
+                    ? drop.LastStateChangeTime
+                    : context.TickCount;
+                PacketOwnedMesoLayerDrawState layerState = PacketOwnedMesoAnimationPresentation.ResolveLayerDrawState(
+                    drop.MesoAnimationIconType,
+                    layerIndex,
+                    layerCount,
+                    layerTick,
+                    drop.SpawnTime,
+                    drop.Alpha);
+                int drawX = screenX;
+                int drawY = screenY + layerState.YOffset;
+
+                if (frame.Texture != null)
+                {
+                    context.SpriteBatch.Draw(
+                        frame.Texture,
+                        new Vector2(drawX, drawY),
+                        null,
+                        Color.White * layerState.Alpha,
+                        0f,
+                        new Vector2(frame.X, frame.Y),
+                        layerState.Scale,
+                        SpriteEffects.None,
+                        0f);
+                }
+                else
+                {
+                    frame.DrawBackground(
+                        context.SpriteBatch,
+                        context.SkeletonMeshRenderer,
+                        null,
+                        drawX - frame.X,
+                        drawY - frame.Y,
+                        Color.White * layerState.Alpha,
+                        false,
+                        null);
+                }
+            }
+
+            return true;
         }
 
         private void DrawMesoAmountText(in RenderContext context, int screenX, int screenY, int size, int mesoAmount, float alpha, Color dropColor)
@@ -442,33 +685,42 @@ namespace HaCreator.MapSimulator.Managers
             var mapBoard = _getMapBoard();
             if (mapBoard == null) return;
 
-            for (int i = 0; i < _tooltipsArray.Length; i++)
+            TooltipItem[] tooltips = _visibleTooltips != null
+                ? _visibleTooltips
+                : _tooltipsArray;
+            int tooltipCount = _visibleTooltips != null
+                ? _visibleTooltipsCount
+                : _tooltipsArray.Length;
+
+            for (int i = 0; i < tooltipCount; i++)
             {
-                TooltipItem tooltip = _tooltipsArray[i];
+                TooltipItem tooltip = tooltips[i];
+                if (tooltip == null)
+                {
+                    continue;
+                }
+
                 if (tooltip.TooltipInstance.CharacterToolTip != null)
                 {
                     Rectangle tooltipRect = tooltip.TooltipInstance.CharacterToolTip.Rectangle;
-                    if (tooltipRect != null)
+                    Rectangle rect = new Rectangle(
+                        tooltipRect.X - (int)context.ShiftCenter.X,
+                        tooltipRect.Y - (int)context.ShiftCenter.Y,
+                        tooltipRect.Width, tooltipRect.Height);
+
+                    if (_gameState.ShowDebugMode && context.DebugTexture != null)
                     {
-                        Rectangle rect = new Rectangle(
-                            tooltipRect.X - (int)context.ShiftCenter.X,
-                            tooltipRect.Y - (int)context.ShiftCenter.Y,
-                            tooltipRect.Width, tooltipRect.Height);
+                        DrawBorder(context.SpriteBatch, rect, 1, Color.White, new Color(Color.Gray, 0.3f), context.DebugTexture);
 
-                        if (_gameState.ShowDebugMode && context.DebugTexture != null)
+                        if (tooltip.CanUpdateDebugText(context.TickCount, 1000))
                         {
-                            DrawBorder(context.SpriteBatch, rect, 1, Color.White, new Color(Color.Gray, 0.3f), context.DebugTexture);
-
-                            if (tooltip.CanUpdateDebugText(context.TickCount, 1000))
-                            {
-                                tooltip.DebugText = $"X: {rect.X}, Y: {rect.Y}";
-                            }
-                            context.SpriteBatch.DrawString(_fontDebugValues, tooltip.DebugText, new Vector2(rect.X, rect.Y), Color.White);
+                            tooltip.DebugText = $"X: {rect.X}, Y: {rect.Y}";
                         }
-
-                        if (!rect.Contains(mouseState.X, mouseState.Y))
-                            continue;
+                        context.SpriteBatch.DrawString(_fontDebugValues, tooltip.DebugText, new Vector2(rect.X, rect.Y), Color.White);
                     }
+
+                    if (!rect.Contains(mouseState.X, mouseState.Y))
+                        continue;
                 }
 
                 tooltip.Draw(context.SpriteBatch, context.SkeletonMeshRenderer, context.GameTime,
@@ -626,15 +878,11 @@ namespace HaCreator.MapSimulator.Managers
 
             // Draw animation effects
             _effectManager.Animation?.Draw(context.SpriteBatch, context.SkeletonMeshRenderer,
-                context.GameTime, context.DebugTexture, context.MapShiftX, context.MapShiftY, context.TickCount);
+                context.GameTime, context.DebugTexture, -(int)context.ShiftCenter.X, -(int)context.ShiftCenter.Y, context.TickCount);
 
-            // Draw combat effects
-            var mapBoard = _getMapBoard();
-            if (mapBoard != null)
-            {
-                _effectManager.Combat?.Draw(context.SpriteBatch, context.SkeletonMeshRenderer,
-                    context.MapShiftX, context.MapShiftY, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y);
-            }
+            // Draw combat effects using the same center/shift values as the rest of this render pass.
+            _effectManager.Combat?.Draw(context.SpriteBatch, context.SkeletonMeshRenderer,
+                context.MapShiftX, context.MapShiftY, context.MapCenterX, context.MapCenterY);
 
             // Draw particles
             _effectManager.Particles?.Draw(context.SpriteBatch, context.DebugTexture,
@@ -809,8 +1057,8 @@ namespace HaCreator.MapSimulator.Managers
 
                 ReactorInstance instance = reactorItem.ReactorInstance;
                 Rectangle rect = new Rectangle(
-                    instance.X - (int)context.ShiftCenter.X - (instance.Width - 20),
-                    instance.Y - (int)context.ShiftCenter.Y - instance.Height,
+                    reactorItem.CurrentWorldX - (int)context.ShiftCenter.X - (instance.Width - 20),
+                    reactorItem.CurrentWorldY - (int)context.ShiftCenter.Y - instance.Height,
                     Math.Max(80, instance.Width + 40),
                     Math.Max(120, instance.Height));
 

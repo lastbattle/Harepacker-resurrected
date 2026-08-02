@@ -1,0 +1,11792 @@
+using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.Managers;
+using HaCreator.MapSimulator.UI;
+using MapleLib.PacketLib;
+using MapleLib.WzLib;
+using MapleLib.WzLib.WzProperties;
+using MapleLib.WzLib.WzStructure.Data.ItemStructure;
+using System;
+using System.Buffers.Binary;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Text;
+
+using BinaryReader = MapleLib.PacketLib.PacketReader;
+using BinaryWriter = MapleLib.PacketLib.PacketWriter;
+namespace HaCreator.MapSimulator.Interaction
+{
+    public enum SocialRoomKind
+    {
+        MiniRoom,
+        PersonalShop,
+        EntrustedShop,
+        TradingRoom
+    }
+
+    public enum SocialRoomOccupantRole
+    {
+        Owner,
+        Guest,
+        Visitor,
+        Merchant,
+        Buyer,
+        Trader
+    }
+
+    public enum SocialRoomPacketType
+    {
+        OpenRoom,
+        CloseRoom,
+        ToggleReady,
+        StartSession,
+        CycleMode,
+        SetWager,
+        SettleWager,
+        AddVisitor,
+        ToggleBlacklist,
+        ListItem,
+        AutoListItem,
+        BuyItem,
+        ArrangeItems,
+        ClaimMesos,
+        ToggleLedgerMode,
+        OfferTradeItem,
+        OfferTradeMeso,
+        LockTrade,
+        CompleteTrade,
+        ResetTrade
+    }
+
+    public enum SocialRoomFieldActorTemplate
+    {
+        Merchant,
+        StoreBanker,
+        CashEmployee
+    }
+
+    public sealed class SocialRoomFieldActorSnapshot
+    {
+        public SocialRoomFieldActorSnapshot(
+            SocialRoomKind kind,
+            SocialRoomFieldActorTemplate template,
+            string headline,
+            string detail,
+            string stateKey,
+            int templateId = 0,
+            bool useOwnerAnchor = true,
+            int anchorOffsetX = 0,
+            int anchorOffsetY = 0,
+            int worldX = 0,
+            int worldY = 0,
+            bool hasWorldPosition = false,
+            bool? flip = null,
+            byte miniRoomType = 0,
+            int miniRoomSerial = 0,
+            string miniRoomBalloonTitle = null,
+            byte miniRoomBalloonByte0 = 0,
+            byte miniRoomBalloonByte1 = 0,
+            byte miniRoomBalloonByte2 = 0,
+            bool hasMiniRoomBalloonByte2 = false)
+        {
+            Kind = kind;
+            Template = template;
+            Headline = headline ?? string.Empty;
+            Detail = detail ?? string.Empty;
+            StateKey = stateKey ?? string.Empty;
+            TemplateId = Math.Max(0, templateId);
+            UseOwnerAnchor = useOwnerAnchor;
+            AnchorOffsetX = anchorOffsetX;
+            AnchorOffsetY = anchorOffsetY;
+            WorldX = worldX;
+            WorldY = worldY;
+            HasWorldPosition = hasWorldPosition;
+            Flip = flip;
+            MiniRoomType = miniRoomType;
+            MiniRoomSerial = Math.Max(0, miniRoomSerial);
+            MiniRoomBalloonTitle = miniRoomBalloonTitle ?? string.Empty;
+            MiniRoomBalloonByte0 = miniRoomBalloonByte0;
+            MiniRoomBalloonByte1 = miniRoomBalloonByte1;
+            MiniRoomBalloonByte2 = miniRoomBalloonByte2;
+            HasMiniRoomBalloonByte2 = hasMiniRoomBalloonByte2;
+        }
+
+        public SocialRoomKind Kind { get; }
+        public SocialRoomFieldActorTemplate Template { get; }
+        public string Headline { get; }
+        public string Detail { get; }
+        public string StateKey { get; }
+        public int TemplateId { get; }
+        public bool UseOwnerAnchor { get; }
+        public int AnchorOffsetX { get; }
+        public int AnchorOffsetY { get; }
+        public int WorldX { get; }
+        public int WorldY { get; }
+        public bool HasWorldPosition { get; }
+        public bool? Flip { get; }
+        public byte MiniRoomType { get; }
+        public int MiniRoomSerial { get; }
+        public string MiniRoomBalloonTitle { get; }
+        public byte MiniRoomBalloonByte0 { get; }
+        public byte MiniRoomBalloonByte1 { get; }
+        public byte MiniRoomBalloonByte2 { get; }
+        public bool HasMiniRoomBalloonByte2 { get; }
+        public bool HasMiniRoomBalloon => MiniRoomType != 0;
+    }
+
+    public sealed class SocialRoomOccupant
+    {
+        public SocialRoomOccupant(string name, SocialRoomOccupantRole role, string detail, bool isReady = false, CharacterBuild avatarBuild = null)
+        {
+            Name = string.IsNullOrWhiteSpace(name) ? "Unknown" : name;
+            Role = role;
+            Detail = detail ?? string.Empty;
+            IsReady = isReady;
+            AvatarBuild = avatarBuild;
+        }
+
+        public string Name { get; private set; }
+        public SocialRoomOccupantRole Role { get; private set; }
+        public string Detail { get; private set; }
+        public bool IsReady { get; private set; }
+        public CharacterBuild AvatarBuild { get; private set; }
+
+        public void Update(string detail, bool isReady, CharacterBuild avatarBuild = null)
+        {
+            Detail = detail ?? string.Empty;
+            IsReady = isReady;
+            AvatarBuild = avatarBuild;
+        }
+
+        public void Update(string name, SocialRoomOccupantRole role, string detail, bool isReady, CharacterBuild avatarBuild = null)
+        {
+            Name = string.IsNullOrWhiteSpace(name) ? "Unknown" : name;
+            Role = role;
+            Detail = detail ?? string.Empty;
+            IsReady = isReady;
+            AvatarBuild = avatarBuild;
+        }
+    }
+
+    public sealed class SocialRoomItemEntry
+    {
+        public SocialRoomItemEntry(
+            string ownerName,
+            string itemName,
+            int quantity,
+            int mesoAmount,
+            string detail,
+            bool isLocked = false,
+            bool isClaimed = false,
+            int itemId = 0,
+            int? packetSlotIndex = null,
+            int bundleSetCount = 0)
+        {
+            OwnerName = string.IsNullOrWhiteSpace(ownerName) ? "Unknown" : ownerName;
+            ItemId = itemId > 0 ? itemId : ResolveItemIdByName(itemName);
+            ItemName = string.IsNullOrWhiteSpace(itemName) ? "Unknown item" : itemName;
+            Quantity = Math.Max(1, quantity);
+            MesoAmount = Math.Max(0, mesoAmount);
+            Detail = detail ?? string.Empty;
+            IsLocked = isLocked;
+            IsClaimed = isClaimed;
+            PacketSlotIndex = packetSlotIndex >= 0 ? packetSlotIndex : null;
+            BundleSetCount = Math.Max(1, bundleSetCount > 0 ? bundleSetCount : Quantity);
+        }
+
+        public string OwnerName { get; }
+        public int ItemId { get; private set; }
+        public string ItemName { get; }
+        public int Quantity { get; private set; }
+        public int MesoAmount { get; private set; }
+        public string Detail { get; private set; }
+        public bool IsLocked { get; private set; }
+        public bool IsClaimed { get; private set; }
+        public int? PacketSlotIndex { get; private set; }
+        public int BundleSetCount { get; private set; }
+
+        public void Update(string detail, int quantity, int mesoAmount, bool isLocked, bool isClaimed, int bundleSetCount = 0)
+        {
+            Detail = detail ?? string.Empty;
+            Quantity = Math.Max(1, quantity);
+            MesoAmount = Math.Max(0, mesoAmount);
+            IsLocked = isLocked;
+            IsClaimed = isClaimed;
+            BundleSetCount = Math.Max(1, bundleSetCount > 0 ? bundleSetCount : Quantity);
+        }
+
+        public void UpdatePacketIdentity(int itemId, int? packetSlotIndex)
+        {
+            if (itemId > 0)
+            {
+                ItemId = itemId;
+            }
+
+            PacketSlotIndex = packetSlotIndex >= 0 ? packetSlotIndex : null;
+        }
+
+        private static int ResolveItemIdByName(string itemName)
+        {
+            if (string.IsNullOrWhiteSpace(itemName) || global::HaCreator.Program.InfoManager?.ItemNameCache == null)
+            {
+                return 0;
+            }
+
+            foreach (KeyValuePair<int, Tuple<string, string, string>> entry in global::HaCreator.Program.InfoManager.ItemNameCache)
+            {
+                if (string.Equals(entry.Value?.Item1, itemName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return entry.Key;
+                }
+            }
+
+            return 0;
+        }
+    }
+
+    public enum SocialRoomChatTone
+    {
+        Neutral,
+        System,
+        LocalSpeaker,
+        RemoteSpeaker,
+        Warning
+    }
+
+    public sealed class SocialRoomChatEntry
+    {
+        public SocialRoomChatEntry(string text, SocialRoomChatTone tone)
+        {
+            Text = string.IsNullOrWhiteSpace(text) ? string.Empty : text.Trim();
+            Tone = tone;
+        }
+
+        public string Text { get; }
+        public SocialRoomChatTone Tone { get; }
+    }
+
+    public sealed class SocialRoomSoldItemEntry
+    {
+        public SocialRoomSoldItemEntry(
+            int itemId,
+            string itemName,
+            string buyerName,
+            int quantitySold,
+            int bundleCount,
+            int bundlePrice,
+            int grossMeso,
+            int taxMeso,
+            int netMeso,
+            int packetSlotIndex)
+        {
+            ItemId = Math.Max(0, itemId);
+            ItemName = string.IsNullOrWhiteSpace(itemName) ? "Unknown item" : itemName;
+            BuyerName = string.IsNullOrWhiteSpace(buyerName) ? "Visitor" : buyerName;
+            QuantitySold = Math.Max(1, quantitySold);
+            BundleCount = Math.Max(1, bundleCount);
+            BundlePrice = Math.Max(0, bundlePrice);
+            GrossMeso = Math.Max(0, grossMeso);
+            TaxMeso = Math.Max(0, taxMeso);
+            NetMeso = Math.Max(0, netMeso);
+            PacketSlotIndex = Math.Max(0, packetSlotIndex);
+        }
+
+        public int ItemId { get; }
+        public string ItemName { get; }
+        public string BuyerName { get; }
+        public int QuantitySold { get; }
+        public int BundleCount { get; }
+        public int BundlePrice { get; }
+        public int GrossMeso { get; }
+        public int TaxMeso { get; }
+        public int NetMeso { get; }
+        public int PacketSlotIndex { get; }
+    }
+
+    public sealed partial class SocialRoomRuntime
+    {
+        private static readonly Dictionary<string, string> EmployeeNpcFuncHeadlineCache = new(StringComparer.Ordinal);
+        private const int MiniRoomOmokBoardSize = 15;
+        private const int ClientMiniGameRecordByteLength = 0x14;
+        private const int TradingRoomClientItemSlotCount = 9;
+        private const byte TradingRoomPutItemPacketType = 15;
+        private const byte TradingRoomPutMoneyPacketType = 16;
+        private const byte TradingRoomTradePacketType = 17;
+        private const byte TradingRoomItemCrcPacketType = 20;
+        private const byte TradingRoomExceedLimitPacketType = 21;
+        private const byte MerchantShopRowRefreshPacketType = 15;
+        private const byte PersonalShopBuyResultPacketType = 24;
+        private const byte PersonalShopBasePacketType = 25;
+        private const byte PersonalShopSoldItemResultPacketType = 26;
+        private const byte PersonalShopMoveItemToInventoryPacketType = 27;
+        private const byte PersonalShopKickTimedOutVisitorPacketType = 29;
+        private const byte EntrustedShopArrangeItemResultPacketType = 40;
+        private const byte EntrustedShopWithdrawAllResultPacketType = 42;
+        private const byte EntrustedShopWithdrawMoneyResultPacketType = 44;
+        private const byte EntrustedShopVisitListResultPacketType = 46;
+        private const byte EntrustedShopBlackListResultPacketType = 47;
+        private const byte OmokTieRequestPacketType = 50;
+        private const byte OmokTieResultPacketType = 51;
+        private const byte OmokRetreatRequestPacketType = 54;
+        private const byte OmokRetreatResultPacketType = 55;
+        private const byte OmokReadyPacketType = 58;
+        private const byte OmokCancelReadyPacketType = 59;
+        private const byte OmokStartPacketType = 61;
+        private const byte OmokGameResultPacketType = 62;
+        private const byte OmokTimeOverPacketType = 63;
+        private const byte OmokPutStonePacketType = 64;
+        private const byte OmokPutStoneErrorPacketType = 65;
+        private const ushort MiniRoomOutboundOpcode = 144;
+        private const int OmokWinStringPoolId = 0x1D4;
+        private const int OmokTieStringPoolId = 0x1D5;
+        private const int OmokLoseStringPoolId = 0x1D6;
+        private const int OmokIncomingTiePromptStringPoolId = 0x1D9;
+        private const int OmokOutgoingTiePromptStringPoolId = 0x1DA;
+        private const int OmokTieDeclinedStringPoolId = 0x1DB;
+        private const int OmokRetreatAlreadyRequestedStringPoolId = 0x1DC;
+        private const int OmokIncomingRetreatPromptStringPoolId = 0x1DD;
+        private const int OmokOutgoingRetreatPromptStringPoolId = 0x1DE;
+        private const int OmokRetreatDeclinedStringPoolId = 0x1DF;
+        private const int OmokTimerTextStringPoolId = 0x1E5;
+        private const int OmokTurnTextStringPoolId = 0x1E6;
+        private const int OmokSoundDrawStringPoolId = 0x645;
+        private const int OmokSoundWinStringPoolId = 0x646;
+        private const int OmokSoundLoseStringPoolId = 0x647;
+        private const int OmokSoundTimerStringPoolId = 0x648;
+        private const int OmokSoundBlackStoneStringPoolId = 0x64B;
+        private const int OmokSoundWhiteStoneStringPoolId = 0x64C;
+        private const int OmokTournamentRoundEffectPathStringPoolId = 0x9E8;
+        private const int OmokTournamentRoundTitleStringPoolId = 0x9E9;
+        private const int OmokTournamentFinalTitleStringPoolId = 0x9EA;
+        private const int OmokTournamentSemiFinalTitleStringPoolId = 0x9EB;
+        private const int OmokTournamentRoundEffectTextStringPoolId = 0x1A15;
+        private const int OmokTournamentRoundEffectHoldMs = 6000;
+        private const int OmokTournamentRoundEffectFadeMs = 500;
+        private const int MiniRoomSubtype6EnvelopeMaxDepth = 3;
+        private const int MiniRoomSubtype6OffsetEnvelopeMaxPrefixBytes = 16;
+        private const byte MiniRoomBaseInvitePacketSubType = 2;
+        private const byte MiniRoomBaseInviteResultPacketSubType = 3;
+        private const byte MiniRoomBaseEnterPacketSubType = 4;
+        private const byte MiniRoomBaseEnterResultPacketSubType = 5;
+        private const byte MiniRoomBaseUpdatePacketSubType = 6;
+        private const byte MiniRoomBaseChatPacketSubType = 7;
+        private const byte MiniRoomBaseChatAltPacketSubType = 8;
+        private const byte MiniRoomBaseAvatarPacketSubType = 9;
+        private const byte MiniRoomBaseLeavePacketSubType = 10;
+        private const byte MiniRoomBaseCheckSsnPacketSubType = 14;
+        private const ushort EmployeeEnterFieldOpcode = 319;
+        private const ushort EmployeeLeaveFieldOpcode = 320;
+        private const ushort EmployeeMiniRoomBalloonOpcode = 321;
+        private const ushort TradeAttributeProtectedFlag = 0x0001;
+        private const ushort TradeAttributePreventSlipFlag = 0x0002;
+        private const ushort TradeAttributeSupportWarmFlag = 0x0004;
+        private const ushort TradeAttributeBindedFlag = 0x0008;
+        private const ushort TradeAttributePossibleTradingFlag = 0x0010;
+
+        public sealed class SocialRoomRemoteInventoryEntry
+        {
+            public SocialRoomRemoteInventoryEntry(int itemId, string itemName, int quantity)
+            {
+                ItemId = Math.Max(0, itemId);
+                ItemName = string.IsNullOrWhiteSpace(itemName) ? ResolveItemName(ItemId) : itemName.Trim();
+                Quantity = Math.Max(0, quantity);
+            }
+
+            public int ItemId { get; }
+            public string ItemName { get; private set; }
+            public int Quantity { get; private set; }
+
+            public void Update(int quantity, string itemName = null)
+            {
+                Quantity = Math.Max(0, quantity);
+                if (!string.IsNullOrWhiteSpace(itemName))
+                {
+                    ItemName = itemName.Trim();
+                }
+            }
+        }
+
+        private sealed class InventoryEscrowEntry
+        {
+            public InventoryEscrowEntry(
+                SocialRoomItemEntry entry,
+                InventoryType inventoryType,
+                InventorySlotData slotData,
+                bool returnOnReset,
+                bool returnOnClose)
+            {
+                Entry = entry;
+                InventoryType = inventoryType;
+                SlotData = slotData;
+                ReturnOnReset = returnOnReset;
+                ReturnOnClose = returnOnClose;
+            }
+
+            public SocialRoomItemEntry Entry { get; }
+            public InventoryType InventoryType { get; }
+            public InventorySlotData SlotData { get; }
+            public bool ReturnOnReset { get; }
+            public bool ReturnOnClose { get; }
+        }
+
+        private readonly record struct PacketOwnedTradeItem(
+            byte SlotType,
+            long? BaseExpirationTime,
+            int ItemId,
+            int Quantity,
+            InventoryType InventoryType,
+            bool HasCashSerialNumber,
+            long ItemSerialNumber,
+            long CashSerialNumber,
+            int NativeItemTypeIndex,
+            string Title,
+            string PacketDisplayName,
+            string MetadataSummary,
+            long? NonCashSerialNumber,
+            long? ExpirationTime,
+            int? TailValue,
+            string TailMetadataSummary,
+            int DecodedBodyByteLength,
+            int ResidualTailByteLength);
+        private readonly record struct MerchantPacketItemRow(short Number, short Set, int Price, PacketOwnedTradeItem Item);
+        private readonly record struct MerchantShopRowRefresh(byte PacketSlotIndex, int ItemId, int BundleQuantity, int BundlePrice, string DecodeShape, PacketOwnedTradeItem? PacketItem);
+        private readonly record struct MiniRoomBaseEnterResultPayload(int RoomType, int ResultCode, int MaxUsers, int MyPosition, int OccupantCount);
+        private readonly record struct OmokMoveHistoryEntry(int X, int Y, int StoneValue, int SeatIndex);
+        public sealed class MiniGameRecord
+        {
+            public MiniGameRecord(int slot, int wins, int draws, int losses, int score, int grade, byte[] rawBytes)
+            {
+                Slot = Math.Max(0, slot);
+                Wins = wins;
+                Draws = draws;
+                Losses = losses;
+                Score = score;
+                Grade = grade;
+                RawBytes = rawBytes == null ? Array.Empty<byte>() : (byte[])rawBytes.Clone();
+            }
+
+            public int Slot { get; }
+            public int Wins { get; }
+            public int Draws { get; }
+            public int Losses { get; }
+            public int Score { get; }
+            public int Grade { get; }
+            public byte[] RawBytes { get; }
+            public int TotalGames => Math.Max(0, Wins) + Math.Max(0, Draws) + Math.Max(0, Losses);
+            public int WinRatePercent => TotalGames <= 0 ? 0 : (int)Math.Round((double)Math.Max(0, Wins) * 100d / TotalGames);
+        }
+
+        private readonly record struct TradeVerificationEntry(int ItemId, uint Checksum);
+        private readonly record struct MiniRoomNestedEnvelopeDispatchResult(
+            bool Handled,
+            string OwnerName,
+            string Message,
+            byte PacketType,
+            int RemainingBytes,
+            string EnvelopeSummary,
+            byte[] ForwardedPayload);
+        private enum TradePacketAttributeKind
+        {
+            Equip,
+            Bundle,
+            Pet
+        }
+
+        private readonly List<SocialRoomOccupant> _occupants;
+        private readonly List<SocialRoomItemEntry> _items;
+        private readonly List<string> _notes;
+        private readonly List<SocialRoomChatEntry> _chatEntries;
+        private readonly List<string> _savedVisitors;
+        private readonly List<string> _blockedVisitors;
+        private readonly List<EntrustedShopVisitLogEntrySnapshot> _entrustedVisitLogEntries;
+        private readonly Queue<string> _pendingVisitorNames;
+        private readonly List<InventoryEscrowEntry> _inventoryEscrow;
+        private readonly List<SocialRoomRemoteInventoryEntry> _remoteInventoryEntries;
+        private readonly List<SocialRoomSoldItemEntry> _soldItems;
+        private readonly List<SocialRoomItemEntry> _defaultItems;
+        private readonly List<SocialRoomOccupant> _defaultOccupants;
+        private readonly List<SocialRoomRemoteInventoryEntry> _defaultRemoteInventoryEntries;
+        private readonly List<OmokMoveHistoryEntry> _miniRoomOmokMoveHistory;
+        private readonly Dictionary<int, MiniGameRecord> _miniRoomOmokRecords;
+        private readonly List<TradeVerificationEntry> _tradeLocalVerificationEntries;
+        private readonly List<TradeVerificationEntry> _tradeRemoteVerificationEntries;
+        private readonly SocialRoomRuntimeSnapshot _defaultSnapshot;
+        private readonly int[] _miniRoomOmokBoard;
+        private int _miniRoomModeIndex;
+        private int _miniRoomWagerAmount;
+        private int _miniRoomLocalSeatIndex;
+        private int _miniRoomOmokCurrentTurnIndex;
+        private int _miniRoomOmokWinnerIndex;
+        private int _miniRoomOmokLastMoveX;
+        private int _miniRoomOmokLastMoveY;
+        private int _miniRoomOmokTimeLeftMs;
+        private int _miniRoomOmokTimeFloor;
+        private int _miniRoomOmokStoneAnimationTimeLeftMs;
+        private int _miniRoomOmokDialogEffectTimeLeftMs;
+        private int _miniRoomOmokOwnerStoneValue;
+        private int _miniRoomOmokGuestStoneValue;
+        private int _tradeLocalOfferMeso;
+        private int _tradeRemoteOfferMeso;
+        private int _remoteInventoryMeso;
+        private bool _miniRoomOmokInProgress;
+        private bool _miniRoomOmokTieRequested;
+        private bool _miniRoomOmokDrawRequestSent;
+        private bool _miniRoomOmokDrawRequestSentTurn;
+        private bool _miniRoomOmokRetreatRequested;
+        private bool _miniRoomOmokRetreatRequestSent;
+        private bool _miniRoomOmokRetreatRequestSentTurn;
+        private bool _miniRoomOmokRetreatRequestSentMatch;
+        private bool _miniRoomOmokTimeOverRequestSent;
+        private bool _miniRoomOmokTournamentActive;
+        private bool _miniRoomOmokTournamentRoundEffectVisible;
+        private string _miniRoomOmokLastOutboundPacketHex = string.Empty;
+        private DateTime? _miniRoomOmokLastTimedStateUtc;
+        private string _miniRoomOmokPendingPromptText = string.Empty;
+        private string _miniRoomOmokLastClientSoundPath = string.Empty;
+        private string _miniRoomOmokLastOutboundPacketSummary = string.Empty;
+        private bool _tradeLocalLocked;
+        private bool _tradeRemoteLocked;
+        private bool _tradeLocalAccepted;
+        private bool _tradeRemoteAccepted;
+        private bool _tradeVerificationPending;
+        private bool _tradeLocalVerificationReady;
+        private bool _tradeRemoteVerificationReady;
+        private bool _tradeAutoCrcReplyPending;
+        private DateTime? _entrustedPermitExpiresAtUtc;
+        private EntrustedShopChildDialogKind? _entrustedChildDialogKind;
+        private EntrustedShopChildDialogKind? _entrustedPendingChildDialogKind;
+        private int _entrustedVisitListSelectedIndex = -1;
+        private int _entrustedBlacklistSelectedIndex = -1;
+        private EntrustedShopBlacklistPromptRequest _entrustedBlacklistPromptRequest;
+        private EntrustedShopNoticeSnapshot _entrustedBlacklistNotice;
+        private string _miniRoomOmokDialogStatus = string.Empty;
+        private string _entrustedChildDialogStatus = string.Empty;
+        private string _entrustedBlacklistLastOutboundPacketSummary = string.Empty;
+        private string _entrustedBlacklistPendingMutationName = string.Empty;
+        private bool? _entrustedBlacklistPendingMutationAdd;
+        private string _entrustedBlacklistPendingMutationRawPacketHex = string.Empty;
+        private int _employeeTemplateId;
+        private bool _employeeUseOwnerAnchor = true;
+        private int _employeeAnchorOffsetX;
+        private int _employeeAnchorOffsetY;
+        private int _employeeWorldX;
+        private int _employeeWorldY;
+        private bool _employeeHasWorldPosition;
+        private bool? _employeeFlip;
+        private int _employeePacketEmployerId;
+        private readonly SocialRoomEmployeePoolRuntime _employeePoolRuntime = new();
+        private bool _inventoryBackedRows;
+        private bool _suspendPersistence;
+        private string _persistenceKey;
+        private string _lastPacketOwnerSummary;
+        private int _personalShopTotalSoldGross;
+        private int _personalShopTotalReceivedNet;
+        private int _miniRoomOmokLastClientSoundStringPoolId = -1;
+        private int _miniRoomOmokLastCountdownWarningFloor = int.MaxValue;
+        private int _miniRoomOmokTournamentRound;
+        private int _miniRoomOmokTournamentMatchState;
+        private int _miniRoomOmokTournamentNextOperationMs;
+        private int _miniRoomOmokTournamentRoundEffectKey;
+        private int _miniRoomOmokTournamentRoundEffectElapsedMs;
+        private int _miniRoomOmokTournamentRoundEffectFadeMs;
+        private string _miniRoomOmokTournamentTitle = string.Empty;
+        private Action _miniRoomToggleReadyHandler;
+        private Action _miniRoomStartHandler;
+        private Action _miniRoomModeHandler;
+        private Action<string, SocialRoomRuntimeSnapshot> _persistStateHandler;
+        private readonly ShopDialogPacketOwner _shopDialogPacketOwner;
+        private readonly HashSet<string> _announcedPacketOwnedChatHistorySignatures = new(StringComparer.Ordinal);
+        private IInventoryRuntime _inventoryRuntime;
+        public Func<LoginAvatarLook, CharacterBuild> AvatarBuildResolver { get; set; }
+        public Action<string, int> SocialChatObserved { get; set; }
+        public Func<SocialRoomRuntime, string> TradingRoomTradeButtonRequested { get; set; }
+        public Func<SocialRoomRuntime, string> TradingRoomCoinButtonRequested { get; set; }
+
+        private SocialRoomRuntime(
+            SocialRoomKind kind,
+            string roomTitle,
+            string ownerName,
+            int capacity,
+            int mesoAmount,
+            IEnumerable<SocialRoomOccupant> occupants,
+            IEnumerable<SocialRoomItemEntry> items,
+            IEnumerable<string> notes,
+            IEnumerable<SocialRoomChatEntry> chatEntries,
+            string statusMessage,
+            string roomState,
+            string modeName)
+        {
+            Kind = kind;
+            RoomTitle = roomTitle ?? string.Empty;
+            OwnerName = ownerName ?? string.Empty;
+            Capacity = Math.Max(0, capacity);
+            MesoAmount = Math.Max(0, mesoAmount);
+            _occupants = occupants?.ToList() ?? new List<SocialRoomOccupant>();
+            _items = items?.ToList() ?? new List<SocialRoomItemEntry>();
+            _notes = notes?.Where(note => !string.IsNullOrWhiteSpace(note)).ToList() ?? new List<string>();
+            _chatEntries = chatEntries?.Where(entry => entry != null && !string.IsNullOrWhiteSpace(entry.Text)).ToList() ?? new List<SocialRoomChatEntry>();
+            _savedVisitors = new List<string>();
+            _blockedVisitors = new List<string>();
+            _entrustedVisitLogEntries = new List<EntrustedShopVisitLogEntrySnapshot>();
+            _pendingVisitorNames = new Queue<string>(new[] { "Rondo", "Rin", "Maya", "Pia", "Targa", "Rowen" });
+            _inventoryEscrow = new List<InventoryEscrowEntry>();
+            _remoteInventoryEntries = new List<SocialRoomRemoteInventoryEntry>();
+            _soldItems = new List<SocialRoomSoldItemEntry>();
+            _defaultItems = items?.Select(item => new SocialRoomItemEntry(item.OwnerName, item.ItemName, item.Quantity, item.MesoAmount, item.Detail, item.IsLocked, item.IsClaimed, item.ItemId, item.PacketSlotIndex, item.BundleSetCount)).ToList()
+                ?? new List<SocialRoomItemEntry>();
+            _defaultOccupants = occupants?.Select(occupant => new SocialRoomOccupant(occupant.Name, occupant.Role, occupant.Detail, occupant.IsReady, occupant.AvatarBuild)).ToList()
+                ?? new List<SocialRoomOccupant>();
+            _defaultRemoteInventoryEntries = new List<SocialRoomRemoteInventoryEntry>();
+            _miniRoomOmokMoveHistory = new List<OmokMoveHistoryEntry>();
+            _miniRoomOmokRecords = new Dictionary<int, MiniGameRecord>();
+            _tradeLocalVerificationEntries = new List<TradeVerificationEntry>();
+            _tradeRemoteVerificationEntries = new List<TradeVerificationEntry>();
+            _miniRoomLocalSeatIndex = 0;
+            _miniRoomOmokBoard = new int[MiniRoomOmokBoardSize * MiniRoomOmokBoardSize];
+            _miniRoomOmokCurrentTurnIndex = 0;
+            _miniRoomOmokWinnerIndex = -1;
+            _miniRoomOmokLastMoveX = -1;
+            _miniRoomOmokLastMoveY = -1;
+            _miniRoomOmokTimeLeftMs = 30000;
+            _miniRoomOmokTimeFloor = 30;
+            _miniRoomOmokOwnerStoneValue = 1;
+            _miniRoomOmokGuestStoneValue = 2;
+            _tradeRemoteOfferMeso = kind == SocialRoomKind.TradingRoom ? 75000 : 0;
+            _remoteInventoryMeso = kind == SocialRoomKind.TradingRoom ? 325000 : 0;
+            _entrustedPermitExpiresAtUtc = kind == SocialRoomKind.EntrustedShop ? DateTime.UtcNow.AddHours(24) : null;
+            _employeeAnchorOffsetX = kind switch
+            {
+                SocialRoomKind.EntrustedShop => 72,
+                SocialRoomKind.PersonalShop => 56,
+                _ => 0
+            };
+            _employeeAnchorOffsetY = 0;
+            StatusMessage = statusMessage ?? string.Empty;
+            RoomState = roomState ?? string.Empty;
+            ModeName = modeName ?? string.Empty;
+            _shopDialogPacketOwner = CreateShopDialogPacketOwner();
+            _lastPacketOwnerSummary = BuildDefaultPacketOwnerSummary();
+            SeedDefaultRemoteInventory();
+            SeedPersonalShopVisitorEnterTimes(DateTime.UtcNow);
+            if (kind == SocialRoomKind.MiniRoom && string.Equals(ModeName, "Omok", StringComparison.OrdinalIgnoreCase))
+            {
+                SyncMiniRoomOmokPresentation();
+            }
+            _defaultSnapshot = BuildSnapshot();
+        }
+
+        public SocialRoomKind Kind { get; }
+        public string RoomTitle { get; private set; }
+        public string OwnerName { get; private set; }
+        public int Capacity { get; }
+        public int MesoAmount { get; private set; }
+        public string StatusMessage { get; private set; }
+        public string RoomState { get; private set; }
+        public string ModeName { get; private set; }
+        public IReadOnlyList<SocialRoomOccupant> Occupants => _occupants;
+        public IReadOnlyList<SocialRoomItemEntry> Items => _items;
+        public IReadOnlyList<string> Notes => _notes;
+        public IReadOnlyList<SocialRoomChatEntry> ChatEntries => _chatEntries;
+        public IReadOnlyList<SocialRoomSoldItemEntry> SoldItems => _soldItems;
+        public IReadOnlyList<SocialRoomRemoteInventoryEntry> RemoteInventoryEntries => _remoteInventoryEntries;
+        public IReadOnlyList<EntrustedShopVisitLogEntrySnapshot> EntrustedVisitLogEntries => _entrustedVisitLogEntries;
+        public int RemoteInventoryMeso => _remoteInventoryMeso;
+        public string RemoteTraderName => ResolveRemoteTraderName();
+        public int TradeLocalOfferMeso => _tradeLocalOfferMeso;
+        public int TradeRemoteOfferMeso => _tradeRemoteOfferMeso;
+        public bool TradeLocalLocked => _tradeLocalLocked;
+        public bool TradeRemoteLocked => _tradeRemoteLocked;
+        public bool TradeLocalAccepted => _tradeLocalAccepted;
+        public bool TradeRemoteAccepted => _tradeRemoteAccepted;
+        public bool TradeVerificationPending => _tradeVerificationPending;
+        public bool TradeLocalVerificationReady => _tradeLocalVerificationReady;
+        public bool TradeRemoteVerificationReady => _tradeRemoteVerificationReady;
+        public int TradeLocalVerificationCount => _tradeLocalVerificationEntries.Count;
+        public int TradeRemoteVerificationCount => _tradeRemoteVerificationEntries.Count;
+        public int PersonalShopTotalSoldGross => _personalShopTotalSoldGross;
+        public int PersonalShopTotalReceivedNet => _personalShopTotalReceivedNet;
+        public int MiniRoomOmokBoardSizeValue => MiniRoomOmokBoardSize;
+        public bool IsMiniRoomOmokActive => Kind == SocialRoomKind.MiniRoom && _miniRoomModeIndex == 0;
+        public bool IsMiniRoomOmokInProgress => _miniRoomOmokInProgress;
+        public int MiniRoomOmokCurrentTurnIndex => _miniRoomOmokCurrentTurnIndex;
+        public int MiniRoomOmokWinnerIndex => _miniRoomOmokWinnerIndex;
+        public int MiniRoomOmokLastMoveX => _miniRoomOmokLastMoveX;
+        public int MiniRoomOmokLastMoveY => _miniRoomOmokLastMoveY;
+        public int MiniRoomOmokTimeLeftMs => _miniRoomOmokTimeLeftMs;
+        public int MiniRoomOmokTimeFloor => _miniRoomOmokTimeFloor;
+        public int MiniRoomLocalSeatIndex => _miniRoomLocalSeatIndex;
+        public bool MiniRoomOmokTieRequested => _miniRoomOmokTieRequested;
+        public bool MiniRoomOmokDrawRequestSent => _miniRoomOmokDrawRequestSent;
+        public bool MiniRoomOmokRetreatRequested => _miniRoomOmokRetreatRequested;
+        public bool MiniRoomOmokRetreatRequestSent => _miniRoomOmokRetreatRequestSent;
+        public bool MiniRoomOmokRetreatRequestSentMatch => _miniRoomOmokRetreatRequestSentMatch;
+        public bool MiniRoomOmokTimeOverRequestSent => _miniRoomOmokTimeOverRequestSent;
+        public int MiniRoomOmokStoneAnimationTimeLeftMs => _miniRoomOmokStoneAnimationTimeLeftMs;
+        public int MiniRoomOmokDialogEffectTimeLeftMs => _miniRoomOmokDialogEffectTimeLeftMs;
+        public string MiniRoomOmokDialogStatus => _miniRoomOmokDialogStatus;
+        public string MiniRoomOmokPendingPromptText => _miniRoomOmokPendingPromptText;
+        public int MiniRoomOmokLastClientSoundStringPoolId => _miniRoomOmokLastClientSoundStringPoolId;
+        public string MiniRoomOmokLastClientSoundPath => _miniRoomOmokLastClientSoundPath;
+        public string MiniRoomOmokLastOutboundPacketSummary => _miniRoomOmokLastOutboundPacketSummary;
+        public string MiniRoomOmokLastOutboundPacketHex => _miniRoomOmokLastOutboundPacketHex;
+        public IReadOnlyDictionary<int, MiniGameRecord> MiniRoomOmokRecords => _miniRoomOmokRecords;
+        public bool MiniRoomOmokTournamentActive => _miniRoomOmokTournamentActive;
+        public int MiniRoomOmokTournamentRound => _miniRoomOmokTournamentRound;
+        public int MiniRoomOmokTournamentMatchState => _miniRoomOmokTournamentMatchState;
+        public int MiniRoomOmokTournamentNextOperationMs => _miniRoomOmokTournamentNextOperationMs;
+        public bool MiniRoomOmokTournamentRoundEffectVisible => _miniRoomOmokTournamentRoundEffectVisible;
+        public int MiniRoomOmokTournamentRoundEffectKey => _miniRoomOmokTournamentRoundEffectKey;
+        public int MiniRoomOmokTournamentRoundEffectElapsedMs => _miniRoomOmokTournamentRoundEffectElapsedMs;
+        public int MiniRoomOmokTournamentRoundEffectFadeMs => _miniRoomOmokTournamentRoundEffectFadeMs;
+        public string MiniRoomOmokTournamentTitle => _miniRoomOmokTournamentTitle;
+        public bool IsMiniRoomOmokLocalTurn => IsMiniRoomOmokActive && _miniRoomOmokInProgress && _miniRoomOmokCurrentTurnIndex == _miniRoomLocalSeatIndex;
+        public bool MiniRoomOmokReadyButtonEnabled => IsMiniRoomOmokActive && !_miniRoomOmokInProgress && _miniRoomLocalSeatIndex != 0;
+        public bool MiniRoomOmokBanButtonEnabled => IsMiniRoomOmokActive && !_miniRoomOmokInProgress && _miniRoomLocalSeatIndex == 0;
+        public bool MiniRoomOmokStartButtonEnabled => IsMiniRoomOmokActive && !_miniRoomOmokInProgress && _miniRoomLocalSeatIndex == 0 && _occupants.Count > 1 && _occupants[1].IsReady;
+        public bool MiniRoomOmokGiveUpButtonEnabled => IsMiniRoomOmokActive && _miniRoomOmokInProgress;
+        public bool MiniRoomOmokRetreatButtonEnabled => IsMiniRoomOmokActive && _miniRoomOmokInProgress;
+        public bool MiniRoomOmokTieButtonEnabled => IsMiniRoomOmokActive && _miniRoomOmokInProgress;
+        public string MiniRoomOmokCountdownText => FormatOmokString(OmokTimerTextStringPoolId, "Time left : {0} sec.", _miniRoomOmokTimeFloor);
+        public string MiniRoomOmokInfo0Text => BuildOmokInfo0Text();
+        public string MiniRoomOmokInfo1Text => BuildOmokInfo1Text();
+        public string MiniRoomOmokButtonStateSummary => BuildOmokButtonStateSummary();
+        public bool CanMiniRoomOmokReady => IsMiniRoomOmokActive && !_miniRoomOmokInProgress;
+        public bool CanMiniRoomOmokStart => IsMiniRoomOmokActive && !_miniRoomOmokInProgress && _occupants.Count >= 2;
+        public bool CanMiniRoomOmokRequestTie => IsMiniRoomOmokActive && _miniRoomOmokInProgress && !_miniRoomOmokDrawRequestSent && !_miniRoomOmokTieRequested;
+        public bool CanMiniRoomOmokRequestRetreat => IsMiniRoomOmokActive && _miniRoomOmokInProgress && !_miniRoomOmokRetreatRequestSent && !_miniRoomOmokRetreatRequested && !_miniRoomOmokRetreatRequestSentMatch && CountLocalOmokStones() > 0;
+        public bool CanMiniRoomOmokGiveUp => IsMiniRoomOmokActive && _miniRoomOmokInProgress;
+        public int MiniRoomOmokLocalStoneCount => CountLocalOmokStones();
+        public bool CanRequestEntrustedVisitListDialog => Kind == SocialRoomKind.EntrustedShop
+            && _miniRoomLocalSeatIndex == 0
+            && _entrustedChildDialogKind != EntrustedShopChildDialogKind.VisitList
+            && _entrustedPendingChildDialogKind != EntrustedShopChildDialogKind.VisitList;
+        public bool CanRequestEntrustedBlacklistDialog => Kind == SocialRoomKind.EntrustedShop
+            && _miniRoomLocalSeatIndex == 0
+            && _entrustedChildDialogKind != EntrustedShopChildDialogKind.Blacklist
+            && _entrustedPendingChildDialogKind != EntrustedShopChildDialogKind.Blacklist;
+        public EntrustedShopChildDialogSnapshot EntrustedChildDialog => BuildEntrustedChildDialogSnapshot();
+        public Func<EntrustedShopBlacklistPromptRequest, bool> EntrustedBlacklistPromptRequested { get; set; }
+        public Action<EntrustedShopNoticeSnapshot> EntrustedBlacklistNoticeRequested { get; set; }
+        public Func<byte[], string, bool> MiniRoomOmokOutboundPacketRequested { get; set; }
+        public Func<byte[], string, bool> EntrustedChildDialogOutboundPacketRequested { get; set; }
+        public Func<byte[], string, bool> EntrustedBlacklistOutboundPacketRequested { get; set; }
+        public string EntrustedBlacklistLastOutboundPacketSummary => _entrustedBlacklistLastOutboundPacketSummary;
+        public string EntrustedBlacklistPendingMutationName => _entrustedBlacklistPendingMutationName;
+        public bool? EntrustedBlacklistPendingMutationAdd => _entrustedBlacklistPendingMutationAdd;
+        public string EntrustedBlacklistPendingMutationRawPacketHex => _entrustedBlacklistPendingMutationRawPacketHex;
+
+        public void BindInventory(IInventoryRuntime inventoryRuntime)
+        {
+            _inventoryRuntime = inventoryRuntime;
+        }
+
+        public void BindMiniRoomHandlers(Action toggleReady, Action start, Action cycleMode)
+        {
+            _miniRoomToggleReadyHandler = toggleReady;
+            _miniRoomStartHandler = start;
+            _miniRoomModeHandler = cycleMode;
+        }
+
+        public void ConfigurePersistence(string key, Action<string, SocialRoomRuntimeSnapshot> persistStateHandler, SocialRoomRuntimeSnapshot snapshot = null)
+        {
+            _persistenceKey = string.IsNullOrWhiteSpace(key) ? null : key.Trim();
+            _persistStateHandler = persistStateHandler;
+
+            if (snapshot == null)
+            {
+                ResetToDefaults();
+                return;
+            }
+
+            RestoreSnapshot(snapshot);
+        }
+
+        public SocialRoomRuntimeSnapshot BuildSnapshot()
+        {
+            return new SocialRoomRuntimeSnapshot
+            {
+                Kind = Kind,
+                RoomTitle = RoomTitle,
+                OwnerName = OwnerName,
+                MesoAmount = MesoAmount,
+                StatusMessage = StatusMessage,
+                RoomState = RoomState,
+                ModeName = ModeName,
+                PacketOwnerSummary = _lastPacketOwnerSummary,
+                LocalSeatIndex = _miniRoomLocalSeatIndex,
+                PersonalShopTotalSoldGross = _personalShopTotalSoldGross,
+                PersonalShopTotalReceivedNet = _personalShopTotalReceivedNet,
+                InventoryBackedRows = _inventoryBackedRows,
+                MiniRoomModeIndex = _miniRoomModeIndex,
+                MiniRoomWagerAmount = _miniRoomWagerAmount,
+                MiniRoomOmokInProgress = _miniRoomOmokInProgress,
+                MiniRoomOmokCurrentTurnIndex = _miniRoomOmokCurrentTurnIndex,
+                MiniRoomOmokWinnerIndex = _miniRoomOmokWinnerIndex,
+                MiniRoomOmokLastMoveX = _miniRoomOmokLastMoveX,
+                MiniRoomOmokLastMoveY = _miniRoomOmokLastMoveY,
+                MiniRoomOmokOwnerStoneValue = _miniRoomOmokOwnerStoneValue,
+                MiniRoomOmokGuestStoneValue = _miniRoomOmokGuestStoneValue,
+                MiniRoomOmokTieRequested = _miniRoomOmokTieRequested,
+                MiniRoomOmokDrawRequestSent = _miniRoomOmokDrawRequestSent,
+                MiniRoomOmokDrawRequestSentTurn = _miniRoomOmokDrawRequestSentTurn,
+                MiniRoomOmokRetreatRequested = _miniRoomOmokRetreatRequested,
+                MiniRoomOmokRetreatRequestSent = _miniRoomOmokRetreatRequestSent,
+                MiniRoomOmokRetreatRequestSentTurn = _miniRoomOmokRetreatRequestSentTurn,
+                MiniRoomOmokRetreatRequestSentMatch = _miniRoomOmokRetreatRequestSentMatch,
+                MiniRoomOmokTimeOverRequestSent = _miniRoomOmokTimeOverRequestSent,
+                MiniRoomOmokTimeLeftMs = _miniRoomOmokTimeLeftMs,
+                MiniRoomOmokTimeFloor = _miniRoomOmokTimeFloor,
+                MiniRoomOmokStoneAnimationTimeLeftMs = _miniRoomOmokStoneAnimationTimeLeftMs,
+                MiniRoomOmokDialogEffectTimeLeftMs = _miniRoomOmokDialogEffectTimeLeftMs,
+                MiniRoomOmokDialogStatus = _miniRoomOmokDialogStatus,
+                MiniRoomOmokPendingPromptText = _miniRoomOmokPendingPromptText,
+                MiniRoomOmokTournamentActive = _miniRoomOmokTournamentActive,
+                MiniRoomOmokTournamentRound = _miniRoomOmokTournamentRound,
+                MiniRoomOmokTournamentMatchState = _miniRoomOmokTournamentMatchState,
+                MiniRoomOmokTournamentNextOperationMs = _miniRoomOmokTournamentNextOperationMs,
+                MiniRoomOmokTournamentRoundEffectVisible = _miniRoomOmokTournamentRoundEffectVisible,
+                MiniRoomOmokTournamentRoundEffectKey = _miniRoomOmokTournamentRoundEffectKey,
+                MiniRoomOmokTournamentRoundEffectElapsedMs = _miniRoomOmokTournamentRoundEffectElapsedMs,
+                MiniRoomOmokTournamentRoundEffectFadeMs = _miniRoomOmokTournamentRoundEffectFadeMs,
+                MiniRoomOmokTournamentTitle = _miniRoomOmokTournamentTitle,
+                MiniRoomOmokLastClientSoundStringPoolId = _miniRoomOmokLastClientSoundStringPoolId,
+                MiniRoomOmokLastClientSoundPath = _miniRoomOmokLastClientSoundPath,
+                MiniRoomOmokLastOutboundPacketSummary = _miniRoomOmokLastOutboundPacketSummary,
+                MiniRoomOmokLastOutboundPacketHex = _miniRoomOmokLastOutboundPacketHex,
+                MiniRoomOmokBoard = _miniRoomOmokBoard.ToList(),
+                MiniRoomOmokMoveHistory = _miniRoomOmokMoveHistory
+                    .Select(move => new SocialRoomOmokMoveSnapshot
+                    {
+                        X = move.X,
+                        Y = move.Y,
+                        StoneValue = move.StoneValue,
+                        SeatIndex = move.SeatIndex
+                    })
+                    .ToList(),
+                MiniRoomOmokRecords = _miniRoomOmokRecords.Values
+                    .OrderBy(record => record.Slot)
+                    .Select(record => new SocialRoomMiniGameRecordSnapshot
+                    {
+                        Slot = record.Slot,
+                        Wins = record.Wins,
+                        Draws = record.Draws,
+                        Losses = record.Losses,
+                        Score = record.Score,
+                        Grade = record.Grade,
+                        RawBytes = (byte[])record.RawBytes.Clone()
+                    })
+                    .ToList(),
+                TradeLocalOfferMeso = _tradeLocalOfferMeso,
+                TradeRemoteOfferMeso = _tradeRemoteOfferMeso,
+                TradeLocalLocked = _tradeLocalLocked,
+                TradeRemoteLocked = _tradeRemoteLocked,
+                TradeLocalAccepted = _tradeLocalAccepted,
+                TradeRemoteAccepted = _tradeRemoteAccepted,
+                TradeVerificationPending = _tradeVerificationPending,
+                TradeLocalVerificationReady = _tradeLocalVerificationReady,
+                TradeRemoteVerificationReady = _tradeRemoteVerificationReady,
+                TradeLocalVerificationEntries = _tradeLocalVerificationEntries
+                    .Select(entry => new SocialRoomTradeVerificationEntrySnapshot
+                    {
+                        ItemId = entry.ItemId,
+                        Checksum = entry.Checksum
+                    })
+                    .ToList(),
+                TradeRemoteVerificationEntries = _tradeRemoteVerificationEntries
+                    .Select(entry => new SocialRoomTradeVerificationEntrySnapshot
+                    {
+                        ItemId = entry.ItemId,
+                        Checksum = entry.Checksum
+                    })
+                    .ToList(),
+                EntrustedPermitExpiresAtUtc = _entrustedPermitExpiresAtUtc,
+                EmployeeTemplateId = _employeeTemplateId,
+                EmployeeUseOwnerAnchor = _employeeUseOwnerAnchor,
+                EmployeeAnchorOffsetX = _employeeAnchorOffsetX,
+                EmployeeAnchorOffsetY = _employeeAnchorOffsetY,
+                EmployeeWorldX = _employeeWorldX,
+                EmployeeWorldY = _employeeWorldY,
+                EmployeeHasWorldPosition = _employeeHasWorldPosition,
+                EmployeeFlip = _employeeFlip,
+                EmployeePoolEntries = _employeePoolRuntime.BuildSnapshots().ToList(),
+                PersonalShopVisitorEnterTimes = BuildPersonalShopVisitorEnterTimeSnapshots(),
+                Occupants = _occupants
+                    .Select(occupant => new SocialRoomOccupantSnapshot
+                    {
+                        Name = occupant.Name,
+                        Role = occupant.Role,
+                        Detail = occupant.Detail,
+                        IsReady = occupant.IsReady
+                    })
+                    .ToList(),
+                Items = _items
+                    .Select(item => new SocialRoomItemSnapshot
+                    {
+                        OwnerName = item.OwnerName,
+                        ItemName = item.ItemName,
+                        ItemId = item.ItemId,
+                        Quantity = item.Quantity,
+                        BundleSetCount = item.BundleSetCount,
+                        MesoAmount = item.MesoAmount,
+                        Detail = item.Detail,
+                        IsLocked = item.IsLocked,
+                        IsClaimed = item.IsClaimed,
+                        PacketSlotIndex = item.PacketSlotIndex
+                    })
+                    .ToList(),
+                SoldItems = _soldItems
+                    .Select(item => new SocialRoomSoldItemSnapshot
+                    {
+                        ItemId = item.ItemId,
+                        ItemName = item.ItemName,
+                        BuyerName = item.BuyerName,
+                        QuantitySold = item.QuantitySold,
+                        BundleCount = item.BundleCount,
+                        BundlePrice = item.BundlePrice,
+                        GrossMeso = item.GrossMeso,
+                        TaxMeso = item.TaxMeso,
+                        NetMeso = item.NetMeso,
+                        PacketSlotIndex = item.PacketSlotIndex
+                    })
+                    .ToList(),
+                Notes = _notes.ToList(),
+                ChatEntries = _chatEntries
+                    .Select(entry => new SocialRoomChatEntrySnapshot
+                    {
+                        Text = entry.Text,
+                        Tone = entry.Tone
+                    })
+                    .ToList(),
+                SavedVisitors = _savedVisitors.ToList(),
+                EntrustedVisitListSelectedIndex = _entrustedVisitListSelectedIndex,
+                EntrustedBlacklistSelectedIndex = _entrustedBlacklistSelectedIndex,
+                EntrustedPendingChildDialogKind = _entrustedPendingChildDialogKind,
+                EntrustedChildDialogStatus = _entrustedChildDialogStatus,
+                EntrustedBlacklistLastOutboundPacketSummary = _entrustedBlacklistLastOutboundPacketSummary,
+                EntrustedBlacklistPendingMutationName = _entrustedBlacklistPendingMutationName,
+                EntrustedBlacklistPendingMutationAdd = _entrustedBlacklistPendingMutationAdd,
+                EntrustedBlacklistPendingMutationRawPacketHex = _entrustedBlacklistPendingMutationRawPacketHex,
+                EntrustedVisitLogEntries = _entrustedVisitLogEntries
+                    .Select(entry => new EntrustedShopVisitLogEntrySnapshot
+                    {
+                        Name = entry.Name,
+                        StaySeconds = entry.StaySeconds
+                    })
+                    .ToList(),
+                EntrustedChildDialog = BuildEntrustedChildDialogSnapshot(),
+                BlockedVisitors = _blockedVisitors.ToList(),
+                RemoteInventoryMeso = _remoteInventoryMeso,
+                RemoteInventoryEntries = _remoteInventoryEntries
+                    .Select(entry => new SocialRoomRemoteInventoryEntrySnapshot
+                    {
+                        ItemId = entry.ItemId,
+                        ItemName = entry.ItemName,
+                        Quantity = entry.Quantity
+                    })
+                    .ToList()
+            };
+        }
+
+        public void RestoreSnapshot(SocialRoomRuntimeSnapshot snapshot)
+        {
+            SocialRoomRuntimeSnapshot source = snapshot?.Kind == Kind
+                ? snapshot
+                : _defaultSnapshot;
+
+            _suspendPersistence = true;
+            try
+            {
+                _inventoryEscrow.Clear();
+                _inventoryBackedRows = source?.InventoryBackedRows ?? _defaultSnapshot.InventoryBackedRows;
+
+                RoomTitle = source?.RoomTitle ?? _defaultSnapshot.RoomTitle;
+                OwnerName = source?.OwnerName ?? _defaultSnapshot.OwnerName;
+                MesoAmount = Math.Max(0, source?.MesoAmount ?? _defaultSnapshot.MesoAmount);
+                StatusMessage = source?.StatusMessage ?? _defaultSnapshot.StatusMessage;
+                RoomState = source?.RoomState ?? _defaultSnapshot.RoomState;
+                ModeName = source?.ModeName ?? _defaultSnapshot.ModeName;
+                _lastPacketOwnerSummary = source?.PacketOwnerSummary ?? _defaultSnapshot.PacketOwnerSummary ?? BuildDefaultPacketOwnerSummary();
+                _miniRoomLocalSeatIndex = Math.Max(0, source?.LocalSeatIndex ?? _defaultSnapshot.LocalSeatIndex);
+                _personalShopTotalSoldGross = Math.Max(0, source?.PersonalShopTotalSoldGross ?? _defaultSnapshot.PersonalShopTotalSoldGross);
+                _personalShopTotalReceivedNet = Math.Max(0, source?.PersonalShopTotalReceivedNet ?? _defaultSnapshot.PersonalShopTotalReceivedNet);
+                _miniRoomModeIndex = source?.MiniRoomModeIndex ?? _defaultSnapshot.MiniRoomModeIndex;
+                _miniRoomWagerAmount = Math.Max(0, source?.MiniRoomWagerAmount ?? _defaultSnapshot.MiniRoomWagerAmount);
+                _miniRoomOmokInProgress = source?.MiniRoomOmokInProgress ?? _defaultSnapshot.MiniRoomOmokInProgress;
+                _miniRoomOmokCurrentTurnIndex = Math.Clamp(source?.MiniRoomOmokCurrentTurnIndex ?? _defaultSnapshot.MiniRoomOmokCurrentTurnIndex, 0, 1);
+                _miniRoomOmokWinnerIndex = source?.MiniRoomOmokWinnerIndex ?? _defaultSnapshot.MiniRoomOmokWinnerIndex;
+                _miniRoomOmokLastMoveX = source?.MiniRoomOmokLastMoveX ?? _defaultSnapshot.MiniRoomOmokLastMoveX;
+                _miniRoomOmokLastMoveY = source?.MiniRoomOmokLastMoveY ?? _defaultSnapshot.MiniRoomOmokLastMoveY;
+                _miniRoomOmokOwnerStoneValue = NormalizeOmokStoneValue(source?.MiniRoomOmokOwnerStoneValue ?? _defaultSnapshot.MiniRoomOmokOwnerStoneValue, fallback: 1);
+                _miniRoomOmokGuestStoneValue = NormalizeOmokStoneValue(source?.MiniRoomOmokGuestStoneValue ?? _defaultSnapshot.MiniRoomOmokGuestStoneValue, fallback: _miniRoomOmokOwnerStoneValue == 1 ? 2 : 1);
+                if (_miniRoomOmokOwnerStoneValue == _miniRoomOmokGuestStoneValue)
+                {
+                    _miniRoomOmokGuestStoneValue = _miniRoomOmokOwnerStoneValue == 1 ? 2 : 1;
+                }
+                _miniRoomOmokTieRequested = source?.MiniRoomOmokTieRequested ?? _defaultSnapshot.MiniRoomOmokTieRequested;
+                _miniRoomOmokDrawRequestSent = source?.MiniRoomOmokDrawRequestSent ?? _defaultSnapshot.MiniRoomOmokDrawRequestSent;
+                _miniRoomOmokDrawRequestSentTurn = source?.MiniRoomOmokDrawRequestSentTurn ?? _defaultSnapshot.MiniRoomOmokDrawRequestSentTurn;
+                _miniRoomOmokRetreatRequested = source?.MiniRoomOmokRetreatRequested ?? _defaultSnapshot.MiniRoomOmokRetreatRequested;
+                _miniRoomOmokRetreatRequestSent = source?.MiniRoomOmokRetreatRequestSent ?? _defaultSnapshot.MiniRoomOmokRetreatRequestSent;
+                _miniRoomOmokRetreatRequestSentTurn = source?.MiniRoomOmokRetreatRequestSentTurn ?? _defaultSnapshot.MiniRoomOmokRetreatRequestSentTurn;
+                _miniRoomOmokRetreatRequestSentMatch = source?.MiniRoomOmokRetreatRequestSentMatch ?? _defaultSnapshot.MiniRoomOmokRetreatRequestSentMatch;
+                _miniRoomOmokTimeOverRequestSent = source?.MiniRoomOmokTimeOverRequestSent ?? _defaultSnapshot.MiniRoomOmokTimeOverRequestSent;
+                _miniRoomOmokTimeLeftMs = Math.Max(0, source?.MiniRoomOmokTimeLeftMs ?? _defaultSnapshot.MiniRoomOmokTimeLeftMs);
+                _miniRoomOmokTimeFloor = Math.Max(0, source?.MiniRoomOmokTimeFloor ?? _defaultSnapshot.MiniRoomOmokTimeFloor);
+                _miniRoomOmokStoneAnimationTimeLeftMs = Math.Max(0, source?.MiniRoomOmokStoneAnimationTimeLeftMs ?? _defaultSnapshot.MiniRoomOmokStoneAnimationTimeLeftMs);
+                _miniRoomOmokDialogEffectTimeLeftMs = Math.Max(0, source?.MiniRoomOmokDialogEffectTimeLeftMs ?? _defaultSnapshot.MiniRoomOmokDialogEffectTimeLeftMs);
+                _miniRoomOmokDialogStatus = source?.MiniRoomOmokDialogStatus ?? _defaultSnapshot.MiniRoomOmokDialogStatus ?? string.Empty;
+                _miniRoomOmokPendingPromptText = source?.MiniRoomOmokPendingPromptText ?? _defaultSnapshot.MiniRoomOmokPendingPromptText ?? string.Empty;
+                _miniRoomOmokTournamentActive = source?.MiniRoomOmokTournamentActive ?? _defaultSnapshot.MiniRoomOmokTournamentActive;
+                _miniRoomOmokTournamentRound = Math.Max(0, source?.MiniRoomOmokTournamentRound ?? _defaultSnapshot.MiniRoomOmokTournamentRound);
+                _miniRoomOmokTournamentMatchState = Math.Clamp(source?.MiniRoomOmokTournamentMatchState ?? _defaultSnapshot.MiniRoomOmokTournamentMatchState, 0, 3);
+                _miniRoomOmokTournamentNextOperationMs = Math.Max(0, source?.MiniRoomOmokTournamentNextOperationMs ?? _defaultSnapshot.MiniRoomOmokTournamentNextOperationMs);
+                _miniRoomOmokTournamentRoundEffectVisible = source?.MiniRoomOmokTournamentRoundEffectVisible ?? _defaultSnapshot.MiniRoomOmokTournamentRoundEffectVisible;
+                _miniRoomOmokTournamentRoundEffectKey = Math.Max(0, source?.MiniRoomOmokTournamentRoundEffectKey ?? _defaultSnapshot.MiniRoomOmokTournamentRoundEffectKey);
+                _miniRoomOmokTournamentRoundEffectElapsedMs = Math.Max(0, source?.MiniRoomOmokTournamentRoundEffectElapsedMs ?? _defaultSnapshot.MiniRoomOmokTournamentRoundEffectElapsedMs);
+                _miniRoomOmokTournamentRoundEffectFadeMs = Math.Max(0, source?.MiniRoomOmokTournamentRoundEffectFadeMs ?? _defaultSnapshot.MiniRoomOmokTournamentRoundEffectFadeMs);
+                _miniRoomOmokTournamentTitle = source?.MiniRoomOmokTournamentTitle ?? _defaultSnapshot.MiniRoomOmokTournamentTitle ?? string.Empty;
+                _miniRoomOmokLastClientSoundStringPoolId = source?.MiniRoomOmokLastClientSoundStringPoolId ?? _defaultSnapshot.MiniRoomOmokLastClientSoundStringPoolId;
+                _miniRoomOmokLastClientSoundPath = source?.MiniRoomOmokLastClientSoundPath ?? _defaultSnapshot.MiniRoomOmokLastClientSoundPath ?? string.Empty;
+                _miniRoomOmokLastOutboundPacketSummary = source?.MiniRoomOmokLastOutboundPacketSummary ?? _defaultSnapshot.MiniRoomOmokLastOutboundPacketSummary ?? string.Empty;
+                _miniRoomOmokLastOutboundPacketHex = source?.MiniRoomOmokLastOutboundPacketHex ?? _defaultSnapshot.MiniRoomOmokLastOutboundPacketHex ?? string.Empty;
+                _miniRoomOmokLastCountdownWarningFloor = int.MaxValue;
+                _miniRoomOmokLastTimedStateUtc = null;
+                _tradeLocalOfferMeso = Math.Max(0, source?.TradeLocalOfferMeso ?? _defaultSnapshot.TradeLocalOfferMeso);
+                _tradeRemoteOfferMeso = Math.Max(0, source?.TradeRemoteOfferMeso ?? _defaultSnapshot.TradeRemoteOfferMeso);
+                _tradeLocalLocked = source?.TradeLocalLocked ?? _defaultSnapshot.TradeLocalLocked;
+                _tradeRemoteLocked = source?.TradeRemoteLocked ?? _defaultSnapshot.TradeRemoteLocked;
+                _tradeLocalAccepted = source?.TradeLocalAccepted ?? _defaultSnapshot.TradeLocalAccepted;
+                _tradeRemoteAccepted = source?.TradeRemoteAccepted ?? _defaultSnapshot.TradeRemoteAccepted;
+                _tradeVerificationPending = source?.TradeVerificationPending ?? _defaultSnapshot.TradeVerificationPending;
+                _tradeLocalVerificationReady = source?.TradeLocalVerificationReady ?? _defaultSnapshot.TradeLocalVerificationReady;
+                _tradeRemoteVerificationReady = source?.TradeRemoteVerificationReady ?? _defaultSnapshot.TradeRemoteVerificationReady;
+                _entrustedPermitExpiresAtUtc = source?.EntrustedPermitExpiresAtUtc ?? _defaultSnapshot.EntrustedPermitExpiresAtUtc;
+                _entrustedVisitListSelectedIndex = source?.EntrustedVisitListSelectedIndex ?? _defaultSnapshot.EntrustedVisitListSelectedIndex;
+                _entrustedBlacklistSelectedIndex = source?.EntrustedBlacklistSelectedIndex ?? _defaultSnapshot.EntrustedBlacklistSelectedIndex;
+                _entrustedPendingChildDialogKind = source?.EntrustedPendingChildDialogKind ?? _defaultSnapshot.EntrustedPendingChildDialogKind;
+                _entrustedChildDialogStatus = source?.EntrustedChildDialogStatus ?? _defaultSnapshot.EntrustedChildDialogStatus ?? string.Empty;
+                _entrustedBlacklistLastOutboundPacketSummary = source?.EntrustedBlacklistLastOutboundPacketSummary ?? _defaultSnapshot.EntrustedBlacklistLastOutboundPacketSummary ?? string.Empty;
+                _entrustedBlacklistPendingMutationName = source?.EntrustedBlacklistPendingMutationName ?? _defaultSnapshot.EntrustedBlacklistPendingMutationName ?? string.Empty;
+                _entrustedBlacklistPendingMutationAdd = source?.EntrustedBlacklistPendingMutationAdd ?? _defaultSnapshot.EntrustedBlacklistPendingMutationAdd;
+                _entrustedBlacklistPendingMutationRawPacketHex = source?.EntrustedBlacklistPendingMutationRawPacketHex ?? _defaultSnapshot.EntrustedBlacklistPendingMutationRawPacketHex ?? string.Empty;
+                _entrustedChildDialogKind = source?.EntrustedChildDialog?.IsOpen == true
+                    ? source.EntrustedChildDialog.Kind
+                    : _defaultSnapshot.EntrustedChildDialog?.IsOpen == true ? _defaultSnapshot.EntrustedChildDialog.Kind : null;
+                _employeeTemplateId = Math.Max(0, source?.EmployeeTemplateId ?? _defaultSnapshot.EmployeeTemplateId);
+                _employeeUseOwnerAnchor = source?.EmployeeUseOwnerAnchor ?? _defaultSnapshot.EmployeeUseOwnerAnchor;
+                _employeeAnchorOffsetX = source?.EmployeeAnchorOffsetX ?? _defaultSnapshot.EmployeeAnchorOffsetX;
+                _employeeAnchorOffsetY = source?.EmployeeAnchorOffsetY ?? _defaultSnapshot.EmployeeAnchorOffsetY;
+                _employeeWorldX = source?.EmployeeWorldX ?? _defaultSnapshot.EmployeeWorldX;
+                _employeeWorldY = source?.EmployeeWorldY ?? _defaultSnapshot.EmployeeWorldY;
+                _employeeHasWorldPosition = source?.EmployeeHasWorldPosition ?? _defaultSnapshot.EmployeeHasWorldPosition;
+                _employeeFlip = source?.EmployeeFlip ?? _defaultSnapshot.EmployeeFlip;
+                _employeePacketEmployerId = 0;
+                _employeePoolRuntime.Restore(source?.EmployeePoolEntries);
+                if (_employeePoolRuntime.PreferredEmployerId > 0)
+                {
+                    _employeePacketEmployerId = _employeePoolRuntime.PreferredEmployerId;
+                }
+                _remoteInventoryMeso = Math.Max(0, source?.RemoteInventoryMeso ?? _defaultSnapshot.RemoteInventoryMeso);
+
+                _occupants.Clear();
+                foreach (SocialRoomOccupantSnapshot occupant in (source?.Occupants?.Count > 0 ? source.Occupants : _defaultSnapshot.Occupants) ?? Enumerable.Empty<SocialRoomOccupantSnapshot>())
+                {
+                    _occupants.Add(new SocialRoomOccupant(occupant.Name, occupant.Role, occupant.Detail, occupant.IsReady));
+                }
+                RestorePersonalShopVisitorEnterTimes(source, DateTime.UtcNow);
+
+                _items.Clear();
+                foreach (SocialRoomItemSnapshot item in (source?.Items?.Count > 0 ? source.Items : _defaultSnapshot.Items) ?? Enumerable.Empty<SocialRoomItemSnapshot>())
+                {
+                    _items.Add(new SocialRoomItemEntry(item.OwnerName, item.ItemName, item.Quantity, item.MesoAmount, item.Detail, item.IsLocked, item.IsClaimed, item.ItemId, item.PacketSlotIndex, item.BundleSetCount));
+                }
+
+                _soldItems.Clear();
+                foreach (SocialRoomSoldItemSnapshot item in source?.SoldItems ?? Enumerable.Empty<SocialRoomSoldItemSnapshot>())
+                {
+                    _soldItems.Add(new SocialRoomSoldItemEntry(
+                        item.ItemId,
+                        item.ItemName,
+                        item.BuyerName,
+                        item.QuantitySold,
+                        item.BundleCount,
+                        item.BundlePrice,
+                        item.GrossMeso,
+                        item.TaxMeso,
+                        item.NetMeso,
+                        item.PacketSlotIndex));
+                }
+
+                _notes.Clear();
+                foreach (string note in (source?.Notes?.Count > 0 ? source.Notes : _defaultSnapshot.Notes) ?? Enumerable.Empty<string>())
+                {
+                    if (!string.IsNullOrWhiteSpace(note))
+                    {
+                        _notes.Add(note);
+                    }
+                }
+
+                _chatEntries.Clear();
+                foreach (SocialRoomChatEntrySnapshot entry in (source?.ChatEntries?.Count > 0 ? source.ChatEntries : _defaultSnapshot.ChatEntries) ?? Enumerable.Empty<SocialRoomChatEntrySnapshot>())
+                {
+                    if (!string.IsNullOrWhiteSpace(entry?.Text))
+                    {
+                        _chatEntries.Add(new SocialRoomChatEntry(entry.Text, entry.Tone));
+                    }
+                }
+
+                _savedVisitors.Clear();
+                foreach (string visitor in source?.SavedVisitors ?? Enumerable.Empty<string>())
+                {
+                    if (!string.IsNullOrWhiteSpace(visitor))
+                    {
+                        _savedVisitors.Add(visitor);
+                    }
+                }
+
+                _entrustedVisitLogEntries.Clear();
+                foreach (EntrustedShopVisitLogEntrySnapshot entry in source?.EntrustedVisitLogEntries ?? Enumerable.Empty<EntrustedShopVisitLogEntrySnapshot>())
+                {
+                    if (entry == null || string.IsNullOrWhiteSpace(entry.Name))
+                    {
+                        continue;
+                    }
+
+                    _entrustedVisitLogEntries.Add(new EntrustedShopVisitLogEntrySnapshot
+                    {
+                        Name = NormalizeName(entry.Name),
+                        StaySeconds = Math.Max(0, entry.StaySeconds)
+                    });
+                }
+
+                _blockedVisitors.Clear();
+                foreach (string visitor in source?.BlockedVisitors ?? Enumerable.Empty<string>())
+                {
+                    if (!string.IsNullOrWhiteSpace(visitor))
+                    {
+                        _blockedVisitors.Add(visitor);
+                    }
+                }
+
+                _entrustedVisitListSelectedIndex = NormalizeEntrustedDialogSelectionIndex(_entrustedVisitListSelectedIndex, _entrustedVisitLogEntries.Count);
+                _entrustedBlacklistSelectedIndex = NormalizeEntrustedDialogSelectionIndex(_entrustedBlacklistSelectedIndex, _blockedVisitors.Count);
+
+                int[] boardSource = ((source?.MiniRoomOmokBoard?.Count ?? 0) == _miniRoomOmokBoard.Length
+                    ? source.MiniRoomOmokBoard
+                    : _defaultSnapshot.MiniRoomOmokBoard)?.ToArray()
+                    ?? new int[_miniRoomOmokBoard.Length];
+                Array.Copy(boardSource, _miniRoomOmokBoard, _miniRoomOmokBoard.Length);
+
+                _miniRoomOmokMoveHistory.Clear();
+                IEnumerable<SocialRoomOmokMoveSnapshot> moveHistory = source?.MiniRoomOmokMoveHistory?.Count > 0
+                    ? source.MiniRoomOmokMoveHistory
+                    : _defaultSnapshot.MiniRoomOmokMoveHistory;
+                foreach (SocialRoomOmokMoveSnapshot move in moveHistory ?? Enumerable.Empty<SocialRoomOmokMoveSnapshot>())
+                {
+                    if (!IsValidOmokCoordinate(move?.X ?? -1, move?.Y ?? -1))
+                    {
+                        continue;
+                    }
+
+                    _miniRoomOmokMoveHistory.Add(new OmokMoveHistoryEntry(
+                        move.X,
+                        move.Y,
+                        NormalizeOmokStoneValue(move.StoneValue, fallback: ResolveOmokStoneValueForSeat(move.SeatIndex)),
+                        Math.Clamp(move.SeatIndex, 0, 1)));
+                }
+
+                _miniRoomOmokRecords.Clear();
+                IEnumerable<SocialRoomMiniGameRecordSnapshot> miniGameRecords = source?.MiniRoomOmokRecords?.Count > 0
+                    ? source.MiniRoomOmokRecords
+                    : _defaultSnapshot.MiniRoomOmokRecords;
+                foreach (SocialRoomMiniGameRecordSnapshot record in miniGameRecords ?? Enumerable.Empty<SocialRoomMiniGameRecordSnapshot>())
+                {
+                    if (record == null || record.Slot < 0 || record.Slot > 1)
+                    {
+                        continue;
+                    }
+
+                    _miniRoomOmokRecords[record.Slot] = new MiniGameRecord(
+                        record.Slot,
+                        record.Wins,
+                        record.Draws,
+                        record.Losses,
+                        record.Score,
+                        record.Grade,
+                        record.RawBytes);
+                }
+
+                _tradeLocalVerificationEntries.Clear();
+                foreach (SocialRoomTradeVerificationEntrySnapshot entry in source?.TradeLocalVerificationEntries ?? Enumerable.Empty<SocialRoomTradeVerificationEntrySnapshot>())
+                {
+                    if (entry?.ItemId > 0)
+                    {
+                        _tradeLocalVerificationEntries.Add(new TradeVerificationEntry(entry.ItemId, entry.Checksum));
+                    }
+                }
+
+                _tradeRemoteVerificationEntries.Clear();
+                foreach (SocialRoomTradeVerificationEntrySnapshot entry in source?.TradeRemoteVerificationEntries ?? Enumerable.Empty<SocialRoomTradeVerificationEntrySnapshot>())
+                {
+                    if (entry?.ItemId > 0)
+                    {
+                        _tradeRemoteVerificationEntries.Add(new TradeVerificationEntry(entry.ItemId, entry.Checksum));
+                    }
+                }
+
+                _remoteInventoryEntries.Clear();
+                IEnumerable<SocialRoomRemoteInventoryEntrySnapshot> remoteEntries = source?.RemoteInventoryEntries?.Count > 0
+                    ? source.RemoteInventoryEntries
+                    : _defaultSnapshot.RemoteInventoryEntries;
+                foreach (SocialRoomRemoteInventoryEntrySnapshot entry in remoteEntries ?? Enumerable.Empty<SocialRoomRemoteInventoryEntrySnapshot>())
+                {
+                    if (entry == null || entry.ItemId <= 0 || entry.Quantity <= 0)
+                    {
+                        continue;
+                    }
+
+                    _remoteInventoryEntries.Add(new SocialRoomRemoteInventoryEntry(entry.ItemId, entry.ItemName, entry.Quantity));
+                }
+
+                RefreshRemoteInventoryNotes();
+            }
+            finally
+            {
+                _suspendPersistence = false;
+            }
+        }
+
+        public void ResetToDefaults()
+        {
+            RestoreSnapshot(_defaultSnapshot);
+        }
+
+        public EntrustedShopChildDialogSnapshot GetEntrustedChildDialogSnapshot()
+        {
+            return BuildEntrustedChildDialogSnapshot();
+        }
+
+        public string DescribeStatus()
+        {
+            RefreshTimedState(DateTime.UtcNow);
+            return Kind switch
+            {
+                SocialRoomKind.MiniRoom => $"{RoomTitle}: state={RoomState}, mode={ModeName}, wager={_miniRoomWagerAmount:N0}, occupants={_occupants.Count}/{Capacity}, omokTurn={ResolveOmokTurnName()}, winner={ResolveOmokWinnerName()}",
+                SocialRoomKind.PersonalShop => $"{RoomTitle}: state={RoomState}, listed={_items.Count}, savedVisitors={_savedVisitors.Count}, blacklist={_blockedVisitors.Count}, ledger={MesoAmount:N0}, employee={DescribeEmployeeState()}, packet={_lastPacketOwnerSummary}, dispatcher={_shopDialogPacketOwner?.OwnerName ?? "none"}",
+                SocialRoomKind.EntrustedShop => $"{RoomTitle}: state={RoomState}, listed={_items.Count}, ledger={MesoAmount:N0}, permit={FormatPermitStatus(DateTime.UtcNow)}, employee={DescribeEmployeeState()}, packet={_lastPacketOwnerSummary}, dispatcher={_shopDialogPacketOwner?.OwnerName ?? "none"}",
+                SocialRoomKind.TradingRoom => $"{RoomTitle}: state={RoomState}, localMeso={MesoAmount:N0}, remoteMeso={_tradeRemoteOfferMeso:N0}, remoteWallet={_remoteInventoryMeso:N0}, remoteItems={_remoteInventoryEntries.Sum(entry => entry.Quantity)}, lock={FormatTradePartyState(_tradeLocalLocked, _tradeRemoteLocked)}, accept={FormatTradePartyState(_tradeLocalAccepted, _tradeRemoteAccepted)}, crc={DescribeTradeVerificationStatus()}, escrowRows={_inventoryEscrow.Count}, packet={_lastPacketOwnerSummary}, dispatcher={_shopDialogPacketOwner?.OwnerName ?? "none"}",
+                _ => RoomState
+            };
+        }
+
+        private EntrustedShopChildDialogSnapshot BuildEntrustedChildDialogSnapshot()
+        {
+            if (Kind != SocialRoomKind.EntrustedShop || !_entrustedChildDialogKind.HasValue)
+            {
+                return null;
+            }
+
+            EntrustedShopChildDialogKind kind = _entrustedChildDialogKind.Value;
+            int selectedIndex = kind == EntrustedShopChildDialogKind.VisitList
+                ? NormalizeEntrustedDialogSelectionIndex(_entrustedVisitListSelectedIndex, _entrustedVisitLogEntries.Count)
+                : NormalizeEntrustedDialogSelectionIndex(_entrustedBlacklistSelectedIndex, _blockedVisitors.Count);
+            List<EntrustedShopChildDialogEntrySnapshot> entries = kind == EntrustedShopChildDialogKind.VisitList
+                ? _entrustedVisitLogEntries
+                    .Select((entry, index) => new EntrustedShopChildDialogEntrySnapshot
+                    {
+                        PrimaryText = entry.Name,
+                        SecondaryText = $"{entry.StaySeconds}s",
+                        IsSelected = index == selectedIndex
+                    })
+                    .ToList()
+                : _blockedVisitors
+                    .Select((entry, index) => new EntrustedShopChildDialogEntrySnapshot
+                    {
+                        PrimaryText = entry,
+                        SecondaryText = $"{index + 1:00}",
+                        IsSelected = index == selectedIndex
+                    })
+                    .ToList();
+            bool canPrimaryAction = kind == EntrustedShopChildDialogKind.VisitList
+                ? HasValidEntrustedVisitListSelection()
+                : _blockedVisitors.Count < 20;
+            bool canSecondaryAction = kind == EntrustedShopChildDialogKind.Blacklist
+                && HasValidEntrustedBlacklistSelection();
+
+            return new EntrustedShopChildDialogSnapshot
+            {
+                IsOpen = true,
+                Kind = kind,
+                OwnerName = ResolveEntrustedChildDialogOwnerName(kind),
+                Title = kind == EntrustedShopChildDialogKind.VisitList ? "Visit List" : "Blacklist",
+                Subtitle = kind == EntrustedShopChildDialogKind.VisitList
+                    ? $"{_entrustedVisitLogEntries.Count} visitor entr{(_entrustedVisitLogEntries.Count == 1 ? "y" : "ies")}"
+                    : $"{_blockedVisitors.Count}/20 blocked entr{(_blockedVisitors.Count == 1 ? "y" : "ies")}",
+                StatusText = string.IsNullOrWhiteSpace(_entrustedChildDialogStatus)
+                    ? kind == EntrustedShopChildDialogKind.VisitList
+                        ? "Select a visit row to enable Save Name."
+                        : "Add remains available until the blacklist reaches 20 entries."
+                    : _entrustedChildDialogStatus,
+                PrimaryActionText = kind == EntrustedShopChildDialogKind.VisitList ? "Save Name" : "Add",
+                SecondaryActionText = kind == EntrustedShopChildDialogKind.VisitList ? "Close" : "Delete",
+                FooterText = kind == EntrustedShopChildDialogKind.VisitList
+                    ? "Save Name copies the selected visitor name to the clipboard."
+                    : !string.IsNullOrWhiteSpace(_entrustedBlacklistPendingMutationName)
+                        ? $"Subtype {EntrustedShopBlackListResultPacketType} remains authoritative for {_entrustedBlacklistPendingMutationName}."
+                        : "Delete only enables when the selected blacklist row is valid.",
+                CanPrimaryAction = canPrimaryAction,
+                CanSecondaryAction = canSecondaryAction,
+                SelectedIndex = selectedIndex,
+                Entries = entries,
+                BlacklistPromptRequest = kind == EntrustedShopChildDialogKind.Blacklist
+                    ? CloneEntrustedBlacklistPromptRequest(_entrustedBlacklistPromptRequest)
+                    : null,
+                BlacklistNotice = kind == EntrustedShopChildDialogKind.Blacklist
+                    ? CloneEntrustedBlacklistNotice(_entrustedBlacklistNotice)
+                    : null
+            };
+        }
+
+        private static int NormalizeEntrustedDialogSelectionIndex(int index, int count)
+        {
+            return count <= 0 || index < 0 || index >= count ? -1 : index;
+        }
+
+        private bool HasValidEntrustedVisitListSelection()
+        {
+            return NormalizeEntrustedDialogSelectionIndex(_entrustedVisitListSelectedIndex, _entrustedVisitLogEntries.Count) >= 0;
+        }
+
+        private bool HasValidEntrustedBlacklistSelection()
+        {
+            return NormalizeEntrustedDialogSelectionIndex(_entrustedBlacklistSelectedIndex, _blockedVisitors.Count) >= 0;
+        }
+
+        private static string ResolveEntrustedChildDialogOwnerName(EntrustedShopChildDialogKind kind)
+        {
+            return kind == EntrustedShopChildDialogKind.VisitList
+                ? "CEntrustedShopDlg::CVisitListDlg"
+                : "CEntrustedShopDlg::CBlackListDlg";
+        }
+
+        private static EntrustedShopBlacklistPromptRequest CloneEntrustedBlacklistPromptRequest(EntrustedShopBlacklistPromptRequest source)
+        {
+            if (source == null)
+            {
+                return null;
+            }
+
+            return new EntrustedShopBlacklistPromptRequest
+            {
+                OwnerName = source.OwnerName,
+                Title = source.Title,
+                PromptText = source.PromptText,
+                DefaultText = source.DefaultText,
+                CurrentText = source.CurrentText,
+                StringPoolId = source.StringPoolId,
+                MinimumLength = source.MinimumLength,
+                MaximumLength = source.MaximumLength
+            };
+        }
+
+        private static EntrustedShopNoticeSnapshot CloneEntrustedBlacklistNotice(EntrustedShopNoticeSnapshot source)
+        {
+            if (source == null)
+            {
+                return null;
+            }
+
+            return new EntrustedShopNoticeSnapshot
+            {
+                OwnerName = source.OwnerName,
+                Title = source.Title,
+                Text = source.Text,
+                StringPoolId = source.StringPoolId
+            };
+        }
+
+        public string DescribePacketOwnerStatus()
+        {
+            string packetOwnerStatus = _shopDialogPacketOwner?.DescribeStatus(_lastPacketOwnerSummary) ?? _lastPacketOwnerSummary;
+            return Kind == SocialRoomKind.TradingRoom
+                ? $"{packetOwnerStatus} | {TradingRoomPacketTable.DescribeRecoveredButtonTable()}"
+                : packetOwnerStatus;
+        }
+
+        public void RefreshTimedState(DateTime utcNow)
+        {
+            if (IsMiniRoomOmokActive)
+            {
+                RefreshOmokTimedState(utcNow);
+            }
+
+            if (Kind == SocialRoomKind.EntrustedShop)
+            {
+                string previousState = RoomState;
+                string previousStatus = StatusMessage;
+                UpdateEntrustedPermitState(utcNow);
+                if (!string.Equals(previousState, RoomState, StringComparison.Ordinal) ||
+                    !string.Equals(previousStatus, StatusMessage, StringComparison.Ordinal))
+                {
+                    PersistState();
+                }
+            }
+        }
+
+        private void RefreshOmokTimedState(DateTime utcNow)
+        {
+            if (_miniRoomOmokLastTimedStateUtc == null)
+            {
+                _miniRoomOmokLastTimedStateUtc = utcNow;
+                return;
+            }
+
+            int elapsedMilliseconds = (int)Math.Clamp((utcNow - _miniRoomOmokLastTimedStateUtc.Value).TotalMilliseconds, 0d, 1000d);
+            _miniRoomOmokLastTimedStateUtc = utcNow;
+            if (elapsedMilliseconds <= 0)
+            {
+                return;
+            }
+
+            bool stateChanged = false;
+            int previousTimeFloor = _miniRoomOmokTimeFloor;
+            _miniRoomOmokStoneAnimationTimeLeftMs = Math.Max(0, _miniRoomOmokStoneAnimationTimeLeftMs - elapsedMilliseconds);
+            _miniRoomOmokDialogEffectTimeLeftMs = Math.Max(0, _miniRoomOmokDialogEffectTimeLeftMs - elapsedMilliseconds);
+            stateChanged |= UpdateOmokTournamentRoundEffect(elapsedMilliseconds);
+            if (_miniRoomOmokDialogEffectTimeLeftMs == 0 && !_miniRoomOmokInProgress && _miniRoomOmokWinnerIndex < 0)
+            {
+                _miniRoomOmokDialogStatus = string.Empty;
+                stateChanged = true;
+            }
+
+            if (!_miniRoomOmokInProgress || _miniRoomOmokWinnerIndex >= 0)
+            {
+                if (stateChanged)
+                {
+                    PersistState();
+                }
+
+                return;
+            }
+
+            _miniRoomOmokTimeLeftMs = Math.Max(0, _miniRoomOmokTimeLeftMs - elapsedMilliseconds);
+            _miniRoomOmokTimeFloor = (_miniRoomOmokTimeLeftMs + 999) / 1000;
+            if (_miniRoomOmokTimeFloor != previousTimeFloor)
+            {
+                if (IsMiniRoomOmokLocalTurn
+                    && previousTimeFloor <= 9
+                    && previousTimeFloor > 0
+                    && _miniRoomOmokLastCountdownWarningFloor != previousTimeFloor)
+                {
+                    _miniRoomOmokLastCountdownWarningFloor = previousTimeFloor;
+                    RecordOmokSoundByStringPoolId(OmokSoundTimerStringPoolId);
+                    SetOmokDialogStatus(
+                        $"COmokDlg::Update crossed the {previousTimeFloor}s countdown warning on the active local turn.",
+                        900);
+                    stateChanged = true;
+                }
+
+                if (_miniRoomOmokTimeFloor <= 0 && IsMiniRoomOmokLocalTurn && !_miniRoomOmokTimeOverRequestSent)
+                {
+                    _miniRoomOmokTimeOverRequestSent = true;
+                    PublishMiniRoomOmokOutboundPacket(
+                        OmokTimeOverPacketType,
+                        "COmokDlg::Update",
+                        "COmokDlg::Update sent opcode 144 subtype 63 as soon as the local turn clock expired.");
+                    SetOmokDialogStatus("COmokDlg::Update exhausted the local Omok timer and is waiting on packet 63.", 1500);
+                    stateChanged = true;
+                }
+            }
+
+            if (stateChanged)
+            {
+                PersistState();
+            }
+        }
+
+        public SocialRoomFieldActorSnapshot GetFieldActorSnapshot(DateTime utcNow)
+        {
+            return GetFieldActorSnapshot(utcNow, null);
+        }
+
+        internal SocialRoomFieldActorSnapshot GetFieldActorSnapshot(DateTime utcNow, SocialRoomEmployeePoolEntryState pooledEmployeeOverride)
+        {
+            RefreshTimedState(utcNow);
+
+            SocialRoomEmployeePoolEntryState pooledEmployee = pooledEmployeeOverride;
+            bool hasPooledEmployee = pooledEmployee != null && pooledEmployee.IsVisible;
+            if (!hasPooledEmployee)
+            {
+                hasPooledEmployee = TryGetVisibleEmployeePoolEntry(out pooledEmployee);
+            }
+            if (_employeePoolRuntime.HasEntries
+                && !hasPooledEmployee
+                && IsEmployeeBackedFieldActorKind(Kind))
+            {
+                return null;
+            }
+
+            if (Kind == SocialRoomKind.MiniRoom)
+            {
+                if (!hasPooledEmployee)
+                {
+                    return null;
+                }
+
+                int templateId = pooledEmployee.TemplateId;
+                SocialRoomFieldActorTemplate template = ResolvePersonalShopFieldActorTemplate(templateId);
+                string detail = $"{ResolveEmployeeDisplayOwnerName(pooledEmployee)} | {ModeName} | {RoomState}";
+                return new SocialRoomFieldActorSnapshot(
+                    Kind,
+                    template,
+                    ResolveEmployeeDisplayHeadline("MiniRoom"),
+                    detail,
+                    $"{ResolveEmployeeStateKeyTemplate(template)}|{templateId}|{ModeName}|{RoomState}{BuildEmployeePacketStateKeySuffix(pooledEmployee)}",
+                    templateId: templateId,
+                    useOwnerAnchor: false,
+                    anchorOffsetX: _employeeAnchorOffsetX,
+                    anchorOffsetY: _employeeAnchorOffsetY,
+                    worldX: pooledEmployee.WorldX,
+                    worldY: pooledEmployee.WorldY,
+                    hasWorldPosition: true,
+                    flip: _employeeFlip,
+                    miniRoomType: pooledEmployee.MiniRoomType,
+                    miniRoomSerial: pooledEmployee.MiniRoomSerial,
+                    miniRoomBalloonTitle: pooledEmployee.BalloonTitle,
+                    miniRoomBalloonByte0: pooledEmployee.BalloonByte0,
+                    miniRoomBalloonByte1: pooledEmployee.BalloonByte1,
+                    miniRoomBalloonByte2: pooledEmployee.BalloonByte2,
+                    hasMiniRoomBalloonByte2: pooledEmployee.HasBalloonByte2);
+            }
+
+            if (Kind == SocialRoomKind.PersonalShop)
+            {
+                int templateId = hasPooledEmployee ? pooledEmployee.TemplateId : _employeeTemplateId;
+                SocialRoomFieldActorTemplate template = ResolvePersonalShopFieldActorTemplate(templateId);
+                string headline = ResolveEmployeeDisplayHeadline(ResolveEmployeeFuncHeadline(SocialRoomFieldActorTemplate.Merchant, "Merchant"));
+                string detail = $"{ResolveEmployeeDisplayOwnerName(pooledEmployee)} | {RoomState}";
+                return new SocialRoomFieldActorSnapshot(
+                    Kind,
+                    template,
+                    headline,
+                    detail,
+                    $"{ResolveEmployeeStateKeyTemplate(template)}|{templateId}|{ModeName}|{RoomState}{BuildEmployeePacketStateKeySuffix(pooledEmployee)}",
+                    templateId: templateId,
+                    useOwnerAnchor: hasPooledEmployee ? false : _employeeUseOwnerAnchor,
+                    anchorOffsetX: _employeeAnchorOffsetX,
+                    anchorOffsetY: _employeeAnchorOffsetY,
+                    worldX: hasPooledEmployee ? pooledEmployee.WorldX : _employeeWorldX,
+                    worldY: hasPooledEmployee ? pooledEmployee.WorldY : _employeeWorldY,
+                    hasWorldPosition: hasPooledEmployee || _employeeHasWorldPosition,
+                    flip: _employeeFlip,
+                    miniRoomType: hasPooledEmployee ? pooledEmployee.MiniRoomType : (byte)0,
+                    miniRoomSerial: hasPooledEmployee ? pooledEmployee.MiniRoomSerial : 0,
+                    miniRoomBalloonTitle: hasPooledEmployee ? pooledEmployee.BalloonTitle : string.Empty,
+                    miniRoomBalloonByte0: hasPooledEmployee ? pooledEmployee.BalloonByte0 : (byte)0,
+                    miniRoomBalloonByte1: hasPooledEmployee ? pooledEmployee.BalloonByte1 : (byte)0,
+                    miniRoomBalloonByte2: hasPooledEmployee ? pooledEmployee.BalloonByte2 : (byte)0,
+                    hasMiniRoomBalloonByte2: hasPooledEmployee && pooledEmployee.HasBalloonByte2);
+            }
+
+            if (Kind != SocialRoomKind.EntrustedShop)
+            {
+                return null;
+            }
+
+            string permitStatus = FormatPermitStatus(utcNow);
+            if (IsEntrustedPermitExpired(utcNow))
+            {
+                return new SocialRoomFieldActorSnapshot(
+                    Kind,
+                    SocialRoomFieldActorTemplate.StoreBanker,
+                    "Contract expired",
+                    "Claim items and mesos at Fredrick.",
+                    $"expired|{RoomState}|{StatusMessage}",
+                    useOwnerAnchor: _employeeUseOwnerAnchor,
+                    anchorOffsetX: _employeeAnchorOffsetX,
+                    anchorOffsetY: _employeeAnchorOffsetY,
+                    worldX: _employeeWorldX,
+                    worldY: _employeeWorldY,
+                    hasWorldPosition: _employeeHasWorldPosition,
+                    flip: _employeeFlip);
+            }
+
+            int entrustedTemplateId = hasPooledEmployee ? pooledEmployee.TemplateId : _employeeTemplateId;
+            byte entrustedMiniRoomType = hasPooledEmployee ? pooledEmployee.MiniRoomType : (byte)0;
+            SocialRoomFieldActorTemplate entrustedTemplate = ResolveEntrustedFieldActorTemplate(entrustedTemplateId, entrustedMiniRoomType);
+            string entrustedHeadline = ResolveEmployeeDisplayHeadline(
+                ResolveEmployeeFuncHeadline(
+                    entrustedTemplate == SocialRoomFieldActorTemplate.StoreBanker
+                        ? SocialRoomFieldActorTemplate.StoreBanker
+                        : SocialRoomFieldActorTemplate.Merchant,
+                    entrustedTemplate == SocialRoomFieldActorTemplate.StoreBanker ? "Store Banker" : "Merchant"));
+            string entrustedDetail = $"{ResolveEmployeeDisplayOwnerName(pooledEmployee)} | {RoomState} | {permitStatus}";
+            return new SocialRoomFieldActorSnapshot(
+                Kind,
+                entrustedTemplate,
+                entrustedHeadline,
+                entrustedDetail,
+                $"{ResolveEmployeeStateKeyTemplate(entrustedTemplate)}|{entrustedTemplateId}|{ModeName}|{RoomState}|{permitStatus}{BuildEmployeePacketStateKeySuffix(pooledEmployee)}",
+                templateId: entrustedTemplateId,
+                useOwnerAnchor: hasPooledEmployee ? false : _employeeUseOwnerAnchor,
+                anchorOffsetX: _employeeAnchorOffsetX,
+                anchorOffsetY: _employeeAnchorOffsetY,
+                worldX: hasPooledEmployee ? pooledEmployee.WorldX : _employeeWorldX,
+                worldY: hasPooledEmployee ? pooledEmployee.WorldY : _employeeWorldY,
+                hasWorldPosition: hasPooledEmployee || _employeeHasWorldPosition,
+                flip: _employeeFlip,
+                miniRoomType: entrustedMiniRoomType,
+                miniRoomSerial: hasPooledEmployee ? pooledEmployee.MiniRoomSerial : 0,
+                miniRoomBalloonTitle: hasPooledEmployee ? pooledEmployee.BalloonTitle : string.Empty,
+                miniRoomBalloonByte0: hasPooledEmployee ? pooledEmployee.BalloonByte0 : (byte)0,
+                miniRoomBalloonByte1: hasPooledEmployee ? pooledEmployee.BalloonByte1 : (byte)0,
+                miniRoomBalloonByte2: hasPooledEmployee ? pooledEmployee.BalloonByte2 : (byte)0,
+                hasMiniRoomBalloonByte2: hasPooledEmployee && pooledEmployee.HasBalloonByte2);
+        }
+
+        private static SocialRoomFieldActorTemplate ResolvePersonalShopFieldActorTemplate(int templateId)
+        {
+            return HasEmployeeTemplate(templateId)
+                ? SocialRoomFieldActorTemplate.CashEmployee
+                : SocialRoomFieldActorTemplate.Merchant;
+        }
+
+        private static SocialRoomFieldActorTemplate ResolveEntrustedFieldActorTemplate(int templateId, byte miniRoomType)
+        {
+            if (HasEmployeeTemplate(templateId))
+            {
+                return SocialRoomFieldActorTemplate.CashEmployee;
+            }
+
+            return miniRoomType == 5
+                ? SocialRoomFieldActorTemplate.StoreBanker
+                : SocialRoomFieldActorTemplate.Merchant;
+        }
+
+        private static string ResolveEmployeeStateKeyTemplate(SocialRoomFieldActorTemplate template)
+        {
+            return template switch
+            {
+                SocialRoomFieldActorTemplate.CashEmployee => "cash",
+                SocialRoomFieldActorTemplate.StoreBanker => "banker",
+                _ => "merchant"
+            };
+        }
+
+        public bool TryDispatchPacket(
+            SocialRoomPacketType packetType,
+            out string message,
+            int itemId = 0,
+            int quantity = 1,
+            int mesoAmount = 0,
+            int itemIndex = -1,
+            string actorName = null)
+        {
+            string resolvedMessage = null;
+            switch (packetType)
+            {
+                case SocialRoomPacketType.ToggleReady:
+                    ToggleMiniRoomGuestReady();
+                    resolvedMessage = StatusMessage;
+                    message = resolvedMessage;
+                    return true;
+                case SocialRoomPacketType.StartSession:
+                    StartMiniRoomSession();
+                    resolvedMessage = StatusMessage;
+                    message = resolvedMessage;
+                    return true;
+                case SocialRoomPacketType.CycleMode:
+                    CycleMiniRoomMode();
+                    resolvedMessage = StatusMessage;
+                    message = resolvedMessage;
+                    return true;
+                case SocialRoomPacketType.SetWager:
+                    return TrySetMiniRoomWager(mesoAmount, out message);
+                case SocialRoomPacketType.SettleWager:
+                    return TrySettleMiniRoomWager(actorName, out message);
+                case SocialRoomPacketType.AddVisitor:
+                    return AddPersonalShopVisitor(actorName, out message);
+                case SocialRoomPacketType.ToggleBlacklist:
+                    return TogglePersonalShopBlacklist(actorName, out message);
+                case SocialRoomPacketType.ListItem:
+                    if (Kind == SocialRoomKind.PersonalShop)
+                    {
+                        return TryListPersonalShopItem(itemId, quantity, mesoAmount, out message);
+                    }
+
+                    if (Kind == SocialRoomKind.EntrustedShop)
+                    {
+                        return TryListEntrustedShopItem(itemId, quantity, mesoAmount, out message);
+                    }
+
+                    if (Kind == SocialRoomKind.TradingRoom)
+                    {
+                        return TryOfferTradeItem(itemId, quantity, out message);
+                    }
+
+                    break;
+                case SocialRoomPacketType.AutoListItem:
+                    if (Kind == SocialRoomKind.PersonalShop)
+                    {
+                        return TryAutoListPersonalShopItem(out message);
+                    }
+
+                    if (Kind == SocialRoomKind.EntrustedShop)
+                    {
+                        return TryAutoListEntrustedShopItem(out message);
+                    }
+
+                    break;
+                case SocialRoomPacketType.BuyItem:
+                    return TryBuyPersonalShopItem(itemIndex, actorName, out message);
+                case SocialRoomPacketType.ArrangeItems:
+                    if (Kind == SocialRoomKind.PersonalShop)
+                    {
+                        ArrangePersonalShopInventory();
+                        resolvedMessage = StatusMessage;
+                        message = resolvedMessage;
+                        return true;
+                    }
+
+                    if (Kind == SocialRoomKind.EntrustedShop)
+                    {
+                        ArrangeEntrustedShop();
+                        resolvedMessage = StatusMessage;
+                        message = resolvedMessage;
+                        return true;
+                    }
+
+                    break;
+                case SocialRoomPacketType.ClaimMesos:
+                    if (Kind == SocialRoomKind.PersonalShop)
+                    {
+                        ClaimPersonalShopEarnings();
+                        resolvedMessage = StatusMessage;
+                        message = resolvedMessage;
+                        return true;
+                    }
+
+                    if (Kind == SocialRoomKind.EntrustedShop)
+                    {
+                        ClaimEntrustedShopEarnings();
+                        resolvedMessage = StatusMessage;
+                        message = resolvedMessage;
+                        return true;
+                    }
+
+                    break;
+                case SocialRoomPacketType.ToggleLedgerMode:
+                    ToggleEntrustedLedgerMode();
+                    resolvedMessage = StatusMessage;
+                    message = resolvedMessage;
+                    return true;
+                case SocialRoomPacketType.OfferTradeItem:
+                    return TryOfferTradeItem(itemId, quantity, out message);
+                case SocialRoomPacketType.OfferTradeMeso:
+                    return TryOfferTradeMeso(mesoAmount, out message);
+                case SocialRoomPacketType.LockTrade:
+                    return ToggleTradeLock(out message);
+                case SocialRoomPacketType.CompleteTrade:
+                    message = "Trading-room settlement is packet-owned by CTradingRoomDlg::OnTrade subtype 17 and the subtype 20 CRC follow-up. Use previewcomplete for the simulator-only settlement preview.";
+                    return false;
+                case SocialRoomPacketType.ResetTrade:
+                    message = "Trading-room reset is not a recovered CTradingRoomDlg::OnPacket branch; the client packet owner only models 15/16/17/20/21. Use previewreset for the simulator-only draft reset.";
+                    return false;
+                case SocialRoomPacketType.CloseRoom:
+                    if (Kind == SocialRoomKind.PersonalShop)
+                    {
+                        return ClosePersonalShop(out message);
+                    }
+
+                    resolvedMessage = "Close-room packets are only modeled for the personal shop shell.";
+                    message = resolvedMessage;
+                    return false;
+            }
+
+            resolvedMessage = packetType switch
+            {
+                SocialRoomPacketType.ListItem => "This room does not accept inventory item packets.",
+                SocialRoomPacketType.AutoListItem => "This room does not support auto-list packets.",
+                SocialRoomPacketType.ArrangeItems => "Arrange-items packets are not modeled for this room.",
+                SocialRoomPacketType.ClaimMesos => "Claim packets are not modeled for this room.",
+                _ => "Unsupported social-room packet."
+            };
+            message = resolvedMessage;
+            return false;
+        }
+
+        public bool TryDispatchPacketBytes(byte[] packetBytes, int tickCount, out string message)
+        {
+            message = null;
+            if (TryExtractEmployeePoolPacket(packetBytes, out ushort employeeOpcode, out byte[] employeePayload))
+            {
+                return TryDispatchEmployeePoolPacket(employeeOpcode, employeePayload, tickCount, out message);
+            }
+
+            byte[] payload = NormalizePacketPayload(packetBytes);
+            if (payload.Length == 0)
+            {
+                message = "Social-room packet payload is empty.";
+                return false;
+            }
+
+            try
+            {
+                PacketReader reader = new(payload);
+                byte packetType = reader.ReadByte();
+                if (IsMiniRoomBasePacketSubType(packetType))
+                {
+                    return TryDispatchMiniRoomBaseOwnedPacket(reader, packetType, tickCount, out message);
+                }
+
+                return Kind switch
+                {
+                    SocialRoomKind.MiniRoom => TryDispatchMiniRoomPacket(reader, packetType, tickCount, out message),
+                    SocialRoomKind.PersonalShop or SocialRoomKind.EntrustedShop or SocialRoomKind.TradingRoom => _shopDialogPacketOwner?.TryDispatch(payload, reader, packetType, tickCount, out message) == true,
+                    _ => FailPacket(packetType, out message)
+                };
+            }
+            catch (EndOfStreamException)
+            {
+                message = $"Social-room packet ended unexpectedly: {BitConverter.ToString(payload)}";
+                return false;
+            }
+        }
+
+        private bool TryDispatchEmployeePoolPacket(ushort opcode, byte[] payload, int tickCount, out string message)
+        {
+            message = $"Employee-pool opcode {opcode} is packet-owned. Apply it through {nameof(PacketOwnedEmployeePoolDispatcher)} and sync room presentation from pooled snapshots.";
+            TrackPacketOwnerSummary("CEmployeePool::OnPacket", opcode, tickCount, handled: false, message);
+            return false;
+        }
+
+        public bool TryDispatchSyntheticDialogPacket(byte packetType, byte[] payload, int tickCount, out string message)
+        {
+            byte[] packetBytes = new byte[1 + (payload?.Length ?? 0)];
+            packetBytes[0] = packetType;
+            if (payload?.Length > 0)
+            {
+                Buffer.BlockCopy(payload, 0, packetBytes, 1, payload.Length);
+            }
+
+            return TryDispatchPacketBytes(packetBytes, tickCount, out message);
+        }
+
+        public bool TryBuildPersonalShopKickTimedOutVisitorRawPacket(int seatIndex, out byte[] rawPacket, out string message)
+        {
+            rawPacket = Array.Empty<byte>();
+            message = null;
+            if (Kind != SocialRoomKind.PersonalShop)
+            {
+                message = "CPersonalShopDlg::Update timeout requests only apply to personal-shop rooms.";
+                return false;
+            }
+
+            if (_miniRoomLocalSeatIndex != 0)
+            {
+                message = "CPersonalShopDlg::Update only sends timeout-removal requests while the local user owns the shop.";
+                return false;
+            }
+
+            int normalizedSeatIndex = Math.Clamp(seatIndex, 1, 3);
+            string visitorName = ResolveMiniRoomSeatName(normalizedSeatIndex);
+            if (normalizedSeatIndex >= _occupants.Count
+                || IsMiniRoomBasePlaceholderOccupant(normalizedSeatIndex, _occupants[normalizedSeatIndex])
+                || string.IsNullOrWhiteSpace(visitorName))
+            {
+                message = $"No visitor is present at personal-shop seat {normalizedSeatIndex} for the client timeout-removal request.";
+                return false;
+            }
+
+            rawPacket = SocialRoomMerchantOfficialSessionBridgeManager.BuildPersonalShopKickTimedOutVisitorOutboundPacket(
+                (byte)normalizedSeatIndex,
+                visitorName);
+            message = $"Built CPersonalShopDlg::Update timeout-removal request: opcode 144 subtype {PersonalShopKickTimedOutVisitorPacketType}, seat {normalizedSeatIndex}, user '{visitorName}'. IDA 0x69b340 sends this after visitor enter-time exceeds 0x36EE80 ms.";
+            return true;
+        }
+
+        public bool MarkPersonalShopKickTimedOutVisitorRequestSent(int seatIndex, out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.PersonalShop)
+            {
+                message = "Only personal-shop rooms can mark timed-out visitor removal requests.";
+                return false;
+            }
+
+            int normalizedSeatIndex = Math.Clamp(seatIndex, 1, 3);
+            string visitorName = ResolveMiniRoomSeatName(normalizedSeatIndex);
+            RoomState = "Visitor timeout request";
+            StatusMessage = $"CPersonalShopDlg::Update sent timeout-removal request for seat {normalizedSeatIndex} ({visitorName}) through opcode 144 subtype {PersonalShopKickTimedOutVisitorPacketType}; waiting for the server-owned CMiniRoomBaseDlg::OnLeaveBase update.";
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        private bool TryDispatchMiniRoomBaseOwnedPacket(PacketReader reader, byte packetType, int tickCount, out string message)
+        {
+            byte[] basePayload = new byte[1 + Math.Max(0, reader?.Remaining ?? 0)];
+            basePayload[0] = packetType;
+            if (reader != null && reader.Remaining > 0)
+            {
+                byte[] remaining = reader.ReadBytes(reader.Remaining);
+                Buffer.BlockCopy(remaining, 0, basePayload, 1, remaining.Length);
+            }
+
+            PacketReader baseReader = new(basePayload);
+            bool handled = TryDispatchMiniRoomBasePacket(baseReader, tickCount, out message);
+            string instanceShape = packetType is MiniRoomBaseInvitePacketSubType
+                or MiniRoomBaseInviteResultPacketSubType
+                or MiniRoomBaseEnterResultPacketSubType
+                or MiniRoomBaseCheckSsnPacketSubType
+                ? "static/no-instance branch"
+                : "live-instance branch";
+            string detail = handled
+                ? $"CMiniRoomBaseDlg::OnPacketBase handled direct subtype {packetType} on the {instanceShape}. {message}"
+                : $"CMiniRoomBaseDlg::OnPacketBase rejected direct subtype {packetType} on the {instanceShape}. {message}";
+            TrackPacketOwnerSummary("CMiniRoomBaseDlg::OnPacketBase", packetType, tickCount, handled, detail);
+            message = detail;
+            return handled;
+        }
+
+        public bool TryDispatchTradingRoomPacketOwnedMeso(int traderIndex, int offeredMeso, int tickCount, out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.TradingRoom)
+            {
+                message = "Trading-room meso packets only apply to the trading-room shell.";
+                return false;
+            }
+
+            if (offeredMeso < 0)
+            {
+                message = "Trading-room meso packets require a non-negative offer amount.";
+                return false;
+            }
+
+            using MemoryStream stream = new MemoryStream();
+            using (BinaryWriter writer = new BinaryWriter(stream, Encoding.ASCII, leaveOpen: true))
+            {
+                writer.Write((byte)Math.Clamp(traderIndex, 0, 1));
+                writer.Write(offeredMeso);
+            }
+
+            return TryDispatchSyntheticDialogPacket(TradingRoomPutMoneyPacketType, stream.ToArray(), tickCount, out message);
+        }
+
+        public bool TryDispatchTradingRoomPacketOwnedItem(int traderIndex, int slotIndex, int itemId, int quantity, int tickCount, out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.TradingRoom)
+            {
+                message = "Trading-room item packets only apply to the trading-room shell.";
+                return false;
+            }
+
+            InventoryType inventoryType = InventoryItemMetadataResolver.ResolveInventoryType(itemId);
+            if (inventoryType == InventoryType.NONE || quantity <= 0)
+            {
+                message = "Trading-room item packets require a valid item id and quantity.";
+                return false;
+            }
+
+            using MemoryStream stream = new MemoryStream();
+            using (BinaryWriter writer = new BinaryWriter(stream, Encoding.ASCII, leaveOpen: true))
+            {
+                writer.Write((byte)Math.Clamp(traderIndex, 0, 1));
+                writer.Write((byte)Math.Clamp(slotIndex, 1, TradingRoomClientItemSlotCount));
+                WriteSyntheticTradingRoomItemSlot(writer, inventoryType, itemId, quantity);
+            }
+
+            return TryDispatchSyntheticDialogPacket(TradingRoomPutItemPacketType, stream.ToArray(), tickCount, out message);
+        }
+
+        public bool TryDispatchTradingRoomPacketOwnedTrade(int tickCount, out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.TradingRoom)
+            {
+                message = "Trading-room trade packets only apply to the trading-room shell.";
+                return false;
+            }
+
+            return TryDispatchSyntheticDialogPacket(TradingRoomTradePacketType, Array.Empty<byte>(), tickCount, out message);
+        }
+
+        public bool TryDispatchTradingRoomPacketOwnedExceedLimit(int tickCount, out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.TradingRoom)
+            {
+                message = "Trading-room exceed-limit packets only apply to the trading-room shell.";
+                return false;
+            }
+
+            return TryDispatchSyntheticDialogPacket(TradingRoomExceedLimitPacketType, Array.Empty<byte>(), tickCount, out message);
+        }
+
+        public void SubmitTradingRoomEnterButton()
+        {
+            if (Kind != SocialRoomKind.TradingRoom)
+            {
+                return;
+            }
+
+            StatusMessage = BuildTradingRoomButtonStatus(
+                "BtEnter",
+                "Trading-room BtEnter is a recovered CTradingRoomDlg button, but its client route enters the shared MiniRoom base chat owner instead of the CTradingRoomDlg::OnPacket trade subtype table.");
+            PersistState();
+        }
+
+        public void SubmitTradingRoomClaimButton()
+        {
+            if (Kind != SocialRoomKind.TradingRoom)
+            {
+                return;
+            }
+
+            StatusMessage = BuildTradingRoomButtonStatus(
+                "BtClame",
+                "Trading-room BtClame stays on the recovered CTradingRoomDlg/CDialog control route; settlement remains owned by subtype 17 and subtype 20 packet verification, not a separate acceptance packet.");
+            PersistState();
+        }
+
+        public void SubmitTradingRoomResetButton()
+        {
+            if (Kind != SocialRoomKind.TradingRoom)
+            {
+                return;
+            }
+
+            StatusMessage = BuildTradingRoomButtonStatus(
+                "BtReset",
+                "Trading-room BtReset is WZ-authored and recovered as a dialog control route, but no CTradingRoomDlg::OnPacket reset branch is recovered; simulator reset remains preview-only.");
+            PersistState();
+        }
+
+        private static string BuildTradingRoomButtonStatus(string buttonName, string fallback)
+        {
+            if (!TradingRoomPacketTable.TryResolveRecoveredButtonRoute(
+                buttonName,
+                out int controlId,
+                out string handler,
+                out TradingRoomPacketTable.TradingRoomButtonRoute route))
+            {
+                return fallback;
+            }
+
+            return $"{fallback} Recovered {buttonName} control id {controlId} route {route}: {handler}.";
+        }
+
+        private bool TryDispatchMiniRoomPacket(PacketReader reader, byte packetType, int tickCount, out string message)
+        {
+            if (!IsMiniRoomOmokActive)
+            {
+                message = $"MiniRoom packet {packetType} is only modeled while the room is in Omok mode.";
+                return false;
+            }
+
+            switch (packetType)
+            {
+                case OmokReadyPacketType:
+                    SetMiniRoomGuestReady(isReady: true, persistState: true);
+                    message = StatusMessage;
+                    return true;
+                case OmokCancelReadyPacketType:
+                    SetMiniRoomGuestReady(isReady: false, persistState: true);
+                    message = StatusMessage;
+                    return true;
+                case OmokStartPacketType:
+                {
+                    int firstTurnSeat = reader.ReadByte();
+                    StartMiniRoomOmokSessionFromPacket(firstTurnSeat);
+                    message = StatusMessage;
+                    return true;
+                }
+                case OmokPutStonePacketType:
+                {
+                    int x = reader.ReadInt();
+                    int y = reader.ReadInt();
+                    int stoneValue = NormalizeOmokStoneValue(reader.ReadByte(), fallback: ResolveOmokStoneValueForSeat(_miniRoomOmokCurrentTurnIndex));
+                    return TryApplyOmokStonePacket(x, y, stoneValue, out message);
+                }
+                case OmokPutStoneErrorPacketType:
+                {
+                    int errorCode = reader.ReadByte();
+                    ClearOmokDialogRequests();
+                    StatusMessage = errorCode == 67
+                        ? "The Omok stone packet was rejected because that point is already occupied."
+                        : $"The Omok stone packet was rejected (code {errorCode}).";
+                    SetOmokDialogStatus(StatusMessage, 1500);
+                    AddMiniRoomSystemMessage($"System : {StatusMessage}", isWarning: true);
+                    SyncMiniRoomOmokPresentation();
+                    PersistState();
+                    message = StatusMessage;
+                    return true;
+                }
+                case OmokTimeOverPacketType:
+                    _miniRoomOmokCurrentTurnIndex = Math.Clamp((int)reader.ReadByte(), 0, 1);
+                    ClearOmokDialogRequests();
+                    ResetOmokTurnClock();
+                    RoomState = _miniRoomOmokInProgress ? "Omok in progress" : RoomState;
+                    StatusMessage = FormatOmokTurnStatus(_miniRoomOmokCurrentTurnIndex);
+                    SetOmokDialogStatus($"Time over. {StatusMessage}", 1200);
+                    RecordOmokSoundByStringPoolId(OmokSoundTimerStringPoolId);
+                    SyncMiniRoomOmokPresentation();
+                    PersistState();
+                    message = StatusMessage;
+                    return true;
+                case OmokTieRequestPacketType:
+                    _miniRoomOmokTieRequested = true;
+                    _miniRoomOmokDrawRequestSent = false;
+                    _miniRoomOmokDrawRequestSentTurn = false;
+                    _miniRoomOmokPendingPromptText = ResolveOmokString(
+                        OmokIncomingTiePromptStringPoolId,
+                        "Your opponent requests a tie.\r\nWill you accept it?");
+                    StatusMessage = _miniRoomOmokPendingPromptText;
+                    SetOmokDialogStatus("COmokDlg::OnTieRequest opened the client Yes/No dialog and will send packet 51 after the modal closes.", 2200);
+                    _miniRoomOmokLastOutboundPacketSummary = "COmokDlg::OnTieRequest will send mini-room packet 51 with accept=1 or 0 after the Yes/No dialog closes.";
+                    AddMiniRoomSystemMessage($"System : {ResolveRemoteTraderName()} requested an Omok draw.");
+                    SyncMiniRoomOmokPresentation();
+                    PersistState();
+                    message = StatusMessage;
+                    return true;
+                case OmokTieResultPacketType:
+                    _miniRoomOmokTieRequested = false;
+                    _miniRoomOmokDrawRequestSent = false;
+                    _miniRoomOmokDrawRequestSentTurn = false;
+                    ClearOmokPendingPrompt();
+                    StatusMessage = ResolveOmokString(
+                        OmokTieDeclinedStringPoolId,
+                        "Your opponent denied your request for a tie.");
+                    SetOmokDialogStatus(StatusMessage, 1500);
+                    AddMiniRoomSystemMessage($"System : {StatusMessage}");
+                    SyncMiniRoomOmokPresentation();
+                    PersistState();
+                    message = StatusMessage;
+                    return true;
+                case OmokRetreatRequestPacketType:
+                    _miniRoomOmokRetreatRequested = true;
+                    _miniRoomOmokRetreatRequestSent = false;
+                    _miniRoomOmokRetreatRequestSentTurn = false;
+                    _miniRoomOmokPendingPromptText = ResolveOmokString(
+                        OmokIncomingRetreatPromptStringPoolId,
+                        "Your oppentent has requested to \r\nwithdraw his/her last move.\r\nDo you accept?");
+                    StatusMessage = _miniRoomOmokPendingPromptText;
+                    SetOmokDialogStatus("COmokDlg::OnRetreatRequest opened the client Yes/No dialog and will send packet 55 after the modal closes.", 2200);
+                    _miniRoomOmokLastOutboundPacketSummary = "COmokDlg::OnRetreatRequest will send mini-room packet 55 with accept=1 or 0 after the Yes/No dialog closes.";
+                    AddMiniRoomSystemMessage($"System : {ResolveRemoteTraderName()} requested an Omok retreat.", isWarning: true);
+                    SyncMiniRoomOmokPresentation();
+                    PersistState();
+                    message = StatusMessage;
+                    return true;
+                case OmokRetreatResultPacketType:
+                {
+                    bool accepted = reader.ReadByte() != 0;
+                    if (!accepted)
+                    {
+                        _miniRoomOmokRetreatRequested = false;
+                        _miniRoomOmokRetreatRequestSent = false;
+                        _miniRoomOmokRetreatRequestSentTurn = false;
+                        ClearOmokPendingPrompt();
+                        StatusMessage = ResolveOmokString(
+                            OmokRetreatDeclinedStringPoolId,
+                            "Your opponent denied your request.");
+                        SetOmokDialogStatus(StatusMessage, 1500);
+                        AddMiniRoomSystemMessage($"System : {StatusMessage}", isWarning: true);
+                        SyncMiniRoomOmokPresentation();
+                        PersistState();
+                        message = StatusMessage;
+                        return true;
+                    }
+
+                    int removedStoneCount = reader.ReadByte();
+                    int nextTurnSeat = reader.ReadByte();
+                    ApplyOmokRetreatPacket(removedStoneCount, nextTurnSeat);
+                    message = StatusMessage;
+                    return true;
+                }
+                case OmokGameResultPacketType:
+                {
+                    int resultType = reader.ReadByte();
+                    int winnerSeat = resultType == 1 ? -1 : reader.ReadByte();
+                    if (!TryDecodeOmokGameResultRecords(reader, out string recordMessage))
+                    {
+                        message = recordMessage;
+                        return false;
+                    }
+
+                    ApplyOmokGameResultPacket(resultType, winnerSeat);
+                    message = StatusMessage;
+                    return true;
+                }
+                case PersonalShopBasePacketType:
+                {
+                    bool handled = TryDispatchMiniRoomBasePacket(reader, tickCount, out message);
+                    TrackPacketOwnerSummary("CMiniRoomBaseDlg::OnPacketBase", PersonalShopBasePacketType, tickCount, handled, message);
+                    return handled;
+                }
+                default:
+                    return FailPacket(packetType, out message);
+            }
+        }
+
+        private bool TryDispatchPersonalShopPacket(PacketReader reader, byte packetType, int tickCount, out string message)
+        {
+            switch (packetType)
+            {
+                case MerchantShopRowRefreshPacketType:
+                    return TryApplyMerchantShopRowRefreshPacket(reader, out message);
+                case PersonalShopBuyResultPacketType:
+                    ApplyPersonalShopBuyResult(reader.ReadByte());
+                    message = StatusMessage;
+                    return true;
+                case PersonalShopSoldItemResultPacketType:
+                    return TryApplyPersonalShopSoldItemPacket(reader, out message);
+                case PersonalShopMoveItemToInventoryPacketType:
+                    return TryApplyPersonalShopMoveItemPacket(reader, out message);
+                case PersonalShopBasePacketType:
+                {
+                    byte[] payload = reader.ReadBytes(reader.Remaining);
+                    if (TryApplyMerchantShopFullRefreshPacket(
+                        payload,
+                        "direct CPersonalShopDlg::OnPacket packet 25 OnRefresh payload",
+                        out message))
+                    {
+                        return true;
+                    }
+
+                    PacketReader baseReader = new(payload);
+                    return TryDispatchMiniRoomBasePacket(baseReader, tickCount, out message);
+                }
+                default:
+                    return FailPacket(packetType, out message);
+            }
+        }
+
+        private bool TryApplyMerchantShopEnterResultPacket(PacketReader reader, out string message)
+        {
+            return Kind == SocialRoomKind.EntrustedShop
+                ? TryApplyEntrustedShopEnterResultPacket(reader, out message)
+                : TryApplyPersonalShopEnterResultPacket(reader, out message);
+        }
+
+        private bool TryDispatchEntrustedShopPacket(PacketReader reader, byte packetType, int tickCount, out string message)
+        {
+            switch (packetType)
+            {
+                case EntrustedShopArrangeItemResultPacketType:
+                    ApplyEntrustedArrangeResult(reader.ReadInt());
+                    message = StatusMessage;
+                    return true;
+                case EntrustedShopWithdrawAllResultPacketType:
+                    ApplyEntrustedWithdrawAllResult(reader.ReadByte());
+                    message = StatusMessage;
+                    return true;
+                case EntrustedShopWithdrawMoneyResultPacketType:
+                    ApplyEntrustedWithdrawMoneyResult();
+                    message = StatusMessage;
+                    return true;
+                case EntrustedShopVisitListResultPacketType:
+                    return TryApplyEntrustedVisitListPacket(reader, out message);
+                case EntrustedShopBlackListResultPacketType:
+                    return TryApplyEntrustedBlackListPacket(reader, out message);
+                case PersonalShopBuyResultPacketType:
+                case PersonalShopBasePacketType:
+                case PersonalShopSoldItemResultPacketType:
+                case PersonalShopMoveItemToInventoryPacketType:
+                    return TryDispatchPersonalShopPacket(reader, packetType, tickCount, out message);
+                default:
+                    return FailPacket(packetType, out message);
+            }
+        }
+
+        private bool TryDispatchTradingRoomPacket(byte[] payload, PacketReader reader, byte packetType, out string message)
+        {
+            switch (packetType)
+            {
+                case TradingRoomPutMoneyPacketType:
+                {
+                    if (reader.Remaining < sizeof(byte) + sizeof(int))
+                    {
+                        message = "Trading-room put-money packet is too short to decode.";
+                        return false;
+                    }
+
+                    int traderIndex = reader.ReadByte();
+                    int offeredMeso = reader.ReadInt();
+                    ApplyTradingRoomMesoPacket(traderIndex, offeredMeso);
+                    message = StatusMessage;
+                    return true;
+                }
+                case TradingRoomPutItemPacketType:
+                    return payload != null && payload.Length >= 5
+                        ? TryApplyTradingRoomItemPacket(payload, out message)
+                        : TryApplyTradingRoomItemPacket(reader, out message);
+                case TradingRoomTradePacketType:
+                    return TryApplyTradingRoomTradePacket(reader, out message);
+                case TradingRoomItemCrcPacketType:
+                    return TryApplyTradingRoomCrcPacket(reader, out message);
+                case TradingRoomExceedLimitPacketType:
+                    ApplyTradingRoomExceedLimitPacket();
+                    message = StatusMessage;
+                    return true;
+                default:
+                    return FailPacket(packetType, out message);
+            }
+        }
+
+        private bool TryApplyTradingRoomItemPacket(byte[] payload, out string message)
+        {
+            message = null;
+            if (payload == null || payload.Length < 5)
+            {
+                message = "Trading-room put-item packet is too short to decode.";
+                return false;
+            }
+
+            int traderIndex = payload[1];
+            int slotIndex = NormalizeTradingRoomClientSlot(payload[2]);
+            if (!TryDecodePacketOwnedTradeItem(payload.AsSpan(3), out PacketOwnedTradeItem item, out string error))
+            {
+                message = error;
+                return false;
+            }
+
+            ApplyTradingRoomItemPacket(traderIndex, slotIndex, item);
+            message = StatusMessage;
+            return true;
+        }
+
+        private bool TryApplyTradingRoomItemPacket(PacketReader reader, out string message)
+        {
+            message = null;
+            if (reader == null || reader.Remaining < 3)
+            {
+                message = "Trading-room put-item packet is too short to decode.";
+                return false;
+            }
+
+            int traderIndex = reader.ReadByte();
+            int slotIndex = NormalizeTradingRoomClientSlot(reader.ReadByte());
+            byte[] itemPayload = reader.ReadBytes(reader.Remaining);
+            if (!TryDecodePacketOwnedTradeItem(itemPayload, out PacketOwnedTradeItem item, out string error))
+            {
+                message = error;
+                return false;
+            }
+
+            ApplyTradingRoomItemPacket(traderIndex, slotIndex, item);
+            message = StatusMessage;
+            return true;
+        }
+
+        private static void WriteSyntheticTradingRoomItemSlot(BinaryWriter writer, InventoryType inventoryType, int itemId, int quantity)
+        {
+            byte slotType = inventoryType switch
+            {
+                InventoryType.EQUIP => 1,
+                InventoryType.CASH when itemId / 10000 == 500 => 3,
+                _ => 2
+            };
+
+            writer.Write(slotType);
+            writer.Write(itemId);
+            writer.Write((byte)0);
+            writer.Write((long)0);
+
+            switch (slotType)
+            {
+                case 1:
+                    WriteSyntheticTradingRoomEquipBody(writer);
+                    break;
+                case 3:
+                    WriteSyntheticTradingRoomPetBody(writer);
+                    break;
+                default:
+                    WriteSyntheticTradingRoomBundleBody(writer, quantity);
+                    break;
+            }
+        }
+
+        private static void WriteSyntheticTradingRoomEquipBody(BinaryWriter writer)
+        {
+            writer.Write((byte)0);
+            writer.Write((byte)0);
+            for (int i = 0; i < 15; i++)
+            {
+                writer.Write((short)0);
+            }
+
+            writer.Write((ushort)0);
+            writer.Write((short)0);
+            writer.Write((byte)0);
+            writer.Write((byte)0);
+            writer.Write(0);
+            writer.Write(0);
+            writer.Write(0);
+            writer.Write((byte)0);
+            writer.Write((byte)0);
+            for (int i = 0; i < 5; i++)
+            {
+                writer.Write((short)0);
+            }
+
+            writer.Write((long)0);
+            writer.Write((long)0);
+            writer.Write(0);
+        }
+
+        private static void WriteSyntheticTradingRoomBundleBody(BinaryWriter writer, int quantity)
+        {
+            writer.Write((ushort)Math.Clamp(quantity, 1, ushort.MaxValue));
+            writer.Write((ushort)0);
+            writer.Write((short)0);
+        }
+
+        private static void WriteSyntheticTradingRoomPetBody(BinaryWriter writer)
+        {
+            writer.Write(new byte[13]);
+            writer.Write((byte)1);
+            writer.Write((short)0);
+            writer.Write((byte)100);
+            writer.Write((long)0);
+            writer.Write((short)0);
+            writer.Write((ushort)0);
+            writer.Write(0);
+            writer.Write((short)0);
+        }
+
+        private bool TryApplyTradingRoomTradePacket(PacketReader reader, out string message)
+        {
+            message = null;
+            List<TradeVerificationEntry> requestEntries = null;
+            bool requestChecksumMatched = false;
+            string requestVerificationDetail = null;
+            bool ignoredTradePayload = false;
+            int ignoredTradePayloadLength = 0;
+            if (reader != null && reader.Remaining > 0)
+            {
+                byte[] requestPayload = reader.ReadBytes(reader.Remaining);
+                if (TryDecodeTradingRoomTradeRequestChecksums(
+                    requestPayload,
+                    out List<TradeVerificationEntry> parsedEntries,
+                    out string decodeDetail))
+                {
+                    requestEntries = parsedEntries;
+                    requestVerificationDetail = decodeDetail;
+                    requestChecksumMatched = TryValidateTradeRequestVerificationEntries(requestEntries, out string validationDetail);
+                    if (!string.IsNullOrWhiteSpace(validationDetail))
+                    {
+                        requestVerificationDetail = string.IsNullOrWhiteSpace(requestVerificationDetail)
+                            ? validationDetail
+                            : $"{requestVerificationDetail}; {validationDetail}";
+                    }
+                }
+                else if (requestPayload.Length > 0)
+                {
+                    ignoredTradePayload = true;
+                    ignoredTradePayloadLength = requestPayload.Length;
+                    requestVerificationDetail = decodeDetail;
+                }
+            }
+
+            _tradeRemoteLocked = true;
+            _tradeRemoteAccepted = false;
+            _tradeLocalAccepted = false;
+            _tradeRemoteVerificationReady = false;
+            _tradeRemoteVerificationEntries.Clear();
+            _tradeLocalVerificationEntries.Clear();
+            _tradeLocalVerificationEntries.AddRange(BuildTradeVerificationEntries(isLocalParty: false));
+            _tradeLocalVerificationReady = true;
+            _tradeAutoCrcReplyPending = true;
+            _tradeVerificationPending = true;
+            RoomState = "CRC verification";
+            string baseStatus = $"Trading-room packet requested CRC verification. Prepared {_tradeLocalVerificationEntries.Count} peer-side item checksum entr{(_tradeLocalVerificationEntries.Count == 1 ? "y" : "ies")} for subtype {TradingRoomItemCrcPacketType}, matching CTradingRoomDlg::OnTrade scanning m_aaItem[1] and including zero-row replies when no peer offer items are staged.";
+            if (requestEntries == null)
+            {
+                StatusMessage = $"{baseStatus} Subtype {TradingRoomTradePacketType} did not include the client Trade() checksum rows; continuing with the existing OnTrade follow-up path.";
+            }
+            else if (requestChecksumMatched)
+            {
+                StatusMessage = $"{baseStatus} Subtype {TradingRoomTradePacketType} carried {requestEntries.Count} request checksum entr{(requestEntries.Count == 1 ? "y" : "ies")} that matched the current packet-owned trade rows.";
+            }
+            else
+            {
+                StatusMessage = $"{baseStatus} Subtype {TradingRoomTradePacketType} carried {requestEntries.Count} request checksum entr{(requestEntries.Count == 1 ? "y" : "ies")}, but request verification differed: {requestVerificationDetail}.";
+            }
+            if (ignoredTradePayload)
+            {
+                string ignoredDetail = string.IsNullOrWhiteSpace(requestVerificationDetail)
+                    ? "unrecognized subtype 17 payload shape"
+                    : requestVerificationDetail;
+                StatusMessage = $"{StatusMessage} Ignored {ignoredTradePayloadLength} trailing byte{(ignoredTradePayloadLength == 1 ? string.Empty : "s")} in subtype {TradingRoomTradePacketType}, matching CTradingRoomDlg::OnTrade (0x763F20) which does not decode an inbound checksum body before sending subtype {TradingRoomItemCrcPacketType}. ({ignoredDetail})";
+            }
+
+            RefreshTradeOccupantsAndRows();
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        private static bool TryDecodeTradingRoomTradeRequestChecksums(
+            ReadOnlySpan<byte> payload,
+            out List<TradeVerificationEntry> entries,
+            out string detail)
+        {
+            entries = null;
+            detail = string.Empty;
+            if (payload.Length <= 0)
+            {
+                return false;
+            }
+
+            using MemoryStream stream = new MemoryStream(payload.ToArray(), writable: false);
+            using BinaryReader reader = new BinaryReader(stream, Encoding.ASCII, leaveOpen: false);
+            int count = reader.ReadByte();
+            if (count < 0)
+            {
+                detail = "negative checksum-row count";
+                return false;
+            }
+
+            if (stream.Length - stream.Position < count * (sizeof(int) + sizeof(int)))
+            {
+                detail = $"checksum-row payload truncated (count={count}, bytes={payload.Length})";
+                return false;
+            }
+
+            List<TradeVerificationEntry> parsed = new List<TradeVerificationEntry>(count);
+            for (int i = 0; i < count; i++)
+            {
+                int itemId = reader.ReadInt32();
+                uint checksum = unchecked((uint)reader.ReadInt32());
+                if (itemId <= 0)
+                {
+                    detail = $"checksum row {i + 1} had invalid item id {itemId}";
+                    return false;
+                }
+
+                parsed.Add(new TradeVerificationEntry(itemId, checksum));
+            }
+
+            int trailingBytes = (int)(stream.Length - stream.Position);
+            if (trailingBytes > 0)
+            {
+                detail = $"decoded {count} checksum entr{(count == 1 ? "y" : "ies")} with {trailingBytes} trailing byte{(trailingBytes == 1 ? string.Empty : "s")}";
+            }
+            else
+            {
+                detail = $"decoded {count} checksum entr{(count == 1 ? "y" : "ies")}";
+            }
+
+            entries = parsed;
+            return true;
+        }
+
+        private bool TryApplyTradingRoomCrcPacket(PacketReader reader, out string message)
+        {
+            message = null;
+            if (reader == null || reader.Remaining < 1)
+            {
+                message = "Trading-room CRC packet is too short to contain a checksum-row count.";
+                return false;
+            }
+
+            int count = reader.ReadByte();
+            if (count < 0)
+            {
+                message = "Trading-room CRC packet contained an invalid row count.";
+                return false;
+            }
+
+            int requiredBytes = count * (sizeof(int) + sizeof(int));
+            if (reader.Remaining < requiredBytes)
+            {
+                message = $"Trading-room CRC packet is truncated: count={count}, remaining={reader.Remaining}, required={requiredBytes}.";
+                return false;
+            }
+
+            List<TradeVerificationEntry> entries = new List<TradeVerificationEntry>(count);
+            for (int i = 0; i < count; i++)
+            {
+                int itemId = reader.ReadInt();
+                uint checksum = unchecked((uint)reader.ReadInt());
+                if (itemId <= 0)
+                {
+                    message = $"Trading-room CRC packet row {i} contained an invalid item id.";
+                    return false;
+                }
+
+                entries.Add(new TradeVerificationEntry(itemId, checksum));
+            }
+
+            _tradeRemoteVerificationEntries.Clear();
+            _tradeRemoteVerificationEntries.AddRange(entries);
+            bool remoteVerificationMatched = TryValidateTradeVerificationEntries(isLocalParty: false, entries, out string verificationDetail);
+            _tradeRemoteVerificationReady = remoteVerificationMatched;
+            if (_tradeLocalLocked && _tradeRemoteLocked && _tradeLocalVerificationEntries.Count == 0)
+            {
+                _tradeLocalVerificationEntries.AddRange(BuildTradeVerificationEntries(isLocalParty: true));
+                _tradeLocalVerificationReady = true;
+            }
+
+            _tradeVerificationPending = !_tradeLocalVerificationReady
+                || !_tradeRemoteVerificationReady
+                || !remoteVerificationMatched;
+            _tradeAutoCrcReplyPending = false;
+            if (_tradeRemoteLocked && remoteVerificationMatched && _tradeRemoteVerificationReady)
+            {
+                _tradeRemoteAccepted = true;
+            }
+
+            RoomState = _tradeVerificationPending
+                ? remoteVerificationMatched ? "CRC verification" : "CRC mismatch"
+                : "Locked";
+            RefreshTradeOccupantsAndRows();
+            StatusMessage = entries.Count == 0
+                ? remoteVerificationMatched
+                    ? "Trading-room CRC packet verified an empty remote checksum list against the current preview offer."
+                    : $"Trading-room CRC packet carried an empty remote checksum list, but verification is still pending: {verificationDetail}"
+                : remoteVerificationMatched
+                    ? $"Trading-room CRC packet verified {entries.Count} remote checksum entr{(entries.Count == 1 ? "y" : "ies")} against the current preview offer."
+                    : $"Trading-room CRC packet synced {entries.Count} remote checksum entr{(entries.Count == 1 ? "y" : "ies")}, but verification is still pending: {verificationDetail}";
+
+            if (!_tradeVerificationPending && _tradeRemoteAccepted && !_tradeLocalAccepted)
+            {
+                StatusMessage = $"{StatusMessage} Remote verification is complete and accepted; waiting on local final acceptance.";
+            }
+
+            if (!_tradeVerificationPending && _tradeLocalAccepted && _tradeRemoteAccepted)
+            {
+                if (TryCompleteTrade(out string settlementMessage))
+                {
+                    message = settlementMessage;
+                    return true;
+                }
+
+                _tradeRemoteAccepted = false;
+                RoomState = "Locked";
+                RefreshTradeOccupantsAndRows();
+                StatusMessage = $"{StatusMessage} Settlement still failed after CRC verification: {settlementMessage}";
+            }
+
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        private void ApplyTradingRoomExceedLimitPacket()
+        {
+            _tradeLocalLocked = false;
+            _tradeLocalAccepted = false;
+            _tradeRemoteAccepted = false;
+            _tradeVerificationPending = false;
+            _tradeAutoCrcReplyPending = false;
+            _tradeLocalVerificationReady = false;
+            _tradeRemoteVerificationReady = false;
+            _tradeLocalVerificationEntries.Clear();
+            _tradeRemoteVerificationEntries.Clear();
+            PersistState();
+            RoomState = "Negotiating";
+            RefreshTradeOccupantsAndRows();
+            StatusMessage = "Trading-room packet reported a limit failure and unlocked the local trade button state.";
+            PersistState();
+        }
+
+        private void ApplyTradingRoomItemPacket(int traderIndex, int slotIndex, PacketOwnedTradeItem item)
+        {
+            ClearTradeHandshake();
+            string ownerName = ResolveTradeOwnerName(traderIndex);
+            string ownerLabel = traderIndex == 0 ? "Owner" : "Guest";
+            int clientSlotIndex = NormalizeTradingRoomClientSlot(slotIndex);
+            string packetOwnedItemLabel = ResolveTradePacketItemLabel(item);
+            SocialRoomItemEntry entry = FindTradingRoomPacketEntry(ownerName, clientSlotIndex);
+            if (entry == null)
+            {
+                entry = new SocialRoomItemEntry(
+                    ownerName,
+                    packetOwnedItemLabel,
+                    item.Quantity,
+                    mesoAmount: 0,
+                    detail: BuildTradingRoomPacketItemDetail(ownerLabel, clientSlotIndex, item),
+                    itemId: item.ItemId,
+                    packetSlotIndex: clientSlotIndex);
+                _items.Add(entry);
+            }
+            else
+            {
+                entry.UpdatePacketIdentity(item.ItemId, clientSlotIndex);
+                entry.Update(BuildTradingRoomPacketItemDetail(ownerLabel, clientSlotIndex, item), item.Quantity, 0, false, false);
+            }
+
+            SortTradeRoomItems();
+            RoomState = "Negotiating";
+            RefreshTradeOccupantsAndRows();
+            StatusMessage = $"{ownerName} placed packet-backed {packetOwnedItemLabel} x{item.Quantity} into trade slot {clientSlotIndex}.";
+            PersistState();
+        }
+
+        private static int NormalizeTradingRoomClientSlot(int slotIndex)
+        {
+            return Math.Clamp(slotIndex, 1, TradingRoomClientItemSlotCount);
+        }
+
+        private SocialRoomItemEntry FindTradingRoomPacketEntry(string ownerName, int slotIndex)
+        {
+            SocialRoomItemEntry exact = _items.FirstOrDefault(item =>
+                string.Equals(item.OwnerName, ownerName, StringComparison.OrdinalIgnoreCase) &&
+                item.PacketSlotIndex == slotIndex);
+            if (exact != null)
+            {
+                return exact;
+            }
+
+            List<SocialRoomItemEntry> ownerEntries = _items
+                .Where(item => string.Equals(item.OwnerName, ownerName, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(item => item.PacketSlotIndex ?? int.MaxValue)
+                .ThenBy(item => item.ItemName, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            int ordinalIndex = slotIndex - 1;
+            return ordinalIndex >= 0 && ordinalIndex < ownerEntries.Count
+                ? ownerEntries[ordinalIndex]
+                : null;
+        }
+
+        private void SortTradeRoomItems()
+        {
+            _items.Sort((left, right) =>
+            {
+                bool leftLocal = string.Equals(left.OwnerName, OwnerName, StringComparison.OrdinalIgnoreCase);
+                bool rightLocal = string.Equals(right.OwnerName, OwnerName, StringComparison.OrdinalIgnoreCase);
+                int ownerComparison = leftLocal == rightLocal ? 0 : leftLocal ? -1 : 1;
+                if (ownerComparison != 0)
+                {
+                    return ownerComparison;
+                }
+
+                int slotComparison = Nullable.Compare(left.PacketSlotIndex, right.PacketSlotIndex);
+                if (slotComparison != 0)
+                {
+                    return slotComparison;
+                }
+
+                return string.Compare(left.ItemName, right.ItemName, StringComparison.OrdinalIgnoreCase);
+            });
+        }
+
+        private static bool TryDecodePacketOwnedTradeItem(ReadOnlySpan<byte> payload, out PacketOwnedTradeItem item, out string error)
+        {
+            item = default;
+            error = null;
+            if (payload.Length < 1)
+            {
+                error = "Trading-room item payload is too short to contain a GW_ItemSlotBase body.";
+                return false;
+            }
+
+            byte slotType = payload[0];
+            if (slotType is not 1 and not 2 and not 3)
+            {
+                error = $"Trading-room item payload used unsupported GW_ItemSlotBase type {slotType}.";
+                return false;
+            }
+
+            if (!TryDecodePacketOwnedItemBody(
+                payload.Slice(1),
+                slotType,
+                out long itemSerialNumber,
+                out int itemId,
+                out int quantity,
+                out bool hasCashSerialNumber,
+                out long cashSerialNumber,
+                out string title,
+                out string metadataSummary,
+                out long? nonCashSerialNumber,
+                out long? baseExpirationTime,
+                out long? expirationTime,
+                out int? tailValue,
+                out string tailMetadataSummary,
+                out string packetDisplayName,
+                out int decodedBodyByteLength,
+                out int residualTailByteLength))
+            {
+                error = "Trading-room item payload did not contain a recognizable MapleStory item row.";
+                return false;
+            }
+
+            InventoryType inventoryType = InventoryItemMetadataResolver.ResolveInventoryType(itemId);
+            if (inventoryType == InventoryType.NONE)
+            {
+                error = $"Trading-room item payload resolved unsupported item id {itemId}.";
+                return false;
+            }
+
+            item = new PacketOwnedTradeItem(
+                slotType,
+                baseExpirationTime,
+                itemId,
+                quantity,
+                inventoryType,
+                hasCashSerialNumber,
+                itemSerialNumber,
+                cashSerialNumber,
+                ResolveTradePacketNativeItemTypeIndex(itemId),
+                title,
+                packetDisplayName,
+                metadataSummary,
+                nonCashSerialNumber,
+                expirationTime,
+                tailValue,
+                tailMetadataSummary,
+                decodedBodyByteLength,
+                residualTailByteLength);
+            return true;
+        }
+
+        private static bool TryDecodePacketOwnedItemBody(
+            ReadOnlySpan<byte> payload,
+            byte slotType,
+            out long serialNumber,
+            out int itemId,
+            out int quantity,
+            out bool hasCashSerialNumber,
+            out long cashSerialNumber,
+            out string title,
+            out string metadataSummary,
+            out long? nonCashSerialNumber,
+            out long? baseExpirationTime,
+            out long? expirationTime,
+            out int? tailValue,
+            out string tailMetadataSummary,
+            out string packetDisplayName,
+            out int decodedBodyByteLength,
+            out int residualTailByteLength)
+        {
+            serialNumber = 0;
+            itemId = 0;
+            quantity = 1;
+            hasCashSerialNumber = false;
+            cashSerialNumber = 0;
+            title = string.Empty;
+            metadataSummary = string.Empty;
+            nonCashSerialNumber = null;
+            baseExpirationTime = null;
+            expirationTime = null;
+            tailValue = null;
+            tailMetadataSummary = string.Empty;
+            packetDisplayName = string.Empty;
+            decodedBodyByteLength = 0;
+            residualTailByteLength = 0;
+
+            using MemoryStream stream = new MemoryStream(payload.ToArray(), writable: false);
+            using BinaryReader reader = new BinaryReader(stream, Encoding.ASCII, leaveOpen: false);
+            if (stream.Length - stream.Position < sizeof(int) + sizeof(byte) + sizeof(long))
+            {
+                return false;
+            }
+
+            itemId = reader.ReadInt32();
+            if (itemId <= 0 || InventoryItemMetadataResolver.ResolveInventoryType(itemId) == InventoryType.NONE)
+            {
+                return false;
+            }
+
+            hasCashSerialNumber = reader.ReadByte() != 0;
+            if (hasCashSerialNumber)
+            {
+                if (stream.Length - stream.Position < sizeof(long))
+                {
+                    return false;
+                }
+
+                cashSerialNumber = reader.ReadInt64();
+            }
+
+            if (stream.Length - stream.Position < sizeof(long))
+            {
+                return false;
+            }
+
+            baseExpirationTime = reader.ReadInt64();
+            bool decoded = slotType switch
+            {
+                1 => TryDecodePacketOwnedEquipBody(reader, hasCashSerialNumber, out serialNumber, out title, out metadataSummary, out nonCashSerialNumber, out expirationTime, out tailValue, out tailMetadataSummary, out decodedBodyByteLength, out residualTailByteLength),
+                2 => TryDecodePacketOwnedBundleBody(reader, itemId, out serialNumber, out quantity, out title, out metadataSummary, out tailMetadataSummary, out decodedBodyByteLength, out residualTailByteLength),
+                3 => TryDecodePacketOwnedPetBody(reader, out serialNumber, out title, out metadataSummary, out expirationTime, out tailMetadataSummary, out decodedBodyByteLength, out residualTailByteLength),
+                _ => false
+            };
+
+            if (decoded)
+            {
+                packetDisplayName = ResolveTradePacketDisplayName(itemId, title, tailMetadataSummary);
+            }
+
+            return decoded;
+        }
+
+        private static string BuildTradingRoomPacketItemDetail(string ownerLabel, int slotIndex, PacketOwnedTradeItem item)
+        {
+            string baseExpirationText = BuildTradeDateDetail("dateExpire", item.BaseExpirationTime);
+            string cashText = item.HasCashSerialNumber && item.CashSerialNumber > 0
+                ? $" | liCashItemSN {item.CashSerialNumber}"
+                : string.Empty;
+            string serialText = item.ItemSerialNumber > 0 && item.CashSerialNumber <= 0
+                ? $" | liSN {item.ItemSerialNumber}"
+                : string.Empty;
+            string nativeTypeText = item.NativeItemTypeIndex > 0
+                ? $" | native TI {item.NativeItemTypeIndex}"
+                : string.Empty;
+            string slotTypeText = item.SlotType > 0
+                ? $" | GW_ItemSlotBase type {item.SlotType}"
+                : string.Empty;
+            string quantityText = item.SlotType == 2
+                ? $" | nNumber {item.Quantity}"
+                : string.Empty;
+            string titleLabel = item.SlotType == 3 ? "sPetName" : "sTitle";
+            string titleText = string.IsNullOrWhiteSpace(item.Title)
+                ? string.Empty
+                : $" | {titleLabel} {item.Title}";
+            string packetNameText = string.IsNullOrWhiteSpace(item.PacketDisplayName)
+                ? string.Empty
+                : $" | sPacketName {item.PacketDisplayName}";
+            string metadataText = string.IsNullOrWhiteSpace(item.MetadataSummary)
+                ? string.Empty
+                : $" | {item.MetadataSummary}";
+            string nonCashText = item.NonCashSerialNumber.HasValue
+                && item.NonCashSerialNumber.Value > 0
+                && item.NonCashSerialNumber.Value != item.ItemSerialNumber
+                ? $" | liSN {item.NonCashSerialNumber.Value}"
+                : string.Empty;
+            string tailText = string.IsNullOrWhiteSpace(item.MetadataSummary)
+                && item.TailValue.HasValue
+                && item.TailValue.Value != 0
+                    ? $" | nPrevBonusExpRate {item.TailValue.Value}"
+                    : string.Empty;
+            string tailMetadataText = string.IsNullOrWhiteSpace(item.TailMetadataSummary)
+                ? string.Empty
+                : $" | {item.TailMetadataSummary}";
+            string decodeLengthText = item.DecodedBodyByteLength > 0
+                ? $" | decodedBody {item.DecodedBodyByteLength}B"
+                : string.Empty;
+            string residualTailText = item.ResidualTailByteLength > 0
+                ? $" | residualTail {item.ResidualTailByteLength}B"
+                : string.Empty;
+            return $"{ownerLabel} offer | Packet slot {slotIndex} | {item.InventoryType}{slotTypeText}{baseExpirationText}{cashText}{serialText}{nativeTypeText}{quantityText}{titleText}{packetNameText}{metadataText}{nonCashText}{tailText}{decodeLengthText}{residualTailText}{tailMetadataText}";
+        }
+
+        private static bool TryDecodePacketOwnedEquipBody(
+            BinaryReader reader,
+            bool hasCashSerialNumber,
+            out long serialNumber,
+            out string title,
+            out string metadataSummary,
+            out long? nonCashSerialNumber,
+            out long? expirationTime,
+            out int? tailValue,
+            out string tailMetadataSummary,
+            out int decodedBodyByteLength,
+            out int residualTailByteLength)
+        {
+            serialNumber = 0;
+            title = string.Empty;
+            metadataSummary = string.Empty;
+            nonCashSerialNumber = null;
+            expirationTime = null;
+            tailValue = null;
+            tailMetadataSummary = string.Empty;
+            decodedBodyByteLength = 0;
+            residualTailByteLength = 0;
+            Stream stream = reader.BaseStream;
+            const int equipStatsByteLength = (sizeof(byte) * 2) + (sizeof(short) * 15);
+            if (stream.Length - stream.Position < equipStatsByteLength)
+            {
+                return false;
+            }
+
+            byte remainingUpgradeCount = reader.ReadByte();
+            byte upgradeCount = reader.ReadByte();
+            short strength = reader.ReadInt16();
+            short dexterity = reader.ReadInt16();
+            short intelligence = reader.ReadInt16();
+            short luck = reader.ReadInt16();
+            short hp = reader.ReadInt16();
+            short mp = reader.ReadInt16();
+            short weaponAttack = reader.ReadInt16();
+            short magicAttack = reader.ReadInt16();
+            short weaponDefense = reader.ReadInt16();
+            short magicDefense = reader.ReadInt16();
+            short accuracy = reader.ReadInt16();
+            short avoidability = reader.ReadInt16();
+            short hands = reader.ReadInt16();
+            short speed = reader.ReadInt16();
+            short jump = reader.ReadInt16();
+            if (!TryReadTradePacketMapleString(reader, out title))
+            {
+                return false;
+            }
+            title = NormalizeTradePacketFixedString(title, maxClientBytesIncludingTerminator: 13);
+
+            const int tailLength = sizeof(short) + (sizeof(byte) * 2) + (sizeof(int) * 3) + (sizeof(byte) * 2) + (sizeof(short) * 5);
+            int requiredTailLength = tailLength + (hasCashSerialNumber ? 0 : sizeof(long)) + sizeof(long) + sizeof(int);
+            if (stream.Length - stream.Position < requiredTailLength)
+            {
+                return false;
+            }
+
+            short attribute = reader.ReadInt16();
+            byte levelUpType = reader.ReadByte();
+            byte level = reader.ReadByte();
+            int experience = reader.ReadInt32();
+            int durability = reader.ReadInt32();
+            int itemUpgradeCount = reader.ReadInt32();
+            byte grade = reader.ReadByte();
+            byte bonusUpgradeCount = reader.ReadByte();
+            short option1 = reader.ReadInt16();
+            short option2 = reader.ReadInt16();
+            short option3 = reader.ReadInt16();
+            short socket1 = reader.ReadInt16();
+            short socket2 = reader.ReadInt16();
+            if (!hasCashSerialNumber)
+            {
+                if (stream.Length - stream.Position < sizeof(long))
+                {
+                    return false;
+                }
+
+                nonCashSerialNumber = reader.ReadInt64();
+                serialNumber = nonCashSerialNumber.GetValueOrDefault();
+            }
+
+            expirationTime = reader.ReadInt64();
+            tailValue = reader.ReadInt32();
+            metadataSummary = BuildEquipTradeMetadataSummary(
+                remainingUpgradeCount,
+                upgradeCount,
+                strength,
+                dexterity,
+                intelligence,
+                luck,
+                hp,
+                mp,
+                weaponAttack,
+                magicAttack,
+                weaponDefense,
+                magicDefense,
+                accuracy,
+                avoidability,
+                hands,
+                speed,
+                jump,
+                attribute,
+                levelUpType,
+                level,
+                experience,
+                durability,
+                itemUpgradeCount,
+                grade,
+                bonusUpgradeCount,
+                option1,
+                option2,
+                option3,
+                socket1,
+                socket2,
+                expirationTime,
+                tailValue);
+            long residualStartPosition = stream.Position;
+            tailMetadataSummary = BuildResidualTradePacketSummary(reader, "EquipTail");
+            decodedBodyByteLength = checked((int)residualStartPosition);
+            residualTailByteLength = checked((int)(stream.Position - residualStartPosition));
+            return true;
+        }
+
+        private static bool TryDecodePacketOwnedBundleBody(BinaryReader reader, int itemId, out int quantity, out string title, out string metadataSummary, out string tailMetadataSummary, out int decodedBodyByteLength, out int residualTailByteLength)
+        {
+            return TryDecodePacketOwnedBundleBody(reader, itemId, out _, out quantity, out title, out metadataSummary, out tailMetadataSummary, out decodedBodyByteLength, out residualTailByteLength);
+        }
+
+        private static bool TryDecodePacketOwnedBundleBody(BinaryReader reader, int itemId, out long serialNumber, out int quantity, out string title, out string metadataSummary, out string tailMetadataSummary, out int decodedBodyByteLength, out int residualTailByteLength)
+        {
+            serialNumber = 0;
+            quantity = 1;
+            title = string.Empty;
+            metadataSummary = string.Empty;
+            tailMetadataSummary = string.Empty;
+            decodedBodyByteLength = 0;
+            residualTailByteLength = 0;
+            Stream stream = reader.BaseStream;
+            if (stream.Length - stream.Position < sizeof(ushort))
+            {
+                return false;
+            }
+
+            quantity = Math.Max(1, (int)reader.ReadUInt16());
+            if (!TryReadTradePacketMapleString(reader, out title))
+            {
+                return false;
+            }
+            title = NormalizeTradePacketFixedString(title, maxClientBytesIncludingTerminator: 13);
+
+            if (stream.Length - stream.Position < sizeof(short))
+            {
+                return false;
+            }
+
+            short attribute = reader.ReadInt16();
+            long rechargeableSerialNumber = 0;
+            if (itemId / 10000 is 207 or 233)
+            {
+                if (stream.Length - stream.Position < sizeof(long))
+                {
+                    return false;
+                }
+
+                rechargeableSerialNumber = reader.ReadInt64();
+                serialNumber = rechargeableSerialNumber;
+            }
+
+            metadataSummary = BuildBundleTradeMetadataSummary(attribute, rechargeableSerialNumber);
+            long residualStartPosition = stream.Position;
+            tailMetadataSummary = BuildResidualTradePacketSummary(reader, "BundleTail");
+            decodedBodyByteLength = checked((int)residualStartPosition);
+            residualTailByteLength = checked((int)(stream.Position - residualStartPosition));
+            return true;
+        }
+
+        private static bool TryDecodePacketOwnedPetBody(BinaryReader reader, out long serialNumber, out string title, out string metadataSummary, out long? expirationTime, out string tailMetadataSummary, out int decodedBodyByteLength, out int residualTailByteLength)
+        {
+            serialNumber = 0;
+            title = string.Empty;
+            metadataSummary = string.Empty;
+            expirationTime = null;
+            tailMetadataSummary = string.Empty;
+            decodedBodyByteLength = 0;
+            residualTailByteLength = 0;
+            Stream stream = reader.BaseStream;
+            const int petNameLength = 13;
+            const int petTailLength = sizeof(byte) + sizeof(short) + sizeof(byte) + sizeof(long) + sizeof(short) + sizeof(ushort) + sizeof(int) + sizeof(short);
+            if (stream.Length - stream.Position < petNameLength + petTailLength)
+            {
+                return false;
+            }
+
+            title = NormalizeTradePacketFixedString(
+                Encoding.ASCII.GetString(reader.ReadBytes(petNameLength)),
+                maxClientBytesIncludingTerminator: petNameLength);
+            byte level = reader.ReadByte();
+            short closeness = reader.ReadInt16();
+            byte fullness = reader.ReadByte();
+            expirationTime = reader.ReadInt64();
+            short attribute = reader.ReadInt16();
+            ushort skill = reader.ReadUInt16();
+            int remainingLife = reader.ReadInt32();
+            short itemAttribute = reader.ReadInt16();
+            metadataSummary = BuildPetTradeMetadataSummary(level, closeness, fullness, attribute, skill, remainingLife, itemAttribute, expirationTime);
+            long residualStartPosition = stream.Position;
+            tailMetadataSummary = BuildResidualTradePacketSummary(reader, "PetTail");
+            decodedBodyByteLength = checked((int)residualStartPosition);
+            residualTailByteLength = checked((int)(stream.Position - residualStartPosition));
+            return true;
+        }
+
+        private static string BuildResidualTradePacketSummary(BinaryReader reader, string label)
+        {
+            if (reader?.BaseStream == null)
+            {
+                return string.Empty;
+            }
+
+            Stream stream = reader.BaseStream;
+            long remaining = stream.Length - stream.Position;
+            if (remaining <= 0)
+            {
+                return string.Empty;
+            }
+
+            byte[] leftover = reader.ReadBytes((int)remaining);
+            if (leftover.Length == 0)
+            {
+                return string.Empty;
+            }
+
+            string semanticSummary = BuildResidualTradePacketSemanticSummary(leftover, label);
+            const int previewByteCount = 24;
+            string preview = BitConverter.ToString(leftover, 0, Math.Min(previewByteCount, leftover.Length));
+            string hexSummary = leftover.Length > previewByteCount
+                ? $"{label} {leftover.Length}B {preview}..."
+                : $"{label} {leftover.Length}B {preview}";
+            return string.IsNullOrWhiteSpace(semanticSummary)
+                ? hexSummary
+                : $"{semanticSummary} | {hexSummary}";
+        }
+
+        private static string BuildResidualTradePacketSemanticSummary(ReadOnlySpan<byte> leftover, string label)
+        {
+            if (leftover.Length == 0)
+            {
+                return string.Empty;
+            }
+
+            List<string> fields = new List<string>();
+            int offset = 0;
+            int stringFieldCount = 0;
+            while (TryReadResidualTradePacketMapleString(leftover, ref offset, out string tailString) && stringFieldCount < 3)
+            {
+                int stringOffset = offset - (sizeof(short) + tailString.Length);
+                fields.Add(stringFieldCount == 0
+                    ? $"sTailName {tailString} @+{stringOffset}"
+                    : $"sTailName{stringFieldCount + 1} {tailString} @+{stringOffset}");
+                stringFieldCount++;
+            }
+
+            int longFieldCount = 0;
+            while (leftover.Length - offset >= sizeof(long) && longFieldCount < 2)
+            {
+                int valueOffset = offset;
+                long serialCandidate = BinaryPrimitives.ReadInt64LittleEndian(leftover.Slice(offset, sizeof(long)));
+                if (TryFormatResidualTradePacketFileTime(serialCandidate, out string fileTimeText))
+                {
+                    fields.Add(longFieldCount == 0
+                        ? $"ftTail {fileTimeText} @+{valueOffset}"
+                        : $"ftTail{longFieldCount + 1} {fileTimeText} @+{valueOffset}");
+                    offset += sizeof(long);
+                    longFieldCount++;
+                    continue;
+                }
+
+                if (serialCandidate > 0)
+                {
+                    fields.Add(longFieldCount == 0
+                        ? $"liTailSN {serialCandidate} @+{valueOffset}"
+                        : $"liTailSN{longFieldCount + 1} {serialCandidate} @+{valueOffset}");
+                    offset += sizeof(long);
+                    longFieldCount++;
+                    continue;
+                }
+
+                break;
+            }
+
+            int intFieldCount = 0;
+            while (leftover.Length - offset >= sizeof(int) && intFieldCount < 8)
+            {
+                int valueOffset = offset;
+                int intValue = BinaryPrimitives.ReadInt32LittleEndian(leftover.Slice(offset, sizeof(int)));
+                if (intValue != 0)
+                {
+                    fields.Add(intValue >= 0
+                        ? $"nTail{intFieldCount + 1} {intValue} @+{valueOffset}"
+                        : $"nTail{intFieldCount + 1} {intValue} (u={unchecked((uint)intValue)}) @+{valueOffset}");
+                }
+
+                offset += sizeof(int);
+                intFieldCount++;
+            }
+
+            int shortFieldCount = 0;
+            while (leftover.Length - offset >= sizeof(short) && shortFieldCount < 8)
+            {
+                int valueOffset = offset;
+                short shortValue = BinaryPrimitives.ReadInt16LittleEndian(leftover.Slice(offset, sizeof(short)));
+                if (shortValue != 0)
+                {
+                    fields.Add(shortValue >= 0
+                        ? $"nTailS{shortFieldCount + 1} {shortValue} @+{valueOffset}"
+                        : $"nTailS{shortFieldCount + 1} {shortValue} (u={unchecked((ushort)shortValue)}) @+{valueOffset}");
+                }
+
+                offset += sizeof(short);
+                shortFieldCount++;
+            }
+
+            int byteFieldCount = 0;
+            while (leftover.Length - offset > 0 && byteFieldCount < 8)
+            {
+                int valueOffset = offset;
+                byte byteValue = leftover[offset];
+                if (byteValue != 0)
+                {
+                    fields.Add(byteFieldCount == 0
+                        ? $"nTailB {byteValue} (0x{byteValue:X2}) @+{valueOffset}"
+                        : $"nTailB{byteFieldCount + 1} {byteValue} (0x{byteValue:X2}) @+{valueOffset}");
+                }
+
+                offset++;
+                byteFieldCount++;
+            }
+
+            if (leftover.Length - offset > 0)
+            {
+                fields.Add($"tailRemainder {leftover.Length - offset}B @+{offset}");
+            }
+
+            return fields.Count == 0 ? string.Empty : $"{label} fields {string.Join(", ", fields)}";
+        }
+
+        private static bool TryFormatResidualTradePacketFileTime(long value, out string text)
+        {
+            text = string.Empty;
+            if (value <= 0)
+            {
+                return false;
+            }
+
+            try
+            {
+                DateTime utc = DateTime.FromFileTimeUtc(value);
+                if (utc.Year is < 1990 or > 2300)
+                {
+                    return false;
+                }
+
+                text = $"{value} ({utc:yyyy-MM-dd HH:mm:ss}Z)";
+                return true;
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                return false;
+            }
+        }
+
+        private static string ResolveTradePacketDisplayName(int itemId, string title, string tailMetadataSummary)
+        {
+            if (string.IsNullOrWhiteSpace(tailMetadataSummary))
+            {
+                return string.Empty;
+            }
+
+            string[] tailNameFields = { "sTailName ", "sTailName2 ", "sTailName3 " };
+            List<string> tailNameCandidates = new List<string>();
+            for (int i = 0; i < tailNameFields.Length; i++)
+            {
+                if (!TryExtractTradePacketNamedField(tailMetadataSummary, tailNameFields[i], out string tailName))
+                {
+                    continue;
+                }
+
+                string normalizedCandidate = NormalizeTradePacketFixedString(tailName, maxClientBytesIncludingTerminator: 33);
+                if (!string.IsNullOrWhiteSpace(normalizedCandidate))
+                {
+                    tailNameCandidates.Add(normalizedCandidate);
+                }
+            }
+
+            if (tailNameCandidates.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            string baseLabel = ResolveItemLabel(itemId);
+            string normalizedTitle = string.IsNullOrWhiteSpace(title) ? string.Empty : title.Trim();
+            for (int i = 0; i < tailNameCandidates.Count; i++)
+            {
+                string candidate = tailNameCandidates[i];
+                if (!string.IsNullOrWhiteSpace(baseLabel) &&
+                    string.Equals(candidate, baseLabel, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (!string.IsNullOrWhiteSpace(normalizedTitle) &&
+                    string.Equals(candidate, normalizedTitle, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                return candidate;
+            }
+
+            return string.Empty;
+        }
+
+        private static bool TryExtractTradePacketNamedField(string summary, string fieldPrefix, out string value)
+        {
+            value = string.Empty;
+            if (string.IsNullOrWhiteSpace(summary) || string.IsNullOrWhiteSpace(fieldPrefix))
+            {
+                return false;
+            }
+
+            int start = summary.IndexOf(fieldPrefix, StringComparison.Ordinal);
+            if (start < 0)
+            {
+                return false;
+            }
+
+            start += fieldPrefix.Length;
+            int end = summary.IndexOfAny(new[] { ',', '|' }, start);
+            string segment = end >= start ? summary[start..end] : summary[start..];
+            segment = segment.Trim();
+            int offsetMarkerIndex = segment.IndexOf(" @+", StringComparison.Ordinal);
+            if (offsetMarkerIndex > 0)
+            {
+                segment = segment[..offsetMarkerIndex].TrimEnd();
+            }
+
+            if (segment.Length == 0)
+            {
+                return false;
+            }
+
+            value = segment;
+            return true;
+        }
+
+        private static bool TryReadResidualTradePacketMapleString(ReadOnlySpan<byte> payload, ref int offset, out string value)
+        {
+            value = string.Empty;
+            if (payload.Length - offset < sizeof(short))
+            {
+                return false;
+            }
+
+            short length = BinaryPrimitives.ReadInt16LittleEndian(payload.Slice(offset, sizeof(short)));
+            if (length <= 0 || length > 32 || payload.Length - offset - sizeof(short) < length)
+            {
+                return false;
+            }
+
+            ReadOnlySpan<byte> textBytes = payload.Slice(offset + sizeof(short), length);
+            if (!IsResidualTradePacketAscii(textBytes))
+            {
+                return false;
+            }
+
+            value = Encoding.ASCII.GetString(textBytes).TrimEnd('\0', ' ');
+            if (value.Length == 0)
+            {
+                return false;
+            }
+
+            offset += sizeof(short) + length;
+            return true;
+        }
+
+        private static bool IsResidualTradePacketAscii(ReadOnlySpan<byte> bytes)
+        {
+            for (int i = 0; i < bytes.Length; i++)
+            {
+                byte value = bytes[i];
+                if (value == 0)
+                {
+                    continue;
+                }
+
+                if (value < 0x20 || value > 0x7E)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static string NormalizeTradePacketFixedString(string value, int maxClientBytesIncludingTerminator)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                return string.Empty;
+            }
+
+            string trimmed = value.TrimEnd('\0', ' ');
+            int maxVisibleBytes = Math.Max(0, maxClientBytesIncludingTerminator - 1);
+            if (maxVisibleBytes == 0)
+            {
+                return string.Empty;
+            }
+
+            byte[] bytes = Encoding.ASCII.GetBytes(trimmed);
+            if (bytes.Length <= maxVisibleBytes)
+            {
+                return trimmed;
+            }
+
+            return Encoding.ASCII.GetString(bytes, 0, maxVisibleBytes).TrimEnd('\0', ' ');
+        }
+
+        private static string BuildEquipTradeMetadataSummary(
+            byte remainingUpgradeCount,
+            byte upgradeCount,
+            short strength,
+            short dexterity,
+            short intelligence,
+            short luck,
+            short hp,
+            short mp,
+            short weaponAttack,
+            short magicAttack,
+            short weaponDefense,
+            short magicDefense,
+            short accuracy,
+            short avoidability,
+            short hands,
+            short speed,
+            short jump,
+            short attribute,
+            byte levelUpType,
+            byte level,
+            int experience,
+            int durability,
+            int itemUpgradeCount,
+            byte grade,
+            byte bonusUpgradeCount,
+            short option1,
+            short option2,
+            short option3,
+            short socket1,
+            short socket2,
+            long? expirationTime,
+            int? previousBonusExpRate)
+        {
+            List<string> parts = new List<string>();
+            parts.Add($"nRUC {remainingUpgradeCount}");
+            if (upgradeCount > 0)
+            {
+                parts.Add($"nCUC {upgradeCount}");
+            }
+
+            AppendStatPart(parts, "niSTR", strength);
+            AppendStatPart(parts, "niDEX", dexterity);
+            AppendStatPart(parts, "niINT", intelligence);
+            AppendStatPart(parts, "niLUK", luck);
+            AppendStatPart(parts, "niMaxHP", hp);
+            AppendStatPart(parts, "niMaxMP", mp);
+            AppendStatPart(parts, "niPAD", weaponAttack);
+            AppendStatPart(parts, "niMAD", magicAttack);
+            AppendStatPart(parts, "niPDD", weaponDefense);
+            AppendStatPart(parts, "niMDD", magicDefense);
+            AppendStatPart(parts, "niACC", accuracy);
+            AppendStatPart(parts, "niEVA", avoidability);
+            AppendStatPart(parts, "niCraft", hands);
+            AppendStatPart(parts, "niSpeed", speed);
+            AppendStatPart(parts, "niJump", jump);
+
+            AppendTradeAttributePart(parts, attribute, TradePacketAttributeKind.Equip);
+
+            if (levelUpType > 0)
+            {
+                parts.Add($"nLevelUpType {levelUpType}");
+            }
+
+            if (level > 0)
+            {
+                parts.Add($"nLevel {level}");
+            }
+
+            if (experience > 0)
+            {
+                parts.Add($"EXP {experience}");
+            }
+
+            if (durability > 0)
+            {
+                parts.Add($"nDurability {durability}");
+            }
+
+            if (itemUpgradeCount > 0)
+            {
+                parts.Add($"nIUC {itemUpgradeCount}");
+            }
+
+            if (grade > 0)
+            {
+                parts.Add($"nGrade {grade}");
+            }
+
+            if (bonusUpgradeCount > 0)
+            {
+                parts.Add($"nCHUC {bonusUpgradeCount}");
+            }
+
+            if (option1 != 0 || option2 != 0 || option3 != 0)
+            {
+                parts.Add($"nOption {option1}/{option2}/{option3}");
+            }
+
+            if (socket1 != 0 || socket2 != 0)
+            {
+                parts.Add($"nSocket {socket1}/{socket2}");
+            }
+
+            string expirationText = FormatTradePacketFileTime(expirationTime);
+            if (!string.IsNullOrWhiteSpace(expirationText))
+            {
+                parts.Add($"ftEquipped {expirationText}");
+            }
+
+            if (previousBonusExpRate.HasValue && previousBonusExpRate.Value != 0)
+            {
+                parts.Add($"nPrevBonusExpRate {previousBonusExpRate.Value}");
+            }
+
+            return string.Join(", ", parts);
+        }
+
+        private static string BuildBundleTradeMetadataSummary(short attribute, long rechargeableSerialNumber)
+        {
+            List<string> parts = new List<string>();
+            AppendTradeAttributePart(parts, attribute, TradePacketAttributeKind.Bundle);
+
+            if (rechargeableSerialNumber > 0)
+            {
+                parts.Add($"liSN {rechargeableSerialNumber}");
+            }
+
+            return string.Join(", ", parts);
+        }
+
+        private static string BuildPetTradeMetadataSummary(
+            byte level,
+            short closeness,
+            byte fullness,
+            short attribute,
+            ushort skill,
+            int remainingLife,
+            short itemAttribute,
+            long? expirationTime)
+        {
+            List<string> parts = new List<string>();
+            parts.Add($"nLevel {level}");
+            parts.Add($"nTameness {closeness}");
+            parts.Add($"nRepleteness {fullness}");
+            if (attribute != 0)
+            {
+                parts.Add($"nPetAttribute 0x{(ushort)attribute:X4}");
+            }
+
+            if (skill > 0)
+            {
+                parts.Add($"usPetSkill 0x{skill:X4}");
+            }
+
+            if (remainingLife > 0)
+            {
+                parts.Add($"nRemainLife {remainingLife}");
+            }
+
+            string expirationText = FormatTradePacketFileTime(expirationTime);
+            if (!string.IsNullOrWhiteSpace(expirationText))
+            {
+                parts.Add($"dateDead {expirationText}");
+            }
+
+            AppendTradeAttributePart(parts, itemAttribute, TradePacketAttributeKind.Pet);
+
+            return string.Join(", ", parts);
+        }
+
+        private static void AppendTradeAttributePart(
+            List<string> parts,
+            short attribute,
+            TradePacketAttributeKind kind)
+        {
+            if (attribute == 0)
+            {
+                return;
+            }
+
+            ushort rawAttribute = unchecked((ushort)attribute);
+            parts.Add($"nAttribute 0x{rawAttribute:X4}");
+            string semanticSummary = BuildTradeAttributeSemanticSummary(rawAttribute, kind);
+            if (!string.IsNullOrWhiteSpace(semanticSummary))
+            {
+                parts.Add(semanticSummary);
+            }
+        }
+
+        private static string BuildTradeAttributeSemanticSummary(ushort rawAttribute, TradePacketAttributeKind kind)
+        {
+            List<string> flags = new();
+            ushort knownMask;
+            switch (kind)
+            {
+                case TradePacketAttributeKind.Equip:
+                    knownMask = TradeAttributeProtectedFlag
+                        | TradeAttributePreventSlipFlag
+                        | TradeAttributeSupportWarmFlag
+                        | TradeAttributeBindedFlag
+                        | TradeAttributePossibleTradingFlag;
+                    if ((rawAttribute & TradeAttributeProtectedFlag) != 0)
+                    {
+                        flags.Add("protected");
+                    }
+
+                    if ((rawAttribute & TradeAttributePreventSlipFlag) != 0)
+                    {
+                        flags.Add("prevent-slip");
+                    }
+
+                    if ((rawAttribute & TradeAttributeSupportWarmFlag) != 0)
+                    {
+                        flags.Add("warm-support");
+                    }
+
+                    if ((rawAttribute & TradeAttributeBindedFlag) != 0)
+                    {
+                        flags.Add("binded");
+                    }
+
+                    if ((rawAttribute & TradeAttributePossibleTradingFlag) != 0)
+                    {
+                        flags.Add("possible-trade");
+                    }
+                    break;
+                case TradePacketAttributeKind.Bundle:
+                    knownMask = TradeAttributeProtectedFlag | TradeAttributePreventSlipFlag;
+                    if ((rawAttribute & TradeAttributeProtectedFlag) != 0)
+                    {
+                        flags.Add("protected");
+                    }
+
+                    if ((rawAttribute & TradeAttributePreventSlipFlag) != 0)
+                    {
+                        flags.Add("possible-trade");
+                    }
+                    break;
+                case TradePacketAttributeKind.Pet:
+                    knownMask = TradeAttributeProtectedFlag;
+                    if ((rawAttribute & TradeAttributeProtectedFlag) != 0)
+                    {
+                        flags.Add("possible-trade");
+                    }
+                    break;
+                default:
+                    knownMask = 0;
+                    break;
+            }
+
+            ushort unknownMask = (ushort)(rawAttribute & ~knownMask);
+            if (unknownMask != 0)
+            {
+                flags.Add($"unknown 0x{unknownMask:X4}");
+            }
+
+            return flags.Count == 0
+                ? string.Empty
+                : $"attrFlags {string.Join("/", flags)}";
+        }
+
+        private static string BuildTradeDateDetail(string label, long? fileTime)
+        {
+            string dateText = FormatTradePacketFileTime(fileTime);
+            return string.IsNullOrWhiteSpace(dateText)
+                ? string.Empty
+                : $" | {label} {dateText}";
+        }
+
+        private static int ResolveTradePacketNativeItemTypeIndex(int itemId)
+        {
+            int typeIndex = itemId / 1_000_000;
+            return typeIndex is >= 1 and <= 5 ? typeIndex : 0;
+        }
+
+        private static string FormatTradePacketFileTime(long? fileTime)
+        {
+            if (!fileTime.HasValue)
+            {
+                return null;
+            }
+
+            long value = fileTime.Value;
+            if (value <= 0 || value == long.MaxValue)
+            {
+                return null;
+            }
+
+            try
+            {
+                return DateTime.FromFileTimeUtc(value).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                return value.ToString(CultureInfo.InvariantCulture);
+            }
+        }
+
+        private static void AppendStatPart(List<string> parts, string label, short value)
+        {
+            if (value != 0)
+            {
+                parts.Add($"{label} {value:+#;-#;0}");
+            }
+        }
+
+        private static bool TryReadTradePacketMapleString(BinaryReader reader, out string value)
+        {
+            value = string.Empty;
+            Stream stream = reader.BaseStream;
+            if (stream.Length - stream.Position < sizeof(short))
+            {
+                return false;
+            }
+
+            short length = reader.ReadInt16();
+            if (length < 0 || stream.Length - stream.Position < length)
+            {
+                return false;
+            }
+
+            value = Encoding.ASCII.GetString(reader.ReadBytes(length)).TrimEnd('\0', ' ');
+            return true;
+        }
+
+        internal readonly record struct TradingRoomDecodedItemSnapshot(
+            byte SlotType,
+            int ItemId,
+            int Quantity,
+            InventoryType InventoryType,
+            bool HasCashSerialNumber,
+            long ItemSerialNumber,
+            long CashSerialNumber,
+            long? BaseExpirationTime,
+            int NativeItemTypeIndex,
+            string Title,
+            string PacketDisplayName,
+            string MetadataSummary,
+            string TailMetadataSummary,
+            long? NonCashSerialNumber,
+            long? ExpirationTime,
+            int? TailValue,
+            int DecodedBodyByteLength,
+            int ResidualTailByteLength,
+            string DetailSummary);
+
+        internal static bool TryDecodeTradingRoomItemForTest(byte[] payload, out TradingRoomDecodedItemSnapshot snapshot, out string error)
+        {
+            snapshot = default;
+            error = null;
+            if (payload == null || payload.Length == 0)
+            {
+                error = "Trading-room item payload is empty.";
+                return false;
+            }
+
+            if (!TryDecodePacketOwnedTradeItem(payload, out PacketOwnedTradeItem item, out error))
+            {
+                return false;
+            }
+
+            snapshot = new TradingRoomDecodedItemSnapshot(
+                item.SlotType,
+                item.ItemId,
+                item.Quantity,
+                item.InventoryType,
+                item.HasCashSerialNumber,
+                item.ItemSerialNumber,
+                item.CashSerialNumber,
+                item.BaseExpirationTime,
+                item.NativeItemTypeIndex,
+                item.Title,
+                item.PacketDisplayName,
+                item.MetadataSummary,
+                item.TailMetadataSummary,
+                item.NonCashSerialNumber,
+                item.ExpirationTime,
+                item.TailValue,
+                item.DecodedBodyByteLength,
+                item.ResidualTailByteLength,
+                BuildTradingRoomPacketItemDetail("Owner", 1, item));
+            return true;
+        }
+
+        private string ResolveTradeOwnerName(int traderIndex)
+        {
+            return traderIndex == 0 ? OwnerName : ResolveRemoteTraderName();
+        }
+
+        private bool TryDispatchMiniRoomBasePacket(PacketReader reader, int tickCount, out string message)
+        {
+            message = null;
+            byte packetSubType = reader.ReadByte();
+            switch (packetSubType)
+            {
+                case MiniRoomBaseInvitePacketSubType:
+                    return TryApplyMiniRoomBaseInvitePacket(reader, out message);
+                case MiniRoomBaseInviteResultPacketSubType:
+                    return TryApplyMiniRoomBaseInviteResultPacket(reader, out message);
+                case MiniRoomBaseEnterPacketSubType:
+                    return TryApplyMiniRoomBaseEnterPacket(reader, out message);
+                case MiniRoomBaseEnterResultPacketSubType:
+                    return TryApplyMiniRoomBaseEnterResultPacket(reader, out message);
+                case MiniRoomBaseUpdatePacketSubType:
+                    return TryDispatchMiniRoomBaseTypeSpecificPacket(reader, tickCount, out message);
+                case MiniRoomBaseChatPacketSubType:
+                case MiniRoomBaseChatAltPacketSubType:
+                    return TryApplyMiniRoomBaseChatPacket(packetSubType, reader, out message);
+                case MiniRoomBaseAvatarPacketSubType:
+                    return TryApplyMiniRoomBaseAvatarPacket(reader, out message);
+                case MiniRoomBaseLeavePacketSubType:
+                    return TryApplyMiniRoomBaseLeavePacket(reader, out message);
+                case MiniRoomBaseCheckSsnPacketSubType:
+                    return TryApplyMiniRoomBaseCheckSsnPacket(reader, out message);
+                default:
+                    return TryDispatchMiniRoomBaseDefaultLiveInstancePacket(packetSubType, reader, tickCount, out message);
+            }
+        }
+
+        private bool TryDispatchMiniRoomBaseDefaultLiveInstancePacket(byte packetSubType, PacketReader reader, int tickCount, out string message)
+        {
+            byte[] forwardedPayload = new byte[1 + Math.Max(0, reader?.Remaining ?? 0)];
+            forwardedPayload[0] = packetSubType;
+            if (reader != null && reader.Remaining > 0)
+            {
+                byte[] remaining = reader.ReadBytes(reader.Remaining);
+                Buffer.BlockCopy(remaining, 0, forwardedPayload, 1, remaining.Length);
+            }
+
+            if (Kind is SocialRoomKind.PersonalShop or SocialRoomKind.EntrustedShop or SocialRoomKind.TradingRoom)
+            {
+                PacketReader forwardedReader = new(forwardedPayload);
+                byte forwardedPacketType = forwardedReader.ReadByte();
+                string ownerName = _shopDialogPacketOwner?.OwnerName ?? "room-specific owner";
+                string ownerMessage = string.Empty;
+                bool handled = _shopDialogPacketOwner?.TryDispatch(forwardedPayload, forwardedReader, forwardedPacketType, tickCount, out ownerMessage) == true;
+                message = handled
+                    ? $"CMiniRoomBaseDlg::OnPacketBase default live-instance branch forwarded subtype {packetSubType} into {ownerName}. {ownerMessage}"
+                    : $"CMiniRoomBaseDlg::OnPacketBase default live-instance branch forwarded subtype {packetSubType} into {ownerName}, but the room-specific owner did not model it. {ownerMessage}";
+                return handled;
+            }
+
+            if (Kind == SocialRoomKind.MiniRoom)
+            {
+                PacketReader forwardedReader = new(forwardedPayload);
+                byte forwardedPacketType = forwardedReader.ReadByte();
+                bool handled = TryDispatchMiniRoomPacket(forwardedReader, forwardedPacketType, tickCount, out string ownerMessage);
+                message = handled
+                    ? $"CMiniRoomBaseDlg::OnPacketBase default live-instance branch forwarded subtype {packetSubType} into CMiniRoomBaseDlg-derived OnPacket. {ownerMessage}"
+                    : $"CMiniRoomBaseDlg::OnPacketBase default live-instance branch forwarded subtype {packetSubType} into CMiniRoomBaseDlg-derived OnPacket, but it was not modeled. {ownerMessage}";
+                return handled;
+            }
+
+            message = $"Mini-room base packet subtype {packetSubType} is not modeled for this room.";
+            return false;
+        }
+
+        private bool TryApplyMiniRoomBaseInvitePacket(PacketReader reader, out string message)
+        {
+            int roomType = reader.ReadByte();
+            string inviterName = NormalizeName(reader.ReadMapleString());
+            int invitationSerial = reader.ReadInt();
+            RoomState = "Invite received";
+            StatusMessage = $"{inviterName} sent a {ResolveMiniRoomTypeLabel(roomType)} invite (serial {invitationSerial}) through CMiniRoomBaseDlg::OnInviteStatic.";
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        private bool TryApplyMiniRoomBaseChatPacket(byte packetSubType, PacketReader reader, out string message)
+        {
+            int chatMode = reader.ReadByte();
+            if (chatMode == 7)
+            {
+                return TryApplyMiniRoomBaseGameMessagePacket(packetSubType, reader, out message);
+            }
+
+            if (!TryDecodeMiniRoomBaseSpeakerChatPacket(reader, chatMode, out int seatIndex, out string text, out bool clientShaped))
+            {
+                message = $"Mini-room base chat subtype {packetSubType} did not include a decodable room-chat line.";
+                return false;
+            }
+
+            return TryApplyMiniRoomBaseSpeakerChatPacket(packetSubType, chatMode, seatIndex, text, clientShaped, out message);
+        }
+
+        private bool TryApplyMiniRoomBaseGameMessagePacket(byte packetSubType, PacketReader reader, out string message)
+        {
+            int messageCode = reader.ReadByte();
+            string characterName = NormalizeName(reader.ReadMapleString());
+            int? stringPoolId = ResolveMiniRoomGameMessageStringPoolId(messageCode);
+            string chatText = ResolveMiniRoomBaseGameMessageText(messageCode, characterName, stringPoolId);
+            AppendSocialRoomChatEntry(chatText, SocialRoomChatTone.System, persistState: false);
+            if (!string.IsNullOrWhiteSpace(chatText))
+            {
+                NotifySocialChatObserved(chatText);
+            }
+
+            RoomState = "Chat update";
+            StatusMessage = stringPoolId.HasValue
+                ? $"CMiniRoomBaseDlg::OnChat applied shared base subtype {packetSubType} game message code {messageCode} through StringPool id 0x{stringPoolId.Value:X}."
+                : $"CMiniRoomBaseDlg::OnChat applied shared base subtype {packetSubType} game message code {messageCode} without a recovered StringPool id.";
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        private static bool TryDecodeMiniRoomBaseSpeakerChatPacket(
+            PacketReader reader,
+            int chatMode,
+            out int seatIndex,
+            out string text,
+            out bool clientShaped)
+        {
+            seatIndex = Math.Max(0, chatMode);
+            text = null;
+            clientShaped = false;
+            int payloadStart = reader.Position;
+
+            if (reader.Remaining >= sizeof(byte) + sizeof(short))
+            {
+                int candidateSeatIndex = reader.ReadByte();
+                if (TryReadExactMiniRoomBaseChatString(reader, out text))
+                {
+                    seatIndex = Math.Max(0, candidateSeatIndex);
+                    clientShaped = true;
+                    return true;
+                }
+
+                reader.Reset(payloadStart);
+            }
+
+            if (TryReadExactMiniRoomBaseChatString(reader, out text))
+            {
+                return true;
+            }
+
+            reader.Reset(payloadStart);
+            return false;
+        }
+
+        private static bool TryReadExactMiniRoomBaseChatString(PacketReader reader, out string text)
+        {
+            text = null;
+            int start = reader.Position;
+            if (reader.Remaining < sizeof(short))
+            {
+                return false;
+            }
+
+            short length = reader.ReadShort();
+            if (length < 0 || reader.Remaining < length)
+            {
+                reader.Reset(start);
+                return false;
+            }
+
+            text = reader.ReadString(length)?.Trim();
+            if (reader.Remaining != 0)
+            {
+                reader.Reset(start);
+                text = null;
+                return false;
+            }
+
+            return true;
+        }
+
+        private bool TryApplyMiniRoomBaseSpeakerChatPacket(
+            byte packetSubType,
+            int chatMode,
+            int seatIndex,
+            string text,
+            bool clientShaped,
+            out string message)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                message = $"Mini-room base chat subtype {packetSubType} did not include a room-chat line.";
+                return false;
+            }
+
+            AppendSocialRoomChatEntry(text, ResolveMiniRoomBaseSpeakerChatTone(seatIndex), persistState: false);
+            string observedText = ExtractObservedChatMessage(text);
+            if (!string.IsNullOrWhiteSpace(observedText))
+            {
+                NotifySocialChatObserved(observedText);
+            }
+
+            RoomState = "Chat update";
+            StatusMessage = clientShaped
+                ? $"CMiniRoomBaseDlg::OnChat appended shared base subtype {packetSubType} room chat from seat {Math.Max(0, seatIndex)} after decoding client chat mode {chatMode}."
+                : $"CMiniRoomBaseDlg::OnChat appended shared base subtype {packetSubType} room chat from seat {Math.Max(0, seatIndex)}.";
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        private bool TryApplyMiniRoomBaseInviteResultPacket(PacketReader reader, out string message)
+        {
+            int resultCode = reader.ReadByte();
+            string targetName = resultCode is 2 or 3 or 4
+                ? NormalizeName(reader.ReadMapleString())
+                : null;
+
+            RoomState = "Invite result";
+            StatusMessage = resultCode switch
+            {
+                1 => "Mini-room invite result code 1 followed the client status-bar branch for StringPool id 0x17B.",
+                2 => $"{targetName} followed the client invite-result branch for StringPool id 0x1A2.",
+                3 => $"{targetName} followed the client invite-result branch for StringPool id 0x1A3.",
+                4 => $"{targetName} followed the client invite-result branch for StringPool id 0x1A4.",
+                _ => $"Mini-room invite result code {resultCode} reached the shared invite-result seam without a named client notice branch."
+            };
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        private bool TryApplyMiniRoomBaseEnterResultPacket(PacketReader reader, out string message)
+        {
+            switch (Kind)
+            {
+                case SocialRoomKind.PersonalShop:
+                    return TryApplyPersonalShopEnterResultPacket(reader, out message);
+                case SocialRoomKind.EntrustedShop:
+                    return TryApplyEntrustedShopEnterResultPacket(reader, out message);
+                default:
+                    if (!TryDecodeMiniRoomBaseEnterResultPayload(reader, out MiniRoomBaseEnterResultPayload payload, out message))
+                    {
+                        return false;
+                    }
+
+                    ApplyGenericMiniRoomBaseEnterResultStatus(payload);
+                    message = StatusMessage;
+                    return true;
+            }
+        }
+
+        private bool TryApplyPersonalShopEnterResultPacket(PacketReader reader, out string message)
+        {
+            string title = reader.ReadMapleString();
+            int itemMaxCount = reader.ReadByte();
+            if (!TryDecodeMiniRoomBaseEnterResultPayload(reader, out MiniRoomBaseEnterResultPayload payload, out message))
+            {
+                return false;
+            }
+
+            RoomTitle = string.IsNullOrWhiteSpace(title) ? RoomTitle : title.Trim();
+            _miniRoomLocalSeatIndex = Math.Max(0, payload.MyPosition);
+            EnsureMerchantPacketNotes();
+            _notes[0] = $"CPersonalShopDlg::OnEnterResult refreshed the room title to '{RoomTitle}' with client item cap {Math.Max(0, itemMaxCount)}.";
+            if (payload.RoomType <= 0)
+            {
+                RoomState = "Enter result";
+                StatusMessage = $"CPersonalShopDlg::OnEnterResult refreshed title '{RoomTitle}' and item cap {Math.Max(0, itemMaxCount)}, then followed the shared client result branch for room type {payload.RoomType}. {ResolveMiniRoomEnterResultStatusMessage(payload.ResultCode)}";
+            }
+            else
+            {
+                RoomState = "Visitor update";
+                ModeName = payload.MyPosition == 0 ? "Open shop" : "Browsing";
+                StatusMessage = $"CPersonalShopDlg::OnEnterResult refreshed title '{RoomTitle}', item cap {Math.Max(0, itemMaxCount)}, and synchronized {payload.OccupantCount} occupant entr{(payload.OccupantCount == 1 ? "y" : "ies")} for {ResolveMiniRoomTypeLabel(payload.RoomType)}. Local seat {Math.Max(0, payload.MyPosition)} with client max-users {Math.Max(0, payload.MaxUsers)}.";
+            }
+
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        private bool TryApplyEntrustedShopEnterResultPacket(PacketReader reader, out string message)
+        {
+            int chatCount = reader.ReadShort();
+            List<SocialRoomChatEntry> decodedChatEntries = new();
+            for (int i = 0; i < Math.Max(0, chatCount); i++)
+            {
+                decodedChatEntries.Add(DecodeEntrustedShopEnterChatEntry(reader));
+            }
+
+            string employerName = NormalizeName(reader.ReadMapleString());
+            int branchStart = reader.Position;
+            MiniRoomBaseEnterResultPayload payload = default;
+            string title = null;
+            int itemMaxCount = 0;
+            string ownerPayloadError = null;
+            string ownerDecodeError = null;
+            bool decodedOwnerLedger = TryDecodeEntrustedShopOwnerEnterLedger(
+                    reader,
+                    out int permitData,
+                    out bool soldDialogVisible,
+                    out List<SocialRoomSoldItemEntry> soldItems,
+                    out long totalReceived,
+                    out ownerDecodeError)
+                && TryDecodeEntrustedShopTitleAndBasePayload(
+                    reader,
+                    out title,
+                    out itemMaxCount,
+                    out payload,
+                    out ownerPayloadError);
+
+            if (!decodedOwnerLedger)
+            {
+                reader.Reset(branchStart);
+                if (!TryDecodeEntrustedShopTitleAndBasePayload(reader, out title, out itemMaxCount, out payload, out message))
+                {
+                    message = ownerDecodeError ?? ownerPayloadError ?? message;
+                    return false;
+                }
+
+                permitData = 0;
+                soldDialogVisible = false;
+                soldItems = null;
+                totalReceived = 0;
+            }
+
+            if (!string.IsNullOrWhiteSpace(employerName))
+            {
+                OwnerName = employerName;
+            }
+
+            _chatEntries.Clear();
+            foreach (SocialRoomChatEntry entry in decodedChatEntries)
+            {
+                AppendSocialRoomChatEntry(entry.Text, entry.Tone, persistState: false);
+            }
+
+            NotifyPacketOwnedChatHistoryObserved(decodedChatEntries);
+
+            if (decodedOwnerLedger)
+            {
+                _soldItems.Clear();
+                _soldItems.AddRange(soldItems);
+            }
+
+            RoomTitle = string.IsNullOrWhiteSpace(title) ? RoomTitle : title.Trim();
+            _miniRoomLocalSeatIndex = Math.Max(0, payload.MyPosition);
+            ResetEntrustedChildDialogStateForEnterResult(payload.MyPosition, decodedOwnerLedger, soldDialogVisible);
+
+            EnsureMerchantPacketNotes();
+            _notes[0] = decodedChatEntries.Count > 0
+                ? $"Entrusted-shop enter-result restored {decodedChatEntries.Count} packet-owned chat entr{(decodedChatEntries.Count == 1 ? "y" : "ies")}."
+                : "Entrusted-shop enter-result restored an empty packet-owned chat history.";
+            _notes[1] = string.IsNullOrWhiteSpace(employerName)
+                ? $"Entrusted-shop enter-result refreshed title '{RoomTitle}'."
+                : $"Entrusted-shop employer '{employerName}' refreshed title '{RoomTitle}'.";
+            if (decodedOwnerLedger)
+            {
+                _notes[2] = _soldItems.Count > 0
+                    ? $"Entrusted-shop owner ledger restored {_soldItems.Count} sold entr{(_soldItems.Count == 1 ? "y" : "ies")} with total received {Math.Max(0L, totalReceived):N0} meso."
+                    : $"Entrusted-shop owner ledger restored an empty sold list with total received {Math.Max(0L, totalReceived):N0} meso.";
+                _notes[3] = $"Entrusted-shop owner enter-result kept permit field {permitData} and {(soldDialogVisible ? "opened" : "suppressed")} the sold-item dialog.";
+            }
+            else
+            {
+                _notes[2] = "Entrusted-shop visitor enter-result did not include the owner-only sold ledger preamble.";
+                _notes[3] = $"Entrusted-shop enter-result refreshed the client item cap to {Math.Max(0, itemMaxCount)}.";
+            }
+
+            if (payload.RoomType <= 0)
+            {
+                RoomState = "Enter result";
+                StatusMessage = decodedOwnerLedger
+                    ? $"CEntrustedShopDlg::OnEnterResult restored employer '{OwnerName}', title '{RoomTitle}', {_soldItems.Count} sold entr{(_soldItems.Count == 1 ? "y" : "ies")}, and {decodedChatEntries.Count} chat entr{(decodedChatEntries.Count == 1 ? "y" : "ies")} before following the shared client result branch for room type {payload.RoomType}. {ResolveMiniRoomEnterResultStatusMessage(payload.ResultCode)}"
+                    : $"CEntrustedShopDlg::OnEnterResult restored employer '{OwnerName}', title '{RoomTitle}', and {decodedChatEntries.Count} chat entr{(decodedChatEntries.Count == 1 ? "y" : "ies")} before following the shared client result branch for room type {payload.RoomType}. {ResolveMiniRoomEnterResultStatusMessage(payload.ResultCode)}";
+            }
+            else
+            {
+                if (decodedOwnerLedger)
+                {
+                    RoomState = soldDialogVisible ? "Ledger review" : "Permit active";
+                    ModeName = soldDialogVisible ? "Ledger review" : "Open shop";
+                    StatusMessage = soldDialogVisible
+                        ? $"CEntrustedShopDlg::OnEnterResult restored employer '{OwnerName}', title '{RoomTitle}', {_soldItems.Count} sold entr{(_soldItems.Count == 1 ? "y" : "ies")}, total received {Math.Max(0L, totalReceived):N0} meso, opened the sold-item ledger, and synchronized {payload.OccupantCount} occupant entr{(payload.OccupantCount == 1 ? "y" : "ies")} for {ResolveMiniRoomTypeLabel(payload.RoomType)}. Local seat {Math.Max(0, payload.MyPosition)} with client max-users {Math.Max(0, payload.MaxUsers)}."
+                        : $"CEntrustedShopDlg::OnEnterResult restored employer '{OwnerName}', title '{RoomTitle}', {_soldItems.Count} sold entr{(_soldItems.Count == 1 ? "y" : "ies")}, total received {Math.Max(0L, totalReceived):N0} meso, reopened the live entrusted shop, and synchronized {payload.OccupantCount} occupant entr{(payload.OccupantCount == 1 ? "y" : "ies")} for {ResolveMiniRoomTypeLabel(payload.RoomType)}. Local seat {Math.Max(0, payload.MyPosition)} with client max-users {Math.Max(0, payload.MaxUsers)}.";
+                }
+                else
+                {
+                    RoomState = "Ledger review";
+                    ModeName = "Open shop";
+                    StatusMessage = $"CEntrustedShopDlg::OnEnterResult restored employer '{OwnerName}', title '{RoomTitle}', and synchronized {payload.OccupantCount} occupant entr{(payload.OccupantCount == 1 ? "y" : "ies")} for {ResolveMiniRoomTypeLabel(payload.RoomType)}. Local seat {Math.Max(0, payload.MyPosition)} with client max-users {Math.Max(0, payload.MaxUsers)}.";
+                }
+            }
+
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        private void ResetEntrustedChildDialogStateForEnterResult(int localSeatIndex, bool decodedOwnerLedger, bool soldDialogVisible)
+        {
+            _entrustedChildDialogKind = null;
+            _entrustedPendingChildDialogKind = null;
+            _entrustedVisitListSelectedIndex = -1;
+            _entrustedBlacklistSelectedIndex = -1;
+            _entrustedBlacklistPromptRequest = null;
+            _entrustedBlacklistNotice = null;
+
+            if (localSeatIndex == 0)
+            {
+                _entrustedChildDialogStatus = decodedOwnerLedger && soldDialogVisible
+                    ? "CEntrustedShopDlg::OnEnterResult refreshed the owner shell and left visit-list or blacklist child owners closed while the sold-item ledger branch is active."
+                    : "CEntrustedShopDlg::OnEnterResult refreshed the owner shell and re-armed visit-list or blacklist access on the parent entrusted-shop dialog.";
+                return;
+            }
+
+            _entrustedChildDialogStatus = "CEntrustedShopDlg::OnEnterResult refreshed the visitor shell and cleared owner-only visit-list or blacklist child owners.";
+        }
+
+        private bool TryDecodeEntrustedShopTitleAndBasePayload(
+            PacketReader reader,
+            out string title,
+            out int itemMaxCount,
+            out MiniRoomBaseEnterResultPayload payload,
+            out string message)
+        {
+            title = reader.ReadMapleString();
+            itemMaxCount = reader.ReadByte();
+            return TryDecodeMiniRoomBaseEnterResultPayload(reader, out payload, out message);
+        }
+
+        private SocialRoomChatEntry DecodeEntrustedShopEnterChatEntry(PacketReader reader)
+        {
+            string rawText = reader.ReadMapleString();
+            byte toneByte = reader.ReadByte();
+            return new SocialRoomChatEntry(
+                NormalizeEntrustedShopEnterChatText(rawText),
+                ResolveEntrustedShopEnterChatTone(toneByte));
+        }
+
+        private static string NormalizeEntrustedShopEnterChatText(string rawText)
+        {
+            const string ChatDelimiter = " : ";
+
+            string normalized = string.IsNullOrWhiteSpace(rawText) ? string.Empty : rawText.Trim();
+            int delimiterIndex = normalized.IndexOf(ChatDelimiter, StringComparison.Ordinal);
+            if (delimiterIndex < 0)
+            {
+                return normalized;
+            }
+
+            string speaker = normalized[..delimiterIndex].Trim();
+            string message = normalized[(delimiterIndex + ChatDelimiter.Length)..].Trim();
+            if (speaker.Length == 0 || message.Length == 0)
+            {
+                return normalized;
+            }
+
+            return $"{speaker}{ChatDelimiter}{message}";
+        }
+
+        private static SocialRoomChatTone ResolveEntrustedShopEnterChatTone(byte toneByte)
+        {
+            return toneByte switch
+            {
+                1 => SocialRoomChatTone.LocalSpeaker,
+                2 => SocialRoomChatTone.Warning,
+                3 => SocialRoomChatTone.System,
+                _ => SocialRoomChatTone.Neutral
+            };
+        }
+
+        private bool TryDecodeMiniRoomBaseEnterResultPayload(PacketReader reader, out MiniRoomBaseEnterResultPayload payload, out string message)
+        {
+            int roomType = reader.ReadByte();
+            if (roomType <= 0)
+            {
+                payload = new MiniRoomBaseEnterResultPayload(roomType, reader.ReadByte(), 0, 0, 0);
+                message = null;
+                return true;
+            }
+
+            int maxUsers = reader.ReadByte();
+            int myPosition = reader.ReadByte();
+            _occupants.Clear();
+            _savedVisitors.Clear();
+
+            int occupantCount = 0;
+            while (true)
+            {
+                int seatIndex = (sbyte)reader.ReadByte();
+                if (seatIndex < 0)
+                {
+                    break;
+                }
+
+                if (RequiresMerchantSeatBaseStub(seatIndex))
+                {
+                    int merchantId = reader.ReadInt();
+                    string merchantName = NormalizeName(reader.ReadMapleString());
+                    ApplyMiniRoomBaseEnterResultMerchantSeat(seatIndex, merchantId, merchantName);
+                    occupantCount++;
+                    continue;
+                }
+
+                if (!TryReadPacketOwnedAvatarLook(reader, out LoginAvatarLook avatarLook, out string error))
+                {
+                    payload = default;
+                    message = error;
+                    return false;
+                }
+
+                string occupantName = NormalizeName(reader.ReadMapleString());
+                int jobCode = reader.ReadShort();
+                ApplyMiniRoomBaseEnterResultSeat(seatIndex, occupantName, jobCode, avatarLook);
+                occupantCount++;
+            }
+
+            payload = new MiniRoomBaseEnterResultPayload(roomType, 0, maxUsers, myPosition, occupantCount);
+            message = null;
+            return true;
+        }
+
+        private void ApplyGenericMiniRoomBaseEnterResultStatus(MiniRoomBaseEnterResultPayload payload)
+        {
+            _miniRoomLocalSeatIndex = Math.Max(0, payload.MyPosition);
+            if (payload.RoomType <= 0)
+            {
+                RoomState = "Enter result";
+                StatusMessage = ResolveMiniRoomEnterResultStatusMessage(payload.ResultCode);
+            }
+            else
+            {
+                RoomState = Kind == SocialRoomKind.MiniRoom ? "Enter result" : "Visitor update";
+                StatusMessage = $"Mini-room enter-result synchronized {payload.OccupantCount} occupant entr{(payload.OccupantCount == 1 ? "y" : "ies")} for {ResolveMiniRoomTypeLabel(payload.RoomType)}. Local seat {Math.Max(0, payload.MyPosition)} with client max-users {Math.Max(0, payload.MaxUsers)}.";
+            }
+
+            PersistState();
+        }
+
+        private string ResolveMiniRoomEnterResultStatusMessage(int resultCode)
+        {
+            return resultCode switch
+            {
+                1 => "Mini-room enter result code 1 followed the client notice branch for StringPool id 0x199.",
+                2 => "Mini-room enter result code 2 followed the client notice branch for StringPool id 0x19A.",
+                3 => "Mini-room enter result code 3 followed the client notice branch for StringPool id 0x19B.",
+                4 => "Mini-room enter result code 4 followed the client notice branch for StringPool id 0x19C.",
+                5 => "Mini-room enter result code 5 followed the client notice branch for StringPool id 0x19D.",
+                6 => "Mini-room enter result code 6 followed the client notice branch for StringPool id 0x19E.",
+                7 => "Mini-room enter result code 7 followed the client notice branch for StringPool id 0x19F.",
+                9 => "Mini-room enter result code 9 followed the client notice branch for StringPool id 0x1A1.",
+                10 => "Mini-room enter result code 10 followed the client notice branch for StringPool id 0xDB5.",
+                11 => "Mini-room enter result code 11 followed the client notice branch for StringPool id 0x1C1.",
+                12 => "Mini-room enter result code 12 followed the client notice branch for StringPool id 0x14A2.",
+                13 => "Mini-room enter result code 13 followed the client notice branch for StringPool id 0x1A0.",
+                14 => "Mini-room enter result code 14 followed the client notice branch for StringPool id 0x1C1.",
+                15 => "Mini-room enter result code 15 followed the client notice branch for StringPool id 0x1C2.",
+                16 => "Mini-room enter result code 16 followed the client notice branch for StringPool id 0x1C3.",
+                17 => "Mini-room enter result code 17 followed the client notice branch for StringPool id 0x1BB.",
+                18 => "Mini-room enter result code 18 followed the client notice branch for StringPool id 0xDAE.",
+                19 => "Mini-room enter result code 19 followed the client notice branch for StringPool id 0x1E7.",
+                20 => "Mini-room enter result code 20 followed the client notice branch for StringPool id 0x19F.",
+                21 => "Mini-room enter result code 21 followed the client notice branch for StringPool id 0x1C0.",
+                22 => "Mini-room enter result code 22 followed the client notice branch for StringPool id 0x1A68.",
+                24 => "Mini-room enter result code 24 followed the client notice branch for StringPool id 0x14DB.",
+                25 => "Mini-room enter result code 25 followed the client notice branch for StringPool id 0x116.",
+                _ => $"Mini-room enter result code {resultCode} reached the shared enter-result seam without a named client notice branch."
+            };
+        }
+
+        private static int? ResolveMiniRoomGameMessageStringPoolId(int messageCode)
+        {
+            return messageCode switch
+            {
+                0 => 0x1C8,
+                1 => 0x1CD,
+                2 => 0x1CA,
+                3 => 0x1CB,
+                4 => 0x1C5,
+                5 => 0x1C6,
+                6 => 0x1C7,
+                7 => 0x1C4,
+                8 => 0x1CF,
+                9 => 0x1CE,
+                101 => 0x1D2,
+                102 => 0x1D0,
+                103 => 0x1D1,
+                _ => null
+            };
+        }
+
+        private static string ResolveMiniRoomBaseGameMessageText(int messageCode, string characterName, int? stringPoolId)
+        {
+            string trimmedName = string.IsNullOrWhiteSpace(characterName) ? "Unknown" : characterName.Trim();
+            return messageCode switch
+            {
+                101 or 102 or 103 => stringPoolId.HasValue
+                    ? $"CMiniRoomBaseDlg::MakeGameMessage code {messageCode} followed StringPool id 0x{stringPoolId.Value:X}."
+                    : $"CMiniRoomBaseDlg::MakeGameMessage code {messageCode} reached an unmapped shared chat branch.",
+                _ => stringPoolId.HasValue
+                    ? $"{trimmedName} triggered CMiniRoomBaseDlg::MakeGameMessage code {messageCode} (StringPool id 0x{stringPoolId.Value:X})."
+                    : $"{trimmedName} triggered CMiniRoomBaseDlg::MakeGameMessage code {messageCode} without a recovered StringPool id."
+            };
+        }
+
+        private SocialRoomChatTone ResolveMiniRoomBaseSpeakerChatTone(int seatIndex)
+        {
+            if (Kind is SocialRoomKind.PersonalShop or SocialRoomKind.EntrustedShop)
+            {
+                return seatIndex == _miniRoomLocalSeatIndex
+                    ? SocialRoomChatTone.LocalSpeaker
+                    : SocialRoomChatTone.RemoteSpeaker;
+            }
+
+            if (seatIndex <= 0)
+            {
+                return SocialRoomChatTone.LocalSpeaker;
+            }
+
+            return Kind == SocialRoomKind.MiniRoom
+                ? SocialRoomChatTone.RemoteSpeaker
+                : SocialRoomChatTone.Neutral;
+        }
+
+        private static string ExtractObservedChatMessage(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return null;
+            }
+
+            int separatorIndex = text.IndexOf(" : ", StringComparison.Ordinal);
+            return separatorIndex >= 0 && separatorIndex + 3 < text.Length
+                ? text[(separatorIndex + 3)..].Trim()
+                : text.Trim();
+        }
+
+        private bool TryDecodeEntrustedShopOwnerEnterLedger(
+            PacketReader reader,
+            out int permitData,
+            out bool soldDialogVisible,
+            out List<SocialRoomSoldItemEntry> soldItems,
+            out long totalReceived,
+            out string message)
+        {
+            permitData = reader.ReadInt();
+            soldDialogVisible = reader.ReadByte() != 0;
+            if (!TryDecodeEntrustedSoldItemList(reader, out soldItems, out totalReceived, out message))
+            {
+                return false;
+            }
+
+            message = null;
+            return true;
+        }
+
+        private bool TryDecodeEntrustedSoldItemList(PacketReader reader, out List<SocialRoomSoldItemEntry> soldItems, out long totalReceived, out string message)
+        {
+            soldItems = new List<SocialRoomSoldItemEntry>();
+            int count = reader.ReadByte();
+            for (int i = 0; i < count; i++)
+            {
+                int itemId = reader.ReadInt();
+                int quantitySold = Math.Max((short) 1, reader.ReadShort());
+                int grossMeso = Math.Max(0, reader.ReadInt());
+                string buyerName = NormalizeName(reader.ReadMapleString());
+                int taxMeso = GetPersonalShopTax(grossMeso);
+                int netMeso = Math.Max(0, grossMeso - taxMeso);
+                soldItems.Add(new SocialRoomSoldItemEntry(
+                    itemId,
+                    ResolveItemName(itemId),
+                    buyerName,
+                    quantitySold,
+                    1,
+                    grossMeso,
+                    grossMeso,
+                    taxMeso,
+                    netMeso,
+                    i));
+            }
+
+            totalReceived = Math.Max(0L, reader.ReadLong());
+            message = null;
+            return true;
+        }
+
+        private bool TryApplyMiniRoomBaseCheckSsnPacket(PacketReader reader, out string message)
+        {
+            int checkType = reader.ReadByte();
+            int roomType = reader.ReadByte();
+            bool hasStoredPassword = reader.ReadByte() != 0;
+            RoomState = "SSN check";
+            StatusMessage = $"Mini-room base SSN-check packet reached the shared dialog seam for {ResolveMiniRoomTypeLabel(roomType)} (checkType={checkType}, hasStoredPassword={hasStoredPassword.ToString().ToLowerInvariant()}).";
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        private bool ApplyMiniRoomBaseStaticMessage(string statusMessage, out string message)
+        {
+            RoomState = Kind == SocialRoomKind.MiniRoom ? "MiniRoomBase" : "Shop base";
+            StatusMessage = statusMessage;
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        private bool TryDispatchMiniRoomBaseTypeSpecificPacket(PacketReader reader, int tickCount, out string message)
+        {
+            message = null;
+            if (reader == null)
+            {
+                message = "Mini-room base update packet did not include a readable payload.";
+                return false;
+            }
+
+            byte[] nestedPayload = reader.ReadBytes(reader.Remaining);
+            if (nestedPayload.Length == 0)
+            {
+                message = "Mini-room base update packet did not include a nested room payload.";
+                return false;
+            }
+
+            if (Kind is SocialRoomKind.PersonalShop or SocialRoomKind.EntrustedShop &&
+                TryApplyMerchantShopFullRefreshPacket(
+                    nestedPayload,
+                    "CMiniRoomBaseDlg::OnPacketBase subtype 6",
+                    out string fullRefreshMessage))
+            {
+                string fullRefreshPayloadPreview = BuildPacketHexPreview(nestedPayload);
+                string fullRefreshDetail = $"CMiniRoomBaseDlg::OnPacketBase subtype 6 forwarded direct CPersonalShopDlg::OnRefresh item-array payload into {_shopDialogPacketOwner?.OwnerName ?? "CPersonalShopDlg"}. {fullRefreshMessage} | payload={fullRefreshPayloadPreview} | bytes={nestedPayload.Length}";
+                _lastPacketOwnerSummary = fullRefreshDetail;
+                message = fullRefreshDetail;
+                PersistState();
+                return true;
+            }
+
+            PacketReader nestedReader = new(nestedPayload);
+            byte nestedPacketType;
+            try
+            {
+                nestedPacketType = nestedReader.ReadByte();
+            }
+            catch (EndOfStreamException)
+            {
+                message = "Mini-room base update packet did not include a nested room packet type.";
+                return false;
+            }
+
+            if (TryDispatchMiniRoomSubtype6ContiguousStreamPayload(nestedPayload, tickCount, out MiniRoomNestedEnvelopeDispatchResult streamDispatch)
+                && streamDispatch.Handled
+                && streamDispatch.RemainingBytes == 0
+                && !streamDispatch.ForwardedPayload.SequenceEqual(nestedPayload))
+            {
+                string streamPayloadPreview = BuildPacketHexPreview(nestedPayload);
+                string streamDispatchDetail = $"CMiniRoomBaseDlg::OnPacketBase subtype 6 split {streamDispatch.EnvelopeSummary} and forwarded nested packet stream into {streamDispatch.OwnerName}. {streamDispatch.Message} | payload={streamPayloadPreview} | bytes={nestedPayload.Length}";
+                _lastPacketOwnerSummary = streamDispatchDetail;
+                message = streamDispatchDetail;
+                PersistState();
+                return true;
+            }
+
+            bool handled;
+            string ownerName;
+            if (Kind is SocialRoomKind.PersonalShop or SocialRoomKind.EntrustedShop or SocialRoomKind.TradingRoom)
+            {
+                ownerName = _shopDialogPacketOwner?.OwnerName ?? "room-specific owner";
+                handled = _shopDialogPacketOwner?.TryDispatch(nestedPayload, nestedReader, nestedPacketType, tickCount, out message) == true;
+                if (!handled && IsMiniRoomBasePacketSubType(nestedPacketType))
+                {
+                    PacketReader baseReader = new(nestedPayload);
+                    ownerName = $"{ownerName} -> CMiniRoomBaseDlg::OnPacketBase";
+                    handled = TryDispatchMiniRoomBasePacket(baseReader, tickCount, out message);
+                    nestedReader = baseReader;
+                }
+            }
+            else if (Kind == SocialRoomKind.MiniRoom)
+            {
+                ownerName = "CMiniRoomBaseDlg-derived OnPacket";
+                handled = TryDispatchMiniRoomPacket(nestedReader, nestedPacketType, tickCount, out message);
+                if (!handled && IsMiniRoomBasePacketSubType(nestedPacketType))
+                {
+                    PacketReader baseReader = new(nestedPayload);
+                    ownerName = "CMiniRoomBaseDlg::OnPacketBase";
+                    handled = TryDispatchMiniRoomBasePacket(baseReader, tickCount, out message);
+                    nestedReader = baseReader;
+                }
+            }
+            else
+            {
+                ownerName = "room-specific owner";
+                handled = false;
+                message = $"Nested packet {nestedPacketType} has no room-specific owner for {Kind}.";
+            }
+
+            string payloadPreview = BuildPacketHexPreview(nestedPayload);
+            string detail = handled
+                ? $"CMiniRoomBaseDlg::OnPacketBase subtype 6 forwarded nested packet {nestedPacketType} into {ownerName}. {message} | payload={payloadPreview} | bytes={nestedPayload.Length} | remaining={nestedReader.Remaining}"
+                : $"CMiniRoomBaseDlg::OnPacketBase subtype 6 forwarded nested packet {nestedPacketType} into {ownerName}, but it was not modeled. {message} | payload={payloadPreview} | bytes={nestedPayload.Length} | remaining={nestedReader.Remaining}";
+            if (!handled && TryDispatchMiniRoomSubtype6EnvelopePayloadRecursive(
+                nestedPayload,
+                tickCount,
+                out MiniRoomNestedEnvelopeDispatchResult envelopeDispatch))
+            {
+                string envelopePayloadPreview = BuildPacketHexPreview(envelopeDispatch.ForwardedPayload);
+                detail = envelopeDispatch.Handled
+                    ? $"CMiniRoomBaseDlg::OnPacketBase subtype 6 unwrapped {envelopeDispatch.EnvelopeSummary} and forwarded nested packet {envelopeDispatch.PacketType} into {envelopeDispatch.OwnerName}. {envelopeDispatch.Message} | payload={envelopePayloadPreview} | bytes={envelopeDispatch.ForwardedPayload.Length} | remaining={envelopeDispatch.RemainingBytes}"
+                    : $"CMiniRoomBaseDlg::OnPacketBase subtype 6 unwrapped {envelopeDispatch.EnvelopeSummary} and forwarded nested packet {envelopeDispatch.PacketType} into {envelopeDispatch.OwnerName}, but it was not modeled. {envelopeDispatch.Message} | payload={envelopePayloadPreview} | bytes={envelopeDispatch.ForwardedPayload.Length} | remaining={envelopeDispatch.RemainingBytes}";
+                handled = envelopeDispatch.Handled;
+            }
+            if (!handled)
+            {
+                detail = $"{detail} The simulator still keeps this subtype 6 payload on the dialog-owned Update branch (CMiniRoomBaseDlg::OnPacketBase case 6) even without a dedicated decoder for nested packet {nestedPacketType}.";
+                handled = true;
+            }
+
+            _lastPacketOwnerSummary = detail;
+            message = detail;
+            PersistState();
+            return handled;
+        }
+
+        private bool TryDispatchMiniRoomSubtype6EnvelopePayloadRecursive(
+            byte[] nestedPayload,
+            int tickCount,
+            out MiniRoomNestedEnvelopeDispatchResult result)
+        {
+            result = default;
+            if (nestedPayload == null || nestedPayload.Length < 2)
+            {
+                return false;
+            }
+
+            byte[] currentPayload = nestedPayload;
+            MiniRoomNestedEnvelopeDispatchResult lastResult = default;
+            List<string> envelopeSummaries = new();
+            for (int depth = 0; depth < MiniRoomSubtype6EnvelopeMaxDepth; depth++)
+            {
+                if (!TryDispatchMiniRoomBaseEnvelopePayload(currentPayload, tickCount, out MiniRoomNestedEnvelopeDispatchResult envelopeResult))
+                {
+                    break;
+                }
+
+                lastResult = envelopeResult;
+                envelopeSummaries.Add(envelopeResult.EnvelopeSummary);
+                if (envelopeResult.Handled)
+                {
+                    result = envelopeResult with
+                    {
+                        EnvelopeSummary = string.Join(" -> ", envelopeSummaries)
+                    };
+                    return true;
+                }
+
+                if (envelopeResult.ForwardedPayload == null
+                    || envelopeResult.ForwardedPayload.Length == 0
+                    || envelopeResult.ForwardedPayload.Length >= currentPayload.Length
+                    || envelopeResult.ForwardedPayload.SequenceEqual(currentPayload))
+                {
+                    result = envelopeResult with
+                    {
+                        EnvelopeSummary = string.Join(" -> ", envelopeSummaries)
+                    };
+                    return true;
+                }
+
+                currentPayload = envelopeResult.ForwardedPayload;
+            }
+
+            if (envelopeSummaries.Count == 0)
+            {
+                return false;
+            }
+
+            result = lastResult with
+            {
+                EnvelopeSummary = string.Join(" -> ", envelopeSummaries)
+            };
+            return true;
+        }
+
+        private bool TryDispatchMiniRoomBaseEnvelopePayload(
+            byte[] nestedPayload,
+            int tickCount,
+            out MiniRoomNestedEnvelopeDispatchResult result)
+        {
+            result = default;
+            if (nestedPayload == null || nestedPayload.Length < 2)
+            {
+                return false;
+            }
+
+            if (TryDispatchMiniRoomSubtype6CountedFixedStreamEnvelopePayload(nestedPayload, tickCount, out result))
+            {
+                return true;
+            }
+
+            byte oneByteRoomType = nestedPayload[0];
+            if (nestedPayload.Length >= 2 && IsMiniRoomSubtype6ForwardablePacket(nestedPayload[1]))
+            {
+                byte[] forwardedPayload = nestedPayload.Skip(1).ToArray();
+                if (TryDispatchMiniRoomSubtype6ForwardedPayload(forwardedPayload, tickCount, out result))
+                {
+                    result = result with
+                    {
+                        EnvelopeSummary = $"1-byte room-type envelope {oneByteRoomType}",
+                        ForwardedPayload = forwardedPayload
+                    };
+                    return true;
+                }
+            }
+
+            if (nestedPayload.Length >= 8 &&
+                TryReadUInt32PayloadLength(nestedPayload.AsSpan(0, sizeof(uint)), out int rawPayloadLength) &&
+                TryDispatchMiniRoomSubtype6LengthEnvelopeCandidate(
+                    nestedPayload,
+                    prefixLength: 4,
+                    payloadLength: rawPayloadLength,
+                    envelopeSummary: "len32 envelope",
+                    tickCount,
+                    out result))
+            {
+                return true;
+            }
+
+            if (nestedPayload.Length >= 5)
+            {
+                int fourByteRoomType = BinaryPrimitives.ReadInt32LittleEndian(nestedPayload.AsSpan(0, sizeof(int)));
+                byte envelopePacketType = nestedPayload[4];
+                if (IsMiniRoomSubtype6ForwardablePacket(envelopePacketType))
+                {
+                    byte[] forwardedPayload = nestedPayload.Skip(4).ToArray();
+                    if (TryDispatchMiniRoomSubtype6ForwardedPayload(forwardedPayload, tickCount, out result))
+                    {
+                        result = result with
+                        {
+                            EnvelopeSummary = $"4-byte room-type envelope {fourByteRoomType}",
+                            ForwardedPayload = forwardedPayload
+                        };
+                        return true;
+                    }
+                }
+            }
+
+            if (nestedPayload.Length >= 3)
+            {
+                ushort opcodeEnvelope = BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(0, sizeof(ushort)));
+                byte opcodePacketType = nestedPayload[2];
+                if (IsMiniRoomSubtype6ForwardablePacket(opcodePacketType))
+                {
+                    byte[] forwardedPayload = nestedPayload.Skip(2).ToArray();
+                    if (TryDispatchMiniRoomSubtype6ForwardedPayload(forwardedPayload, tickCount, out result))
+                    {
+                        result = result with
+                        {
+                            EnvelopeSummary = $"opcode-framed envelope {opcodeEnvelope}",
+                            ForwardedPayload = forwardedPayload
+                        };
+                        return true;
+                    }
+                }
+            }
+
+            if (TryDispatchMiniRoomSubtype6LengthEnvelopePayload(nestedPayload, tickCount, out result))
+            {
+                return true;
+            }
+
+            if (TryDispatchMiniRoomSubtype6CountedBatchEnvelopePayload(nestedPayload, tickCount, out result))
+            {
+                return true;
+            }
+
+            if (TryDispatchMiniRoomSubtype6CountedFixedStreamEnvelopePayload(nestedPayload, tickCount, out result))
+            {
+                return true;
+            }
+
+            if (TryDispatchMiniRoomSubtype6ContiguousStreamPayload(nestedPayload, tickCount, out result))
+            {
+                return true;
+            }
+
+            if (TryDispatchMiniRoomSubtype6RoomTypeOpcodeEnvelopePayload(nestedPayload, tickCount, out result))
+            {
+                return true;
+            }
+
+            if (TryDispatchMiniRoomSubtype6OffsetEnvelopePayload(nestedPayload, tickCount, out result))
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool TryDispatchMiniRoomSubtype6LengthEnvelopePayload(
+            byte[] nestedPayload,
+            int tickCount,
+            out MiniRoomNestedEnvelopeDispatchResult result)
+        {
+            result = default;
+            if (nestedPayload == null || nestedPayload.Length < 4)
+            {
+                return false;
+            }
+
+            if (TryDispatchMiniRoomSubtype6LengthEnvelopeCandidate(
+                nestedPayload,
+                prefixLength: 2,
+                payloadLength: nestedPayload[1],
+                envelopeSummary: $"room-type+len8 envelope roomType={nestedPayload[0]}",
+                tickCount,
+                out result))
+            {
+                return true;
+            }
+
+            if (nestedPayload.Length >= 5 &&
+                TryDispatchMiniRoomSubtype6LengthEnvelopeCandidate(
+                    nestedPayload,
+                    prefixLength: 3,
+                    payloadLength: BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(1, sizeof(ushort))),
+                    envelopeSummary: $"room-type+len16 envelope roomType={nestedPayload[0]}",
+                    tickCount,
+                    out result))
+            {
+                return true;
+            }
+
+            if (nestedPayload.Length >= 5 &&
+                TryDispatchMiniRoomSubtype6LengthEnvelopeCandidate(
+                    nestedPayload,
+                    prefixLength: 3,
+                    payloadLength: nestedPayload[2],
+                    envelopeSummary: $"opcode+len8 envelope opcode={BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(0, sizeof(ushort)))}",
+                    tickCount,
+                    out result))
+            {
+                return true;
+            }
+
+            if (nestedPayload.Length >= 6 &&
+                TryDispatchMiniRoomSubtype6LengthEnvelopeCandidate(
+                    nestedPayload,
+                    prefixLength: 4,
+                    payloadLength: BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(2, sizeof(ushort))),
+                    envelopeSummary: $"opcode+len16 envelope opcode={BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(0, sizeof(ushort)))}",
+                    tickCount,
+                    out result))
+            {
+                return true;
+            }
+
+            if (nestedPayload.Length >= 8 &&
+                TryReadUInt32PayloadLength(nestedPayload.AsSpan(1, sizeof(uint)), out int roomTypePayloadLength) &&
+                TryDispatchMiniRoomSubtype6LengthEnvelopeCandidate(
+                    nestedPayload,
+                    prefixLength: 5,
+                    payloadLength: roomTypePayloadLength,
+                    envelopeSummary: $"room-type+len32 envelope roomType={nestedPayload[0]}",
+                    tickCount,
+                    out result))
+            {
+                return true;
+            }
+
+            if (nestedPayload.Length >= 9 &&
+                TryReadUInt32PayloadLength(nestedPayload.AsSpan(2, sizeof(uint)), out int opcodePayloadLength) &&
+                TryDispatchMiniRoomSubtype6LengthEnvelopeCandidate(
+                    nestedPayload,
+                    prefixLength: 6,
+                    payloadLength: opcodePayloadLength,
+                    envelopeSummary: $"opcode+len32 envelope opcode={BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(0, sizeof(ushort)))}",
+                    tickCount,
+                    out result))
+            {
+                return true;
+            }
+
+            if (TryDispatchMiniRoomSubtype6LengthEnvelopeCandidate(
+                nestedPayload,
+                prefixLength: 1,
+                payloadLength: nestedPayload[0],
+                envelopeSummary: "len8 envelope",
+                tickCount,
+                out result))
+            {
+                return true;
+            }
+
+            if (nestedPayload.Length >= 4 &&
+                TryDispatchMiniRoomSubtype6LengthEnvelopeCandidate(
+                    nestedPayload,
+                    prefixLength: 2,
+                    payloadLength: BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(0, sizeof(ushort))),
+                    envelopeSummary: "len16 envelope",
+                    tickCount,
+                    out result))
+            {
+                return true;
+            }
+
+            if (nestedPayload.Length >= 8 &&
+                TryReadUInt32PayloadLength(nestedPayload.AsSpan(0, sizeof(uint)), out int payloadLength) &&
+                TryDispatchMiniRoomSubtype6LengthEnvelopeCandidate(
+                    nestedPayload,
+                    prefixLength: 4,
+                    payloadLength: payloadLength,
+                    envelopeSummary: "len32 envelope",
+                    tickCount,
+                    out result))
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryReadUInt32PayloadLength(ReadOnlySpan<byte> source, out int payloadLength)
+        {
+            payloadLength = 0;
+            uint rawLength = BinaryPrimitives.ReadUInt32LittleEndian(source);
+            if (rawLength > int.MaxValue)
+            {
+                return false;
+            }
+
+            payloadLength = (int)rawLength;
+            return true;
+        }
+
+        private bool TryDispatchMiniRoomSubtype6LengthEnvelopeCandidate(
+            byte[] nestedPayload,
+            int prefixLength,
+            int payloadLength,
+            string envelopeSummary,
+            int tickCount,
+            out MiniRoomNestedEnvelopeDispatchResult result)
+        {
+            result = default;
+            if (nestedPayload == null || prefixLength < 1 || payloadLength <= 0)
+            {
+                return false;
+            }
+
+            if (nestedPayload.Length < prefixLength + payloadLength)
+            {
+                return false;
+            }
+
+            byte packetType = nestedPayload[prefixLength];
+            if (!IsMiniRoomSubtype6ForwardablePacket(packetType))
+            {
+                return false;
+            }
+
+            byte[] forwardedPayload = nestedPayload.Skip(prefixLength).Take(payloadLength).ToArray();
+            if (!TryDispatchMiniRoomSubtype6ForwardedPayload(forwardedPayload, tickCount, out result))
+            {
+                return false;
+            }
+
+            int trailingLength = nestedPayload.Length - (prefixLength + payloadLength);
+            result = result with
+            {
+                EnvelopeSummary = trailingLength > 0
+                    ? $"{envelopeSummary} len={payloadLength} trailing={trailingLength}B"
+                    : $"{envelopeSummary} len={payloadLength}",
+                ForwardedPayload = forwardedPayload,
+                RemainingBytes = checked(result.RemainingBytes + Math.Max(0, trailingLength))
+            };
+            return true;
+        }
+
+        private bool TryDispatchMiniRoomSubtype6CountedBatchEnvelopePayload(
+            byte[] nestedPayload,
+            int tickCount,
+            out MiniRoomNestedEnvelopeDispatchResult result)
+        {
+            result = default;
+            if (nestedPayload == null || nestedPayload.Length < 3)
+            {
+                return false;
+            }
+
+            return TryDispatchMiniRoomSubtype6CountedBatchEnvelopeCandidate(nestedPayload, 0, 1, "count+len8 batch envelope", tickCount, out result)
+                || TryDispatchMiniRoomSubtype6CountedBatchEnvelopeCandidate(nestedPayload, 0, 2, "count+len16 batch envelope", tickCount, out result)
+                || TryDispatchMiniRoomSubtype6CountedBatchEnvelopeCandidate(nestedPayload, 0, 4, "count+len32 batch envelope", tickCount, out result)
+                || TryDispatchMiniRoomSubtype6CountedBatchEnvelopeCandidate(nestedPayload, 1, 1, $"room-type+count+len8 batch envelope roomType={nestedPayload[0]}", tickCount, out result)
+                || TryDispatchMiniRoomSubtype6CountedBatchEnvelopeCandidate(nestedPayload, 1, 2, $"room-type+count+len16 batch envelope roomType={nestedPayload[0]}", tickCount, out result)
+                || TryDispatchMiniRoomSubtype6CountedBatchEnvelopeCandidate(nestedPayload, 1, 4, $"room-type+count+len32 batch envelope roomType={nestedPayload[0]}", tickCount, out result)
+                || (nestedPayload.Length >= 4 && TryDispatchMiniRoomSubtype6CountedBatchEnvelopeCandidate(nestedPayload, 2, 1, $"opcode+count+len8 batch envelope opcode={BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(0, sizeof(ushort)))}", tickCount, out result))
+                || (nestedPayload.Length >= 5 && TryDispatchMiniRoomSubtype6CountedBatchEnvelopeCandidate(nestedPayload, 2, 2, $"opcode+count+len16 batch envelope opcode={BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(0, sizeof(ushort)))}", tickCount, out result))
+                || (nestedPayload.Length >= 7 && TryDispatchMiniRoomSubtype6CountedBatchEnvelopeCandidate(nestedPayload, 2, 4, $"opcode+count+len32 batch envelope opcode={BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(0, sizeof(ushort)))}", tickCount, out result))
+                || (nestedPayload.Length >= 5 && TryDispatchMiniRoomSubtype6CountedBatchEnvelopeCandidate(nestedPayload, 3, 1, $"room-type+opcode+count+len8 batch envelope roomType={nestedPayload[0]}, opcode={BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(1, sizeof(ushort)))}", tickCount, out result))
+                || (nestedPayload.Length >= 6 && TryDispatchMiniRoomSubtype6CountedBatchEnvelopeCandidate(nestedPayload, 3, 2, $"room-type+opcode+count+len16 batch envelope roomType={nestedPayload[0]}, opcode={BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(1, sizeof(ushort)))}", tickCount, out result))
+                || (nestedPayload.Length >= 8 && TryDispatchMiniRoomSubtype6CountedBatchEnvelopeCandidate(nestedPayload, 3, 4, $"room-type+opcode+count+len32 batch envelope roomType={nestedPayload[0]}, opcode={BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(1, sizeof(ushort)))}", tickCount, out result))
+                || (nestedPayload.Length >= 5 && TryDispatchMiniRoomSubtype6CountedBatchEnvelopeCandidate(nestedPayload, 3, 1, $"opcode+room-type+count+len8 batch envelope opcode={BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(0, sizeof(ushort)))}, roomType={nestedPayload[2]}", tickCount, out result))
+                || (nestedPayload.Length >= 6 && TryDispatchMiniRoomSubtype6CountedBatchEnvelopeCandidate(nestedPayload, 3, 2, $"opcode+room-type+count+len16 batch envelope opcode={BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(0, sizeof(ushort)))}, roomType={nestedPayload[2]}", tickCount, out result))
+                || (nestedPayload.Length >= 8 && TryDispatchMiniRoomSubtype6CountedBatchEnvelopeCandidate(nestedPayload, 3, 4, $"opcode+room-type+count+len32 batch envelope opcode={BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(0, sizeof(ushort)))}, roomType={nestedPayload[2]}", tickCount, out result));
+        }
+
+        private bool TryDispatchMiniRoomSubtype6CountedBatchEnvelopeCandidate(
+            byte[] nestedPayload,
+            int countOffset,
+            int lengthSize,
+            string envelopeLabel,
+            int tickCount,
+            out MiniRoomNestedEnvelopeDispatchResult result)
+        {
+            result = default;
+            if (nestedPayload == null
+                || countOffset < 0
+                || countOffset >= nestedPayload.Length
+                || lengthSize is not (1 or 2 or 4))
+            {
+                return false;
+            }
+
+            int entryCount = nestedPayload[countOffset];
+            if (entryCount <= 0 || entryCount > 16)
+            {
+                return false;
+            }
+
+            int offset = countOffset + 1;
+            int handledCount = 0;
+            int unhandledCount = 0;
+            int remainingBytes = 0;
+            byte firstPacketType = 0;
+            byte[] firstForwardedPayload = null;
+            List<string> packetTypes = new();
+            List<string> details = new();
+            string lastOwnerName = "room-specific owner";
+
+            for (int entryIndex = 0; entryIndex < entryCount; entryIndex++)
+            {
+                if (offset + lengthSize > nestedPayload.Length)
+                {
+                    return false;
+                }
+
+                int payloadLength = lengthSize switch
+                {
+                    1 => nestedPayload[offset],
+                    2 => BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(offset, sizeof(ushort))),
+                    _ => TryReadUInt32PayloadLength(nestedPayload.AsSpan(offset, sizeof(uint)), out int len32) ? len32 : -1
+                };
+                offset += lengthSize;
+                if (payloadLength <= 0 || offset + payloadLength > nestedPayload.Length)
+                {
+                    return false;
+                }
+
+                byte packetType = nestedPayload[offset];
+                if (!IsMiniRoomSubtype6ForwardablePacket(packetType))
+                {
+                    return false;
+                }
+
+                byte[] forwardedPayload = nestedPayload.Skip(offset).Take(payloadLength).ToArray();
+                if (!TryDispatchMiniRoomSubtype6ForwardedPayload(forwardedPayload, tickCount, out MiniRoomNestedEnvelopeDispatchResult entryResult))
+                {
+                    return false;
+                }
+
+                if (firstForwardedPayload == null)
+                {
+                    firstPacketType = entryResult.PacketType;
+                    firstForwardedPayload = forwardedPayload;
+                }
+
+                lastOwnerName = entryResult.OwnerName;
+                remainingBytes += Math.Max(0, entryResult.RemainingBytes);
+                packetTypes.Add(entryResult.PacketType.ToString(CultureInfo.InvariantCulture));
+                if (entryResult.Handled)
+                {
+                    handledCount++;
+                }
+                else
+                {
+                    unhandledCount++;
+                }
+
+                if (!string.IsNullOrWhiteSpace(entryResult.Message))
+                {
+                    details.Add($"entry {entryIndex + 1}: {entryResult.Message}");
+                }
+
+                offset += payloadLength;
+            }
+
+            int trailingLength = nestedPayload.Length - offset;
+            remainingBytes += Math.Max(0, trailingLength);
+            string handledText = unhandledCount == 0
+                ? $"handled all {entryCount} entr{(entryCount == 1 ? "y" : "ies")}"
+                : $"handled {handledCount} and retained {unhandledCount} unmodeled entr{(unhandledCount == 1 ? "y" : "ies")} on the owner seam";
+            string detailText = details.Count == 0
+                ? "No nested owner detail was produced."
+                : string.Join(" ", details);
+
+            result = new MiniRoomNestedEnvelopeDispatchResult(
+                handledCount > 0,
+                entryCount == 1 ? lastOwnerName : "CMiniRoomBaseDlg::OnPacketBase batch forwarding",
+                $"Counted subtype-6 batch {handledText}; packet types [{string.Join(", ", packetTypes)}]. {detailText}",
+                firstPacketType,
+                remainingBytes,
+                trailingLength > 0
+                    ? $"{envelopeLabel} count={entryCount} trailing={trailingLength}B"
+                    : $"{envelopeLabel} count={entryCount}",
+                firstForwardedPayload ?? Array.Empty<byte>());
+            return true;
+        }
+
+        private bool TryDispatchMiniRoomSubtype6CountedFixedStreamEnvelopePayload(
+            byte[] nestedPayload,
+            int tickCount,
+            out MiniRoomNestedEnvelopeDispatchResult result)
+        {
+            result = default;
+            if (nestedPayload == null || nestedPayload.Length < 3)
+            {
+                return false;
+            }
+
+            return TryDispatchMiniRoomSubtype6CountedFixedStreamEnvelopeCandidate(nestedPayload, 0, "count+fixed-stream envelope", tickCount, out result)
+                || TryDispatchMiniRoomSubtype6CountedFixedStreamEnvelopeCandidate(nestedPayload, 1, $"room-type+count+fixed-stream envelope roomType={nestedPayload[0]}", tickCount, out result)
+                || (nestedPayload.Length >= 4 && TryDispatchMiniRoomSubtype6CountedFixedStreamEnvelopeCandidate(nestedPayload, 2, $"opcode+count+fixed-stream envelope opcode={BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(0, sizeof(ushort)))}", tickCount, out result))
+                || (nestedPayload.Length >= 5 && TryDispatchMiniRoomSubtype6CountedFixedStreamEnvelopeCandidate(nestedPayload, 3, $"room-type+opcode+count+fixed-stream envelope roomType={nestedPayload[0]}, opcode={BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(1, sizeof(ushort)))}", tickCount, out result))
+                || (nestedPayload.Length >= 5 && TryDispatchMiniRoomSubtype6CountedFixedStreamEnvelopeCandidate(nestedPayload, 3, $"opcode+room-type+count+fixed-stream envelope opcode={BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(0, sizeof(ushort)))}, roomType={nestedPayload[2]}", tickCount, out result));
+        }
+
+        private bool TryDispatchMiniRoomSubtype6CountedFixedStreamEnvelopeCandidate(
+            byte[] nestedPayload,
+            int countOffset,
+            string envelopeLabel,
+            int tickCount,
+            out MiniRoomNestedEnvelopeDispatchResult result)
+        {
+            result = default;
+            if (nestedPayload == null || countOffset < 0 || countOffset >= nestedPayload.Length)
+            {
+                return false;
+            }
+
+            int entryCount = nestedPayload[countOffset];
+            if (entryCount <= 0 || entryCount > 16)
+            {
+                return false;
+            }
+
+            int offset = countOffset + 1;
+            int handledCount = 0;
+            int unhandledCount = 0;
+            int remainingBytes = 0;
+            byte firstPacketType = 0;
+            byte[] firstForwardedPayload = null;
+            List<string> packetTypes = new();
+            List<string> details = new();
+            string lastOwnerName = "room-specific owner";
+
+            for (int entryIndex = 0; entryIndex < entryCount; entryIndex++)
+            {
+                if (!TryMeasureMiniRoomSubtype6ForwardedPacketLength(nestedPayload, offset, out int payloadLength))
+                {
+                    return false;
+                }
+
+                if (payloadLength <= 0 || offset + payloadLength > nestedPayload.Length)
+                {
+                    return false;
+                }
+
+                byte[] forwardedPayload = nestedPayload.Skip(offset).Take(payloadLength).ToArray();
+                if (!TryDispatchMiniRoomSubtype6ForwardedPayload(forwardedPayload, tickCount, out MiniRoomNestedEnvelopeDispatchResult entryResult))
+                {
+                    return false;
+                }
+
+                if (firstForwardedPayload == null)
+                {
+                    firstPacketType = entryResult.PacketType;
+                    firstForwardedPayload = forwardedPayload;
+                }
+
+                lastOwnerName = entryResult.OwnerName;
+                remainingBytes += Math.Max(0, entryResult.RemainingBytes);
+                packetTypes.Add(entryResult.PacketType.ToString(CultureInfo.InvariantCulture));
+                if (entryResult.Handled)
+                {
+                    handledCount++;
+                }
+                else
+                {
+                    unhandledCount++;
+                }
+
+                if (!string.IsNullOrWhiteSpace(entryResult.Message))
+                {
+                    details.Add($"entry {entryIndex + 1}: {entryResult.Message}");
+                }
+
+                offset += payloadLength;
+            }
+
+            int trailingLength = nestedPayload.Length - offset;
+            remainingBytes += Math.Max(0, trailingLength);
+            string handledText = unhandledCount == 0
+                ? $"handled all {entryCount} entries"
+                : $"handled {handledCount} and retained {unhandledCount} unmodeled entries on the owner seam";
+            string detailText = details.Count == 0
+                ? "No nested owner detail was produced."
+                : string.Join(" ", details);
+
+            result = new MiniRoomNestedEnvelopeDispatchResult(
+                handledCount > 0,
+                entryCount == 1 ? lastOwnerName : "CMiniRoomBaseDlg::OnPacketBase counted fixed-stream forwarding",
+                $"Counted subtype-6 fixed stream {handledText}; packet types [{string.Join(", ", packetTypes)}]. {detailText}",
+                firstPacketType,
+                remainingBytes,
+                trailingLength > 0
+                    ? $"{envelopeLabel} count={entryCount} trailing={trailingLength}B"
+                    : $"{envelopeLabel} count={entryCount}",
+                firstForwardedPayload ?? Array.Empty<byte>());
+            return true;
+        }
+
+        private bool TryDispatchMiniRoomSubtype6ContiguousStreamPayload(
+            byte[] nestedPayload,
+            int tickCount,
+            out MiniRoomNestedEnvelopeDispatchResult result)
+        {
+            result = default;
+            if (nestedPayload == null || nestedPayload.Length < 2)
+            {
+                return false;
+            }
+
+            int offset = 0;
+            int handledCount = 0;
+            int unhandledCount = 0;
+            int remainingBytes = 0;
+            byte firstPacketType = 0;
+            byte[] firstForwardedPayload = null;
+            List<string> packetTypes = new();
+            List<string> details = new();
+            List<byte[]> forwardedPayloads = new();
+
+            while (offset < nestedPayload.Length)
+            {
+                if (!TryMeasureMiniRoomSubtype6ForwardedPacketLength(nestedPayload, offset, out int payloadLength))
+                {
+                    return false;
+                }
+
+                if (payloadLength <= 0 || offset + payloadLength > nestedPayload.Length)
+                {
+                    return false;
+                }
+
+                forwardedPayloads.Add(nestedPayload.Skip(offset).Take(payloadLength).ToArray());
+                offset += payloadLength;
+            }
+
+            if (forwardedPayloads.Count <= 1)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < forwardedPayloads.Count; i++)
+            {
+                byte[] forwardedPayload = forwardedPayloads[i];
+                if (!TryDispatchMiniRoomSubtype6ForwardedPayload(forwardedPayload, tickCount, out MiniRoomNestedEnvelopeDispatchResult entryResult))
+                {
+                    return false;
+                }
+
+                if (firstForwardedPayload == null)
+                {
+                    firstPacketType = entryResult.PacketType;
+                    firstForwardedPayload = forwardedPayload;
+                }
+
+                remainingBytes += Math.Max(0, entryResult.RemainingBytes);
+                packetTypes.Add(entryResult.PacketType.ToString(CultureInfo.InvariantCulture));
+                if (entryResult.Handled)
+                {
+                    handledCount++;
+                }
+                else
+                {
+                    unhandledCount++;
+                }
+
+                if (!string.IsNullOrWhiteSpace(entryResult.Message))
+                {
+                    details.Add($"entry {handledCount + unhandledCount}: {entryResult.Message}");
+                }
+            }
+
+            string handledText = unhandledCount == 0
+                ? $"handled all {handledCount + unhandledCount} entries"
+                : $"handled {handledCount} and retained {unhandledCount} unmodeled entries on the owner seam";
+            string detailText = details.Count == 0
+                ? "No nested owner detail was produced."
+                : string.Join(" ", details);
+
+            result = new MiniRoomNestedEnvelopeDispatchResult(
+                handledCount > 0,
+                "CMiniRoomBaseDlg::OnPacketBase contiguous forwarding",
+                $"Contiguous subtype-6 stream {handledText}; packet types [{string.Join(", ", packetTypes)}]. {detailText}",
+                firstPacketType,
+                remainingBytes,
+                $"contiguous packet stream count={handledCount + unhandledCount}",
+                firstForwardedPayload ?? Array.Empty<byte>());
+            return true;
+        }
+
+        private bool TryMeasureMiniRoomSubtype6ForwardedPacketLength(byte[] payload, int offset, out int packetLength)
+        {
+            packetLength = 0;
+            if (payload == null || offset < 0 || offset >= payload.Length)
+            {
+                return false;
+            }
+
+            byte packetType = payload[offset];
+            if (!IsMiniRoomSubtype6ForwardablePacket(packetType))
+            {
+                return false;
+            }
+
+            int remaining = payload.Length - offset;
+            switch (packetType)
+            {
+                case TradingRoomPutMoneyPacketType:
+                    packetLength = 1 + sizeof(byte) + sizeof(int);
+                    return remaining >= packetLength;
+                case TradingRoomTradePacketType:
+                case TradingRoomItemCrcPacketType:
+                    if (remaining < 2)
+                    {
+                        return false;
+                    }
+
+                    packetLength = 1 + sizeof(byte) + (payload[offset + 1] * (sizeof(int) + sizeof(int)));
+                    return remaining >= packetLength;
+                case TradingRoomExceedLimitPacketType:
+                case OmokReadyPacketType:
+                case OmokCancelReadyPacketType:
+                    packetLength = 1;
+                    return true;
+                case OmokStartPacketType:
+                case OmokTimeOverPacketType:
+                case OmokPutStoneErrorPacketType:
+                    packetLength = 2;
+                    return remaining >= packetLength;
+                case OmokTieRequestPacketType:
+                case OmokTieResultPacketType:
+                case OmokRetreatRequestPacketType:
+                case EntrustedShopWithdrawMoneyResultPacketType:
+                    packetLength = 1;
+                    return true;
+                case PersonalShopBuyResultPacketType:
+                case EntrustedShopWithdrawAllResultPacketType:
+                    packetLength = 1 + sizeof(byte);
+                    return remaining >= packetLength;
+                case OmokPutStonePacketType:
+                    packetLength = 1 + sizeof(int) + sizeof(int) + sizeof(byte);
+                    return remaining >= packetLength;
+                case OmokGameResultPacketType:
+                    if (remaining < 2)
+                    {
+                        return false;
+                    }
+
+                    int gameResultHeaderLength = payload[offset + 1] == 1 ? 2 : 3;
+                    int gameResultWithRecordsLength = gameResultHeaderLength + (ClientMiniGameRecordByteLength * 2);
+                    packetLength = remaining >= gameResultWithRecordsLength
+                        ? gameResultWithRecordsLength
+                        : gameResultHeaderLength;
+                    return remaining >= packetLength;
+                case OmokRetreatResultPacketType:
+                    if (remaining < 2)
+                    {
+                        return false;
+                    }
+
+                    packetLength = payload[offset + 1] == 0 ? 2 : 4;
+                    return remaining >= packetLength;
+                case EntrustedShopArrangeItemResultPacketType:
+                    packetLength = 1 + sizeof(int);
+                    return remaining >= packetLength;
+                case MerchantShopRowRefreshPacketType:
+                    if (Kind == SocialRoomKind.TradingRoom)
+                    {
+                        return TryMeasureMiniRoomSubtype6TradingRoomPutItemPacketLength(payload, offset, out packetLength);
+                    }
+
+                    return TryMeasureMiniRoomSubtype6MerchantShopRowRefreshPacketLength(payload, offset, out packetLength);
+                case PersonalShopSoldItemResultPacketType:
+                    return TryMeasureMiniRoomSubtype6SoldItemResultPacketLength(payload, offset, out packetLength);
+                case PersonalShopMoveItemToInventoryPacketType:
+                    packetLength = 1 + sizeof(byte) + sizeof(short);
+                    return remaining >= packetLength;
+                case EntrustedShopVisitListResultPacketType:
+                    return TryMeasureMiniRoomSubtype6EntrustedVisitListPacketLength(payload, offset, out packetLength);
+                case EntrustedShopBlackListResultPacketType:
+                    return TryMeasureMiniRoomSubtype6EntrustedBlacklistPacketLength(payload, offset, out packetLength);
+                default:
+                    return false;
+            }
+        }
+
+        private static bool TryMeasureMiniRoomSubtype6MerchantShopRowRefreshPacketLength(byte[] payload, int offset, out int packetLength)
+        {
+            packetLength = 0;
+            if (payload == null || offset < 0 || offset >= payload.Length)
+            {
+                return false;
+            }
+
+            const int legacyPacketLength = 1 + sizeof(byte) + sizeof(int) + sizeof(short) + sizeof(int);
+            int remaining = payload.Length - offset;
+            int trailingPriceItemOffset = offset + 1 + sizeof(byte);
+            if (TryMeasurePacketOwnedTradeItemLength(payload, trailingPriceItemOffset, out int trailingPriceItemLength))
+            {
+                int candidateLength = trailingPriceItemOffset - offset + trailingPriceItemLength + sizeof(int);
+                if (candidateLength > legacyPacketLength && remaining >= candidateLength)
+                {
+                    packetLength = candidateLength;
+                    return true;
+                }
+            }
+
+            int leadingPriceItemOffset = offset + 1 + sizeof(byte) + sizeof(int);
+            if (TryMeasurePacketOwnedTradeItemLength(payload, leadingPriceItemOffset, out int leadingPriceItemLength))
+            {
+                int candidateLength = leadingPriceItemOffset - offset + leadingPriceItemLength;
+                if (candidateLength > legacyPacketLength && remaining >= candidateLength)
+                {
+                    packetLength = candidateLength;
+                    return true;
+                }
+            }
+
+            if (remaining >= legacyPacketLength)
+            {
+                packetLength = legacyPacketLength;
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryMeasureMiniRoomSubtype6TradingRoomPutItemPacketLength(byte[] payload, int offset, out int packetLength)
+        {
+            packetLength = 0;
+            if (payload == null || offset < 0 || offset + 1 + sizeof(byte) + sizeof(byte) >= payload.Length)
+            {
+                return false;
+            }
+
+            int cursor = offset + 1 + sizeof(byte) + sizeof(byte);
+            if (!TryMeasurePacketOwnedTradeItemLength(payload, cursor, out int itemLength))
+            {
+                return false;
+            }
+
+            packetLength = cursor - offset + itemLength;
+            return packetLength > 0 && offset + packetLength <= payload.Length;
+        }
+
+        private static bool TryMeasurePacketOwnedTradeItemLength(byte[] payload, int offset, out int itemLength)
+        {
+            itemLength = 0;
+            if (payload == null || offset < 0 || offset >= payload.Length)
+            {
+                return false;
+            }
+
+            int cursor = offset;
+            byte slotType = payload[cursor++];
+            if (slotType is not 1 and not 2 and not 3)
+            {
+                return false;
+            }
+
+            if (!TryAdvanceFixed(payload, ref cursor, sizeof(int) + sizeof(byte)))
+            {
+                return false;
+            }
+
+            bool hasCashSerialNumber = payload[offset + 1 + sizeof(int)] != 0;
+            if (hasCashSerialNumber && !TryAdvanceFixed(payload, ref cursor, sizeof(long)))
+            {
+                return false;
+            }
+
+            if (!TryAdvanceFixed(payload, ref cursor, sizeof(long)))
+            {
+                return false;
+            }
+
+            int itemId = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(offset + 1, sizeof(int)));
+            switch (slotType)
+            {
+                case 1:
+                    if (!TryAdvanceFixed(payload, ref cursor, (sizeof(byte) * 2) + (sizeof(short) * 15))
+                        || !TryAdvanceMiniRoomSubtype6MapleString(payload, ref cursor)
+                        || !TryAdvanceFixed(payload, ref cursor, sizeof(short) + (sizeof(byte) * 2) + (sizeof(int) * 3) + (sizeof(byte) * 2) + (sizeof(short) * 5))
+                        || (!hasCashSerialNumber && !TryAdvanceFixed(payload, ref cursor, sizeof(long)))
+                        || !TryAdvanceFixed(payload, ref cursor, sizeof(long) + sizeof(int)))
+                    {
+                        return false;
+                    }
+                    break;
+                case 2:
+                    if (!TryAdvanceFixed(payload, ref cursor, sizeof(ushort))
+                        || !TryAdvanceMiniRoomSubtype6MapleString(payload, ref cursor)
+                        || !TryAdvanceFixed(payload, ref cursor, sizeof(short)))
+                    {
+                        return false;
+                    }
+
+                    if (itemId / 10000 is 207 or 233 && !TryAdvanceFixed(payload, ref cursor, sizeof(long)))
+                    {
+                        return false;
+                    }
+                    break;
+                case 3:
+                    if (!TryAdvanceFixed(payload, ref cursor, 13 + sizeof(byte) + sizeof(short) + sizeof(byte) + sizeof(long) + sizeof(short) + sizeof(ushort) + sizeof(int) + sizeof(short)))
+                    {
+                        return false;
+                    }
+                    break;
+            }
+
+            itemLength = cursor - offset;
+            return itemLength > 0;
+        }
+
+        private static bool TryAdvanceFixed(byte[] payload, ref int cursor, int byteCount)
+        {
+            if (payload == null || byteCount < 0 || cursor < 0 || cursor + byteCount > payload.Length)
+            {
+                return false;
+            }
+
+            cursor += byteCount;
+            return true;
+        }
+
+        private static bool TryMeasureMiniRoomSubtype6SoldItemResultPacketLength(byte[] payload, int offset, out int packetLength)
+        {
+            packetLength = 0;
+            if (payload == null || offset < 0 || offset >= payload.Length)
+            {
+                return false;
+            }
+
+            int cursor = offset + 1 + sizeof(byte) + sizeof(short);
+            if (!TryAdvanceMiniRoomSubtype6MapleString(payload, ref cursor))
+            {
+                return false;
+            }
+
+            packetLength = cursor - offset;
+            return true;
+        }
+
+        private static bool TryMeasureMiniRoomSubtype6EntrustedVisitListPacketLength(byte[] payload, int offset, out int packetLength)
+        {
+            packetLength = 0;
+            if (payload == null || offset < 0 || offset + 1 + sizeof(short) > payload.Length)
+            {
+                return false;
+            }
+
+            int cursor = offset + 1;
+            int count = BinaryPrimitives.ReadInt16LittleEndian(payload.AsSpan(cursor, sizeof(short)));
+            cursor += sizeof(short);
+            if (count < 0)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < count; i++)
+            {
+                if (!TryAdvanceMiniRoomSubtype6MapleString(payload, ref cursor)
+                    || cursor + sizeof(int) > payload.Length)
+                {
+                    return false;
+                }
+
+                cursor += sizeof(int);
+            }
+
+            packetLength = cursor - offset;
+            return true;
+        }
+
+        private static bool TryMeasureMiniRoomSubtype6EntrustedBlacklistPacketLength(byte[] payload, int offset, out int packetLength)
+        {
+            packetLength = 0;
+            if (payload == null || offset < 0 || offset + 1 + sizeof(short) > payload.Length)
+            {
+                return false;
+            }
+
+            int cursor = offset + 1;
+            int count = BinaryPrimitives.ReadInt16LittleEndian(payload.AsSpan(cursor, sizeof(short)));
+            cursor += sizeof(short);
+            if (count < 0)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < count; i++)
+            {
+                if (!TryAdvanceMiniRoomSubtype6MapleString(payload, ref cursor))
+                {
+                    return false;
+                }
+            }
+
+            packetLength = cursor - offset;
+            return true;
+        }
+
+        private static bool TryAdvanceMiniRoomSubtype6MapleString(byte[] payload, ref int cursor)
+        {
+            if (payload == null || cursor < 0 || cursor + sizeof(short) > payload.Length)
+            {
+                return false;
+            }
+
+            int length = BinaryPrimitives.ReadUInt16LittleEndian(payload.AsSpan(cursor, sizeof(ushort)));
+            cursor += sizeof(ushort);
+            if (length < 0 || cursor + length > payload.Length)
+            {
+                return false;
+            }
+
+            cursor += length;
+            return true;
+        }
+
+        private bool TryDispatchMiniRoomSubtype6OffsetEnvelopePayload(
+            byte[] nestedPayload,
+            int tickCount,
+            out MiniRoomNestedEnvelopeDispatchResult result)
+        {
+            result = default;
+            if (nestedPayload == null || nestedPayload.Length < 2)
+            {
+                return false;
+            }
+
+            int maxOffset = Math.Min(MiniRoomSubtype6OffsetEnvelopeMaxPrefixBytes, nestedPayload.Length - 1);
+            for (int offset = 1; offset <= maxOffset; offset++)
+            {
+                byte packetType = nestedPayload[offset];
+                if (!IsMiniRoomSubtype6ForwardablePacket(packetType))
+                {
+                    continue;
+                }
+
+                byte[] forwardedPayload = nestedPayload.Skip(offset).ToArray();
+                if (!TryDispatchMiniRoomSubtype6ForwardedPayload(forwardedPayload, tickCount, out result))
+                {
+                    continue;
+                }
+
+                byte[] prefixBytes = nestedPayload.Take(offset).ToArray();
+                string prefixPreview = BuildPacketHexPreview(prefixBytes);
+                result = result with
+                {
+                    EnvelopeSummary = $"offset envelope +{offset} ({prefixPreview})",
+                    ForwardedPayload = forwardedPayload
+                };
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool TryDispatchMiniRoomSubtype6RoomTypeOpcodeEnvelopePayload(
+            byte[] nestedPayload,
+            int tickCount,
+            out MiniRoomNestedEnvelopeDispatchResult result)
+        {
+            result = default;
+            if (nestedPayload == null || nestedPayload.Length < 4)
+            {
+                return false;
+            }
+
+            if (TryDispatchMiniRoomSubtype6RoomTypeOpcodeForwardedCandidate(
+                nestedPayload,
+                prefixLength: 3,
+                envelopeSummary: $"room-type+opcode envelope roomType={nestedPayload[0]}, opcode={BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(1, sizeof(ushort)))}",
+                tickCount,
+                out result))
+            {
+                return true;
+            }
+
+            if (TryDispatchMiniRoomSubtype6RoomTypeOpcodeForwardedCandidate(
+                nestedPayload,
+                prefixLength: 3,
+                envelopeSummary: $"opcode+room-type envelope opcode={BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(0, sizeof(ushort)))}, roomType={nestedPayload[2]}",
+                tickCount,
+                out result))
+            {
+                return true;
+            }
+
+            if (nestedPayload.Length >= 5 &&
+                TryDispatchMiniRoomSubtype6LengthEnvelopeCandidate(
+                    nestedPayload,
+                    prefixLength: 4,
+                    payloadLength: nestedPayload[3],
+                    envelopeSummary: $"room-type+opcode+len8 envelope roomType={nestedPayload[0]}, opcode={BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(1, sizeof(ushort)))}",
+                    tickCount,
+                    out result))
+            {
+                return true;
+            }
+
+            if (nestedPayload.Length >= 5 &&
+                TryDispatchMiniRoomSubtype6LengthEnvelopeCandidate(
+                    nestedPayload,
+                    prefixLength: 4,
+                    payloadLength: nestedPayload[3],
+                    envelopeSummary: $"opcode+room-type+len8 envelope opcode={BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(0, sizeof(ushort)))}, roomType={nestedPayload[2]}",
+                    tickCount,
+                    out result))
+            {
+                return true;
+            }
+
+            if (nestedPayload.Length >= 7 &&
+                TryDispatchMiniRoomSubtype6LengthEnvelopeCandidate(
+                    nestedPayload,
+                    prefixLength: 5,
+                    payloadLength: BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(3, sizeof(ushort))),
+                    envelopeSummary: $"room-type+opcode+len16 envelope roomType={nestedPayload[0]}, opcode={BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(1, sizeof(ushort)))}",
+                    tickCount,
+                    out result))
+            {
+                return true;
+            }
+
+            if (nestedPayload.Length >= 7 &&
+                TryDispatchMiniRoomSubtype6LengthEnvelopeCandidate(
+                    nestedPayload,
+                    prefixLength: 5,
+                    payloadLength: BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(3, sizeof(ushort))),
+                    envelopeSummary: $"opcode+room-type+len16 envelope opcode={BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(0, sizeof(ushort)))}, roomType={nestedPayload[2]}",
+                    tickCount,
+                    out result))
+            {
+                return true;
+            }
+
+            if (nestedPayload.Length >= 9 &&
+                TryReadUInt32PayloadLength(nestedPayload.AsSpan(3, sizeof(uint)), out int roomTypeOpcodePayloadLength) &&
+                TryDispatchMiniRoomSubtype6LengthEnvelopeCandidate(
+                    nestedPayload,
+                    prefixLength: 7,
+                    payloadLength: roomTypeOpcodePayloadLength,
+                    envelopeSummary: $"room-type+opcode+len32 envelope roomType={nestedPayload[0]}, opcode={BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(1, sizeof(ushort)))}",
+                    tickCount,
+                    out result))
+            {
+                return true;
+            }
+
+            if (nestedPayload.Length >= 9 &&
+                TryReadUInt32PayloadLength(nestedPayload.AsSpan(3, sizeof(uint)), out int opcodeRoomTypePayloadLength) &&
+                TryDispatchMiniRoomSubtype6LengthEnvelopeCandidate(
+                    nestedPayload,
+                    prefixLength: 7,
+                    payloadLength: opcodeRoomTypePayloadLength,
+                    envelopeSummary: $"opcode+room-type+len32 envelope opcode={BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(0, sizeof(ushort)))}, roomType={nestedPayload[2]}",
+                    tickCount,
+                    out result))
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool TryDispatchMiniRoomSubtype6RoomTypeOpcodeForwardedCandidate(
+            byte[] nestedPayload,
+            int prefixLength,
+            string envelopeSummary,
+            int tickCount,
+            out MiniRoomNestedEnvelopeDispatchResult result)
+        {
+            result = default;
+            if (nestedPayload == null || nestedPayload.Length <= prefixLength)
+            {
+                return false;
+            }
+
+            byte packetType = nestedPayload[prefixLength];
+            if (!IsMiniRoomSubtype6ForwardablePacket(packetType))
+            {
+                return false;
+            }
+
+            byte[] forwardedPayload = nestedPayload.Skip(prefixLength).ToArray();
+            if (!TryDispatchMiniRoomSubtype6ForwardedPayload(forwardedPayload, tickCount, out result))
+            {
+                return false;
+            }
+
+            result = result with
+            {
+                EnvelopeSummary = envelopeSummary,
+                ForwardedPayload = forwardedPayload
+            };
+            return true;
+        }
+
+        private bool TryDispatchMiniRoomSubtype6ForwardedPayload(
+            byte[] payload,
+            int tickCount,
+            out MiniRoomNestedEnvelopeDispatchResult result)
+        {
+            result = default;
+            if (payload == null || payload.Length == 0)
+            {
+                return false;
+            }
+
+            PacketReader nestedReader = new(payload);
+            byte nestedPacketType;
+            try
+            {
+                nestedPacketType = nestedReader.ReadByte();
+            }
+            catch (EndOfStreamException)
+            {
+                return false;
+            }
+
+            bool handled;
+            string ownerName;
+            string dispatchMessage = string.Empty;
+            if (Kind is SocialRoomKind.PersonalShop or SocialRoomKind.EntrustedShop or SocialRoomKind.TradingRoom)
+            {
+                ownerName = _shopDialogPacketOwner?.OwnerName ?? "room-specific owner";
+                handled = _shopDialogPacketOwner?.TryDispatch(payload, nestedReader, nestedPacketType, tickCount, out dispatchMessage) == true;
+                if (!handled && IsMiniRoomBasePacketSubType(nestedPacketType))
+                {
+                    PacketReader baseReader = new(payload);
+                    ownerName = $"{ownerName} -> CMiniRoomBaseDlg::OnPacketBase";
+                    handled = TryDispatchMiniRoomBasePacket(baseReader, tickCount, out dispatchMessage);
+                    nestedReader = baseReader;
+                }
+            }
+            else if (Kind == SocialRoomKind.MiniRoom)
+            {
+                ownerName = "CMiniRoomBaseDlg-derived OnPacket";
+                handled = TryDispatchMiniRoomPacket(nestedReader, nestedPacketType, tickCount, out dispatchMessage);
+                if (!handled && IsMiniRoomBasePacketSubType(nestedPacketType))
+                {
+                    PacketReader baseReader = new(payload);
+                    ownerName = "CMiniRoomBaseDlg::OnPacketBase";
+                    handled = TryDispatchMiniRoomBasePacket(baseReader, tickCount, out dispatchMessage);
+                    nestedReader = baseReader;
+                }
+            }
+            else
+            {
+                ownerName = "room-specific owner";
+                handled = false;
+                dispatchMessage = $"Nested packet {nestedPacketType} has no room-specific owner for {Kind}.";
+            }
+
+            result = new MiniRoomNestedEnvelopeDispatchResult(
+                handled,
+                ownerName,
+                dispatchMessage,
+                nestedPacketType,
+                nestedReader.Remaining,
+                string.Empty,
+                payload);
+            return true;
+        }
+
+        private bool IsMiniRoomSubtype6ForwardablePacket(byte packetType)
+        {
+            if (IsMiniRoomBasePacketSubType(packetType))
+            {
+                return true;
+            }
+
+            return packetType == TradingRoomPutItemPacketType
+                || packetType == TradingRoomPutMoneyPacketType
+                || packetType == TradingRoomTradePacketType
+                || packetType == TradingRoomItemCrcPacketType
+                || packetType == TradingRoomExceedLimitPacketType
+                || packetType == PersonalShopBuyResultPacketType
+                || packetType == PersonalShopBasePacketType
+                || packetType == PersonalShopSoldItemResultPacketType
+                || packetType == PersonalShopMoveItemToInventoryPacketType
+                || packetType == EntrustedShopArrangeItemResultPacketType
+                || packetType == EntrustedShopWithdrawAllResultPacketType
+                || packetType == EntrustedShopWithdrawMoneyResultPacketType
+                || packetType == EntrustedShopVisitListResultPacketType
+                || packetType == EntrustedShopBlackListResultPacketType
+                || packetType == OmokTieRequestPacketType
+                || packetType == OmokTieResultPacketType
+                || packetType == OmokRetreatRequestPacketType
+                || packetType == OmokRetreatResultPacketType
+                || packetType == OmokReadyPacketType
+                || packetType == OmokCancelReadyPacketType
+                || packetType == OmokStartPacketType
+                || packetType == OmokGameResultPacketType
+                || packetType == OmokTimeOverPacketType
+                || packetType == OmokPutStonePacketType
+                || packetType == OmokPutStoneErrorPacketType;
+        }
+
+        private static string ResolveTradePacketItemLabel(PacketOwnedTradeItem item)
+        {
+            string baseLabel = ResolveItemLabel(item.ItemId);
+            if (!string.IsNullOrWhiteSpace(item.PacketDisplayName))
+            {
+                string packetDisplayName = item.PacketDisplayName.Trim();
+                if (packetDisplayName.Length > 0 &&
+                    !string.Equals(packetDisplayName, baseLabel, StringComparison.OrdinalIgnoreCase))
+                {
+                    return $"{packetDisplayName} [{baseLabel}]";
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(item.Title))
+            {
+                return baseLabel;
+            }
+
+            string packetTitle = item.Title.Trim();
+            if (packetTitle.Length == 0 || string.Equals(packetTitle, baseLabel, StringComparison.OrdinalIgnoreCase))
+            {
+                return baseLabel;
+            }
+
+            return $"{baseLabel} ({packetTitle})";
+        }
+
+        private static bool IsMiniRoomBasePacketSubType(byte packetType)
+        {
+            return packetType is
+                MiniRoomBaseInvitePacketSubType or
+                MiniRoomBaseInviteResultPacketSubType or
+                MiniRoomBaseEnterPacketSubType or
+                MiniRoomBaseEnterResultPacketSubType or
+                MiniRoomBaseUpdatePacketSubType or
+                MiniRoomBaseChatPacketSubType or
+                MiniRoomBaseChatAltPacketSubType or
+                MiniRoomBaseAvatarPacketSubType or
+                MiniRoomBaseLeavePacketSubType or
+                MiniRoomBaseCheckSsnPacketSubType;
+        }
+
+        private bool TryApplyMiniRoomBaseEnterPacket(PacketReader reader, out string message)
+        {
+            int seatIndex = reader.ReadByte();
+            if (IsMiniRoomBaseSeatOccupied(seatIndex))
+            {
+                message = $"CMiniRoomBaseDlg::OnEnterBase rejected occupied seat {Math.Max(0, seatIndex)}, matching the client disconnect guard before DecodeAvatar.";
+                StatusMessage = message;
+                return false;
+            }
+
+            if (RequiresMerchantSeatBaseStub(seatIndex))
+            {
+                int merchantId = reader.ReadInt();
+                string merchantName = NormalizeName(reader.ReadMapleString());
+                ApplyMiniRoomBaseMerchantSeatEnterPacket(seatIndex, merchantId, merchantName);
+                message = StatusMessage;
+                return true;
+            }
+
+            if (!TryReadPacketOwnedAvatarLook(reader, out LoginAvatarLook avatarLook, out string error))
+            {
+                message = error;
+                return false;
+            }
+
+            string occupantName = NormalizeName(reader.ReadMapleString());
+            int jobCode = reader.ReadShort();
+            ApplyMiniRoomBaseSeatEnterPacket(seatIndex, occupantName, jobCode, avatarLook);
+            message = StatusMessage;
+            return true;
+        }
+
+        private bool TryApplyMiniRoomBaseAvatarPacket(PacketReader reader, out string message)
+        {
+            int seatIndex = reader.ReadByte();
+            if (!TryReadPacketOwnedAvatarLook(reader, out LoginAvatarLook avatarLook, out string error))
+            {
+                message = error;
+                return false;
+            }
+
+            ApplyMiniRoomBaseAvatarPacket(seatIndex, avatarLook);
+            message = StatusMessage;
+            return true;
+        }
+
+        private bool TryApplyMiniRoomBaseLeavePacket(PacketReader reader, out string message)
+        {
+            int seatIndex = reader.ReadByte();
+            if (IsMiniRoomBaseMissingLeaveSeat(seatIndex))
+            {
+                message = $"CMiniRoomBaseDlg::OnLeaveBase rejected missing seat {Math.Max(0, seatIndex)}, matching the client disconnect guard for absent avatars.";
+                StatusMessage = message;
+                return false;
+            }
+
+            ApplyMiniRoomBaseSeatLeavePacket(seatIndex);
+            message = StatusMessage;
+            return true;
+        }
+
+        private bool IsMiniRoomBaseSeatOccupied(int seatIndex)
+        {
+            int normalizedSeatIndex = Math.Max(0, seatIndex);
+            if (normalizedSeatIndex >= Capacity && Capacity > 0)
+            {
+                return true;
+            }
+
+            return normalizedSeatIndex < _occupants.Count
+                && !IsMiniRoomBasePlaceholderOccupant(normalizedSeatIndex, _occupants[normalizedSeatIndex]);
+        }
+
+        private bool IsMiniRoomBaseMissingLeaveSeat(int seatIndex)
+        {
+            int normalizedSeatIndex = Math.Max(0, seatIndex);
+            if (normalizedSeatIndex <= 0)
+            {
+                return false;
+            }
+
+            return normalizedSeatIndex >= _occupants.Count
+                || IsMiniRoomBasePlaceholderOccupant(normalizedSeatIndex, _occupants[normalizedSeatIndex]);
+        }
+
+        private bool IsMiniRoomBasePlaceholderOccupant(int seatIndex, SocialRoomOccupant occupant)
+        {
+            if (occupant == null)
+            {
+                return true;
+            }
+
+            string seatLabel = ResolveBasePacketSeatLabel(Math.Max(0, seatIndex));
+            return string.Equals(occupant.Name, seatLabel, StringComparison.OrdinalIgnoreCase)
+                && occupant.AvatarBuild == null
+                && !occupant.IsReady;
+        }
+
+        private static bool TryReadPacketOwnedAvatarLook(PacketReader reader, out LoginAvatarLook avatarLook, out string message)
+        {
+            if (!LoginAvatarLookCodec.TryDecode(reader, out avatarLook, out string error))
+            {
+                message = $"Mini-room AvatarLook payload could not be decoded: {error}";
+                return false;
+            }
+
+            message = null;
+            return true;
+        }
+
+        private void ApplyMiniRoomBaseSeatEnterPacket(int seatIndex, string occupantName, int jobCode, LoginAvatarLook avatarLook)
+        {
+            int normalizedSeatIndex = Math.Max(0, seatIndex);
+            SocialRoomOccupantRole role = ResolveBasePacketOccupantRole(normalizedSeatIndex);
+            string seatLabel = ResolveBasePacketSeatLabel(normalizedSeatIndex);
+            string detail = BuildBasePacketOccupantDetail(normalizedSeatIndex, seatLabel, jobCode, avatarLook);
+            if (normalizedSeatIndex == 0)
+            {
+                OwnerName = occupantName;
+            }
+
+            CharacterBuild avatarBuild = ResolvePacketOwnedAvatarBuild(avatarLook, normalizedSeatIndex);
+            EnsureOccupantSlot(normalizedSeatIndex, occupantName, role, detail, isReady: false, avatarBuild: avatarBuild);
+            RecordPersonalShopVisitorEntered(normalizedSeatIndex, occupantName, DateTime.UtcNow);
+            RoomState = Kind == SocialRoomKind.MiniRoom ? "Seat update" : "Visitor update";
+            StatusMessage = $"{occupantName} entered {seatLabel.ToLowerInvariant()} through CMiniRoomBaseDlg::OnEnterBase.";
+            if (Kind == SocialRoomKind.MiniRoom)
+            {
+                AddMiniRoomSystemMessage($"System : {StatusMessage}");
+                SyncMiniRoomOmokPresentation();
+            }
+            else if (normalizedSeatIndex > 0 && !_savedVisitors.Contains(occupantName, StringComparer.OrdinalIgnoreCase))
+            {
+                _savedVisitors.Add(occupantName);
+            }
+
+            PersistState();
+        }
+
+        private void ApplyMiniRoomBaseAvatarPacket(int seatIndex, LoginAvatarLook avatarLook)
+        {
+            int normalizedSeatIndex = Math.Max(0, seatIndex);
+            string occupantName = ResolveMiniRoomSeatName(normalizedSeatIndex);
+            if (normalizedSeatIndex < _occupants.Count)
+            {
+                SocialRoomOccupant occupant = _occupants[normalizedSeatIndex];
+                CharacterBuild avatarBuild = ResolvePacketOwnedAvatarBuild(avatarLook, normalizedSeatIndex);
+                occupant.Update(
+                    occupant.Name,
+                    occupant.Role,
+                    $"{occupant.Detail} | AvatarLook refreshed through CMiniRoomBaseDlg::OnAvatar.",
+                    occupant.IsReady,
+                    avatarBuild);
+            }
+
+            RoomState = Kind == SocialRoomKind.MiniRoom ? "Avatar refresh" : "Visitor avatar refresh";
+            StatusMessage = $"{occupantName} refreshed seat {normalizedSeatIndex} through CMiniRoomBaseDlg::OnAvatar.";
+            PersistState();
+        }
+
+        private void ApplyMiniRoomBaseEnterResultMerchantSeat(int seatIndex, int merchantId, string merchantName)
+        {
+            int normalizedSeatIndex = Math.Max(0, seatIndex);
+            string seatLabel = ResolveBasePacketSeatLabel(normalizedSeatIndex);
+            string detail = $"{seatLabel} | Merchant id {merchantId}";
+            if (normalizedSeatIndex == 0)
+            {
+                OwnerName = merchantName;
+                _employeePacketEmployerId = Math.Max(0, merchantId);
+                _employeePoolRuntime.SetPreferredEmployerId(_employeePacketEmployerId);
+            }
+
+            EnsureOccupantSlot(normalizedSeatIndex, merchantName, ResolveBasePacketOccupantRole(normalizedSeatIndex), detail, isReady: false, avatarBuild: null);
+        }
+
+        private void ApplyMiniRoomBaseMerchantSeatEnterPacket(int seatIndex, int merchantId, string merchantName)
+        {
+            int normalizedSeatIndex = Math.Max(0, seatIndex);
+            ApplyMiniRoomBaseEnterResultMerchantSeat(normalizedSeatIndex, merchantId, merchantName);
+            RoomState = "Visitor update";
+            StatusMessage = $"{merchantName} entered {ResolveBasePacketSeatLabel(normalizedSeatIndex).ToLowerInvariant()} through CMiniRoomBaseDlg::OnEnterBase with merchant id {merchantId}.";
+            PersistState();
+        }
+
+        private void ApplyMiniRoomBaseEnterResultSeat(int seatIndex, string occupantName, int jobCode, LoginAvatarLook avatarLook)
+        {
+            int normalizedSeatIndex = Math.Max(0, seatIndex);
+            SocialRoomOccupantRole role = ResolveBasePacketOccupantRole(normalizedSeatIndex);
+            string seatLabel = ResolveBasePacketSeatLabel(normalizedSeatIndex);
+            string detail = BuildBasePacketOccupantDetail(normalizedSeatIndex, seatLabel, jobCode, avatarLook);
+            if (normalizedSeatIndex == 0)
+            {
+                OwnerName = occupantName;
+            }
+            else if (!_savedVisitors.Contains(occupantName, StringComparer.OrdinalIgnoreCase))
+            {
+                _savedVisitors.Add(occupantName);
+            }
+
+            CharacterBuild avatarBuild = ResolvePacketOwnedAvatarBuild(avatarLook, normalizedSeatIndex);
+            EnsureOccupantSlot(normalizedSeatIndex, occupantName, role, detail, isReady: false, avatarBuild: avatarBuild);
+        }
+
+        private bool RequiresMerchantSeatBaseStub(int seatIndex)
+        {
+            return Kind == SocialRoomKind.EntrustedShop && seatIndex == 0;
+        }
+
+        private string ResolveMiniRoomTypeLabel(int roomType)
+        {
+            return roomType switch
+            {
+                1 => "mini-room",
+                2 => "trade room",
+                3 => "personal shop",
+                4 => "entrusted shop",
+                5 => "store bank",
+                6 => "cash trade",
+                _ => $"room type {roomType}"
+            };
+        }
+
+        private void ApplyMiniRoomBaseSeatLeavePacket(int seatIndex)
+        {
+            int normalizedSeatIndex = Math.Max(0, seatIndex);
+            string leavingName = ResolveMiniRoomSeatName(normalizedSeatIndex);
+            RecordPersonalShopVisitorLeft(normalizedSeatIndex);
+            if (normalizedSeatIndex <= 0)
+            {
+                if (Kind == SocialRoomKind.EntrustedShop)
+                {
+                    _employeePacketEmployerId = 0;
+                    _employeePoolRuntime.SetPreferredEmployerId(0);
+                }
+
+                if (TryCompleteTradingRoomTradeFromServerTeardown(out string settlementMessage))
+                {
+                    StatusMessage = $"{settlementMessage} Server-owned CMiniRoomBaseDlg::OnLeaveBase then tore down the trading-room owner seat.";
+                    PersistState();
+                    return;
+                }
+
+                RoomState = "Closed";
+                StatusMessage = $"{leavingName} left the room through CMiniRoomBaseDlg::OnLeaveBase.";
+                if (Kind == SocialRoomKind.MiniRoom)
+                {
+                    AddMiniRoomSystemMessage($"System : {StatusMessage}", isWarning: true);
+                }
+
+                PersistState();
+                return;
+            }
+
+            if (Kind == SocialRoomKind.MiniRoom)
+            {
+                RemoveMiniRoomOccupant(leavingName, out _);
+                StatusMessage = $"{leavingName} left seat {normalizedSeatIndex} through CMiniRoomBaseDlg::OnLeaveBase.";
+                AddMiniRoomSystemMessage($"System : {StatusMessage}", isWarning: normalizedSeatIndex == 1);
+                SyncMiniRoomOmokPresentation();
+            }
+            else
+            {
+                if (normalizedSeatIndex < _occupants.Count)
+                {
+                    _occupants.RemoveAt(normalizedSeatIndex);
+                }
+
+                RoomState = "Visitor update";
+                StatusMessage = $"{leavingName} left seat {normalizedSeatIndex} through CMiniRoomBaseDlg::OnLeaveBase.";
+            }
+
+            PersistState();
+        }
+
+        private bool TryCompleteTradingRoomTradeFromServerTeardown(out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.TradingRoom
+                || !_tradeLocalLocked
+                || !_tradeRemoteLocked
+                || !_tradeLocalAccepted
+                || !_tradeRemoteAccepted
+                || _tradeVerificationPending)
+            {
+                return false;
+            }
+
+            if (!TryCompleteTrade(out message))
+            {
+                message = $"Trading-room server teardown reached the settlement gate, but settlement remained blocked: {message}";
+                StatusMessage = message;
+                return false;
+            }
+
+            return true;
+        }
+
+        private SocialRoomOccupantRole ResolveBasePacketOccupantRole(int seatIndex)
+        {
+            if (seatIndex <= 0)
+            {
+                return Kind == SocialRoomKind.EntrustedShop
+                    ? SocialRoomOccupantRole.Merchant
+                    : SocialRoomOccupantRole.Owner;
+            }
+
+            return Kind switch
+            {
+                SocialRoomKind.MiniRoom when seatIndex == 1 => SocialRoomOccupantRole.Guest,
+                SocialRoomKind.TradingRoom => SocialRoomOccupantRole.Trader,
+                _ => SocialRoomOccupantRole.Visitor
+            };
+        }
+
+        private string ResolveBasePacketSeatLabel(int seatIndex)
+        {
+            if (seatIndex <= 0)
+            {
+                return Kind switch
+                {
+                    SocialRoomKind.EntrustedShop => "Merchant seat",
+                    _ => "Host seat"
+                };
+            }
+
+            return Kind == SocialRoomKind.MiniRoom && seatIndex == 1
+                ? "Guest seat"
+                : $"Visitor seat {seatIndex}";
+        }
+
+        private string BuildBasePacketOccupantDetail(int seatIndex, string seatLabel, int jobCode, LoginAvatarLook avatarLook)
+        {
+            if (Kind == SocialRoomKind.MiniRoom && IsMiniRoomOmokActive && seatIndex <= 1)
+            {
+                return $"{BuildOmokSeatDetail(seatIndex, seatLabel)} | Job {jobCode}";
+            }
+
+            string lookSummary = avatarLook == null
+                ? "look unavailable"
+                : $"{avatarLook.Gender} | Skin {(int)avatarLook.Skin} | Face {avatarLook.FaceId}";
+            return $"{seatLabel} | Job {jobCode} | {lookSummary}";
+        }
+
+        private CharacterBuild GetExistingAvatarBuild(int seatIndex)
+        {
+            return seatIndex >= 0 && seatIndex < _occupants.Count
+                ? _occupants[seatIndex].AvatarBuild
+                : null;
+        }
+
+        private CharacterBuild ResolvePacketOwnedAvatarBuild(LoginAvatarLook avatarLook, int seatIndex)
+        {
+            CharacterBuild existingBuild = GetExistingAvatarBuild(seatIndex);
+            if (avatarLook == null || AvatarBuildResolver == null)
+            {
+                return existingBuild;
+            }
+
+            try
+            {
+                return AvatarBuildResolver(LoginAvatarLookCodec.CloneLook(avatarLook)) ?? existingBuild;
+            }
+            catch
+            {
+                return existingBuild;
+            }
+        }
+
+        private void EnsureOccupantSlot(int index, string name, SocialRoomOccupantRole role, string detail, bool isReady, CharacterBuild avatarBuild)
+        {
+            while (_occupants.Count <= index)
+            {
+                int placeholderIndex = _occupants.Count;
+                _occupants.Add(new SocialRoomOccupant(
+                    placeholderIndex == index ? name : ResolveBasePacketSeatLabel(placeholderIndex),
+                    ResolveBasePacketOccupantRole(placeholderIndex),
+                    BuildBasePacketOccupantDetail(placeholderIndex, ResolveBasePacketSeatLabel(placeholderIndex), 0, null),
+                    false));
+            }
+
+            _occupants[index].Update(name, role, detail, isReady, avatarBuild);
+        }
+
+        private static string ResolveItemLabel(int itemId)
+        {
+            if (itemId <= 0)
+            {
+                return "Unknown item";
+            }
+
+            if (global::HaCreator.Program.InfoManager?.ItemNameCache != null &&
+                global::HaCreator.Program.InfoManager.ItemNameCache.TryGetValue(itemId, out Tuple<string, string, string> itemInfo) &&
+                !string.IsNullOrWhiteSpace(itemInfo?.Item2))
+            {
+                return itemInfo.Item2.Trim();
+            }
+
+            return itemId.ToString();
+        }
+
+        private static bool FailPacket(byte packetType, out string message)
+        {
+            message = $"Social-room packet {packetType} is not modeled for this room.";
+            return false;
+        }
+
+        private void TrackPacketOwnerSummary(string ownerName, int packetType, int tickCount, bool handled, string detail)
+        {
+            string result = handled ? "handled" : "rejected";
+            string suffix = string.IsNullOrWhiteSpace(detail) ? string.Empty : $" | {detail}";
+            _lastPacketOwnerSummary = $"{ownerName} {result} type {packetType} at tick {tickCount}{suffix}";
+        }
+
+        private string BuildDefaultPacketOwnerSummary()
+        {
+            return Kind switch
+            {
+                SocialRoomKind.PersonalShop => "CPersonalShopDlg::OnPacket idle. Waiting for shop dialog result packets before forwarding base type 25 into the shared mini-room owner.",
+                SocialRoomKind.EntrustedShop => "CEntrustedShopDlg::OnPacket idle. Waiting for entrusted result packets before forwarding shared shop traffic into CPersonalShopDlg::OnPacket.",
+                _ => "No dedicated packet-owned dialog for this room."
+            };
+        }
+
+        public void SyncMiniRoomMatchCards(
+            string roomTitle,
+            string ownerName,
+            string guestName,
+            bool ownerReady,
+            bool guestReady,
+            int ownerScore,
+            int guestScore,
+            int currentTurnIndex,
+            string statusMessage,
+            string roomState,
+            string ownerDetail = null,
+            string guestDetail = null,
+            CharacterBuild ownerBuild = null,
+            CharacterBuild guestBuild = null,
+            IReadOnlyList<SocialRoomOccupant> extraOccupants = null)
+        {
+            RoomTitle = string.IsNullOrWhiteSpace(roomTitle) ? "Mini Room" : roomTitle.Trim();
+            OwnerName = string.IsNullOrWhiteSpace(ownerName) ? "Player" : ownerName.Trim();
+            ModeName = "Match Cards";
+            StatusMessage = statusMessage ?? string.Empty;
+            RoomState = roomState ?? string.Empty;
+            MesoAmount = _miniRoomWagerAmount > 0 ? _miniRoomWagerAmount * 2 : 0;
+
+            EnsureMiniRoomOccupant(0, OwnerName, SocialRoomOccupantRole.Owner, ownerDetail ?? BuildMiniRoomDetail(ownerScore, currentTurnIndex == 0, "Host seat"), ownerReady, ownerBuild);
+            EnsureMiniRoomOccupant(1, guestName, SocialRoomOccupantRole.Guest, guestDetail ?? BuildMiniRoomDetail(guestScore, currentTurnIndex == 1, "Guest seat"), guestReady, guestBuild);
+
+            int occupantCount = 2;
+            if (extraOccupants != null)
+            {
+                foreach (SocialRoomOccupant occupant in extraOccupants)
+                {
+                    if (occupant == null)
+                    {
+                        continue;
+                    }
+
+                    EnsureMiniRoomOccupant(occupantCount, occupant.Name, occupant.Role, occupant.Detail, occupant.IsReady, occupant.AvatarBuild);
+                    occupantCount++;
+                }
+            }
+
+            if (_occupants.Count > occupantCount)
+            {
+                _occupants.RemoveRange(occupantCount, _occupants.Count - occupantCount);
+            }
+
+            if (_items.Count > 0)
+            {
+                _items[0].Update("Match Cards table preview", 1, 0, false, false);
+            }
+
+            if (_items.Count > 1)
+            {
+                string detail = _miniRoomWagerAmount > 0
+                    ? $"Match Cards board synced to the live room state | Wager {_miniRoomWagerAmount:N0} per player"
+                    : "Match Cards board synced to the live room state";
+                _items[1].Update(detail, 1, 0, false, false);
+            }
+
+            if (_notes.Count == 0)
+            {
+                _notes.Add("CMemoryGameDlg-backed Match Cards room shell.");
+                _notes.Add("Room occupants and ready state now mirror the live simulator board.");
+            }
+            else
+            {
+                _notes[0] = "CMemoryGameDlg-backed Match Cards room shell.";
+                if (_notes.Count == 1)
+                {
+                    _notes.Add("Room occupants and ready state now mirror the live simulator board.");
+                }
+                else
+                {
+                    _notes[1] = _miniRoomWagerAmount > 0
+                        ? $"Room occupants mirror the live board and a {_miniRoomWagerAmount:N0}-meso wager pot is escrowed."
+                        : "Room occupants and ready state now mirror the live simulator board.";
+                }
+            }
+
+            PersistState();
+        }
+
+        public void AddMiniRoomChatEntry(string text, SocialRoomChatTone tone = SocialRoomChatTone.Neutral)
+        {
+            AppendSocialRoomChatEntry(text, tone, persistState: true);
+        }
+
+        public void AddMiniRoomSpeakerMessage(string speakerName, string message, bool isLocalSpeaker)
+        {
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                return;
+            }
+
+            string resolvedSpeaker = string.IsNullOrWhiteSpace(speakerName) ? "Unknown" : speakerName.Trim();
+            AddMiniRoomChatEntry(
+                $"{resolvedSpeaker} : {message.Trim()}",
+                isLocalSpeaker ? SocialRoomChatTone.LocalSpeaker : SocialRoomChatTone.RemoteSpeaker);
+            NotifySocialChatObserved(message);
+        }
+
+        public void AddMiniRoomSystemMessage(string message, bool isWarning = false)
+        {
+            AddMiniRoomChatEntry(message, isWarning ? SocialRoomChatTone.Warning : SocialRoomChatTone.System);
+            NotifySocialChatObserved(message);
+        }
+
+        private void NotifySocialChatObserved(string message)
+        {
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                return;
+            }
+
+            SocialChatObserved?.Invoke(message.Trim(), Environment.TickCount);
+        }
+
+        private void NotifyPacketOwnedChatHistoryObserved(IEnumerable<SocialRoomChatEntry> entries)
+        {
+            if (entries == null)
+            {
+                return;
+            }
+
+            foreach (SocialRoomChatEntry entry in entries)
+            {
+                string observedText = ExtractObservedChatMessage(entry?.Text);
+                if (string.IsNullOrWhiteSpace(observedText))
+                {
+                    continue;
+                }
+
+                string signature = $"{(int)(entry?.Tone ?? SocialRoomChatTone.Neutral)}|{observedText}";
+                if (_announcedPacketOwnedChatHistorySignatures.Add(signature))
+                {
+                    NotifySocialChatObserved(observedText);
+                }
+            }
+        }
+
+        private void AppendSocialRoomChatEntry(string text, SocialRoomChatTone tone, bool persistState)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return;
+            }
+
+            _chatEntries.Add(new SocialRoomChatEntry(text.Trim(), tone));
+            const int maxChatEntries = 48;
+            if (_chatEntries.Count > maxChatEntries)
+            {
+                _chatEntries.RemoveRange(0, _chatEntries.Count - maxChatEntries);
+            }
+
+            if (persistState)
+            {
+                PersistState();
+            }
+        }
+
+        private void SetMiniRoomGuestReady(bool isReady, bool persistState)
+        {
+            if (Kind != SocialRoomKind.MiniRoom || _occupants.Count < 2)
+            {
+                return;
+            }
+
+            SocialRoomOccupant guest = _occupants[1];
+            guest.Update(isReady ? "Ready for the first turn" : "Waiting to ready", isReady);
+            RoomState = isReady ? "Ready check complete" : "Waiting for ready check";
+            StatusMessage = isReady
+                ? $"{guest.Name} is ready. Start {ModeName} when you want to open the board."
+                : $"{guest.Name} stepped back from the ready check.";
+            if (persistState)
+            {
+                PersistState();
+            }
+        }
+
+        private void StartMiniRoomOmokSessionFromPacket(int firstTurnSeat)
+        {
+            EnsureMiniRoomOccupant(0, OwnerName, SocialRoomOccupantRole.Owner, BuildOmokSeatDetail(0, "Host seat"), false);
+            EnsureMiniRoomOccupant(1, ResolveMiniRoomSeatName(1), SocialRoomOccupantRole.Guest, BuildOmokSeatDetail(1, "Guest seat"), false);
+            SetOmokSeatStoneValues(Math.Clamp(firstTurnSeat, 0, 1));
+            ResetOmokBoard();
+            _miniRoomOmokInProgress = true;
+            _miniRoomOmokCurrentTurnIndex = Math.Clamp(firstTurnSeat, 0, 1);
+            _miniRoomOmokWinnerIndex = -1;
+            ClearOmokDialogRequests(clearMatchRetreatRequest: true);
+            ResetOmokTurnClock();
+            RoomState = "Omok in progress";
+            StatusMessage = $"{ResolveMiniRoomSeatName(_miniRoomOmokCurrentTurnIndex)} opened the Omok round from a packet-backed start.";
+            SetOmokDialogStatus("COmokDlg::OnUserStart rebuilt the Omok board from packet state.", 1500);
+            SyncMiniRoomOmokPresentation();
+            AddMiniRoomSystemMessage("System : Omok round started from packet state.");
+            PersistState();
+        }
+
+        private bool TryApplyOmokStonePacket(int x, int y, int stoneValue, out string message)
+        {
+            message = null;
+            if (!TryValidateOmokCoordinates(x, y, out message))
+            {
+                return false;
+            }
+
+            int boardIndex = GetOmokBoardIndex(x, y);
+            if (_miniRoomOmokBoard[boardIndex] != 0)
+            {
+                message = $"Omok point {x},{y} is already occupied.";
+                return false;
+            }
+
+            int seatIndex = ResolveOmokSeatIndexByStoneValue(stoneValue);
+            if (seatIndex < 0)
+            {
+                seatIndex = _miniRoomOmokCurrentTurnIndex;
+            }
+
+            _miniRoomOmokInProgress = true;
+            _miniRoomOmokBoard[boardIndex] = stoneValue;
+            _miniRoomOmokLastMoveX = x;
+            _miniRoomOmokLastMoveY = y;
+            ClearOmokDialogRequests();
+            StartOmokStoneAnimation();
+            ResetOmokTurnClock();
+            _miniRoomOmokMoveHistory.Add(new OmokMoveHistoryEntry(x, y, stoneValue, seatIndex));
+            AddMiniRoomSpeakerMessage(ResolveMiniRoomSeatName(seatIndex), $"placed a {ResolveOmokStoneName(stoneValue)} stone at {x},{y}.", seatIndex == 0);
+            RecordOmokSoundByStringPoolId(stoneValue == 1 ? OmokSoundBlackStoneStringPoolId : OmokSoundWhiteStoneStringPoolId);
+
+            if (HasFiveInRow(x, y, stoneValue))
+            {
+                _miniRoomOmokInProgress = false;
+                _miniRoomOmokWinnerIndex = seatIndex;
+                RoomState = "Omok result";
+                StatusMessage = $"{ResolveMiniRoomSeatName(seatIndex)} completed five in a row and won the Omok round.";
+                SetOmokDialogStatus(StatusMessage, 2200);
+            }
+            else
+            {
+                _miniRoomOmokCurrentTurnIndex = seatIndex == 0 ? 1 : 0;
+                RoomState = "Omok in progress";
+                StatusMessage = FormatOmokTurnStatus(_miniRoomOmokCurrentTurnIndex);
+                SetOmokDialogStatus(
+                    $"{ResolveMiniRoomSeatName(seatIndex)} placed a {ResolveOmokStoneName(stoneValue)} stone. {_miniRoomOmokTimeFloor}s remain on the dialog timer.",
+                    900);
+            }
+
+            SyncMiniRoomOmokPresentation();
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        private void ApplyOmokRetreatPacket(int removedStoneCount, int nextTurnSeat)
+        {
+            int remainingToRemove = Math.Max(0, removedStoneCount);
+            int removedByHistory = 0;
+            while (remainingToRemove > 0 && TryPopOmokMoveHistory(out OmokMoveHistoryEntry move))
+            {
+                int boardIndex = GetOmokBoardIndex(move.X, move.Y);
+                _miniRoomOmokBoard[boardIndex] = 0;
+                remainingToRemove--;
+                removedByHistory++;
+            }
+
+            while (remainingToRemove > 0 && TryRemoveNewestOmokStoneFromBoardFallback())
+            {
+                remainingToRemove--;
+            }
+
+            _miniRoomOmokCurrentTurnIndex = Math.Clamp(nextTurnSeat, 0, 1);
+            _miniRoomOmokWinnerIndex = -1;
+            ClearOmokDialogRequests();
+            _miniRoomOmokRetreatRequestSentMatch = _miniRoomOmokCurrentTurnIndex == _miniRoomLocalSeatIndex;
+            ResetOmokTurnClock();
+            StartOmokStoneAnimation();
+            UpdateLastOmokMoveFromHistory();
+            RoomState = "Omok in progress";
+            StatusMessage = removedStoneCount > 0
+                ? $"Omok retreat packet removed {removedStoneCount} recent stone(s){(removedByHistory > 0 ? " from preserved stone history" : string.Empty)}."
+                : "Omok retreat packet resolved without removing stones.";
+            SetOmokDialogStatus($"COmokDlg retreat flow restored {ResolveMiniRoomSeatName(_miniRoomOmokCurrentTurnIndex)}'s turn.", 1500);
+            SyncMiniRoomOmokPresentation();
+            PersistState();
+        }
+
+        private bool TryDecodeOmokGameResultRecords(PacketReader reader, out string message)
+        {
+            message = string.Empty;
+            if (reader.Remaining == 0)
+            {
+                return true;
+            }
+
+            if (reader.Remaining < ClientMiniGameRecordByteLength * 2)
+            {
+                message = $"COmokDlg::OnGameResult expected two GW_MiniGameRecord rows ({ClientMiniGameRecordByteLength * 2} bytes), but only {reader.Remaining} byte(s) remain.";
+                return false;
+            }
+
+            if (!TryDecodeMiniGameRecord(reader, 0, out MiniGameRecord firstRecord, out message)
+                || !TryDecodeMiniGameRecord(reader, 1, out MiniGameRecord secondRecord, out message))
+            {
+                return false;
+            }
+
+            ApplyMiniGameRecord(firstRecord);
+            ApplyMiniGameRecord(secondRecord);
+            if (reader.Remaining > 0)
+            {
+                message = $"COmokDlg::OnGameResult decoded two GW_MiniGameRecord rows and ignored {reader.Remaining} trailing byte(s).";
+            }
+
+            return true;
+        }
+
+        private bool TryDecodeMiniGameRecord(PacketReader reader, int slot, out MiniGameRecord record, out string message)
+        {
+            record = null;
+            if (slot < 0)
+            {
+                message = $"MiniGame record used invalid slot {slot}.";
+                return false;
+            }
+
+            if (reader.Remaining < ClientMiniGameRecordByteLength)
+            {
+                message = $"MiniGame record for slot {slot} requires {ClientMiniGameRecordByteLength} bytes, but only {reader.Remaining} byte(s) remain.";
+                return false;
+            }
+
+            byte[] rawBytes = reader.ReadBytes(ClientMiniGameRecordByteLength);
+            if (rawBytes.Length != ClientMiniGameRecordByteLength)
+            {
+                message = $"MiniGame record for slot {slot} requires {ClientMiniGameRecordByteLength} bytes, but decoded {rawBytes.Length} byte(s).";
+                return false;
+            }
+
+            record = new MiniGameRecord(
+                slot,
+                BitConverter.ToInt32(rawBytes, 0),
+                BitConverter.ToInt32(rawBytes, 4),
+                BitConverter.ToInt32(rawBytes, 8),
+                BitConverter.ToInt32(rawBytes, 12),
+                BitConverter.ToInt32(rawBytes, 16),
+                rawBytes);
+            message = string.Empty;
+            return true;
+        }
+
+        private void ApplyMiniGameRecord(MiniGameRecord record)
+        {
+            if (record == null)
+            {
+                return;
+            }
+
+            _miniRoomOmokRecords[record.Slot] = record;
+        }
+
+        private void ApplyOmokGameResultPacket(int resultType, int winnerSeat)
+        {
+            _miniRoomOmokInProgress = false;
+            ClearOmokDialogRequests(clearMatchRetreatRequest: true);
+            ClearOmokPendingPrompt();
+            if (resultType == 1)
+            {
+                _miniRoomOmokWinnerIndex = -1;
+                RoomState = "Omok draw";
+                StatusMessage = ResolveOmokString(OmokTieStringPoolId, "It's a tie.");
+                SetOmokDialogStatus("COmokDlg::OnGameResult closed the round as a draw.", 2200);
+                RecordOmokSoundByStringPoolId(OmokSoundDrawStringPoolId);
+                AddMiniRoomSystemMessage($"System : {StatusMessage}");
+            }
+            else
+            {
+                _miniRoomOmokWinnerIndex = Math.Clamp(winnerSeat, 0, 1);
+                RoomState = "Omok result";
+                bool localWon = _miniRoomOmokWinnerIndex == _miniRoomLocalSeatIndex;
+                StatusMessage = ResolveOmokString(
+                    localWon ? OmokWinStringPoolId : OmokLoseStringPoolId,
+                    localWon ? "You win." : "You lost.");
+                SetOmokDialogStatus(
+                    $"{ResolveMiniRoomSeatName(_miniRoomOmokWinnerIndex)} won the Omok round from packet state.",
+                    2200);
+                RecordOmokSoundByStringPoolId(localWon ? OmokSoundWinStringPoolId : OmokSoundLoseStringPoolId);
+                AddMiniRoomSystemMessage($"System : {StatusMessage}");
+            }
+
+            SyncMiniRoomOmokPresentation();
+            PersistState();
+        }
+
+        private void ApplyPersonalShopBuyResult(int resultCode)
+        {
+            RoomState = "Buy result received";
+            StatusMessage = resultCode switch
+            {
+                0 => "Personal-shop buy result code 0 completed without opening a client notice.",
+                1 => "Personal-shop buy result code 1 followed the client notice branch for StringPool id 0x365.",
+                2 => "Personal-shop buy result code 2 followed the client notice branch for StringPool id 0x1A8B.",
+                3 => "Personal-shop buy result code 3 followed the client notice branch for StringPool id 0xB9D.",
+                4 => "Personal-shop buy result code 4 followed the client notice branch for StringPool id 0xB9C.",
+                5 => "Personal-shop buy result code 5 followed the client notice branch for StringPool id 0x366.",
+                6 => "Personal-shop buy result code 6 followed the client notice branch for StringPool id 0x367.",
+                7 => "Personal-shop buy result code 7 followed the client notice branch for StringPool id 0x1A2B.",
+                8 => "Personal-shop buy result code 8 followed the client notice branch for StringPool id 0x1A6D.",
+                9 => "Personal-shop buy result code 9 followed the client notice branch for StringPool id 0x14B1.",
+                10 => "Personal-shop buy result code 10 followed the client notice branch for StringPool id 0x14B0.",
+                11 => "Personal-shop buy result code 11 followed the client notice branch for StringPool id 0x19E.",
+                12 => "Personal-shop buy result code 12 followed the client notice branch for StringPool id 0x1A67.",
+                14 => "Personal-shop buy result code 14 followed the client notice branch for StringPool id 0xFB2.",
+                _ => $"Personal-shop buy result code {resultCode} followed the client fallback notice branch for StringPool id 0x369."
+            };
+            PersistState();
+        }
+
+        private bool TryApplyPersonalShopSoldItemPacket(PacketReader reader, out string message)
+        {
+            int soldIndex = reader.ReadByte();
+            int purchasedBundles = reader.ReadShort();
+            string buyerName = NormalizeName(reader.ReadMapleString());
+            SocialRoomItemEntry entry = FindActiveMerchantPacketEntry(soldIndex);
+            if (entry == null)
+            {
+                message = $"No active personal-shop bundle exists at packet slot {soldIndex}.";
+                return false;
+            }
+
+            int normalizedBundles = Math.Max(1, purchasedBundles);
+            int quantitySold = normalizedBundles * Math.Max(1, entry.BundleSetCount);
+            int grossMesosReceived = Math.Max(0, normalizedBundles * entry.MesoAmount);
+            int taxMesos = GetPersonalShopTax(grossMesosReceived);
+            int netMesosReceived = Math.Max(0, grossMesosReceived - taxMesos);
+            entry.Update($"{entry.Detail} | Packet sold {normalizedBundles} bundle(s) to {buyerName}", entry.Quantity, entry.MesoAmount, entry.IsLocked, entry.IsClaimed, entry.BundleSetCount);
+            _personalShopTotalSoldGross += grossMesosReceived;
+            _personalShopTotalReceivedNet += netMesosReceived;
+            MesoAmount += netMesosReceived;
+            _soldItems.Add(new SocialRoomSoldItemEntry(
+                entry.ItemId,
+                entry.ItemName,
+                buyerName,
+                quantitySold,
+                normalizedBundles,
+                entry.MesoAmount,
+                grossMesosReceived,
+                taxMesos,
+                netMesosReceived,
+                soldIndex));
+            SocialRoomOccupant buyer = _occupants.FirstOrDefault(occupant => string.Equals(occupant.Name, buyerName, StringComparison.OrdinalIgnoreCase));
+            if (buyer == null)
+            {
+                _occupants.Add(new SocialRoomOccupant(buyerName, SocialRoomOccupantRole.Buyer, $"Bought {entry.ItemName} from packet state"));
+            }
+            else
+            {
+                buyer.Update(buyerName, SocialRoomOccupantRole.Buyer, $"Bought {entry.ItemName} from packet state", isReady: false, buyer.AvatarBuild);
+            }
+
+            if (!_savedVisitors.Contains(buyerName, StringComparer.OrdinalIgnoreCase))
+            {
+                _savedVisitors.Add(buyerName);
+            }
+
+            EnsureMerchantPacketNotes();
+            _notes[2] = $"{buyerName} bought {quantitySold} of {entry.ItemName} across {normalizedBundles} bundle(s) for {grossMesosReceived:N0} meso gross and {netMesosReceived:N0} net.";
+            _notes[3] = $"Personal-shop packet totals: gross {_personalShopTotalSoldGross:N0}, tax {_personalShopTotalSoldGross - _personalShopTotalReceivedNet:N0}, net {_personalShopTotalReceivedNet:N0}, claimable {MesoAmount:N0}.";
+            RoomState = "Sold-item result received";
+            StatusMessage = $"{buyerName} bought {quantitySold} of {entry.ItemName} across {normalizedBundles} bundle(s) from packet slot {soldIndex}. Gross {grossMesosReceived:N0}, tax {taxMesos:N0}, net {netMesosReceived:N0}.";
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        private bool TryApplyMerchantShopRowRefreshPacket(PacketReader reader, out string message)
+        {
+            byte[] payload = reader.ReadBytes(reader.Remaining);
+            if (!TryDecodeMerchantShopRowRefreshPayload(payload, out MerchantShopRowRefresh rowRefresh, out message))
+            {
+                return false;
+            }
+
+            int packetSlotIndex = rowRefresh.PacketSlotIndex;
+            int itemId = rowRefresh.ItemId;
+            int bundleQuantity = rowRefresh.BundleQuantity;
+            int bundlePrice = rowRefresh.BundlePrice;
+            int normalizedSlotIndex = Math.Max(0, packetSlotIndex);
+            int normalizedQuantity = Math.Max(1, bundleQuantity);
+            int normalizedPrice = Math.Max(0, bundlePrice);
+            NormalizeActiveMerchantPacketSlots();
+            int entryListIndex = _items.FindIndex(item =>
+                IsClientVisibleMerchantPacketEntry(item) &&
+                item.PacketSlotIndex == normalizedSlotIndex);
+            SocialRoomItemEntry entry = entryListIndex >= 0 ? _items[entryListIndex] : null;
+            string itemName = ResolveItemName(itemId);
+            string detail = $"Packet row {normalizedSlotIndex} | CMiniRoomBaseDlg::OnPacketBase subtype 6 authoritative row refresh";
+            if (entry == null)
+            {
+                entry = new SocialRoomItemEntry(
+                    OwnerName,
+                    itemName,
+                    normalizedQuantity,
+                    normalizedPrice,
+                    detail,
+                    itemId: itemId,
+                    packetSlotIndex: normalizedSlotIndex,
+                    bundleSetCount: normalizedQuantity);
+                _items.Add(entry);
+            }
+            else if (entry.ItemId != itemId)
+            {
+                _items.RemoveAt(entryListIndex);
+                _inventoryEscrow.RemoveAll(escrow => ReferenceEquals(escrow.Entry, entry));
+                entry = new SocialRoomItemEntry(
+                    OwnerName,
+                    itemName,
+                    normalizedQuantity,
+                    normalizedPrice,
+                    detail,
+                    itemId: itemId,
+                    packetSlotIndex: normalizedSlotIndex,
+                    bundleSetCount: normalizedQuantity);
+                _items.Insert(Math.Clamp(entryListIndex, 0, _items.Count), entry);
+            }
+            else
+            {
+                entry.UpdatePacketIdentity(itemId, normalizedSlotIndex);
+                entry.Update(detail, normalizedQuantity, normalizedPrice, isLocked: false, isClaimed: false, normalizedQuantity);
+            }
+
+            _inventoryEscrow.RemoveAll(escrow => ReferenceEquals(escrow.Entry, entry));
+            NormalizeActiveMerchantPacketSlots();
+            RoomState = Kind == SocialRoomKind.EntrustedShop ? "Updating sale list" : "Closed for setup";
+            ModeName = Kind == SocialRoomKind.EntrustedShop ? "Restock" : "Repricing";
+            EnsureMerchantPacketNotes();
+            _notes[0] = $"Authoritative merchant subtype 25/base subtype 6 row refresh applied packet slot {normalizedSlotIndex}.";
+            _notes[1] = $"{itemName} x{normalizedQuantity} is now listed for {normalizedPrice:N0} meso from the packet-owned row array.";
+            string packetItemDetail = rowRefresh.PacketItem.HasValue
+                ? $" {BuildTradingRoomPacketItemDetail("Merchant row refresh", normalizedSlotIndex, rowRefresh.PacketItem.Value)}"
+                : string.Empty;
+            StatusMessage = $"CPersonalShopDlg::OnPacket applied subtype 15 shop-row refresh from CMiniRoomBaseDlg::OnPacketBase subtype 6 using {rowRefresh.DecodeShape}: slot {normalizedSlotIndex}, {itemName} x{normalizedQuantity}, price {normalizedPrice:N0}.{packetItemDetail}";
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        private bool TryApplyMerchantShopFullRefreshPacket(byte[] payload, string refreshOwner, out string message)
+        {
+            int? refreshedEntrustedMoney = null;
+            byte[] refreshPayload = payload;
+            List<MerchantPacketItemRow> rows;
+            if (Kind == SocialRoomKind.EntrustedShop &&
+                payload != null &&
+                payload.Length > sizeof(int) &&
+                TryDecodeMerchantShopFullRefreshPayload(payload.AsSpan(sizeof(int)).ToArray(), out List<MerchantPacketItemRow> entrustedRows, out _))
+            {
+                refreshedEntrustedMoney = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(0, sizeof(int)));
+                refreshPayload = payload.AsSpan(sizeof(int)).ToArray();
+                rows = entrustedRows;
+            }
+            else if (!TryDecodeMerchantShopFullRefreshPayload(refreshPayload, out rows, out message))
+            {
+                return false;
+            }
+
+            List<SocialRoomItemEntry> removedEntries = _items
+                .Where(IsClientVisibleMerchantPacketEntry)
+                .ToList();
+            if (removedEntries.Count > 0)
+            {
+                _items.RemoveAll(item => removedEntries.Contains(item));
+                _inventoryEscrow.RemoveAll(escrow => removedEntries.Contains(escrow.Entry));
+            }
+
+            for (int rowIndex = 0; rowIndex < rows.Count; rowIndex++)
+            {
+                MerchantPacketItemRow row = rows[rowIndex];
+                int packetSlotIndex = rowIndex;
+                string itemName = ResolveItemName(row.Item.ItemId);
+                int bundleQuantity = Math.Max(1, (int)row.Number);
+                int bundleSetCount = Math.Max(0, (int)row.Set);
+                int bundlePrice = Math.Max(0, row.Price);
+                string packetItemDetail = BuildTradingRoomPacketItemDetail(
+                    "Merchant full refresh",
+                    packetSlotIndex,
+                    row.Item);
+                string detail = $"Packet row {packetSlotIndex} | CPersonalShopDlg::OnRefresh full item-array refresh | nNumber {bundleQuantity} | nSet {bundleSetCount} | {packetItemDetail}";
+                _items.Add(new SocialRoomItemEntry(
+                    OwnerName,
+                    itemName,
+                    bundleQuantity,
+                    bundlePrice,
+                    detail,
+                    itemId: row.Item.ItemId,
+                    packetSlotIndex: packetSlotIndex,
+                    bundleSetCount: bundleSetCount));
+            }
+
+            NormalizeActiveMerchantPacketSlots();
+            if (refreshedEntrustedMoney.HasValue)
+            {
+                MesoAmount = Math.Max(0, refreshedEntrustedMoney.Value);
+            }
+
+            RoomState = Kind == SocialRoomKind.EntrustedShop ? "Updating sale list" : "Closed for setup";
+            ModeName = Kind == SocialRoomKind.EntrustedShop ? "Restock" : "Repricing";
+            EnsureMerchantPacketNotes();
+            _notes[0] = refreshedEntrustedMoney.HasValue
+                ? $"CEntrustedShopDlg::OnRefresh refreshed m_nMoney to {MesoAmount:N0}, then CPersonalShopDlg::OnRefresh replaced the packet-owned merchant item array with {rows.Count} row(s)."
+                : $"CPersonalShopDlg::OnRefresh replaced the packet-owned merchant item array with {rows.Count} row(s).";
+            _notes[1] = rows.Count == 0
+                ? "The server refresh cleared every client-visible merchant row."
+                : $"First refreshed row: {ResolveItemName(rows[0].Item.ItemId)} x{Math.Max(1, (int)rows[0].Number)} for {Math.Max(0, rows[0].Price):N0} meso.";
+            string ownerLabel = string.IsNullOrWhiteSpace(refreshOwner)
+                ? "CPersonalShopDlg::OnRefresh"
+                : refreshOwner;
+            StatusMessage = refreshedEntrustedMoney.HasValue
+                ? $"CEntrustedShopDlg::OnRefresh applied leading m_nMoney {MesoAmount:N0}, then CPersonalShopDlg::OnRefresh applied full merchant item-array refresh from {ownerLabel}: {rows.Count} row(s) decoded as count/nNumber/nSet/nPrice/GW_ItemSlotBase."
+                : $"CPersonalShopDlg::OnRefresh applied full merchant item-array refresh from {ownerLabel}: {rows.Count} row(s) decoded as count/nNumber/nSet/nPrice/GW_ItemSlotBase.";
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        private static bool TryDecodeMerchantShopFullRefreshPayload(byte[] payload, out List<MerchantPacketItemRow> rows, out string message)
+        {
+            rows = null;
+            message = null;
+            if (payload == null || payload.Length == 0)
+            {
+                return false;
+            }
+
+            int rowCount = payload[0];
+            if (rowCount == 0)
+            {
+                if (payload.Length != 1)
+                {
+                    message = $"Merchant shop full refresh declared zero rows but carried {payload.Length - 1} trailing byte(s).";
+                    return false;
+                }
+
+                rows = new List<MerchantPacketItemRow>();
+                return true;
+            }
+
+            const int fixedRowHeaderLength = sizeof(short) + sizeof(short) + sizeof(int);
+            const int minimumBundleItemLength = sizeof(byte) + sizeof(int) + sizeof(byte) + sizeof(long) + sizeof(ushort) + sizeof(short) + sizeof(short);
+            int minimumRowLength = fixedRowHeaderLength + minimumBundleItemLength;
+            if (payload.Length < 1 + (rowCount * minimumRowLength))
+            {
+                return false;
+            }
+
+            List<MerchantPacketItemRow> decodedRows = new(rowCount);
+            if (!TryDecodeMerchantShopFullRefreshRows(payload.AsSpan(1), rowCount, decodedRows, out message))
+            {
+                return false;
+            }
+
+            rows = decodedRows;
+            return true;
+        }
+
+        private static bool TryDecodeMerchantShopFullRefreshRows(
+            ReadOnlySpan<byte> payload,
+            int rowsRemaining,
+            List<MerchantPacketItemRow> rows,
+            out string message)
+        {
+            message = null;
+            if (rowsRemaining == 0)
+            {
+                if (payload.Length == 0)
+                {
+                    return true;
+                }
+
+                message = $"Merchant shop full refresh had {payload.Length} trailing byte(s) after the declared row array.";
+                return false;
+            }
+
+            const int fixedRowHeaderLength = sizeof(short) + sizeof(short) + sizeof(int);
+            const int minimumBundleItemLength = sizeof(byte) + sizeof(int) + sizeof(byte) + sizeof(long) + sizeof(ushort) + sizeof(short) + sizeof(short);
+            const int minimumRowLength = fixedRowHeaderLength + minimumBundleItemLength;
+            if (payload.Length < minimumRowLength * rowsRemaining)
+            {
+                message = "Merchant shop full refresh ended before the declared row array could be decoded.";
+                return false;
+            }
+
+            short number = BinaryPrimitives.ReadInt16LittleEndian(payload[..sizeof(short)]);
+            short set = BinaryPrimitives.ReadInt16LittleEndian(payload.Slice(sizeof(short), sizeof(short)));
+            int price = BinaryPrimitives.ReadInt32LittleEndian(payload.Slice(sizeof(short) + sizeof(short), sizeof(int)));
+            ReadOnlySpan<byte> itemAndTail = payload[fixedRowHeaderLength..];
+            int maxItemLength = itemAndTail.Length - ((rowsRemaining - 1) * minimumRowLength);
+            for (int itemLength = minimumBundleItemLength; itemLength <= maxItemLength; itemLength++)
+            {
+                if (!TryDecodePacketOwnedTradeItem(itemAndTail[..itemLength], out PacketOwnedTradeItem item, out _))
+                {
+                    continue;
+                }
+
+                rows.Add(new MerchantPacketItemRow(number, set, price, item));
+                if (TryDecodeMerchantShopFullRefreshRows(itemAndTail[itemLength..], rowsRemaining - 1, rows, out message))
+                {
+                    return true;
+                }
+
+                rows.RemoveAt(rows.Count - 1);
+            }
+
+            message ??= "Merchant shop full refresh row did not contain a decodable GW_ItemSlotBase body.";
+            return false;
+        }
+
+        private static bool TryDecodeMerchantShopRowRefreshPayload(byte[] payload, out MerchantShopRowRefresh rowRefresh, out string message)
+        {
+            rowRefresh = default;
+            message = null;
+            if (payload == null || payload.Length == 0)
+            {
+                message = "Merchant shop-row refresh packet did not include a row body.";
+                return false;
+            }
+
+            if (TryDecodeLegacyMerchantShopRowRefreshPayload(payload, out rowRefresh, out message))
+            {
+                return true;
+            }
+
+            if (TryDecodeMerchantShopRowRefreshWithPacketItem(payload, out rowRefresh, out message))
+            {
+                return true;
+            }
+
+            message ??= $"Merchant shop-row refresh packet did not match the modeled legacy tuple or GW_ItemSlotBase row body shape ({payload.Length} byte(s)).";
+            return false;
+        }
+
+        internal static bool TryIdentifyMerchantBaseUpdatePayloadForAutoMapping(byte[] payload, out string detail)
+        {
+            detail = string.Empty;
+            if (payload == null || payload.Length < 2 || payload[0] != PersonalShopBasePacketType)
+            {
+                detail = "subtype 25 payload is missing the CMiniRoomBaseDlg::OnPacketBase wrapper.";
+                return false;
+            }
+
+            byte baseSubType = payload[1];
+            if (baseSubType != MiniRoomBaseUpdatePacketSubType)
+            {
+                if (IsMiniRoomBasePacketSubType(baseSubType))
+                {
+                    detail = $"subtype 25 wraps CMiniRoomBaseDlg::OnPacketBase subtype {baseSubType}.";
+                    return true;
+                }
+
+                detail = $"subtype 25 wraps unknown CMiniRoomBaseDlg::OnPacketBase subtype {baseSubType}.";
+                return false;
+            }
+
+            byte[] nestedPayload = payload.AsSpan(2).ToArray();
+            if (TryDecodeMerchantShopFullRefreshPayload(nestedPayload, out List<MerchantPacketItemRow> rows, out _))
+            {
+                detail = $"subtype 25/base subtype 6 carries direct CPersonalShopDlg::OnRefresh item-array payload with {rows.Count} row(s).";
+                return true;
+            }
+
+            if (nestedPayload.Length > sizeof(int) &&
+                TryDecodeMerchantShopFullRefreshPayload(nestedPayload.AsSpan(sizeof(int)).ToArray(), out List<MerchantPacketItemRow> entrustedRows, out _))
+            {
+                detail = $"subtype 25/base subtype 6 carries CEntrustedShopDlg::OnRefresh leading m_nMoney plus CPersonalShopDlg::OnRefresh item-array payload with {entrustedRows.Count} row(s).";
+                return true;
+            }
+
+            if (nestedPayload.Length > 1 &&
+                nestedPayload[0] == MerchantShopRowRefreshPacketType &&
+                TryDecodeMerchantShopRowRefreshPayload(nestedPayload.AsSpan(1).ToArray(), out MerchantShopRowRefresh rowRefresh, out _))
+            {
+                detail = $"subtype 25/base subtype 6 carries nested subtype 15 {rowRefresh.DecodeShape} for merchant packet slot {rowRefresh.PacketSlotIndex}.";
+                return true;
+            }
+
+            detail = "subtype 25/base subtype 6 did not match the modeled CPersonalShopDlg::OnRefresh item-array or subtype-15 merchant row refresh payload shapes.";
+            return false;
+        }
+
+        private static bool TryDecodeLegacyMerchantShopRowRefreshPayload(byte[] payload, out MerchantShopRowRefresh rowRefresh, out string message)
+        {
+            rowRefresh = default;
+            message = null;
+            const int legacyPayloadLength = sizeof(byte) + sizeof(int) + sizeof(short) + sizeof(int);
+            if (payload == null || payload.Length != legacyPayloadLength)
+            {
+                return false;
+            }
+
+            int offset = 0;
+            byte packetSlotIndex = payload[offset++];
+            int itemId = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(offset, sizeof(int)));
+            offset += sizeof(int);
+            short bundleQuantity = BinaryPrimitives.ReadInt16LittleEndian(payload.AsSpan(offset, sizeof(short)));
+            offset += sizeof(short);
+            int bundlePrice = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(offset, sizeof(int)));
+            if (itemId <= 0)
+            {
+                message = $"Merchant shop-row refresh packet carried invalid item id {itemId} for packet slot {packetSlotIndex}.";
+                return false;
+            }
+
+            rowRefresh = new MerchantShopRowRefresh(
+                packetSlotIndex,
+                itemId,
+                Math.Max(1, (int)bundleQuantity),
+                Math.Max(0, bundlePrice),
+                "legacy simulator itemId/count/price tuple",
+                null);
+            return true;
+        }
+
+        private static bool TryDecodeMerchantShopRowRefreshWithPacketItem(byte[] payload, out MerchantShopRowRefresh rowRefresh, out string message)
+        {
+            rowRefresh = default;
+            message = null;
+            if (payload == null || payload.Length < sizeof(byte) + sizeof(int) + 1)
+            {
+                return false;
+            }
+
+            byte packetSlotIndex = payload[0];
+            ReadOnlySpan<byte> body = payload.AsSpan(1);
+            if (TryDecodePacketItemThenPrice(packetSlotIndex, body, out rowRefresh, out message))
+            {
+                return true;
+            }
+
+            if (body.Length > sizeof(int))
+            {
+                int leadingPrice = BinaryPrimitives.ReadInt32LittleEndian(body[..sizeof(int)]);
+                if (TryDecodePacketOwnedTradeItem(body[sizeof(int)..], out PacketOwnedTradeItem leadingPriceItem, out string itemError))
+                {
+                    rowRefresh = new MerchantShopRowRefresh(
+                        packetSlotIndex,
+                        leadingPriceItem.ItemId,
+                        Math.Max(1, leadingPriceItem.Quantity),
+                        Math.Max(0, leadingPrice),
+                        "GW_ItemSlotBase merchant row body with leading price",
+                        leadingPriceItem);
+                    return true;
+                }
+
+                message = itemError;
+            }
+
+            return false;
+        }
+
+        private static bool TryDecodePacketItemThenPrice(byte packetSlotIndex, ReadOnlySpan<byte> body, out MerchantShopRowRefresh rowRefresh, out string message)
+        {
+            rowRefresh = default;
+            message = null;
+            if (body.Length <= sizeof(int))
+            {
+                return false;
+            }
+
+            for (int priceOffset = body.Length - sizeof(int); priceOffset >= 1; priceOffset--)
+            {
+                ReadOnlySpan<byte> itemPayload = body[..priceOffset];
+                if (!TryDecodePacketOwnedTradeItem(itemPayload, out PacketOwnedTradeItem item, out _))
+                {
+                    continue;
+                }
+
+                int bundlePrice = BinaryPrimitives.ReadInt32LittleEndian(body.Slice(priceOffset, sizeof(int)));
+                rowRefresh = new MerchantShopRowRefresh(
+                    packetSlotIndex,
+                    item.ItemId,
+                    Math.Max(1, item.Quantity),
+                    Math.Max(0, bundlePrice),
+                    "GW_ItemSlotBase merchant row body with trailing price",
+                    item);
+                return true;
+            }
+
+            message = "Merchant shop-row refresh packet did not contain a decodable GW_ItemSlotBase body before the price field.";
+            return false;
+        }
+
+        private bool TryApplyPersonalShopMoveItemPacket(PacketReader reader, out string message)
+        {
+            int remainingItemCount = reader.ReadByte();
+            int removedIndex = reader.ReadShort();
+            int normalizedRemainingItemCount = Math.Max(0, remainingItemCount);
+            int normalizedRemovedIndex = Math.Max(0, removedIndex);
+            List<SocialRoomItemEntry> activeEntries = NormalizeActiveMerchantPacketSlots();
+            SocialRoomItemEntry removedEntry = normalizedRemovedIndex < activeEntries.Count
+                ? activeEntries[normalizedRemovedIndex]
+                : null;
+
+            if (removedEntry != null)
+            {
+                _items.Remove(removedEntry);
+                _inventoryEscrow.RemoveAll(escrow => ReferenceEquals(escrow.Entry, removedEntry));
+            }
+            else if (activeEntries.Count <= normalizedRemainingItemCount)
+            {
+                message = $"Personal-shop move-to-inventory packet declared packet slot {removedIndex}, but no active merchant row needed compaction.";
+                return false;
+            }
+
+            int trimmedRows = TrimActiveMerchantPacketRows(normalizedRemainingItemCount);
+            NormalizeActiveMerchantPacketSlots();
+            RoomState = "Closed for setup";
+            ModeName = "Repricing";
+            string itemLabel = removedEntry?.ItemName ?? $"packet slot {normalizedRemovedIndex}";
+            string removedDetail = removedEntry == null
+                ? $"CPersonalShopDlg::OnMoveItemToInventory accepted the server-owned m_nItem={normalizedRemainingItemCount} compaction even though packet slot {normalizedRemovedIndex} was not locally populated."
+                : $"Moved {itemLabel} back to inventory from packet slot {normalizedRemovedIndex}.";
+            StatusMessage = trimmedRows > 0
+                ? $"{removedDetail} {normalizedRemainingItemCount} bundle row(s) remain in the client packet array after shifting following rows down and trimming {trimmedRows} stale tail row(s)."
+                : $"{removedDetail} {normalizedRemainingItemCount} bundle row(s) remain in the client packet array after shifting following rows down.";
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        private void ApplyEntrustedArrangeResult(int mesoAmount)
+        {
+            int removedRows = RemoveClaimedMerchantRows();
+            MesoAmount = Math.Max(0, mesoAmount);
+            RoomState = "Ledger review";
+            ModeName = "Ledger review";
+            StatusMessage = removedRows > 0
+                ? $"Entrusted-shop arrange packet compacted {removedRows} sold or empty row(s) and refreshed the ledger to {MesoAmount:N0} meso."
+                : $"Entrusted-shop arrange packet refreshed the ledger to {MesoAmount:N0} meso.";
+            PersistState();
+        }
+
+        private void ApplyEntrustedWithdrawAllResult(int resultCode)
+        {
+            RoomState = "Withdraw-all result";
+            StatusMessage = resultCode switch
+            {
+                0 => "Entrusted-shop withdraw-all result code 0 followed the client notice branch for StringPool id 0xDB8.",
+                1 => "Entrusted-shop withdraw-all result code 1 followed the client notice branch for StringPool id 0xDB9.",
+                2 => "Entrusted-shop withdraw-all result code 2 followed the client notice branch for StringPool id 0xDBA.",
+                3 => "Entrusted-shop withdraw-all result code 3 followed the client notice branch for StringPool id 0xDBB.",
+                4 => "Entrusted-shop withdraw-all result code 4 followed the client notice branch for StringPool id 0xDBC.",
+                5 => "Entrusted-shop withdraw-all result code 5 completed without opening a client notice.",
+                _ => $"Entrusted-shop withdraw-all result code {resultCode} followed the client fallback notice path."
+            };
+            PersistState();
+        }
+
+        private void ApplyEntrustedWithdrawMoneyResult()
+        {
+            MesoAmount = 0;
+            RoomState = "Ledger settled";
+            StatusMessage = "Entrusted-shop withdraw-money packet cleared the ledger meso total and refreshed the dialog state.";
+            PersistState();
+        }
+
+        private bool TryApplyEntrustedVisitListPacket(PacketReader reader, out string message)
+        {
+            int count = reader.ReadShort();
+            _savedVisitors.Clear();
+            _entrustedVisitLogEntries.Clear();
+            List<string> visitNotes = new();
+            for (int i = 0; i < count; i++)
+            {
+                string name = NormalizeName(reader.ReadMapleString());
+                int staySeconds = reader.ReadInt();
+                _savedVisitors.Add(name);
+                _entrustedVisitLogEntries.Add(new EntrustedShopVisitLogEntrySnapshot
+                {
+                    Name = name,
+                    StaySeconds = Math.Max(0, staySeconds)
+                });
+                visitNotes.Add($"{name} stayed {staySeconds}s");
+            }
+
+            while (_notes.Count < 4)
+            {
+                _notes.Add(string.Empty);
+            }
+
+            _notes[0] = count > 0
+                ? $"Entrusted-shop visit log: {string.Join(", ", visitNotes)}."
+                : "Entrusted-shop visit log: no entries.";
+            _entrustedVisitListSelectedIndex = NormalizeEntrustedDialogSelectionIndex(_entrustedVisitListSelectedIndex, _entrustedVisitLogEntries.Count);
+            if (_entrustedPendingChildDialogKind == EntrustedShopChildDialogKind.VisitList)
+            {
+                _entrustedPendingChildDialogKind = null;
+            }
+
+            _entrustedChildDialogKind = EntrustedShopChildDialogKind.VisitList;
+            _entrustedChildDialogStatus = count > 0
+                ? "CVisitListDlg::OnCreate opened the dedicated visit-list owner. Save Name remains disabled until a visit row is selected."
+                : "CVisitListDlg::OnCreate opened the dedicated visit-list owner with an empty visit log.";
+            StatusMessage = $"Applied entrusted-shop visit-list packet with {count} visitor entr{(count == 1 ? "y" : "ies")} and opened {ResolveEntrustedChildDialogOwnerName(EntrustedShopChildDialogKind.VisitList)}.";
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        private bool TryApplyEntrustedBlackListPacket(PacketReader reader, out string message)
+        {
+            int count = reader.ReadShort();
+            _blockedVisitors.Clear();
+            for (int i = 0; i < count; i++)
+            {
+                _blockedVisitors.Add(NormalizeName(reader.ReadMapleString()));
+            }
+
+            while (_notes.Count < 4)
+            {
+                _notes.Add(string.Empty);
+            }
+
+            _notes[1] = _blockedVisitors.Count > 0
+                ? $"Entrusted-shop blacklist: {string.Join(", ", _blockedVisitors)}."
+                : "Entrusted-shop blacklist: empty.";
+            _entrustedBlacklistSelectedIndex = NormalizeEntrustedDialogSelectionIndex(_entrustedBlacklistSelectedIndex, _blockedVisitors.Count);
+            if (_entrustedPendingChildDialogKind == EntrustedShopChildDialogKind.Blacklist)
+            {
+                _entrustedPendingChildDialogKind = null;
+            }
+
+            _entrustedChildDialogKind = EntrustedShopChildDialogKind.Blacklist;
+            string pendingCompletion = BuildEntrustedBlacklistPendingCompletionSummary(_blockedVisitors);
+            ClearEntrustedBlacklistPendingMutation();
+            _entrustedChildDialogStatus = _blockedVisitors.Count < 20
+                ? "CBlackListDlg::OnCreate opened the dedicated blacklist owner. Add stays enabled while the client-side count remains below 20."
+                : "CBlackListDlg::OnCreate opened the dedicated blacklist owner at the client-side 20-name add limit.";
+            if (!string.IsNullOrWhiteSpace(pendingCompletion))
+            {
+                _entrustedChildDialogStatus = $"{_entrustedChildDialogStatus}{pendingCompletion}";
+            }
+
+            StatusMessage = $"Applied entrusted-shop blacklist packet with {_blockedVisitors.Count} entr{(_blockedVisitors.Count == 1 ? "y" : "ies")} and opened {ResolveEntrustedChildDialogOwnerName(EntrustedShopChildDialogKind.Blacklist)}.{pendingCompletion}";
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        public bool TryOpenEntrustedChildDialog(EntrustedShopChildDialogKind kind, out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.EntrustedShop)
+            {
+                message = "Entrusted-shop child dialogs only apply to the entrusted shop shell.";
+                return false;
+            }
+
+            if (_miniRoomLocalSeatIndex != 0)
+            {
+                message = $"{ResolveEntrustedChildDialogOwnerName(kind)} is only available while the local seat owns the entrusted shop.";
+                return false;
+            }
+
+            _entrustedChildDialogKind = kind;
+            if (_entrustedPendingChildDialogKind == kind)
+            {
+                _entrustedPendingChildDialogKind = null;
+            }
+
+            if (kind == EntrustedShopChildDialogKind.VisitList)
+            {
+                _entrustedVisitListSelectedIndex = NormalizeEntrustedDialogSelectionIndex(_entrustedVisitListSelectedIndex, _entrustedVisitLogEntries.Count);
+                _entrustedChildDialogStatus = _entrustedVisitLogEntries.Count > 0
+                    ? "CVisitListDlg reopened from the existing entrusted-shop visit log."
+                    : "CVisitListDlg reopened without packet-fed visit rows.";
+            }
+            else
+            {
+                _entrustedBlacklistSelectedIndex = NormalizeEntrustedDialogSelectionIndex(_entrustedBlacklistSelectedIndex, _blockedVisitors.Count);
+                _entrustedChildDialogStatus = _blockedVisitors.Count < 20
+                    ? "CBlackListDlg reopened from the existing entrusted-shop blacklist."
+                    : "CBlackListDlg reopened at the client-side 20-name add limit.";
+            }
+
+            StatusMessage = $"{ResolveEntrustedChildDialogOwnerName(kind)} reopened from the entrusted-shop runtime snapshot.";
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        public bool TryRequestEntrustedChildDialog(EntrustedShopChildDialogKind kind, out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.EntrustedShop)
+            {
+                message = "Entrusted-shop child dialogs only apply to the entrusted shop shell.";
+                return false;
+            }
+
+            if (_miniRoomLocalSeatIndex != 0)
+            {
+                message = $"{ResolveEntrustedChildDialogOwnerName(kind)} is only available while the local seat owns the entrusted shop.";
+                return false;
+            }
+
+            if (_entrustedChildDialogKind == kind)
+            {
+                message = $"{ResolveEntrustedChildDialogOwnerName(kind)} is already open.";
+                return false;
+            }
+
+            if (_entrustedPendingChildDialogKind == kind)
+            {
+                byte pendingSubtype = kind == EntrustedShopChildDialogKind.VisitList
+                    ? EntrustedShopVisitListResultPacketType
+                    : EntrustedShopBlackListResultPacketType;
+                message = $"{ResolveEntrustedChildDialogOwnerName(kind)} is already waiting for authoritative server subtype {pendingSubtype}.";
+                return false;
+            }
+
+            byte[] rawPacket = kind == EntrustedShopChildDialogKind.VisitList
+                ? SocialRoomMerchantOfficialSessionBridgeManager.BuildEntrustedShopVisitListOutboundPacket()
+                : SocialRoomMerchantOfficialSessionBridgeManager.BuildEntrustedShopBlacklistOutboundPacket();
+            string childOwner = ResolveEntrustedChildDialogOwnerName(kind);
+            byte requestSubtype = kind == EntrustedShopChildDialogKind.VisitList
+                ? SocialRoomMerchantOfficialSessionBridgeManager.RequestSubtypeEntrustedShopVisitList
+                : SocialRoomMerchantOfficialSessionBridgeManager.RequestSubtypeEntrustedShopBlacklist;
+            byte expectedResultSubtype = kind == EntrustedShopChildDialogKind.VisitList
+                ? EntrustedShopVisitListResultPacketType
+                : EntrustedShopBlackListResultPacketType;
+            string actionName = kind == EntrustedShopChildDialogKind.VisitList ? "OnVisitList" : "OnBlackList";
+            string summary =
+                $"CEntrustedShopDlg::{actionName} prepared opcode {SocialRoomMerchantOfficialSessionBridgeManager.OutboundMiniRoomOpcode} subtype {requestSubtype} to summon {childOwner} and expects server subtype {expectedResultSubtype} before opening the child owner (raw {Convert.ToHexString(rawPacket)}).";
+
+            if (EntrustedChildDialogOutboundPacketRequested != null)
+            {
+                bool accepted = false;
+                try
+                {
+                    accepted = EntrustedChildDialogOutboundPacketRequested.Invoke((byte[])rawPacket.Clone(), summary);
+                }
+                catch
+                {
+                    accepted = false;
+                }
+
+                if (accepted)
+                {
+                    _entrustedPendingChildDialogKind = kind;
+                    _entrustedChildDialogStatus = $"{summary} Waiting for authoritative server subtype {expectedResultSubtype}.";
+                    StatusMessage = _entrustedChildDialogStatus;
+                    PersistState();
+                    message = StatusMessage;
+                    return true;
+                }
+            }
+
+            bool opened = TryOpenEntrustedChildDialog(kind, out string openMessage);
+            _entrustedPendingChildDialogKind = null;
+            string offlineMessage = $"{summary} No live merchant bridge accepted it, so the simulator reopened the cached child snapshot as an offline preview.";
+            _entrustedChildDialogStatus = opened
+                ? $"{openMessage} {offlineMessage}"
+                : offlineMessage;
+            StatusMessage = _entrustedChildDialogStatus;
+            PersistState();
+            message = StatusMessage;
+            return opened;
+        }
+
+        public bool TryRequestPersonalShopOwnerInfo(out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.PersonalShop)
+            {
+                message = "Owner-info requests only apply to the personal shop shell.";
+                return false;
+            }
+
+            string targetName = NormalizeName(OwnerName);
+            RoomState = "Owner info request";
+            StatusMessage = $"CPersonalShopDlg::OnButtonClicked requested character info for {targetName} through CWvsContext::SendCharacterInfoRequest.";
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        public bool CloseEntrustedChildDialog(out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.EntrustedShop || !_entrustedChildDialogKind.HasValue)
+            {
+                message = "No entrusted-shop child dialog is currently open.";
+                return false;
+            }
+
+            EntrustedShopChildDialogKind closingKind = _entrustedChildDialogKind.Value;
+            _entrustedChildDialogKind = null;
+            if (_entrustedPendingChildDialogKind == closingKind)
+            {
+                _entrustedPendingChildDialogKind = null;
+            }
+
+            _entrustedBlacklistPromptRequest = null;
+            _entrustedBlacklistNotice = null;
+            _entrustedChildDialogStatus = $"{ResolveEntrustedChildDialogOwnerName(closingKind)} closed through SetRet and returned to the parent entrusted-shop shell.";
+            StatusMessage = _entrustedChildDialogStatus;
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        public bool TrySelectEntrustedChildDialogEntry(int index, out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.EntrustedShop || !_entrustedChildDialogKind.HasValue)
+            {
+                message = "No entrusted-shop child dialog is available to select.";
+                return false;
+            }
+
+            if (_entrustedChildDialogKind == EntrustedShopChildDialogKind.VisitList)
+            {
+                _entrustedVisitListSelectedIndex = NormalizeEntrustedDialogSelectionIndex(index, _entrustedVisitLogEntries.Count);
+                if (_entrustedVisitListSelectedIndex < 0)
+                {
+                    message = "Visit-list selection cleared.";
+                    return false;
+                }
+
+                EntrustedShopVisitLogEntrySnapshot selectedEntry = _entrustedVisitLogEntries[_entrustedVisitListSelectedIndex];
+                _entrustedChildDialogStatus = $"Selected visit row {_entrustedVisitListSelectedIndex + 1}: {selectedEntry.Name} stayed {selectedEntry.StaySeconds}s.";
+                StatusMessage = _entrustedChildDialogStatus;
+                PersistState();
+                message = StatusMessage;
+                return true;
+            }
+
+            _entrustedBlacklistSelectedIndex = NormalizeEntrustedDialogSelectionIndex(index, _blockedVisitors.Count);
+            if (_entrustedBlacklistSelectedIndex < 0)
+            {
+                message = "Blacklist selection cleared.";
+                return false;
+            }
+
+            string blockedName = _blockedVisitors[_entrustedBlacklistSelectedIndex];
+            _entrustedChildDialogStatus = $"Selected blacklist row {_entrustedBlacklistSelectedIndex + 1}: {blockedName}.";
+            StatusMessage = _entrustedChildDialogStatus;
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        public bool TryCopySelectedEntrustedVisitName(out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.EntrustedShop || _entrustedChildDialogKind != EntrustedShopChildDialogKind.VisitList)
+            {
+                message = "Visit-list Save Name only applies while the entrusted visit-list dialog is open.";
+                return false;
+            }
+
+            if (!HasValidEntrustedVisitListSelection())
+            {
+                message = "Save Name stays disabled until the selected visit-list cell is valid.";
+                return false;
+            }
+
+            EntrustedShopVisitLogEntrySnapshot selectedEntry = _entrustedVisitLogEntries[_entrustedVisitListSelectedIndex];
+            bool clipboardUpdated = false;
+            try
+            {
+                System.Windows.Forms.Clipboard.SetText(selectedEntry.Name);
+                clipboardUpdated = true;
+            }
+            catch
+            {
+                clipboardUpdated = false;
+            }
+
+            _entrustedChildDialogStatus = clipboardUpdated
+                ? $"Save Name copied {selectedEntry.Name} to the clipboard."
+                : $"Save Name resolved {selectedEntry.Name}, but clipboard access is not available in this environment.";
+            StatusMessage = _entrustedChildDialogStatus;
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        public bool TryCreateEntrustedBlacklistPromptRequest(out EntrustedShopBlacklistPromptRequest request, out string message)
+        {
+            request = null;
+            message = null;
+            if (Kind != SocialRoomKind.EntrustedShop || _entrustedChildDialogKind != EntrustedShopChildDialogKind.Blacklist)
+            {
+                message = "Blacklist add only applies while the entrusted blacklist dialog is open.";
+                return false;
+            }
+
+            if (_blockedVisitors.Count >= 20)
+            {
+                message = "Blacklist add is disabled because the client-side 20-name limit has been reached.";
+                return false;
+            }
+
+            request = new EntrustedShopBlacklistPromptRequest
+            {
+                OwnerName = ResolveEntrustedChildDialogOwnerName(EntrustedShopChildDialogKind.Blacklist),
+                Title = "Blacklist",
+                PromptText = EntrustedShopBlacklistDialogText.GetAddPromptText(),
+                DefaultText = string.Empty,
+                StringPoolId = EntrustedShopBlacklistDialogText.AddPromptStringPoolId,
+                MinimumLength = 4,
+                MaximumLength = 12
+            };
+
+            _entrustedBlacklistPromptRequest = CloneEntrustedBlacklistPromptRequest(request);
+            _entrustedBlacklistNotice = null;
+
+            _entrustedChildDialogStatus =
+                $"CBlackListDlg::AddBlackList opened the shared UtilDlgEx prompt (StringPool 0x{request.StringPoolId:X}, {request.MinimumLength}-{request.MaximumLength} chars).";
+            StatusMessage = _entrustedChildDialogStatus;
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        public bool TryAddEntrustedBlacklistEntry(string visitorName, out string message)
+        {
+            if (string.IsNullOrWhiteSpace(visitorName))
+            {
+                return TryOpenEntrustedBlacklistPrompt(out message);
+            }
+
+            return TrySubmitEntrustedBlacklistPrompt(visitorName, out message, out _);
+        }
+
+        public bool TryOpenEntrustedBlacklistPrompt(out string message)
+        {
+            message = null;
+            if (!TryCreateEntrustedBlacklistPromptRequest(out EntrustedShopBlacklistPromptRequest request, out string requestMessage))
+            {
+                message = requestMessage;
+                return false;
+            }
+
+            if (EntrustedBlacklistPromptRequested == null)
+            {
+                _entrustedBlacklistPromptRequest = null;
+                PersistState();
+                message = "Entrusted-shop blacklist add requires a registered UtilDlgEx prompt owner.";
+                return false;
+            }
+
+            bool shown = false;
+            try
+            {
+                shown = EntrustedBlacklistPromptRequested.Invoke(CloneEntrustedBlacklistPromptRequest(request));
+            }
+            catch
+            {
+                shown = false;
+            }
+
+            if (!shown)
+            {
+                _entrustedBlacklistPromptRequest = null;
+                PersistState();
+                message = "Entrusted-shop blacklist add prompt could not be opened.";
+                return false;
+            }
+
+            message = requestMessage;
+            return true;
+        }
+
+        public bool TrySubmitEntrustedBlacklistPrompt(string visitorName, out string message, out int? noticeStringPoolId)
+        {
+            message = null;
+            noticeStringPoolId = null;
+            if (Kind != SocialRoomKind.EntrustedShop || _entrustedChildDialogKind != EntrustedShopChildDialogKind.Blacklist)
+            {
+                message = "Blacklist add only applies while the entrusted blacklist dialog is open.";
+                return false;
+            }
+
+            _entrustedBlacklistPromptRequest = null;
+            if (HasPendingEntrustedBlacklistMutation())
+            {
+                message = $"CBlackListDlg::AddBlackList is waiting for server subtype {EntrustedShopBlackListResultPacketType} to resolve the pending blacklist {_entrustedBlacklistPendingMutationName} request.";
+                return false;
+            }
+
+            if (_blockedVisitors.Count >= 20)
+            {
+                message = "Blacklist add is disabled because the client-side 20-name limit has been reached.";
+                return false;
+            }
+
+            string resolvedName = NormalizeName(visitorName);
+            if (!IsValidEntrustedBlacklistName(resolvedName))
+            {
+                noticeStringPoolId = EntrustedShopBlacklistDialogText.InvalidNameNoticeStringPoolId;
+                message = EntrustedShopBlacklistDialogText.GetInvalidNameNotice();
+                PublishEntrustedBlacklistNotice(message, noticeStringPoolId.Value);
+                _entrustedChildDialogStatus =
+                    $"CBlackListDlg::AddBlackList rejected the submitted name and raised StringPool 0x{noticeStringPoolId.Value:X}.";
+                StatusMessage = _entrustedChildDialogStatus;
+                PersistState();
+                return false;
+            }
+
+            if (string.Equals(resolvedName, OwnerName, StringComparison.OrdinalIgnoreCase))
+            {
+                noticeStringPoolId = EntrustedShopBlacklistDialogText.OwnerNoticeStringPoolId;
+                message = EntrustedShopBlacklistDialogText.GetOwnerNotice();
+                PublishEntrustedBlacklistNotice(message, noticeStringPoolId.Value);
+                _entrustedChildDialogStatus =
+                    $"CBlackListDlg::AddBlackList rejected owner name {resolvedName} and raised StringPool 0x{noticeStringPoolId.Value:X}.";
+                StatusMessage = _entrustedChildDialogStatus;
+                PersistState();
+                return false;
+            }
+
+            if (_blockedVisitors.Contains(resolvedName, StringComparer.OrdinalIgnoreCase))
+            {
+                noticeStringPoolId = EntrustedShopBlacklistDialogText.DuplicateNoticeStringPoolId;
+                message = EntrustedShopBlacklistDialogText.GetDuplicateNotice();
+                PublishEntrustedBlacklistNotice(message, noticeStringPoolId.Value);
+                _entrustedChildDialogStatus =
+                    $"CBlackListDlg::AddBlackList rejected duplicate name {resolvedName} and raised StringPool 0x{noticeStringPoolId.Value:X}.";
+                StatusMessage = _entrustedChildDialogStatus;
+                PersistState();
+                return false;
+            }
+
+            _entrustedBlacklistNotice = null;
+            if (TryDispatchEntrustedBlacklistMutationOutbound(resolvedName, add: true, out string outboundMessage))
+            {
+                message = outboundMessage;
+                return true;
+            }
+
+            return ApplyEntrustedBlacklistAddPreview(resolvedName, outboundMessage, out message);
+        }
+
+        public void DismissEntrustedBlacklistNotice()
+        {
+            _entrustedBlacklistNotice = null;
+            PersistState();
+        }
+
+        public void CancelEntrustedBlacklistPrompt()
+        {
+            _entrustedBlacklistPromptRequest = null;
+            PersistState();
+        }
+
+        public bool TryDeleteSelectedEntrustedBlacklistEntry(out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.EntrustedShop || _entrustedChildDialogKind != EntrustedShopChildDialogKind.Blacklist)
+            {
+                message = "Blacklist delete only applies while the entrusted blacklist dialog is open.";
+                return false;
+            }
+
+            if (!HasValidEntrustedBlacklistSelection())
+            {
+                message = "Delete stays disabled until the selected blacklist cell is valid.";
+                return false;
+            }
+
+            if (HasPendingEntrustedBlacklistMutation())
+            {
+                message = $"CBlackListDlg::DeleteBlackList is waiting for server subtype {EntrustedShopBlackListResultPacketType} to resolve the pending blacklist {_entrustedBlacklistPendingMutationName} request.";
+                return false;
+            }
+
+            string removedName = _blockedVisitors[_entrustedBlacklistSelectedIndex];
+            if (TryDispatchEntrustedBlacklistMutationOutbound(removedName, add: false, out string outboundMessage))
+            {
+                message = outboundMessage;
+                return true;
+            }
+
+            ApplyEntrustedBlacklistDeleteLocalPreview(
+                removedName,
+                string.IsNullOrWhiteSpace(outboundMessage)
+                    ? $"Deleted {removedName} from the entrusted-shop blacklist."
+                    : $"Deleted {removedName} from the entrusted-shop blacklist. {outboundMessage}");
+            message = StatusMessage;
+            return true;
+        }
+
+        private bool ApplyEntrustedBlacklistAddPreview(string resolvedName, string outboundMessage, out string message)
+        {
+            ApplyEntrustedBlacklistAddLocalPreview(
+                resolvedName,
+                $"CBlackListDlg::AddBlackList added {resolvedName} to the blacklist. Add remains enabled while the count stays below 20.");
+            if (!string.IsNullOrWhiteSpace(outboundMessage))
+            {
+                _entrustedChildDialogStatus = $"{_entrustedChildDialogStatus} {outboundMessage}";
+                StatusMessage = _entrustedChildDialogStatus;
+                PersistState();
+            }
+
+            message = StatusMessage;
+            return true;
+        }
+
+        private void ApplyEntrustedBlacklistAddLocalPreview(string resolvedName, string statusMessage)
+        {
+            if (!_blockedVisitors.Contains(resolvedName, StringComparer.OrdinalIgnoreCase))
+            {
+                _blockedVisitors.Add(resolvedName);
+            }
+
+            _entrustedBlacklistSelectedIndex = _blockedVisitors.FindIndex(name =>
+                string.Equals(name, resolvedName, StringComparison.OrdinalIgnoreCase));
+            RefreshEntrustedBlacklistNote();
+            _entrustedChildDialogStatus = statusMessage;
+            StatusMessage = _entrustedChildDialogStatus;
+            PersistState();
+        }
+
+        private void ApplyEntrustedBlacklistDeleteLocalPreview(string removedName, string statusMessage)
+        {
+            int removedIndex = _blockedVisitors.FindIndex(name =>
+                string.Equals(name, removedName, StringComparison.OrdinalIgnoreCase));
+            if (removedIndex >= 0)
+            {
+                _blockedVisitors.RemoveAt(removedIndex);
+            }
+
+            _entrustedBlacklistSelectedIndex = NormalizeEntrustedDialogSelectionIndex(_entrustedBlacklistSelectedIndex, _blockedVisitors.Count);
+            RefreshEntrustedBlacklistNote();
+            _entrustedChildDialogStatus = statusMessage;
+            StatusMessage = _entrustedChildDialogStatus;
+            PersistState();
+        }
+
+        private void RefreshEntrustedBlacklistNote()
+        {
+            EnsureMerchantPacketNotes();
+            _notes[1] = _blockedVisitors.Count > 0
+                ? $"Entrusted-shop blacklist: {string.Join(", ", _blockedVisitors)}."
+                : "Entrusted-shop blacklist: empty.";
+        }
+
+        private bool TryDispatchEntrustedBlacklistMutationOutbound(string resolvedName, bool add, out string message)
+        {
+            byte[] rawPacket = add
+                ? SocialRoomMerchantOfficialSessionBridgeManager.BuildEntrustedShopBlacklistAddOutboundPacket(resolvedName)
+                : SocialRoomMerchantOfficialSessionBridgeManager.BuildEntrustedShopBlacklistDeleteOutboundPacket(resolvedName);
+            string action = add ? "add" : "delete";
+            string rawHex = Convert.ToHexString(rawPacket);
+            byte requestSubtype = add
+                ? SocialRoomMerchantOfficialSessionBridgeManager.RequestSubtypeEntrustedShopBlacklistAdd
+                : SocialRoomMerchantOfficialSessionBridgeManager.RequestSubtypeEntrustedShopBlacklistDelete;
+            string summary =
+                $"CEntrustedShopDlg::CBlackListDlg prepared opcode {SocialRoomMerchantOfficialSessionBridgeManager.OutboundMiniRoomOpcode} subtype {requestSubtype} {action} request for {resolvedName} and expects server subtype {EntrustedShopBlackListResultPacketType} to reconcile the child list (raw {rawHex}).";
+            _entrustedBlacklistLastOutboundPacketSummary = summary;
+
+            if (EntrustedBlacklistOutboundPacketRequested == null)
+            {
+                message = $"{summary} No live merchant bridge accepted it, so the simulator applied an offline preview.";
+                return false;
+            }
+
+            bool accepted = false;
+            try
+            {
+                accepted = EntrustedBlacklistOutboundPacketRequested.Invoke((byte[])rawPacket.Clone(), summary);
+            }
+            catch
+            {
+                accepted = false;
+            }
+
+            if (!accepted)
+            {
+                message = $"{summary} The live merchant bridge did not accept the request, so the simulator applied an offline preview.";
+                return false;
+            }
+
+            _entrustedBlacklistPendingMutationName = resolvedName;
+            _entrustedBlacklistPendingMutationAdd = add;
+            _entrustedBlacklistPendingMutationRawPacketHex = rawHex;
+            if (add)
+            {
+                ApplyEntrustedBlacklistAddLocalPreview(
+                    resolvedName,
+                    $"{summary} CBlackListDlg::AddBlackList sent the request, inserted {resolvedName} into the local child list immediately, and waits for authoritative server subtype {EntrustedShopBlackListResultPacketType} to confirm or rebuild the blacklist owner.");
+            }
+            else
+            {
+                ApplyEntrustedBlacklistDeleteLocalPreview(
+                    resolvedName,
+                    $"{summary} CBlackListDlg::DeleteBlackList sent the request, removed {resolvedName} from the local child list immediately, and waits for authoritative server subtype {EntrustedShopBlackListResultPacketType} to confirm or rebuild the blacklist owner.");
+            }
+
+            StatusMessage = _entrustedChildDialogStatus;
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        private bool HasPendingEntrustedBlacklistMutation()
+        {
+            return _entrustedBlacklistPendingMutationAdd.HasValue
+                && !string.IsNullOrWhiteSpace(_entrustedBlacklistPendingMutationName);
+        }
+
+        private string BuildEntrustedBlacklistPendingCompletionSummary(IEnumerable<string> authoritativeNames)
+        {
+            if (!HasPendingEntrustedBlacklistMutation())
+            {
+                return string.Empty;
+            }
+
+            string action = _entrustedBlacklistPendingMutationAdd.Value ? "add" : "delete";
+            bool containsPendingName = authoritativeNames?.Contains(_entrustedBlacklistPendingMutationName, StringComparer.OrdinalIgnoreCase) == true;
+            bool approved = _entrustedBlacklistPendingMutationAdd.Value
+                ? containsPendingName
+                : !containsPendingName;
+            string result = approved ? "approved" : "rejected or left unchanged";
+            return $" Server-owned subtype {EntrustedShopBlackListResultPacketType} {result} the pending blacklist {action} request for {_entrustedBlacklistPendingMutationName}.";
+        }
+
+        private void ClearEntrustedBlacklistPendingMutation()
+        {
+            _entrustedBlacklistPendingMutationName = string.Empty;
+            _entrustedBlacklistPendingMutationAdd = null;
+            _entrustedBlacklistPendingMutationRawPacketHex = string.Empty;
+        }
+
+        private static bool IsValidEntrustedBlacklistName(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            string normalized = value.Trim();
+            if (normalized.Length < 4 || normalized.Length > 12)
+            {
+                return false;
+            }
+
+            return normalized.All(character => char.IsLetterOrDigit(character));
+        }
+
+        private void EnsureMerchantPacketNotes()
+        {
+            while (_notes.Count < 4)
+            {
+                _notes.Add(string.Empty);
+            }
+        }
+
+        private static bool IsClientVisibleMerchantPacketEntry(SocialRoomItemEntry entry)
+        {
+            return entry != null &&
+                !entry.IsClaimed &&
+                entry.Quantity > 0;
+        }
+
+        private SocialRoomItemEntry FindActiveMerchantPacketEntry(int packetSlotIndex)
+        {
+            if (packetSlotIndex < 0)
+            {
+                return null;
+            }
+
+            SocialRoomItemEntry exact = _items.FirstOrDefault(item =>
+                IsClientVisibleMerchantPacketEntry(item) &&
+                item.PacketSlotIndex == packetSlotIndex);
+            if (exact != null)
+            {
+                return exact;
+            }
+
+            List<SocialRoomItemEntry> activeEntries = NormalizeActiveMerchantPacketSlots();
+            return packetSlotIndex < activeEntries.Count
+                ? activeEntries[packetSlotIndex]
+                : null;
+        }
+
+        private List<SocialRoomItemEntry> NormalizeActiveMerchantPacketSlots()
+        {
+            List<SocialRoomItemEntry> activeEntries = new();
+            int packetSlotIndex = 0;
+            foreach (SocialRoomItemEntry entry in _items)
+            {
+                if (!IsClientVisibleMerchantPacketEntry(entry))
+                {
+                    entry.UpdatePacketIdentity(entry.ItemId, null);
+                    continue;
+                }
+
+                entry.UpdatePacketIdentity(entry.ItemId, packetSlotIndex++);
+                activeEntries.Add(entry);
+            }
+
+            return activeEntries;
+        }
+
+        private int ResolveNextTradingRoomPacketSlot(string ownerName)
+        {
+            HashSet<int> occupiedSlots = _items
+                .Where(item =>
+                    string.Equals(item.OwnerName, ownerName, StringComparison.OrdinalIgnoreCase)
+                    && item.PacketSlotIndex.HasValue
+                    && item.PacketSlotIndex.Value > 0)
+                .Select(item => item.PacketSlotIndex.Value)
+                .ToHashSet();
+
+            for (int slot = 1; slot <= TradingRoomClientItemSlotCount; slot++)
+            {
+                if (!occupiedSlots.Contains(slot))
+                {
+                    return slot;
+                }
+            }
+
+            return TradingRoomClientItemSlotCount;
+        }
+
+        private int TrimActiveMerchantPacketRows(int activeRowCount)
+        {
+            int normalizedActiveRowCount = Math.Max(0, activeRowCount);
+            if (normalizedActiveRowCount == 0)
+            {
+                int removedAllRows = _items.RemoveAll(item => IsClientVisibleMerchantPacketEntry(item));
+                if (removedAllRows > 0)
+                {
+                    _inventoryEscrow.RemoveAll(escrow => IsClientVisibleMerchantPacketEntry(escrow.Entry));
+                }
+
+                return removedAllRows;
+            }
+
+            List<SocialRoomItemEntry> activeEntries = NormalizeActiveMerchantPacketSlots();
+            if (activeEntries.Count <= normalizedActiveRowCount)
+            {
+                return 0;
+            }
+
+            List<SocialRoomItemEntry> staleEntries = activeEntries
+                .Skip(normalizedActiveRowCount)
+                .ToList();
+            if (staleEntries.Count == 0)
+            {
+                return 0;
+            }
+
+            _items.RemoveAll(item => staleEntries.Contains(item));
+            _inventoryEscrow.RemoveAll(escrow => staleEntries.Contains(escrow.Entry));
+            return staleEntries.Count;
+        }
+
+        private int RemoveClaimedMerchantRows()
+        {
+            List<SocialRoomItemEntry> removedEntries = _items
+                .Where(item => !IsClientVisibleMerchantPacketEntry(item))
+                .ToList();
+            if (removedEntries.Count == 0)
+            {
+                NormalizeActiveMerchantPacketSlots();
+                return 0;
+            }
+
+            int removedRows = _items.RemoveAll(item => removedEntries.Contains(item));
+            if (removedRows > 0)
+            {
+                _inventoryEscrow.RemoveAll(escrow => removedEntries.Contains(escrow.Entry));
+            }
+
+            NormalizeActiveMerchantPacketSlots();
+            return removedRows;
+        }
+
+        private static int GetPersonalShopTax(int mesoAmount)
+        {
+            if (mesoAmount >= 100000000)
+            {
+                return (int)(mesoAmount * 0.03d);
+            }
+
+            if (mesoAmount >= 25000000)
+            {
+                return (int)(mesoAmount * 0.025d);
+            }
+
+            if (mesoAmount >= 10000000)
+            {
+                return (int)(mesoAmount * 0.02d);
+            }
+
+            if (mesoAmount >= 5000000)
+            {
+                return (int)(mesoAmount * 0.015d);
+            }
+
+            if (mesoAmount >= 1000000)
+            {
+                return (int)(mesoAmount * 0.009d);
+            }
+
+            if (mesoAmount >= 100000)
+            {
+                return (int)(mesoAmount * 0.004d);
+            }
+
+            return 0;
+        }
+
+        private void ApplyTradingRoomMesoPacket(int traderIndex, int offeredMeso)
+        {
+            int normalizedTraderIndex = Math.Clamp(traderIndex, 0, 1);
+            int normalizedMeso = Math.Max(0, offeredMeso);
+            ClearTradeHandshake();
+            if (normalizedTraderIndex == 0)
+            {
+                _tradeLocalOfferMeso = normalizedMeso;
+                MesoAmount = normalizedMeso;
+            }
+            else
+            {
+                _tradeRemoteOfferMeso = normalizedMeso;
+            }
+
+            RoomState = "Negotiating";
+            RefreshTradeOccupantsAndRows();
+            StatusMessage = $"{(normalizedTraderIndex == 0 ? OwnerName : ResolveRemoteTraderName())} set a packet-backed meso offer of {normalizedMeso:N0}.";
+            PersistState();
+        }
+
+        public static SocialRoomRuntime CreateMiniRoomSample()
+        {
+            return new SocialRoomRuntime(
+                SocialRoomKind.MiniRoom,
+                "Mini Room",
+                "ExplorerGM",
+                capacity: 4,
+                mesoAmount: 0,
+                occupants: new[]
+                {
+                    new SocialRoomOccupant("ExplorerGM", SocialRoomOccupantRole.Owner, "Host seat", isReady: true),
+                    new SocialRoomOccupant("Rondo", SocialRoomOccupantRole.Guest, "Waiting to ready"),
+                    new SocialRoomOccupant("Rin", SocialRoomOccupantRole.Visitor, "Watching from the rail"),
+                },
+                items: new[]
+                {
+                    new SocialRoomItemEntry("ExplorerGM", "Omok board", 1, 0, "Wood-stone board preview"),
+                    new SocialRoomItemEntry("Rondo", "Card deck", 1, 0, "Match Cards preview set")
+                },
+                notes: new[]
+                {
+                    "Shared client surface for Omok and Match Cards.",
+                    "Occupant readiness and turn-state messaging are simulator-owned for now."
+                },
+                chatEntries: new[]
+                {
+                    new SocialRoomChatEntry("System : Match Cards room shell initialized.", SocialRoomChatTone.System),
+                    new SocialRoomChatEntry("Rondo : Waiting on the first ready check.", SocialRoomChatTone.RemoteSpeaker)
+                },
+                statusMessage: "Mini-room shell ready. Toggle the preview to compare Omok and Match Cards framing.",
+                roomState: "Waiting for ready check",
+                modeName: "Omok");
+        }
+
+        public static SocialRoomRuntime CreatePersonalShopSample()
+        {
+            return new SocialRoomRuntime(
+                SocialRoomKind.PersonalShop,
+                "Personal Shop",
+                "ExplorerGM",
+                capacity: 4,
+                mesoAmount: 1250000,
+                occupants: new[]
+                {
+                    new SocialRoomOccupant("ExplorerGM", SocialRoomOccupantRole.Owner, "Registering sale bundles", isReady: true),
+                    new SocialRoomOccupant("Rondo", SocialRoomOccupantRole.Buyer, "Browsing slot 4"),
+                    new SocialRoomOccupant("Rin", SocialRoomOccupantRole.Visitor, "Saved as a frequent visitor")
+                },
+                items: new[]
+                {
+                    new SocialRoomItemEntry("ExplorerGM", "Brown Work Gloves", 1, 850000, "Bundle A | Clean roll"),
+                    new SocialRoomItemEntry("ExplorerGM", "White Scroll", 2, 640000, "Bundle B | Reserved by Rondo"),
+                    new SocialRoomItemEntry("ExplorerGM", "Steel Pipe", 3, 175000, "Bundle C | Discount tray", isClaimed: true)
+                },
+                notes: new[]
+                {
+                    "Client-backed shop chrome now exists before full item-for-sale packet flow.",
+                    "Buttons now drive a visible simulator-owned sale ledger while inventory escrow remains unmodeled."
+                },
+                chatEntries: null,
+                statusMessage: "Personal-shop shell open. Visit, arrange, and claim actions now update simulator room state.",
+                roomState: "Open for visitors",
+                modeName: "Open shop");
+        }
+
+        public static SocialRoomRuntime CreateEntrustedShopSample()
+        {
+            return new SocialRoomRuntime(
+                SocialRoomKind.EntrustedShop,
+                "Entrusted Shop",
+                "ExplorerGM",
+                capacity: 1,
+                mesoAmount: 2840000,
+                occupants: new[]
+                {
+                    new SocialRoomOccupant("ExplorerGM", SocialRoomOccupantRole.Merchant, "Merchant permit active", isReady: true)
+                },
+                items: new[]
+                {
+                    new SocialRoomItemEntry("ExplorerGM", "Glove ATT 60%", 4, 420000, "Slot 1 | Sold overnight", isClaimed: true),
+                    new SocialRoomItemEntry("ExplorerGM", "Red Whip", 1, 1250000, "Slot 2 | Display row"),
+                    new SocialRoomItemEntry("ExplorerGM", "Power Elixir", 25, 180000, "Slot 3 | Restock pending")
+                },
+                notes: new[]
+                {
+                    "Hired-shop and entrusted-shop ledger controls use the dedicated entrusted button set.",
+                    "Ledger, restock, and a simulator-owned permit timer now update the merchant ledger while server uptime remains unmodeled."
+                },
+                chatEntries: null,
+                statusMessage: "Entrusted-shop shell open. Arrange, claim, and permit actions now drive visible merchant uptime.",
+                roomState: "Permit active",
+                modeName: "Ledger review");
+        }
+
+        public static SocialRoomRuntime CreateTradingRoomSample()
+        {
+            return new SocialRoomRuntime(
+                SocialRoomKind.TradingRoom,
+                "Trading Room",
+                "ExplorerGM",
+                capacity: 2,
+                mesoAmount: 150000,
+                occupants: new[]
+                {
+                    new SocialRoomOccupant("ExplorerGM", SocialRoomOccupantRole.Trader, "Offering scroll bundle"),
+                    new SocialRoomOccupant("Rondo", SocialRoomOccupantRole.Trader, "Offering ore stack")
+                },
+                items: new[]
+                {
+                    new SocialRoomItemEntry("ExplorerGM", "Chaos Scroll 60%", 1, 0, "Owner offer", isLocked: false),
+                    new SocialRoomItemEntry("ExplorerGM", "Mana Elixir", 10, 0, "Owner add-on", isLocked: false),
+                    new SocialRoomItemEntry("Rondo", "Dark Crystal Ore", 20, 0, "Guest offer", isLocked: false),
+                    new SocialRoomItemEntry("Rondo", "Ilbi Throwing-Star", 1, 0, "Guest premium add-on", isLocked: false)
+                },
+                notes: new[]
+                {
+                    "Trade-room readiness, meso offers, and escrow rows are now visible in a dedicated shell.",
+                    "Lock and accept state now track each trader separately while packet-authored trade sessions remain unmodeled."
+                },
+                chatEntries: null,
+                statusMessage: "Trading-room shell ready. Offer, lock, accept, and reset actions now update the shared room state.",
+                roomState: "Negotiating",
+                modeName: "Open trade");
+        }
+
+        public void ToggleMiniRoomGuestReady()
+        {
+            if (Kind != SocialRoomKind.MiniRoom || _occupants.Count < 2)
+            {
+                return;
+            }
+
+            if (_miniRoomModeIndex == 1 && _miniRoomToggleReadyHandler != null)
+            {
+                _miniRoomToggleReadyHandler();
+                return;
+            }
+
+            SetMiniRoomGuestReady(!_occupants[1].IsReady, persistState: true);
+        }
+
+        public void CycleMiniRoomMode()
+        {
+            if (Kind != SocialRoomKind.MiniRoom)
+            {
+                return;
+            }
+
+            _miniRoomModeIndex = (_miniRoomModeIndex + 1) % 2;
+            ModeName = _miniRoomModeIndex == 0 ? "Omok" : "Match Cards";
+            if (_miniRoomModeIndex == 0)
+            {
+                SyncMiniRoomOmokPresentation();
+            }
+            if (_items.Count > 1)
+            {
+                _items[0].Update(
+                    _miniRoomModeIndex == 0 ? "Wood-stone board preview" : "Table preview hidden",
+                    1,
+                    0,
+                    false,
+                    false);
+                _items[1].Update(
+                    _miniRoomModeIndex == 0 ? "Card deck preview hidden" : "Match Cards preview set",
+                    1,
+                    0,
+                    false,
+                    false);
+            }
+
+            StatusMessage = $"Mini-room preview switched to {ModeName}.";
+            PersistState();
+        }
+
+        public void StartMiniRoomSession()
+        {
+            if (Kind != SocialRoomKind.MiniRoom)
+            {
+                return;
+            }
+
+            if (_miniRoomModeIndex == 1 && _miniRoomStartHandler != null)
+            {
+                _miniRoomStartHandler();
+                return;
+            }
+
+            bool guestReady = _occupants.Count > 1 && _occupants[1].IsReady;
+            if (_miniRoomModeIndex == 0)
+            {
+                if (!guestReady)
+                {
+                    RoomState = "Waiting for ready check";
+                    StatusMessage = $"Cannot start {ModeName} until the guest readies up.";
+                    PersistState();
+                    return;
+                }
+
+                SetOmokSeatStoneValues(0);
+                ResetOmokBoard();
+                _miniRoomOmokInProgress = true;
+                _miniRoomOmokCurrentTurnIndex = 0;
+                _miniRoomOmokWinnerIndex = -1;
+                ClearOmokDialogRequests(clearMatchRetreatRequest: true);
+                ResetOmokTurnClock();
+                RoomState = "Omok in progress";
+                StatusMessage = $"{OwnerName} has the first Omok turn with black stones.";
+                SetOmokDialogStatus("COmokDlg::OnUserStart opened the round and assigned black stones to the host.", 1500);
+                SyncMiniRoomOmokPresentation();
+                AddMiniRoomSystemMessage("System : Omok round started.");
+                PersistState();
+                return;
+            }
+
+            RoomState = guestReady ? $"{ModeName} in progress" : "Waiting for ready check";
+            if (_items.Count > 0)
+            {
+                _items[0].Update(
+                    guestReady ? $"{ModeName} board active" : $"{ModeName} board waiting on ready",
+                    1,
+                    0,
+                    guestReady,
+                    false);
+            }
+
+            StatusMessage = guestReady
+                ? $"{ModeName} session started with ExplorerGM on the opening turn."
+                : $"Cannot start {ModeName} until the guest readies up.";
+            PersistState();
+        }
+
+        public bool TryPlaceOmokStone(int x, int y, out string message)
+        {
+            message = null;
+            if (!IsMiniRoomOmokActive)
+            {
+                message = "Omok moves only apply while the mini-room is set to Omok.";
+                return false;
+            }
+
+            if (!_miniRoomOmokInProgress)
+            {
+                message = "Start the Omok round before placing stones.";
+                return false;
+            }
+
+            if (!TryValidateOmokCoordinates(x, y, out message))
+            {
+                return false;
+            }
+
+            int boardIndex = GetOmokBoardIndex(x, y);
+            if (_miniRoomOmokBoard[boardIndex] != 0)
+            {
+                message = $"Omok point {x},{y} is already occupied.";
+                return false;
+            }
+
+            int playerIndex = _miniRoomOmokCurrentTurnIndex;
+            int stoneValue = ResolveOmokStoneValueForSeat(playerIndex);
+            _miniRoomOmokBoard[boardIndex] = stoneValue;
+            _miniRoomOmokLastMoveX = x;
+            _miniRoomOmokLastMoveY = y;
+            ClearOmokDialogRequests();
+            StartOmokStoneAnimation();
+            ResetOmokTurnClock();
+            _miniRoomOmokMoveHistory.Add(new OmokMoveHistoryEntry(x, y, stoneValue, playerIndex));
+
+            string playerName = ResolveMiniRoomSeatName(playerIndex);
+            string stoneName = ResolveOmokStoneName(stoneValue);
+            AddMiniRoomSpeakerMessage(playerName, $"placed a {stoneName} stone at {x},{y}.", playerIndex == 0);
+
+            if (HasFiveInRow(x, y, stoneValue))
+            {
+                _miniRoomOmokInProgress = false;
+                _miniRoomOmokWinnerIndex = playerIndex;
+                RoomState = "Omok result";
+                StatusMessage = $"{playerName} completed five in a row and won the Omok round.";
+                SetOmokDialogStatus($"{playerName} locked the Omok result layer with five in a row.", 2200);
+                if (_miniRoomWagerAmount > 0)
+                {
+                    string outcome = playerIndex == 0 ? "owner" : "guest";
+                    TrySettleMiniRoomWager(outcome, out _);
+                }
+
+                SyncMiniRoomOmokPresentation();
+                PersistState();
+                message = StatusMessage;
+                return true;
+            }
+
+            _miniRoomOmokCurrentTurnIndex = playerIndex == 0 ? 1 : 0;
+            RoomState = "Omok in progress";
+            StatusMessage = $"{ResolveMiniRoomSeatName(_miniRoomOmokCurrentTurnIndex)}'s Omok turn.";
+            SetOmokDialogStatus($"{playerName} placed a {stoneName} stone. {_miniRoomOmokTimeFloor}s remain on the dialog timer.", 900);
+            SyncMiniRoomOmokPresentation();
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        public bool TryRequestMiniRoomTie(out string message)
+        {
+            message = null;
+            if (!IsMiniRoomOmokActive)
+            {
+                message = "Mini-room tie requests are only modeled for Omok.";
+                return false;
+            }
+
+            if (!_miniRoomOmokInProgress)
+            {
+                message = "No Omok round is active.";
+                return false;
+            }
+
+            if (_miniRoomOmokTieRequested)
+            {
+                return TryRespondMiniRoomTieRequest(accept: true, out message);
+            }
+
+            if (_miniRoomOmokDrawRequestSentTurn)
+            {
+                message = "COmokDlg::SendTieRequest only sends packet 50 once per turn; OnPutStoneChecker clears the per-turn gate.";
+                SetOmokDialogStatus(message, 1500);
+                AddMiniRoomSystemMessage($"System : {message}", isWarning: true);
+                SyncMiniRoomOmokPresentation();
+                PersistState();
+                return false;
+            }
+
+            _miniRoomOmokDrawRequestSent = true;
+            _miniRoomOmokDrawRequestSentTurn = true;
+            _miniRoomOmokPendingPromptText = ResolveOmokString(
+                OmokOutgoingTiePromptStringPoolId,
+                "Will you request a tie?");
+            RoomState = "Omok tie request";
+            StatusMessage = _miniRoomOmokPendingPromptText;
+            SetOmokDialogStatus("COmokDlg prepared packet 50 for a local tie request and is waiting on packet 51/62.", 2200);
+            PublishMiniRoomOmokOutboundPacket(
+                OmokTieRequestPacketType,
+                "COmokDlg::SendTieRequest",
+                "COmokDlg::SendTieRequest sent opcode 144 subtype 50 after the StringPool 0x1DA Yes/No prompt returned IDYES.");
+            AddMiniRoomSystemMessage("System : Tie request prompt opened. Confirming it would send packet 50.");
+            SyncMiniRoomOmokPresentation();
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        private void PublishEntrustedBlacklistNotice(string text, int stringPoolId)
+        {
+            _entrustedBlacklistNotice = new EntrustedShopNoticeSnapshot
+            {
+                OwnerName = ResolveEntrustedChildDialogOwnerName(EntrustedShopChildDialogKind.Blacklist),
+                Title = "Blacklist",
+                Text = text ?? string.Empty,
+                StringPoolId = stringPoolId
+            };
+
+            try
+            {
+                EntrustedBlacklistNoticeRequested?.Invoke(CloneEntrustedBlacklistNotice(_entrustedBlacklistNotice));
+            }
+            catch
+            {
+            }
+        }
+
+        public bool TryRespondMiniRoomTieRequest(bool accept, out string message)
+        {
+            message = null;
+            if (!IsMiniRoomOmokActive || !_miniRoomOmokInProgress || !_miniRoomOmokTieRequested)
+            {
+                message = "No incoming Omok tie request is waiting for a reply.";
+                return false;
+            }
+
+            _miniRoomOmokTieRequested = false;
+            _miniRoomOmokDrawRequestSent = false;
+            _miniRoomOmokDrawRequestSentTurn = false;
+            ClearOmokPendingPrompt();
+            RoomState = "Omok tie response";
+            StatusMessage = accept
+                ? "Accepted the incoming Omok tie request. Waiting for packet 62 to close the round."
+                : "Declined the incoming Omok tie request. The round stays live until packet 62 or the next turn packet arrives.";
+            SetOmokDialogStatus(
+                $"COmokDlg::OnTieRequest closed the modal and sent packet 51 with accept={(accept ? 1 : 0)}.",
+                2000);
+            PublishMiniRoomOmokOutboundPacket(
+                OmokTieResultPacketType,
+                "COmokDlg::OnTieRequest",
+                $"COmokDlg::OnTieRequest sent opcode 144 subtype 51 with accept={(accept ? 1 : 0)} after the StringPool 0x1D9 Yes/No modal closed.",
+                (byte)(accept ? 1 : 0));
+            AddMiniRoomSystemMessage(
+                $"System : {(accept ? "Tie request accepted" : "Tie request declined")} and packet 51 would be sent.");
+            SyncMiniRoomOmokPresentation();
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        public bool TryRequestMiniRoomRetreat(out string message)
+        {
+            message = null;
+            if (!IsMiniRoomOmokActive)
+            {
+                message = "Mini-room retreat requests are only modeled for Omok.";
+                return false;
+            }
+
+            if (!_miniRoomOmokInProgress)
+            {
+                message = "No Omok round is active.";
+                return false;
+            }
+
+            if (_miniRoomOmokRetreatRequested)
+            {
+                return TryRespondMiniRoomRetreatRequest(accept: true, out message);
+            }
+
+            if (_miniRoomOmokRetreatRequestSentTurn)
+            {
+                message = "COmokDlg::SendRetreatRequest only sends packet 54 once per turn; OnPutStoneChecker clears the per-turn gate.";
+                SetOmokDialogStatus(message, 1500);
+                AddMiniRoomSystemMessage($"System : {message}", isWarning: true);
+                SyncMiniRoomOmokPresentation();
+                PersistState();
+                return false;
+            }
+
+            if (CountLocalOmokStones() <= 0)
+            {
+                message = "COmokDlg::SendRetreatRequest only opens after the local player has at least one stone on the board.";
+                return false;
+            }
+
+            if (_miniRoomOmokRetreatRequestSentMatch)
+            {
+                message = ResolveOmokString(OmokRetreatAlreadyRequestedStringPoolId, "You can only request a handicap once per game.");
+                AddMiniRoomSystemMessage($"System : {message}", isWarning: true);
+                return false;
+            }
+
+            _miniRoomOmokRetreatRequestSent = true;
+            _miniRoomOmokRetreatRequestSentTurn = true;
+            _miniRoomOmokPendingPromptText = ResolveOmokString(
+                OmokOutgoingRetreatPromptStringPoolId,
+                "Request to withdraw your last move?");
+            RoomState = "Omok retreat request";
+            StatusMessage = _miniRoomOmokPendingPromptText;
+            SetOmokDialogStatus("COmokDlg prepared packet 54 for a local retreat request and is waiting on packet 55.", 2200);
+            PublishMiniRoomOmokOutboundPacket(
+                OmokRetreatRequestPacketType,
+                "COmokDlg::SendRetreatRequest",
+                "COmokDlg::SendRetreatRequest sent opcode 144 subtype 54 after the StringPool 0x1DE Yes/No prompt returned IDYES.");
+            AddMiniRoomSystemMessage("System : Retreat request prompt opened. Confirming it would send packet 54.", isWarning: true);
+            SyncMiniRoomOmokPresentation();
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        public bool TryRespondMiniRoomRetreatRequest(bool accept, out string message)
+        {
+            message = null;
+            if (!IsMiniRoomOmokActive || !_miniRoomOmokInProgress || !_miniRoomOmokRetreatRequested)
+            {
+                message = "No incoming Omok retreat request is waiting for a reply.";
+                return false;
+            }
+
+            _miniRoomOmokRetreatRequested = false;
+            _miniRoomOmokRetreatRequestSent = false;
+            _miniRoomOmokRetreatRequestSentTurn = false;
+            ClearOmokPendingPrompt();
+            RoomState = "Omok retreat response";
+            StatusMessage = accept
+                ? "Accepted the incoming Omok retreat request. Waiting for packet 55 to remove the last stones."
+                : "Declined the incoming Omok retreat request. The round stays live until the next authoritative packet arrives.";
+            SetOmokDialogStatus(
+                $"COmokDlg::OnRetreatRequest closed the modal and sent packet 55 with accept={(accept ? 1 : 0)}.",
+                2000);
+            PublishMiniRoomOmokOutboundPacket(
+                OmokRetreatResultPacketType,
+                "COmokDlg::OnRetreatRequest",
+                $"COmokDlg::OnRetreatRequest sent opcode 144 subtype 55 with accept={(accept ? 1 : 0)} after the StringPool 0x1DD Yes/No modal closed.",
+                (byte)(accept ? 1 : 0));
+            AddMiniRoomSystemMessage(
+                $"System : {(accept ? "Retreat request accepted" : "Retreat request declined")} and packet 55 would be sent.",
+                isWarning: true);
+            SyncMiniRoomOmokPresentation();
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        public bool TryForfeitMiniRoom(string loserSeat, out string message)
+        {
+            message = null;
+            if (!IsMiniRoomOmokActive)
+            {
+                message = "Mini-room forfeits are only modeled for Omok.";
+                return false;
+            }
+
+            if (!_miniRoomOmokInProgress)
+            {
+                message = "No Omok round is active.";
+                return false;
+            }
+
+            int loserIndex = string.Equals(loserSeat, "guest", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+            int winnerIndex = loserIndex == 0 ? 1 : 0;
+            _miniRoomOmokInProgress = false;
+            _miniRoomOmokWinnerIndex = winnerIndex;
+            ClearOmokDialogRequests();
+            RoomState = "Omok forfeit";
+            StatusMessage = $"{ResolveMiniRoomSeatName(loserIndex)} forfeited. {ResolveMiniRoomSeatName(winnerIndex)} won the Omok round.";
+            SetOmokDialogStatus(StatusMessage, 2200);
+            AddMiniRoomSystemMessage($"System : {StatusMessage}", isWarning: true);
+            if (_miniRoomWagerAmount > 0)
+            {
+                TrySettleMiniRoomWager(winnerIndex == 0 ? "owner" : "guest", out _);
+            }
+
+            SyncMiniRoomOmokPresentation();
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        public bool AddMiniRoomVisitor(string visitorName, out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.MiniRoom)
+            {
+                message = "Mini-room visitor flow only applies to the mini-room shell.";
+                return false;
+            }
+
+            if (_occupants.Count >= Capacity)
+            {
+                message = "The mini-room has no open visitor seats.";
+                return false;
+            }
+
+            string resolvedName = NormalizeName(visitorName);
+            if (_occupants.Any(occupant => string.Equals(occupant.Name, resolvedName, StringComparison.OrdinalIgnoreCase)))
+            {
+                message = $"{resolvedName} is already inside the mini-room.";
+                return false;
+            }
+
+            string detail = $"Visitor seat {_occupants.Count} | Watching {ModeName}";
+            _occupants.Add(new SocialRoomOccupant(resolvedName, SocialRoomOccupantRole.Visitor, detail));
+            StatusMessage = $"{resolvedName} entered the mini-room as a visitor.";
+            AddMiniRoomSystemMessage($"System : {StatusMessage}");
+            if (_notes.Count > 1)
+            {
+                _notes[1] = $"Visitor seats active: {Math.Max(0, _occupants.Count - 2)} / {Math.Max(0, Capacity - 2)}.";
+            }
+
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        public bool RemoveMiniRoomOccupant(string occupantName, out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.MiniRoom)
+            {
+                message = "Mini-room leave flow only applies to the mini-room shell.";
+                return false;
+            }
+
+            string resolvedName = string.IsNullOrWhiteSpace(occupantName)
+                ? _occupants.LastOrDefault(occupant => occupant.Role == SocialRoomOccupantRole.Visitor)?.Name
+                : occupantName.Trim();
+            SocialRoomOccupant occupant = _occupants.FirstOrDefault(candidate =>
+                string.Equals(candidate.Name, resolvedName, StringComparison.OrdinalIgnoreCase));
+            if (occupant == null || occupant.Role == SocialRoomOccupantRole.Owner)
+            {
+                message = "No removable mini-room visitor or guest was found.";
+                return false;
+            }
+
+            bool removedGuest = occupant.Role == SocialRoomOccupantRole.Guest;
+            _occupants.Remove(occupant);
+            if (removedGuest)
+            {
+                SocialRoomOccupant replacementGuest = new SocialRoomOccupant("Opponent", SocialRoomOccupantRole.Guest, "Waiting to ready");
+                if (_occupants.Count == 0)
+                {
+                    _occupants.Add(new SocialRoomOccupant(OwnerName, SocialRoomOccupantRole.Owner, BuildOmokSeatDetail(0, "Host seat"), false));
+                }
+
+                if (_occupants.Count == 1)
+                {
+                    _occupants.Add(replacementGuest);
+                }
+                else
+                {
+                    _occupants.Insert(1, replacementGuest);
+                }
+
+                if (_miniRoomOmokInProgress)
+                {
+                    _miniRoomOmokInProgress = false;
+                    _miniRoomOmokWinnerIndex = 0;
+                    RoomState = "Omok ended";
+                    StatusMessage = $"{resolvedName} left the mini-room. {OwnerName} kept the room.";
+                }
+            }
+            else
+            {
+                StatusMessage = $"{resolvedName} left the mini-room visitor rail.";
+            }
+
+            AddMiniRoomSystemMessage($"System : {StatusMessage}", isWarning: removedGuest);
+            SyncMiniRoomOmokPresentation();
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        public bool TrySetMiniRoomWager(int mesoAmount, out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.MiniRoom)
+            {
+                message = "Mini-room wagers only apply to the MiniRoom shell.";
+                return false;
+            }
+
+            mesoAmount = Math.Max(0, mesoAmount);
+            int delta = mesoAmount - _miniRoomWagerAmount;
+            if (delta > 0 && (_inventoryRuntime == null || !_inventoryRuntime.TryConsumeMeso(delta)))
+            {
+                message = $"Need {delta:N0} more meso in inventory to set that mini-room wager.";
+                return false;
+            }
+
+            if (delta < 0)
+            {
+                _inventoryRuntime?.AddMeso(Math.Abs(delta));
+            }
+
+            _miniRoomWagerAmount = mesoAmount;
+            MesoAmount = mesoAmount > 0 ? mesoAmount * 2 : 0;
+            StatusMessage = mesoAmount > 0
+                ? $"Mini-room wager set to {mesoAmount:N0} per player."
+                : "Mini-room wager cleared and refunded.";
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        public bool TrySettleMiniRoomWager(string outcome, out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.MiniRoom)
+            {
+                message = "Mini-room wager settlement only applies to the MiniRoom shell.";
+                return false;
+            }
+
+            if (_miniRoomWagerAmount <= 0)
+            {
+                message = "No mini-room wager is currently escrowed.";
+                return false;
+            }
+
+            string normalized = string.IsNullOrWhiteSpace(outcome) ? "owner" : outcome.Trim().ToLowerInvariant();
+            int stake = _miniRoomWagerAmount;
+            switch (normalized)
+            {
+                case "owner":
+                case "host":
+                case "win":
+                    _inventoryRuntime?.AddMeso(stake * 2);
+                    StatusMessage = $"{OwnerName} won the mini-room and collected {stake * 2:N0} meso from the wager pot.";
+                    break;
+                case "guest":
+                case "lose":
+                    StatusMessage = $"{OwnerName} lost the mini-room wager and the guest kept the pot.";
+                    break;
+                case "draw":
+                case "refund":
+                    _inventoryRuntime?.AddMeso(stake);
+                    StatusMessage = $"Mini-room wager ended in a draw and refunded {stake:N0} meso to {OwnerName}.";
+                    break;
+                default:
+                    message = "Mini-room wager outcome must be owner, guest, or draw.";
+                    return false;
+            }
+
+            _miniRoomWagerAmount = 0;
+            MesoAmount = 0;
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        public void TogglePersonalShopOpen()
+        {
+            if (Kind != SocialRoomKind.PersonalShop)
+            {
+                return;
+            }
+
+            bool isOpen = RoomState != "Open for visitors";
+            RoomState = isOpen ? "Open for visitors" : "Closed for setup";
+            ModeName = isOpen ? "Open shop" : "Repricing";
+            foreach (SocialRoomItemEntry item in _items)
+            {
+                item.Update(
+                    isOpen
+                        ? item.IsClaimed ? $"{item.Detail} | Claim pending" : $"{item.Detail} | Visible to visitors"
+                        : item.IsClaimed ? $"{item.Detail} | Claim pending" : $"{item.Detail} | Hidden during repricing",
+                    item.Quantity,
+                    item.MesoAmount,
+                    false,
+                    item.IsClaimed);
+            }
+
+            StatusMessage = isOpen
+                ? "The personal shop is open and new visitors can enter."
+                : "The personal shop is closed while the owner edits bundles.";
+            PersistState();
+        }
+
+        public bool ClosePersonalShop(out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.PersonalShop)
+            {
+                message = "Close-personal-shop only applies to the personal shop shell.";
+                return false;
+            }
+
+            int refunded = ReturnEscrowRows(entry => entry.ReturnOnClose);
+            _occupants.RemoveAll(occupant => occupant.Role == SocialRoomOccupantRole.Buyer || occupant.Role == SocialRoomOccupantRole.Visitor);
+            if (_inventoryBackedRows)
+            {
+                _items.Clear();
+            }
+
+            RoomState = "Closed for setup";
+            ModeName = "Repricing";
+            StatusMessage = refunded > 0
+                ? $"Closed the personal shop and returned {refunded} unsold bundle(s) to inventory."
+                : "Closed the personal shop for setup.";
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        public void ArrangePersonalShopInventory()
+        {
+            if (Kind != SocialRoomKind.PersonalShop)
+            {
+                return;
+            }
+
+            _items.Sort((left, right) => right.MesoAmount.CompareTo(left.MesoAmount));
+            for (int i = 0; i < _items.Count; i++)
+            {
+                SocialRoomItemEntry item = _items[i];
+                item.Update($"Bundle {(char)('A' + i)} | Sorted by price", item.Quantity, item.MesoAmount, false, item.IsClaimed);
+            }
+
+            StatusMessage = "Shop bundles reordered by price and highlighted slot.";
+            if (_occupants.Count > 0)
+            {
+                _occupants[0].Update("Reordered bundles and refreshed the room notice", isReady: true);
+            }
+
+            PersistState();
+        }
+
+        public void ClaimPersonalShopEarnings()
+        {
+            if (Kind != SocialRoomKind.PersonalShop)
+            {
+                return;
+            }
+
+            int claimed = MesoAmount;
+            if (claimed > 0)
+            {
+                _inventoryRuntime?.AddMeso(claimed);
+            }
+
+            MesoAmount = 0;
+            RoomState = "Claimed sale proceeds";
+            foreach (SocialRoomItemEntry item in _items)
+            {
+                item.Update($"{item.Detail} | Earnings settled", item.Quantity, item.MesoAmount, false, true);
+            }
+
+            StatusMessage = claimed > 0
+                ? $"Claimed {claimed:N0} mesos from sold bundles into inventory."
+                : "No queued mesos remain to claim from the personal shop.";
+            PersistState();
+        }
+
+        public bool AddPersonalShopVisitor(string visitorName, out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.PersonalShop)
+            {
+                message = "Visitor persistence is only modeled for the personal shop shell.";
+                return false;
+            }
+
+            string resolvedName = NormalizeName(visitorName);
+            if (_blockedVisitors.Contains(resolvedName, StringComparer.OrdinalIgnoreCase))
+            {
+                message = $"{resolvedName} is blacklisted from the personal shop.";
+                return false;
+            }
+
+            if (_occupants.Any(occupant => string.Equals(occupant.Name, resolvedName, StringComparison.OrdinalIgnoreCase)))
+            {
+                message = $"{resolvedName} is already inside the personal shop.";
+                return true;
+            }
+
+            if (_occupants.Count >= Capacity)
+            {
+                message = "The personal shop is full.";
+                return false;
+            }
+
+            _occupants.Add(new SocialRoomOccupant(resolvedName, SocialRoomOccupantRole.Visitor, "Browsing saved visitor slot"));
+            if (!_savedVisitors.Contains(resolvedName, StringComparer.OrdinalIgnoreCase))
+            {
+                _savedVisitors.Add(resolvedName);
+            }
+
+            StatusMessage = $"{resolvedName} entered the personal shop and was saved to the visitor list.";
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        public bool TogglePersonalShopBlacklist(string visitorName, out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.PersonalShop)
+            {
+                message = "Blacklist persistence is only modeled for the personal shop shell.";
+                return false;
+            }
+
+            string resolvedName = string.IsNullOrWhiteSpace(visitorName)
+                ? _savedVisitors.LastOrDefault() ?? _occupants.LastOrDefault(occupant => occupant.Role != SocialRoomOccupantRole.Owner)?.Name
+                : NormalizeName(visitorName);
+            if (string.IsNullOrWhiteSpace(resolvedName))
+            {
+                message = "No visitor is available to blacklist.";
+                return false;
+            }
+
+            if (_blockedVisitors.Contains(resolvedName, StringComparer.OrdinalIgnoreCase))
+            {
+                _blockedVisitors.RemoveAll(name => string.Equals(name, resolvedName, StringComparison.OrdinalIgnoreCase));
+                StatusMessage = $"{resolvedName} was removed from the personal-shop blacklist.";
+            }
+            else
+            {
+                _blockedVisitors.Add(resolvedName);
+                _occupants.RemoveAll(occupant => string.Equals(occupant.Name, resolvedName, StringComparison.OrdinalIgnoreCase) && occupant.Role != SocialRoomOccupantRole.Owner);
+                StatusMessage = $"{resolvedName} was added to the personal-shop blacklist and removed from the room.";
+            }
+
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        public bool TryAutoListPersonalShopItem(out string message)
+        {
+            message = null;
+            if (!TryGetFirstInventoryItem(out InventorySlotData slotData, out _))
+            {
+                message = "No inventory item is available to list in the personal shop.";
+                return false;
+            }
+
+            return TryListPersonalShopItem(slotData.ItemId, Math.Max(1, slotData.Quantity), ResolveSuggestedPrice(slotData.ItemId, slotData.Quantity), out message);
+        }
+
+        public bool TryResolveFirstInventoryListingCandidate(out int itemId, out int quantity, out int mesoAmount, out string message)
+        {
+            itemId = 0;
+            quantity = 0;
+            mesoAmount = 0;
+            message = null;
+
+            if (Kind is not (SocialRoomKind.PersonalShop or SocialRoomKind.EntrustedShop))
+            {
+                message = "Merchant listing packets only apply to personal-shop or entrusted-shop shells.";
+                return false;
+            }
+
+            if (Kind == SocialRoomKind.EntrustedShop && !EnsureEntrustedPermitActive(out message))
+            {
+                return false;
+            }
+
+            if (!TryGetFirstInventoryItem(out InventorySlotData slotData, out _))
+            {
+                message = Kind == SocialRoomKind.EntrustedShop
+                    ? "No inventory item is available to restock in the entrusted shop."
+                    : "No inventory item is available to list in the personal shop.";
+                return false;
+            }
+
+            itemId = slotData.ItemId;
+            quantity = Math.Max(1, slotData.Quantity);
+            mesoAmount = ResolveSuggestedPrice(slotData.ItemId, slotData.Quantity);
+            return true;
+        }
+
+        public bool TryListPersonalShopItem(int itemId, int quantity, int mesoAmount, out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.PersonalShop)
+            {
+                message = "Listing inventory escrow only applies to the personal shop shell.";
+                return false;
+            }
+
+            if (!TryConsumeInventoryItem(itemId, quantity, out InventoryType inventoryType, out InventorySlotData slotData, out message))
+            {
+                return false;
+            }
+
+            EnsureInventoryBackedRows();
+            SocialRoomItemEntry entry = new SocialRoomItemEntry(OwnerName, slotData.ItemName, quantity, Math.Max(0, mesoAmount), $"Bundle {(char)('A' + _items.Count)} | Inventory escrowed");
+            _items.Add(entry);
+            _inventoryEscrow.Add(new InventoryEscrowEntry(entry, inventoryType, slotData, returnOnReset: false, returnOnClose: true));
+            RoomState = "Closed for setup";
+            ModeName = "Repricing";
+            StatusMessage = $"Listed {slotData.ItemName} x{quantity} for {mesoAmount:N0} meso in the personal shop.";
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        public bool TryBuyPersonalShopItem(int itemIndex, string buyerName, out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.PersonalShop)
+            {
+                message = "Bundle purchase simulation only applies to the personal shop shell.";
+                return false;
+            }
+
+            List<SocialRoomItemEntry> availableEntries = _items.Where(item => !item.IsClaimed && item.MesoAmount > 0).ToList();
+            if (availableEntries.Count == 0)
+            {
+                message = "No purchasable bundle is available in the personal shop.";
+                return false;
+            }
+
+            SocialRoomItemEntry entry = itemIndex >= 0 && itemIndex < availableEntries.Count
+                ? availableEntries[itemIndex]
+                : availableEntries[0];
+            string resolvedBuyer = NormalizeName(buyerName);
+            if (_blockedVisitors.Contains(resolvedBuyer, StringComparer.OrdinalIgnoreCase))
+            {
+                message = $"{resolvedBuyer} is blacklisted and cannot buy from this personal shop.";
+                return false;
+            }
+
+            entry.Update($"{entry.Detail} | Bought by {resolvedBuyer}", entry.Quantity, entry.MesoAmount, false, true);
+            MesoAmount += entry.MesoAmount;
+            _inventoryEscrow.RemoveAll(escrow => ReferenceEquals(escrow.Entry, entry));
+            _occupants.RemoveAll(occupant => string.Equals(occupant.Name, resolvedBuyer, StringComparison.OrdinalIgnoreCase));
+            _occupants.Add(new SocialRoomOccupant(resolvedBuyer, SocialRoomOccupantRole.Buyer, $"Purchased {entry.ItemName}"));
+            if (!_savedVisitors.Contains(resolvedBuyer, StringComparer.OrdinalIgnoreCase))
+            {
+                _savedVisitors.Add(resolvedBuyer);
+            }
+
+            StatusMessage = $"{resolvedBuyer} bought {entry.ItemName} for {entry.MesoAmount:N0} meso.";
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        public void ToggleEntrustedLedgerMode()
+        {
+            if (Kind != SocialRoomKind.EntrustedShop)
+            {
+                return;
+            }
+
+            UpdateEntrustedPermitState(DateTime.UtcNow);
+
+            bool isLedger = !string.Equals(ModeName, "Restock", StringComparison.Ordinal);
+            ModeName = isLedger ? "Restock" : "Ledger review";
+            RoomState = isLedger ? "Updating sale list" : IsEntrustedPermitExpired(DateTime.UtcNow) ? "Permit expired" : "Permit active";
+            foreach (SocialRoomItemEntry item in _items)
+            {
+                item.Update(
+                    isLedger
+                        ? $"{item.Detail} | Editing sale slot"
+                        : item.IsClaimed ? $"{item.Detail} | Awaiting payout" : $"{item.Detail} | Permit active",
+                    item.Quantity,
+                    item.MesoAmount,
+                    false,
+                    item.IsClaimed);
+            }
+
+            StatusMessage = isLedger
+                ? "Entrusted-shop view switched to restock mode."
+                : "Entrusted-shop view switched back to the earnings ledger.";
+            PersistState();
+        }
+
+        public bool TryAutoListEntrustedShopItem(out string message)
+        {
+            message = null;
+            if (!TryGetFirstInventoryItem(out InventorySlotData slotData, out _))
+            {
+                message = "No inventory item is available to restock in the entrusted shop.";
+                return false;
+            }
+
+            return TryListEntrustedShopItem(slotData.ItemId, Math.Max(1, slotData.Quantity), ResolveSuggestedPrice(slotData.ItemId, slotData.Quantity), out message);
+        }
+
+        public bool TryListEntrustedShopItem(int itemId, int quantity, int mesoAmount, out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.EntrustedShop)
+            {
+                message = "Inventory-backed restock only applies to the entrusted shop shell.";
+                return false;
+            }
+
+            if (!EnsureEntrustedPermitActive(out message))
+            {
+                return false;
+            }
+
+            if (!TryConsumeInventoryItem(itemId, quantity, out InventoryType inventoryType, out InventorySlotData slotData, out message))
+            {
+                return false;
+            }
+
+            EnsureInventoryBackedRows();
+            SocialRoomItemEntry entry = new SocialRoomItemEntry(OwnerName, slotData.ItemName, quantity, Math.Max(0, mesoAmount), $"Slot {_items.Count + 1} | Restocked from inventory");
+            _items.Add(entry);
+            _inventoryEscrow.Add(new InventoryEscrowEntry(entry, inventoryType, slotData, returnOnReset: false, returnOnClose: false));
+            RoomState = "Updating sale list";
+            ModeName = "Restock";
+            StatusMessage = $"Restocked {slotData.ItemName} x{quantity} in the entrusted-shop ledger.";
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        public void ArrangeEntrustedShop()
+        {
+            if (Kind != SocialRoomKind.EntrustedShop)
+            {
+                return;
+            }
+
+            if (!EnsureEntrustedPermitActive(out _))
+            {
+                return;
+            }
+
+            RoomState = "Rearranged sale slots";
+            _items.Sort((left, right) => string.Compare(left.ItemName, right.ItemName, StringComparison.OrdinalIgnoreCase));
+            for (int i = 0; i < _items.Count; i++)
+            {
+                SocialRoomItemEntry item = _items[i];
+                item.Update($"Slot {i + 1} | Rearranged for next listing", item.Quantity, item.MesoAmount, false, item.IsClaimed);
+            }
+
+            StatusMessage = "Entrusted-shop bundles rearranged for the next hiring cycle.";
+            PersistState();
+        }
+
+        public void ClaimEntrustedShopEarnings()
+        {
+            if (Kind != SocialRoomKind.EntrustedShop)
+            {
+                return;
+            }
+
+            int claimed = MesoAmount;
+            if (claimed > 0)
+            {
+                _inventoryRuntime?.AddMeso(claimed);
+            }
+
+            MesoAmount = 0;
+            RoomState = "Ledger settled";
+            bool markedClaimed = false;
+            foreach (SocialRoomItemEntry item in _items)
+            {
+                bool claimThisItem = !markedClaimed && item.IsClaimed;
+                item.Update(
+                    claimThisItem ? $"{item.Detail} | Claimed into storage wallet" : item.Detail,
+                    item.Quantity,
+                    item.MesoAmount,
+                    false,
+                    claimThisItem);
+                markedClaimed |= claimThisItem;
+            }
+
+            StatusMessage = claimed > 0
+                ? $"Claimed {claimed:N0} mesos from the entrusted shop ledger into inventory."
+                : "No entrusted-shop mesos remain to claim.";
+            PersistState();
+        }
+
+        public bool TryRenewEntrustedPermit(int minutes, out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.EntrustedShop)
+            {
+                message = "Permit uptime only applies to the entrusted shop shell.";
+                return false;
+            }
+
+            int normalizedMinutes = Math.Clamp(minutes <= 0 ? 24 * 60 : minutes, 1, 7 * 24 * 60);
+            _entrustedPermitExpiresAtUtc = DateTime.UtcNow.AddMinutes(normalizedMinutes);
+            RoomState = "Permit active";
+            if (string.Equals(ModeName, "Permit expired", StringComparison.Ordinal))
+            {
+                ModeName = "Ledger review";
+            }
+
+            StatusMessage = $"Entrusted-shop permit renewed for {normalizedMinutes} minute{(normalizedMinutes == 1 ? string.Empty : "s")}.";
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        public bool ExpireEntrustedPermit(out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.EntrustedShop)
+            {
+                message = "Permit uptime only applies to the entrusted shop shell.";
+                return false;
+            }
+
+            _entrustedPermitExpiresAtUtc = DateTime.UtcNow;
+            UpdateEntrustedPermitState(DateTime.UtcNow);
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        public void IncreaseTradeOffer()
+        {
+            TryIncreaseTradeOffer(out _);
+        }
+
+        public void SubmitTradingRoomTradeButton()
+        {
+            if (Kind != SocialRoomKind.TradingRoom)
+            {
+                return;
+            }
+
+            string callbackMessage = TradingRoomTradeButtonRequested?.Invoke(this);
+            if (!string.IsNullOrWhiteSpace(callbackMessage))
+            {
+                StatusMessage = callbackMessage;
+                PersistState();
+                return;
+            }
+
+            if (!TryApplyTradingRoomLocalTradeRequest(out _, out string message))
+            {
+                StatusMessage = message;
+                PersistState();
+            }
+        }
+
+        public void SubmitTradingRoomCoinButton()
+        {
+            if (Kind != SocialRoomKind.TradingRoom)
+            {
+                return;
+            }
+
+            string callbackMessage = TradingRoomCoinButtonRequested?.Invoke(this);
+            if (!string.IsNullOrWhiteSpace(callbackMessage))
+            {
+                StatusMessage = callbackMessage;
+                PersistState();
+                return;
+            }
+
+            IncreaseTradeOffer();
+        }
+
+        public bool TryIncreaseTradeOffer(out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.TradingRoom)
+            {
+                message = "Trade meso escrow only applies to the trading-room shell.";
+                return false;
+            }
+
+            if (TryOfferTradeMeso(50000, out string mesoMessage))
+            {
+                message = mesoMessage;
+                return true;
+            }
+
+            StatusMessage = mesoMessage;
+            PersistState();
+            message = StatusMessage;
+            return false;
+        }
+
+        public bool TryOfferTradeMeso(int mesoAmount, out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.TradingRoom)
+            {
+                message = "Trade meso escrow only applies to the trading-room shell.";
+                return false;
+            }
+
+            if (mesoAmount <= 0)
+            {
+                message = "Trade meso offers must be positive.";
+                return false;
+            }
+
+            if (_inventoryRuntime == null || !_inventoryRuntime.TryConsumeMeso(mesoAmount))
+            {
+                message = $"Need {mesoAmount:N0} more meso in inventory to add that trade offer.";
+                return false;
+            }
+
+            int packetOfferTotal = Math.Max(0, _tradeLocalOfferMeso) + mesoAmount;
+            if (!TryDispatchTradingRoomPacketOwnedMeso(0, packetOfferTotal, Environment.TickCount, out message))
+            {
+                _inventoryRuntime.AddMeso(mesoAmount);
+                return false;
+            }
+
+            message = $"{message} Local command escrowed {mesoAmount:N0} meso through the packet-owned subtype {TradingRoomPutMoneyPacketType} path.";
+            StatusMessage = message;
+            PersistState();
+            return true;
+        }
+
+        public bool TryOfferTradeItem(int itemId, int quantity, out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.TradingRoom)
+            {
+                message = "Trade item escrow only applies to the trading-room shell.";
+                return false;
+            }
+
+            if (!TryConsumeInventoryItem(itemId, quantity, out InventoryType inventoryType, out InventorySlotData slotData, out message))
+            {
+                return false;
+            }
+
+            if (!_inventoryBackedRows)
+            {
+                _items.RemoveAll(item => string.Equals(item.OwnerName, OwnerName, StringComparison.OrdinalIgnoreCase));
+                _inventoryBackedRows = true;
+            }
+
+            int nextPacketSlot = ResolveNextTradingRoomPacketSlot(OwnerName);
+            if (!TryDispatchTradingRoomPacketOwnedItem(0, nextPacketSlot, itemId, quantity, Environment.TickCount, out message))
+            {
+                _inventoryRuntime?.AddItem(inventoryType, slotData.ItemId, slotData.ItemTexture, slotData.Quantity);
+                return false;
+            }
+
+            SocialRoomItemEntry entry = FindTradingRoomPacketEntry(OwnerName, nextPacketSlot);
+            if (entry != null)
+            {
+                _inventoryEscrow.Add(new InventoryEscrowEntry(entry, inventoryType, slotData, returnOnReset: true, returnOnClose: true));
+            }
+
+            message = $"{message} Local command escrowed {slotData.ItemName} x{quantity} through the packet-owned subtype {TradingRoomPutItemPacketType} path.";
+            StatusMessage = message;
+            PersistState();
+            return true;
+        }
+
+        public bool TryOfferRemoteTradeItem(int itemId, int quantity, out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.TradingRoom)
+            {
+                message = "Remote trade preview only applies to the trading-room shell.";
+                return false;
+            }
+
+            InventoryType inventoryType = InventoryItemMetadataResolver.ResolveInventoryType(itemId);
+            if (inventoryType == InventoryType.NONE || quantity <= 0)
+            {
+                message = "A valid remote trade item id and quantity are required.";
+                return false;
+            }
+
+            if (!TryConsumeRemoteInventoryItem(itemId, quantity, out SocialRoomRemoteInventoryEntry remoteInventoryEntry, out message))
+            {
+                return false;
+            }
+
+            string remoteName = ResolveRemoteTraderName();
+            int nextPacketSlot = ResolveNextTradingRoomPacketSlot(remoteName);
+            if (!TryDispatchTradingRoomPacketOwnedItem(1, nextPacketSlot, itemId, quantity, Environment.TickCount, out message))
+            {
+                AddRemoteInventoryItem(itemId, quantity);
+                return false;
+            }
+
+            message = $"{message} Remote preview consumed {remoteInventoryEntry.ItemName} x{quantity} through the packet-owned subtype {TradingRoomPutItemPacketType} path.";
+            StatusMessage = message;
+            RefreshRemoteInventoryNotes();
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        public bool TryOfferRemoteTradeMeso(int mesoAmount, out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.TradingRoom)
+            {
+                message = "Remote trade preview only applies to the trading-room shell.";
+                return false;
+            }
+
+            if (mesoAmount <= 0)
+            {
+                message = "Remote trade meso offers must be positive.";
+                return false;
+            }
+
+            if (_remoteInventoryMeso < mesoAmount)
+            {
+                message = $"Remote trader only has {_remoteInventoryMeso:N0} meso available in the simulator wallet.";
+                return false;
+            }
+
+            _remoteInventoryMeso -= mesoAmount;
+            int packetOfferTotal = Math.Max(0, _tradeRemoteOfferMeso) + mesoAmount;
+            if (!TryDispatchTradingRoomPacketOwnedMeso(1, packetOfferTotal, Environment.TickCount, out message))
+            {
+                _remoteInventoryMeso += mesoAmount;
+                return false;
+            }
+
+            message = $"{message} Remote preview escrowed {mesoAmount:N0} meso through the packet-owned subtype {TradingRoomPutMoneyPacketType} path.";
+            StatusMessage = message;
+            RefreshRemoteInventoryNotes();
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        public bool ToggleTradeLock(out string message, bool remoteParty = false)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.TradingRoom)
+            {
+                message = "Trade lock only applies to the trading-room shell.";
+                return false;
+            }
+
+            if (remoteParty)
+            {
+                _tradeRemoteLocked = !_tradeRemoteLocked;
+            }
+            else
+            {
+                _tradeLocalLocked = !_tradeLocalLocked;
+            }
+
+            _tradeLocalAccepted = false;
+            _tradeRemoteAccepted = false;
+            _tradeVerificationPending = _tradeLocalLocked && _tradeRemoteLocked && (_tradeLocalVerificationEntries.Count > 0 || _tradeRemoteVerificationEntries.Count > 0);
+            RoomState = _tradeLocalLocked && _tradeRemoteLocked ? "Locked" : "Negotiating";
+            RefreshTradeOccupantsAndRows();
+            string actor = remoteParty ? ResolveRemoteTraderName() : OwnerName;
+            bool locked = remoteParty ? _tradeRemoteLocked : _tradeLocalLocked;
+            StatusMessage = locked
+                ? $"{actor} locked their side of the trade."
+                : $"{actor} unlocked their side of the trade.";
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        public bool ToggleTradeAcceptance(out string message, bool remoteParty = false)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.TradingRoom)
+            {
+                message = "Trade acceptance only applies to the trading-room shell.";
+                return false;
+            }
+
+            if (!_tradeLocalLocked || !_tradeRemoteLocked)
+            {
+                message = "Both traders must lock the exchange before final acceptance.";
+                return false;
+            }
+
+            if (_tradeVerificationPending)
+            {
+                message = "The trade is still waiting on CRC verification payloads.";
+                return false;
+            }
+
+            if (remoteParty)
+            {
+                _tradeRemoteAccepted = !_tradeRemoteAccepted;
+            }
+            else
+            {
+                _tradeLocalAccepted = !_tradeLocalAccepted;
+            }
+
+            _tradeVerificationPending = false;
+            _tradeAutoCrcReplyPending = false;
+            RoomState = _tradeLocalAccepted && _tradeRemoteAccepted ? "Awaiting settlement" : "Locked";
+            RefreshTradeOccupantsAndRows();
+            string actor = remoteParty ? ResolveRemoteTraderName() : OwnerName;
+            bool accepted = remoteParty ? _tradeRemoteAccepted : _tradeLocalAccepted;
+            StatusMessage = accepted
+                ? $"{actor} accepted the locked trade."
+                : $"{actor} canceled their final trade acceptance.";
+
+            if (accepted
+                && _tradeLocalAccepted
+                && _tradeRemoteAccepted)
+            {
+                if (TryCompleteTrade(out string settlementMessage))
+                {
+                    message = settlementMessage;
+                    return true;
+                }
+
+                if (remoteParty)
+                {
+                    _tradeRemoteAccepted = false;
+                }
+                else
+                {
+                    _tradeLocalAccepted = false;
+                }
+
+                RoomState = "Locked";
+                RefreshTradeOccupantsAndRows();
+                PersistState();
+                message = settlementMessage;
+                return false;
+            }
+
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        public void ResetTrade()
+        {
+            if (Kind != SocialRoomKind.TradingRoom)
+            {
+                return;
+            }
+
+            int restoredRows = ReturnEscrowRows(entry => entry.ReturnOnReset);
+            if (_tradeLocalOfferMeso > 0)
+            {
+                _inventoryRuntime?.AddMeso(_tradeLocalOfferMeso);
+            }
+
+            MesoAmount = 150000;
+            _tradeLocalOfferMeso = 0;
+            _tradeRemoteOfferMeso = 75000;
+            _tradeLocalLocked = false;
+            _tradeRemoteLocked = false;
+            _tradeLocalAccepted = false;
+            _tradeRemoteAccepted = false;
+            _tradeVerificationPending = false;
+            _tradeAutoCrcReplyPending = false;
+            _tradeLocalVerificationReady = false;
+            _tradeRemoteVerificationReady = false;
+            _tradeLocalVerificationEntries.Clear();
+            _tradeRemoteVerificationEntries.Clear();
+            RoomState = "Negotiating";
+            StatusMessage = restoredRows > 0
+                ? $"Trade offer reset and {restoredRows} escrowed item entr{(restoredRows == 1 ? "y was" : "ies were")} returned to inventory."
+                : "Trade offer reset to the initial simulator draft.";
+            _items.Clear();
+            foreach (SocialRoomItemEntry item in _defaultItems)
+            {
+                _items.Add(new SocialRoomItemEntry(item.OwnerName, item.ItemName, item.Quantity, item.MesoAmount, item.Detail, false, false, item.ItemId, item.PacketSlotIndex, item.BundleSetCount));
+            }
+
+            _occupants.Clear();
+            foreach (SocialRoomOccupant occupant in _defaultOccupants)
+            {
+                _occupants.Add(new SocialRoomOccupant(occupant.Name, occupant.Role, occupant.Detail, false, occupant.AvatarBuild));
+            }
+
+            _inventoryEscrow.Clear();
+            _inventoryBackedRows = false;
+            RestoreDefaultRemoteInventory();
+            RefreshRemoteInventoryNotes();
+            PersistState();
+        }
+
+        public bool TryCompleteTrade(out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.TradingRoom)
+            {
+                message = "Trade settlement only applies to the trading-room shell.";
+                return false;
+            }
+
+            if (!_tradeLocalLocked || !_tradeRemoteLocked)
+            {
+                message = "Both traders must lock the exchange before completing the settlement.";
+                return false;
+            }
+
+            if (!_tradeLocalAccepted || !_tradeRemoteAccepted)
+            {
+                message = "Both traders must accept the locked trade before settlement.";
+                return false;
+            }
+
+            if (_tradeVerificationPending)
+            {
+                message = "The trade is still waiting on CRC verification payloads.";
+                return false;
+            }
+
+            List<SocialRoomItemEntry> remoteEntries = _items
+                .Where(item => !string.Equals(item.OwnerName, OwnerName, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            foreach (SocialRoomItemEntry remoteEntry in remoteEntries)
+            {
+                int remoteItemId = remoteEntry.ItemId > 0 ? remoteEntry.ItemId : ResolveItemIdByName(remoteEntry.ItemName);
+                if (remoteItemId <= 0)
+                {
+                    message = $"Could not resolve trade reward '{remoteEntry.ItemName}'.";
+                    return false;
+                }
+
+                InventoryType remoteType = InventoryItemMetadataResolver.ResolveInventoryType(remoteItemId);
+                if (_inventoryRuntime == null || !_inventoryRuntime.CanAcceptItem(remoteType, remoteItemId, remoteEntry.Quantity))
+                {
+                    message = $"Inventory cannot accept trade reward '{remoteEntry.ItemName}'.";
+                    return false;
+                }
+            }
+
+            foreach (SocialRoomItemEntry remoteEntry in remoteEntries)
+            {
+                int remoteItemId = remoteEntry.ItemId > 0 ? remoteEntry.ItemId : ResolveItemIdByName(remoteEntry.ItemName);
+                InventoryType remoteType = InventoryItemMetadataResolver.ResolveInventoryType(remoteItemId);
+                _inventoryRuntime?.AddItem(remoteType, remoteItemId, _inventoryRuntime.GetItemTexture(remoteType, remoteItemId), remoteEntry.Quantity);
+                remoteEntry.Update($"{remoteEntry.Detail} | Trade settled", remoteEntry.Quantity, remoteEntry.MesoAmount, true, true);
+            }
+
+            if (_tradeRemoteOfferMeso > 0)
+            {
+                _inventoryRuntime?.AddMeso(_tradeRemoteOfferMeso);
+            }
+
+            foreach (SocialRoomItemEntry localEntry in _items.Where(item => string.Equals(item.OwnerName, OwnerName, StringComparison.OrdinalIgnoreCase)))
+            {
+                localEntry.Update($"{localEntry.Detail} | Trade settled", localEntry.Quantity, localEntry.MesoAmount, true, true);
+            }
+
+            _inventoryEscrow.Clear();
+            _tradeLocalOfferMeso = 0;
+            int receivedRemoteMeso = _tradeRemoteOfferMeso;
+            _tradeRemoteOfferMeso = 0;
+            _tradeLocalLocked = true;
+            _tradeRemoteLocked = true;
+            _tradeLocalAccepted = true;
+            _tradeRemoteAccepted = true;
+            _tradeVerificationPending = false;
+            _tradeAutoCrcReplyPending = false;
+            _tradeLocalVerificationReady = false;
+            _tradeRemoteVerificationReady = false;
+            _tradeLocalVerificationEntries.Clear();
+            _tradeRemoteVerificationEntries.Clear();
+            MesoAmount = 0;
+            RoomState = "Trade settled";
+            RefreshTradeOccupantsAndRows();
+            StatusMessage = $"Trade completed. Received {remoteEntries.Count} remote item entr{(remoteEntries.Count == 1 ? "y" : "ies")} and {receivedRemoteMeso:N0} meso.";
+            RefreshRemoteInventoryNotes();
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        public string DescribeRemoteTradeInventory()
+        {
+            if (Kind != SocialRoomKind.TradingRoom)
+            {
+                return "Remote trade inventory is only modeled for the trading-room shell.";
+            }
+
+            string itemSummary = _remoteInventoryEntries.Count == 0
+                ? "no items"
+                : string.Join(", ", _remoteInventoryEntries.Select(entry => $"{entry.ItemName} x{entry.Quantity}"));
+            return $"Remote trader wallet={_remoteInventoryMeso:N0}, catalog={itemSummary}.";
+        }
+
+        public bool TrySeedRemoteTradeInventoryItem(int itemId, int quantity, out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.TradingRoom)
+            {
+                message = "Remote trade inventory seeding only applies to the trading-room shell.";
+                return false;
+            }
+
+            InventoryType inventoryType = InventoryItemMetadataResolver.ResolveInventoryType(itemId);
+            if (inventoryType == InventoryType.NONE || quantity <= 0)
+            {
+                message = "A valid item id and quantity are required to seed the remote trade inventory.";
+                return false;
+            }
+
+            AddRemoteInventoryItem(itemId, quantity);
+            RefreshRemoteInventoryNotes();
+            PersistState();
+            message = $"Added {ResolveItemName(itemId)} x{quantity} to the remote trade inventory.";
+            return true;
+        }
+
+        public bool TrySeedRemoteTradeInventoryMeso(int mesoAmount, out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.TradingRoom)
+            {
+                message = "Remote trade inventory seeding only applies to the trading-room shell.";
+                return false;
+            }
+
+            if (mesoAmount <= 0)
+            {
+                message = "A positive meso amount is required to seed the remote trade wallet.";
+                return false;
+            }
+
+            _remoteInventoryMeso += mesoAmount;
+            RefreshRemoteInventoryNotes();
+            PersistState();
+            message = $"Added {mesoAmount:N0} meso to the remote trade wallet.";
+            return true;
+        }
+
+        public string ConfigureTradeInviteTarget(string traderName, CharacterBuild avatarBuild = null)
+        {
+            if (Kind != SocialRoomKind.TradingRoom)
+            {
+                return "Trade invite targeting only applies to the trading-room shell.";
+            }
+
+            string resolvedName = NormalizeName(traderName);
+            if (_occupants.Count == 0)
+            {
+                _occupants.Add(new SocialRoomOccupant(OwnerName, SocialRoomOccupantRole.Trader, BuildTradeOccupantDetail(true, _tradeLocalLocked, _tradeLocalAccepted), false));
+            }
+
+            string previousRemoteName = ResolveRemoteTraderName();
+            if (_occupants.Count == 1)
+            {
+                _occupants.Add(new SocialRoomOccupant(resolvedName, SocialRoomOccupantRole.Trader, BuildTradeOccupantDetail(false, _tradeRemoteLocked, _tradeRemoteAccepted), false, avatarBuild));
+            }
+            else
+            {
+                _occupants[1].Update(resolvedName, SocialRoomOccupantRole.Trader, BuildTradeOccupantDetail(false, _tradeRemoteLocked, _tradeRemoteAccepted), false, avatarBuild);
+            }
+
+            if (!string.IsNullOrWhiteSpace(previousRemoteName) && !string.Equals(previousRemoteName, resolvedName, StringComparison.OrdinalIgnoreCase))
+            {
+                for (int i = 0; i < _items.Count; i++)
+                {
+                    SocialRoomItemEntry item = _items[i];
+                    if (string.Equals(item.OwnerName, previousRemoteName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        _items[i] = new SocialRoomItemEntry(
+                            resolvedName,
+                            item.ItemName,
+                            item.Quantity,
+                            item.MesoAmount,
+                            item.Detail,
+                            item.IsLocked,
+                            item.IsClaimed,
+                            item.ItemId,
+                            item.PacketSlotIndex,
+                            item.BundleSetCount);
+                    }
+                }
+            }
+
+            RoomState = "Invite pending";
+            ClearTradeHandshake();
+            RefreshTradeOccupantsAndRows();
+            StatusMessage = $"Prepared a simulated trade invite for {resolvedName}. Server accept or reject flow still remains outside this owner.";
+            PersistState();
+            return StatusMessage;
+        }
+
+        public bool TrySetEmployeeTemplate(int templateId, out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.PersonalShop && Kind != SocialRoomKind.EntrustedShop)
+            {
+                message = "Employee template changes only apply to personal-shop and entrusted-shop rooms.";
+                return false;
+            }
+
+            int normalizedTemplateId = Math.Max(0, templateId);
+            if (normalizedTemplateId > 0 && !HasEmployeeTemplate(normalizedTemplateId))
+            {
+                message = $"Employee template {normalizedTemplateId} was not found under Item/Cash.";
+                return false;
+            }
+
+            _employeeTemplateId = normalizedTemplateId;
+            if (_employeeAnchorOffsetX == 0 && _employeeAnchorOffsetY == 0)
+            {
+                _employeeAnchorOffsetX = Kind == SocialRoomKind.EntrustedShop ? 72 : 56;
+            }
+
+            StatusMessage = normalizedTemplateId > 0
+                ? $"Employee template set to {normalizedTemplateId}."
+                : "Employee template cleared; room will fall back to the legacy NPC representative.";
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        public bool TrySetEmployeeAnchorOffset(int offsetX, int offsetY, out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.PersonalShop && Kind != SocialRoomKind.EntrustedShop)
+            {
+                message = "Employee placement only applies to personal-shop and entrusted-shop rooms.";
+                return false;
+            }
+
+            _employeeUseOwnerAnchor = true;
+            _employeeHasWorldPosition = false;
+            _employeeAnchorOffsetX = offsetX;
+            _employeeAnchorOffsetY = offsetY;
+            StatusMessage = $"Employee anchor offset set to ({offsetX}, {offsetY}) relative to the owner.";
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        public bool TrySetEmployeeWorldPosition(int worldX, int worldY, out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.PersonalShop && Kind != SocialRoomKind.EntrustedShop)
+            {
+                message = "Employee placement only applies to personal-shop and entrusted-shop rooms.";
+                return false;
+            }
+
+            _employeeUseOwnerAnchor = false;
+            _employeeHasWorldPosition = true;
+            _employeeWorldX = worldX;
+            _employeeWorldY = worldY;
+            StatusMessage = $"Employee world placement set to ({worldX}, {worldY}).";
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        public bool TrySetEmployeeFlip(bool? flip, out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.PersonalShop && Kind != SocialRoomKind.EntrustedShop)
+            {
+                message = "Employee facing only applies to personal-shop and entrusted-shop rooms.";
+                return false;
+            }
+
+            _employeeFlip = flip;
+            StatusMessage = flip.HasValue
+                ? $"Employee facing locked to {(flip.Value ? "left" : "right")}."
+                : "Employee facing returned to action-driven random selection.";
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        public void ResetEmployeePlacement()
+        {
+            if (Kind != SocialRoomKind.PersonalShop && Kind != SocialRoomKind.EntrustedShop)
+            {
+                return;
+            }
+
+            _employeeUseOwnerAnchor = true;
+            _employeeHasWorldPosition = false;
+            _employeeAnchorOffsetX = Kind == SocialRoomKind.EntrustedShop ? 72 : 56;
+            _employeeAnchorOffsetY = 0;
+            _employeeWorldX = 0;
+            _employeeWorldY = 0;
+            _employeeFlip = null;
+            StatusMessage = "Employee placement reset to the owner-anchored default.";
+            PersistState();
+        }
+
+        public void ClearRemoteTradeInventory()
+        {
+            if (Kind != SocialRoomKind.TradingRoom)
+            {
+                return;
+            }
+
+            _remoteInventoryEntries.Clear();
+            _remoteInventoryMeso = 0;
+            RefreshRemoteInventoryNotes();
+            PersistState();
+        }
+
+        private void SeedDefaultRemoteInventory()
+        {
+            if (Kind != SocialRoomKind.TradingRoom)
+            {
+                return;
+            }
+
+            _defaultRemoteInventoryEntries.Clear();
+            _defaultRemoteInventoryEntries.Add(new SocialRoomRemoteInventoryEntry(4004004, ResolveItemName(4004004), 40));
+            _defaultRemoteInventoryEntries.Add(new SocialRoomRemoteInventoryEntry(2070011, ResolveItemName(2070011), 2));
+            _defaultRemoteInventoryEntries.Add(new SocialRoomRemoteInventoryEntry(2044704, ResolveItemName(2044704), 1));
+            RestoreDefaultRemoteInventory();
+        }
+
+        private void RestoreDefaultRemoteInventory()
+        {
+            if (Kind != SocialRoomKind.TradingRoom)
+            {
+                return;
+            }
+
+            _remoteInventoryEntries.Clear();
+            foreach (SocialRoomRemoteInventoryEntry entry in _defaultRemoteInventoryEntries)
+            {
+                _remoteInventoryEntries.Add(new SocialRoomRemoteInventoryEntry(entry.ItemId, entry.ItemName, entry.Quantity));
+            }
+
+            _remoteInventoryMeso = _defaultSnapshot?.RemoteInventoryMeso ?? 325000;
+        }
+
+        private bool TryConsumeRemoteInventoryItem(int itemId, int quantity, out SocialRoomRemoteInventoryEntry entry, out string message)
+        {
+            entry = _remoteInventoryEntries.FirstOrDefault(candidate => candidate.ItemId == itemId && candidate.Quantity >= quantity);
+            if (entry == null)
+            {
+                int available = _remoteInventoryEntries.FirstOrDefault(candidate => candidate.ItemId == itemId)?.Quantity ?? 0;
+                message = available > 0
+                    ? $"Remote trader only has {available} of item {itemId} available."
+                    : $"Remote trader does not have item {itemId} in the simulator inventory.";
+                return false;
+            }
+
+            entry.Update(entry.Quantity - quantity);
+            if (entry.Quantity <= 0)
+            {
+                _remoteInventoryEntries.Remove(entry);
+            }
+
+            message = null;
+            return true;
+        }
+
+        private void AddRemoteInventoryItem(int itemId, int quantity)
+        {
+            if (itemId <= 0 || quantity <= 0)
+            {
+                return;
+            }
+
+            SocialRoomRemoteInventoryEntry existing = _remoteInventoryEntries.FirstOrDefault(entry => entry.ItemId == itemId);
+            if (existing != null)
+            {
+                existing.Update(existing.Quantity + quantity);
+                return;
+            }
+
+            _remoteInventoryEntries.Add(new SocialRoomRemoteInventoryEntry(itemId, ResolveItemName(itemId), quantity));
+        }
+
+        private void RefreshRemoteInventoryNotes()
+        {
+            if (Kind != SocialRoomKind.TradingRoom)
+            {
+                return;
+            }
+
+            string walletNote = $"Remote trade wallet: {_remoteInventoryMeso:N0} meso.";
+            string itemNote = _remoteInventoryEntries.Count == 0
+                ? "Remote trade catalog: empty."
+                : $"Remote trade catalog: {string.Join(", ", _remoteInventoryEntries.Select(entry => $"{entry.ItemName} x{entry.Quantity}"))}.";
+
+            while (_notes.Count < 4)
+            {
+                _notes.Add(string.Empty);
+            }
+
+            _notes[2] = walletNote;
+            _notes[3] = itemNote;
+        }
+
+        private void PersistState()
+        {
+            if (_suspendPersistence || string.IsNullOrWhiteSpace(_persistenceKey) || _persistStateHandler == null)
+            {
+                return;
+            }
+
+            _persistStateHandler(_persistenceKey, BuildSnapshot());
+        }
+
+        private void EnsureInventoryBackedRows()
+        {
+            if (_inventoryBackedRows)
+            {
+                return;
+            }
+
+            _inventoryBackedRows = true;
+            _items.Clear();
+        }
+
+        private bool TryConsumeInventoryItem(int itemId, int quantity, out InventoryType inventoryType, out InventorySlotData slotData, out string message)
+        {
+            inventoryType = InventoryItemMetadataResolver.ResolveInventoryType(itemId);
+            slotData = null;
+            message = null;
+
+            if (inventoryType == InventoryType.NONE || quantity <= 0)
+            {
+                message = "A valid item id and quantity are required.";
+                return false;
+            }
+
+            if (_inventoryRuntime == null)
+            {
+                message = "The simulator inventory is not attached to this room runtime.";
+                return false;
+            }
+
+            if (_inventoryRuntime.GetItemCount(inventoryType, itemId) < quantity)
+            {
+                message = $"Inventory does not contain {quantity} of item {itemId}.";
+                return false;
+            }
+
+            slotData = new InventorySlotData
+            {
+                ItemId = itemId,
+                ItemTexture = _inventoryRuntime.GetItemTexture(inventoryType, itemId),
+                Quantity = quantity,
+                MaxStackSize = InventoryItemMetadataResolver.ResolveMaxStack(inventoryType),
+                GradeFrameIndex = inventoryType == InventoryType.EQUIP ? 0 : null,
+                ItemName = ResolveItemName(itemId),
+                ItemTypeName = ResolveItemTypeName(inventoryType, itemId),
+                Description = ResolveItemDescription(itemId)
+            };
+
+            if (!_inventoryRuntime.TryConsumeItem(inventoryType, itemId, quantity))
+            {
+                message = $"Inventory could not escrow item {itemId} x{quantity}.";
+                return false;
+            }
+
+            return true;
+        }
+
+        private bool TryGetFirstInventoryItem(out InventorySlotData slotData, out InventoryType inventoryType)
+        {
+            slotData = null;
+            inventoryType = InventoryType.NONE;
+            if (_inventoryRuntime is not InventoryUI inventoryWindow)
+            {
+                return false;
+            }
+
+            InventoryType[] order = { InventoryType.EQUIP, InventoryType.USE, InventoryType.SETUP, InventoryType.ETC, InventoryType.CASH };
+            foreach (InventoryType type in order)
+            {
+                slotData = inventoryWindow.GetSlots(type).FirstOrDefault(slot => slot != null && !slot.IsDisabled && slot.ItemId > 0 && Math.Max(1, slot.Quantity) > 0);
+                if (slotData != null)
+                {
+                    inventoryType = type;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private int ReturnEscrowRows(Func<InventoryEscrowEntry, bool> predicate)
+        {
+            if (_inventoryRuntime == null)
+            {
+                return 0;
+            }
+
+            List<InventoryEscrowEntry> toReturn = _inventoryEscrow.Where(predicate).ToList();
+            foreach (InventoryEscrowEntry escrow in toReturn)
+            {
+                _inventoryRuntime.AddItem(escrow.InventoryType, escrow.SlotData.ItemId, escrow.SlotData.ItemTexture, escrow.SlotData.Quantity);
+                _inventoryEscrow.Remove(escrow);
+            }
+
+            return toReturn.Count;
+        }
+
+        private bool EnsureEntrustedPermitActive(out string message)
+        {
+            UpdateEntrustedPermitState(DateTime.UtcNow);
+            if (!IsEntrustedPermitExpired(DateTime.UtcNow))
+            {
+                message = null;
+                return true;
+            }
+
+            message = "The entrusted-shop permit expired. Renew it before restocking or rearranging sale rows.";
+            return false;
+        }
+
+        private void UpdateEntrustedPermitState(DateTime utcNow)
+        {
+            if (Kind != SocialRoomKind.EntrustedShop)
+            {
+                return;
+            }
+
+            string permitNote = $"Simulator permit timer: {FormatPermitStatus(utcNow)}.";
+            if (_notes.Count < 3)
+            {
+                _notes.Add(permitNote);
+            }
+            else
+            {
+                _notes[2] = permitNote;
+            }
+
+            if (!IsEntrustedPermitExpired(utcNow))
+            {
+                if (string.Equals(RoomState, "Permit expired", StringComparison.Ordinal))
+                {
+                    RoomState = "Permit active";
+                    StatusMessage = $"Entrusted-shop permit restored. {FormatPermitStatus(utcNow)}.";
+                }
+
+                return;
+            }
+
+            RoomState = "Permit expired";
+            if (string.Equals(ModeName, "Restock", StringComparison.Ordinal))
+            {
+                ModeName = "Permit expired";
+            }
+
+            StatusMessage = "Entrusted-shop permit expired. Claim proceeds or renew the permit to keep selling.";
+        }
+
+        private bool IsEntrustedPermitExpired(DateTime utcNow)
+        {
+            return Kind == SocialRoomKind.EntrustedShop &&
+                   _entrustedPermitExpiresAtUtc.HasValue &&
+                   utcNow >= _entrustedPermitExpiresAtUtc.Value;
+        }
+
+        private string FormatPermitStatus(DateTime utcNow)
+        {
+            if (Kind != SocialRoomKind.EntrustedShop || !_entrustedPermitExpiresAtUtc.HasValue)
+            {
+                return "no timer";
+            }
+
+            TimeSpan remaining = _entrustedPermitExpiresAtUtc.Value - utcNow;
+            if (remaining <= TimeSpan.Zero)
+            {
+                return "expired";
+            }
+
+            return remaining.TotalHours >= 1
+                ? $"{(int)remaining.TotalHours}h {remaining.Minutes:D2}m left"
+                : $"{Math.Max(1, remaining.Minutes)}m left";
+        }
+
+        private string DescribeEmployeeState()
+        {
+            if (TryGetVisibleEmployeePoolEntry(out SocialRoomEmployeePoolEntryState pooledEmployee))
+            {
+                string pooledTemplateText = pooledEmployee.TemplateId > 0 ? pooledEmployee.TemplateId.ToString() : "legacy";
+                string pooledBalloonText = string.IsNullOrWhiteSpace(pooledEmployee.BalloonTitle)
+                    ? $"type={pooledEmployee.MiniRoomType}"
+                    : pooledEmployee.BalloonTitle;
+                string pooledOwnerText = string.IsNullOrWhiteSpace(pooledEmployee.NameTag) ? OwnerName : pooledEmployee.NameTag;
+                return $"{pooledTemplateText}@world({pooledEmployee.WorldX},{pooledEmployee.WorldY}), pkt(owner={pooledOwnerText}, employer={pooledEmployee.EmployerId}, fh={pooledEmployee.FootholdId}, balloon={pooledBalloonText})";
+            }
+
+            string templateText = _employeeTemplateId > 0 ? _employeeTemplateId.ToString() : "legacy";
+            string placement = _employeeHasWorldPosition && !_employeeUseOwnerAnchor
+                ? $"world({_employeeWorldX},{_employeeWorldY})"
+                : $"owner({_employeeAnchorOffsetX},{_employeeAnchorOffsetY})";
+            if (_employeePoolRuntime.HasEntries)
+            {
+                return $"{templateText}@hidden, pkt(employer={ResolveEmployeePoolEmployerId()})";
+            }
+
+            return $"{templateText}@{placement}";
+        }
+
+        private string ResolveEmployeeDisplayHeadline(string fallbackHeadline)
+        {
+            string headline = RoomTitle;
+            return string.IsNullOrWhiteSpace(headline) ? fallbackHeadline : headline;
+        }
+
+        private static string ResolveEmployeeFuncHeadline(SocialRoomFieldActorTemplate template, string fallbackHeadline)
+        {
+            string npcId = template == SocialRoomFieldActorTemplate.StoreBanker ? "9030000" : "9071001";
+            if (EmployeeNpcFuncHeadlineCache.TryGetValue(npcId, out string cachedHeadline))
+            {
+                return string.IsNullOrWhiteSpace(cachedHeadline) ? fallbackHeadline : cachedHeadline;
+            }
+
+            string headline = fallbackHeadline;
+            WzImage npcStringImage = global::HaCreator.Program.FindImage("String", "Npc.img");
+            if (npcStringImage != null)
+            {
+                npcStringImage.ParseImage();
+                if (npcStringImage[npcId]?["func"] is WzStringProperty funcProperty
+                    && !string.IsNullOrWhiteSpace(funcProperty.Value))
+                {
+                    headline = funcProperty.Value.Trim();
+                }
+            }
+
+            EmployeeNpcFuncHeadlineCache[npcId] = headline ?? string.Empty;
+            return string.IsNullOrWhiteSpace(headline) ? fallbackHeadline : headline;
+        }
+
+        private string ResolveEmployeeDisplayOwnerName(SocialRoomEmployeePoolEntryState pooledEmployee = null)
+        {
+            if (pooledEmployee != null && !string.IsNullOrWhiteSpace(pooledEmployee.NameTag))
+            {
+                return pooledEmployee.NameTag;
+            }
+
+            if (pooledEmployee == null
+                && TryGetVisibleEmployeePoolEntry(out SocialRoomEmployeePoolEntryState visiblePooledEmployee)
+                && !string.IsNullOrWhiteSpace(visiblePooledEmployee.NameTag))
+            {
+                return visiblePooledEmployee.NameTag;
+            }
+
+            return string.IsNullOrWhiteSpace(OwnerName) ? "Owner" : OwnerName;
+        }
+
+        private string BuildEmployeePacketStateKeySuffix(SocialRoomEmployeePoolEntryState pooledEmployeeOverride = null)
+        {
+            SocialRoomEmployeePoolEntryState pooledEmployee = pooledEmployeeOverride;
+            if ((pooledEmployee != null && pooledEmployee.IsVisible)
+                || TryGetVisibleEmployeePoolEntry(out pooledEmployee))
+            {
+                return $"|pkt|{pooledEmployee.EmployerId}|{pooledEmployee.FootholdId}|{pooledEmployee.MiniRoomType}|{pooledEmployee.MiniRoomSerial}|{pooledEmployee.BalloonTitle}|{pooledEmployee.BalloonByte0}|{pooledEmployee.BalloonByte1}|{pooledEmployee.BalloonByte2}|{pooledEmployee.HasBalloonByte2}";
+            }
+
+            return string.Empty;
+        }
+
+        private static bool IsEmployeeBackedFieldActorKind(SocialRoomKind kind)
+        {
+            return kind == SocialRoomKind.PersonalShop
+                || kind == SocialRoomKind.EntrustedShop
+                || kind == SocialRoomKind.MiniRoom;
+        }
+
+        private bool TryGetVisibleEmployeePoolEntry(out SocialRoomEmployeePoolEntryState state)
+        {
+            return _employeePoolRuntime.TryGetPrimaryEntry(out state) && state != null && state.IsVisible;
+        }
+
+        internal bool MatchesEmployeeEmployerId(int employerId)
+        {
+            int normalizedEmployerId = Math.Max(0, employerId);
+            if (normalizedEmployerId <= 0
+                || !IsEmployeeBackedFieldActorKind(Kind))
+            {
+                return false;
+            }
+
+            return _employeePacketEmployerId == normalizedEmployerId
+                || _employeePoolRuntime.PreferredEmployerId == normalizedEmployerId
+                || _employeePoolRuntime.HasEmployer(normalizedEmployerId);
+        }
+
+        internal int ScoreEmployeeRoutingHint(SocialRoomEmployeePoolCodec.RoutingHint hint)
+        {
+            if (!IsEmployeeBackedFieldActorKind(Kind))
+            {
+                return 0;
+            }
+
+            int score = _employeePoolRuntime.ScoreRoutingHint(hint);
+
+            if (hint.MiniRoomType != 0)
+            {
+                bool kindMatches = ((hint.MiniRoomType == 1 || hint.MiniRoomType == 2) && Kind == SocialRoomKind.MiniRoom)
+                    || (hint.MiniRoomType == 3 && Kind == SocialRoomKind.PersonalShop)
+                    || ((hint.MiniRoomType == 4 || hint.MiniRoomType == 5) && Kind == SocialRoomKind.EntrustedShop);
+                score += kindMatches ? 30 : -20;
+            }
+
+            if (!string.IsNullOrWhiteSpace(hint.OwnerName))
+            {
+                string normalizedHintOwner = NormalizeName(hint.OwnerName);
+                string normalizedRuntimeOwner = NormalizeName(OwnerName);
+                if (string.Equals(normalizedRuntimeOwner, normalizedHintOwner, StringComparison.OrdinalIgnoreCase))
+                {
+                    score += 35;
+                }
+                else if (!string.IsNullOrWhiteSpace(OwnerName))
+                {
+                    score -= 5;
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(hint.BalloonTitle))
+            {
+                string normalizedHintTitle = hint.BalloonTitle.Trim();
+                if (!string.IsNullOrWhiteSpace(RoomTitle)
+                    && string.Equals(RoomTitle.Trim(), normalizedHintTitle, StringComparison.OrdinalIgnoreCase))
+                {
+                    score += 20;
+                }
+                else if (!string.IsNullOrWhiteSpace(RoomTitle))
+                {
+                    score -= 5;
+                }
+            }
+
+            return Math.Max(0, score);
+        }
+
+        internal void ApplyPacketOwnedEmployeePoolState(
+            IReadOnlyList<SocialRoomEmployeePoolEntrySnapshot> snapshots,
+            string statusMessage,
+            bool persistState)
+        {
+            if (!IsEmployeeBackedFieldActorKind(Kind))
+            {
+                return;
+            }
+
+            _employeePoolRuntime.Restore(snapshots);
+            if (_employeePoolRuntime.PreferredEmployerId > 0)
+            {
+                _employeePacketEmployerId = _employeePoolRuntime.PreferredEmployerId;
+            }
+
+            if (!string.IsNullOrWhiteSpace(statusMessage))
+            {
+                StatusMessage = statusMessage;
+            }
+
+            if (persistState)
+            {
+                PersistState();
+            }
+        }
+
+        private int ResolveEmployeePoolEmployerId()
+        {
+            if (TryGetVisibleEmployeePoolEntry(out SocialRoomEmployeePoolEntryState pooledEmployee))
+            {
+                return pooledEmployee.EmployerId;
+            }
+
+            if (_employeePoolRuntime.PreferredEmployerId > 0)
+            {
+                return _employeePoolRuntime.PreferredEmployerId;
+            }
+
+            return Math.Max(0, _employeePacketEmployerId);
+        }
+
+        private static bool HasEmployeeTemplate(int templateId)
+        {
+            if (templateId <= 0)
+            {
+                return false;
+            }
+
+            string folderName = ResolveEmployeeItemFolder(templateId);
+            if (string.IsNullOrWhiteSpace(folderName))
+            {
+                return false;
+            }
+
+            WzImage itemImage = global::HaCreator.Program.FindImage("Item", $"{folderName}/{templateId / 10000:D4}.img");
+            return itemImage?[templateId.ToString("D8")]?["employee"] != null;
+        }
+
+        private static string NormalizePacketText(string value)
+        {
+            return string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim();
+        }
+
+        private static string ResolveEmployeeItemFolder(int templateId)
+        {
+            int category = templateId / 1000000;
+            return category switch
+            {
+                5 => "Cash",
+                _ => null
+            };
+        }
+
+        private void ClearTradeHandshake()
+        {
+            _tradeLocalLocked = false;
+            _tradeRemoteLocked = false;
+            _tradeLocalAccepted = false;
+            _tradeRemoteAccepted = false;
+            _tradeVerificationPending = false;
+            _tradeAutoCrcReplyPending = false;
+            _tradeLocalVerificationReady = false;
+            _tradeRemoteVerificationReady = false;
+            _tradeLocalVerificationEntries.Clear();
+            _tradeRemoteVerificationEntries.Clear();
+            RefreshTradeOccupantsAndRows();
+        }
+
+        private static string BuildPacketHexPreview(byte[] payload, int previewByteCount = 24)
+        {
+            if (payload == null || payload.Length == 0)
+            {
+                return "empty";
+            }
+
+            int count = Math.Min(previewByteCount, payload.Length);
+            string preview = BitConverter.ToString(payload, 0, count);
+            return payload.Length > count
+                ? $"{preview}..."
+                : preview;
+        }
+
+        private void RefreshTradeOccupantsAndRows()
+        {
+            if (Kind != SocialRoomKind.TradingRoom)
+            {
+                return;
+            }
+
+            for (int i = 0; i < _occupants.Count; i++)
+            {
+                bool isLocal = i == 0;
+                bool locked = isLocal ? _tradeLocalLocked : _tradeRemoteLocked;
+                bool accepted = isLocal ? _tradeLocalAccepted : _tradeRemoteAccepted;
+                _occupants[i].Update(BuildTradeOccupantDetail(isLocal, locked, accepted), locked || accepted, _occupants[i].AvatarBuild);
+            }
+
+            foreach (SocialRoomItemEntry item in _items)
+            {
+                bool isLocalItem = string.Equals(item.OwnerName, OwnerName, StringComparison.OrdinalIgnoreCase);
+                bool isLocked = isLocalItem ? _tradeLocalLocked : _tradeRemoteLocked;
+                item.Update(item.Detail, item.Quantity, item.MesoAmount, isLocked, item.IsClaimed);
+            }
+        }
+
+        private string BuildTradeOccupantDetail(bool isLocal, bool locked, bool accepted)
+        {
+            string partyName = isLocal ? OwnerName : ResolveRemoteTraderName();
+            int meso = isLocal ? _tradeLocalOfferMeso : _tradeRemoteOfferMeso;
+            int itemCount = _items.Count(item => string.Equals(item.OwnerName, partyName, StringComparison.OrdinalIgnoreCase));
+            string stage = accepted
+                ? "Accepted"
+                : locked
+                    ? _tradeVerificationPending
+                        ? "Verifying"
+                        : "Locked"
+                    : "Reviewing";
+            string verification = isLocal
+                ? DescribeTradeVerificationSide(_tradeLocalVerificationEntries, _tradeLocalVerificationReady)
+                : DescribeTradeVerificationSide(_tradeRemoteVerificationEntries, _tradeRemoteVerificationReady);
+            return $"{stage} | {itemCount} item entr{(itemCount == 1 ? "y" : "ies")} | {meso:N0} mesos | {verification}";
+        }
+
+        private string ResolveRemoteTraderName()
+        {
+            return _occupants.Skip(1).FirstOrDefault()?.Name ?? "Trader";
+        }
+
+        private static string FormatTradePartyState(bool localState, bool remoteState)
+        {
+            return $"{(localState ? "Y" : "N")}/{(remoteState ? "Y" : "N")}";
+        }
+
+        public int GetMiniRoomOmokStoneAt(int x, int y)
+        {
+            return x >= 0 && x < MiniRoomOmokBoardSize && y >= 0 && y < MiniRoomOmokBoardSize
+                ? _miniRoomOmokBoard[GetOmokBoardIndex(x, y)]
+                : 0;
+        }
+
+        private void SyncMiniRoomOmokPresentation()
+        {
+            if (Kind != SocialRoomKind.MiniRoom || _miniRoomModeIndex != 0)
+            {
+                return;
+            }
+
+            if (_items.Count > 0)
+            {
+                _items[0].Update(
+                    _miniRoomOmokInProgress ? "Omok board active" : "Omok board waiting on ready",
+                    1,
+                    0,
+                    _miniRoomOmokInProgress,
+                    false);
+            }
+
+            if (_items.Count > 1)
+            {
+                string detail = _miniRoomOmokInProgress
+                    ? $"Last move: {FormatOmokLastMove()} | Turn {ResolveOmokTurnName()} | Clock {_miniRoomOmokTimeFloor}s"
+                    : "Match Cards preview hidden";
+                _items[1].Update(detail, 1, 0, false, false);
+            }
+
+            EnsureMiniRoomOccupant(0, OwnerName, SocialRoomOccupantRole.Owner, BuildOmokSeatDetail(0, "Host seat"), _miniRoomOmokCurrentTurnIndex == 0 && _miniRoomOmokInProgress);
+            EnsureMiniRoomOccupant(1, ResolveMiniRoomSeatName(1), SocialRoomOccupantRole.Guest, BuildOmokSeatDetail(1, "Guest seat"), _miniRoomOmokCurrentTurnIndex == 1 && _miniRoomOmokInProgress);
+
+            for (int i = 2; i < _occupants.Count; i++)
+            {
+                SocialRoomOccupant visitor = _occupants[i];
+                visitor.Update(visitor.Name, visitor.Role, $"Visitor seat {i} | Watching {ModeName}", visitor.IsReady, visitor.AvatarBuild);
+            }
+
+            if (_notes.Count == 0)
+            {
+                _notes.Add("Shared client surface for Omok and Match Cards.");
+            }
+
+            if (_notes.Count == 1)
+            {
+                _notes.Add(string.Empty);
+            }
+
+            _notes[0] = "WZ-backed Omok shell uses UIWindow(.2).img/Minigame/Omok art and the 12-frame stone families.";
+            _notes[1] = BuildOmokDialogOwnerNote();
+        }
+
+        private void ResetOmokBoard()
+        {
+            Array.Clear(_miniRoomOmokBoard, 0, _miniRoomOmokBoard.Length);
+            _miniRoomOmokMoveHistory.Clear();
+            _miniRoomOmokLastMoveX = -1;
+            _miniRoomOmokLastMoveY = -1;
+            _miniRoomOmokWinnerIndex = -1;
+            _miniRoomOmokStoneAnimationTimeLeftMs = 0;
+            _miniRoomOmokDialogEffectTimeLeftMs = 0;
+            _miniRoomOmokDialogStatus = string.Empty;
+            ClearOmokDialogRequests(clearMatchRetreatRequest: true);
+            ResetOmokTurnClock();
+        }
+
+        public void ConfigureMiniRoomOmokTournamentState(int round, int matchState, int nextOperationMs)
+        {
+            if (!IsMiniRoomOmokActive)
+            {
+                return;
+            }
+
+            _miniRoomOmokTournamentActive = true;
+            _miniRoomOmokTournamentRound = Math.Max(0, round);
+            _miniRoomOmokTournamentMatchState = Math.Clamp(matchState, 0, 3);
+            _miniRoomOmokTournamentNextOperationMs = Math.Max(0, nextOperationMs);
+            _miniRoomOmokTournamentTitle = ResolveOmokTournamentTitle(_miniRoomOmokTournamentRound);
+            if (_miniRoomOmokTournamentMatchState == 0)
+            {
+                _miniRoomOmokTournamentRoundEffectVisible = false;
+                _miniRoomOmokTournamentRoundEffectElapsedMs = 0;
+            }
+
+            SetOmokDialogStatus(
+                $"COmokDlg tournament state round={_miniRoomOmokTournamentRound}, matchState={_miniRoomOmokTournamentMatchState}, next={_miniRoomOmokTournamentNextOperationMs}ms.",
+                1500);
+            SyncMiniRoomOmokPresentation();
+            PersistState();
+        }
+
+        private bool UpdateOmokTournamentRoundEffect(int elapsedMilliseconds)
+        {
+            if (!_miniRoomOmokTournamentActive || _miniRoomOmokTournamentMatchState == 0)
+            {
+                return false;
+            }
+
+            bool changed = false;
+            if (_miniRoomOmokTournamentRoundEffectVisible)
+            {
+                _miniRoomOmokTournamentRoundEffectElapsedMs += elapsedMilliseconds;
+                changed = true;
+            }
+
+            _miniRoomOmokTournamentNextOperationMs = Math.Max(0, _miniRoomOmokTournamentNextOperationMs - elapsedMilliseconds);
+            if (_miniRoomOmokTournamentNextOperationMs > 0)
+            {
+                return changed;
+            }
+
+            switch (_miniRoomOmokTournamentMatchState)
+            {
+                case 1:
+                    AnimateOmokTournamentRoundEffect(0);
+                    return true;
+                case 2:
+                    AnimateOmokTournamentRoundEffect(1);
+                    return true;
+                case 3:
+                    _miniRoomOmokTournamentMatchState = 0;
+                    _miniRoomOmokTournamentActive = false;
+                    _miniRoomOmokTournamentRoundEffectVisible = false;
+                    SetOmokDialogStatus("COmokDlg::Update tournament matchState 3 reached its close operation (Update argument 8).", 1500);
+                    SyncMiniRoomOmokPresentation();
+                    return true;
+                default:
+                    _miniRoomOmokTournamentMatchState = 0;
+                    return true;
+            }
+        }
+
+        private void AnimateOmokTournamentRoundEffect(int animateState)
+        {
+            if (animateState == 0)
+            {
+                _miniRoomOmokTournamentMatchState = 2;
+                _miniRoomOmokTournamentNextOperationMs = OmokTournamentRoundEffectHoldMs;
+                _miniRoomOmokTournamentRoundEffectVisible = true;
+                _miniRoomOmokTournamentRoundEffectKey = Math.Max(0, _miniRoomOmokTournamentRound);
+                _miniRoomOmokTournamentRoundEffectElapsedMs = 0;
+                _miniRoomOmokTournamentRoundEffectFadeMs = OmokTournamentRoundEffectFadeMs;
+                _miniRoomOmokTournamentTitle = FormatOmokString(
+                    OmokTournamentRoundEffectTextStringPoolId,
+                    "Round {0}",
+                    Math.Max(0, _miniRoomOmokTournamentRound));
+                SetOmokDialogStatus(
+                    $"COmokDlg::AnimateRoundEffect(0) loaded {ResolveOmokString(OmokTournamentRoundEffectPathStringPoolId, "Effect/BasicEff.img/NoRed0")} for tournament round {_miniRoomOmokTournamentRound}.",
+                    OmokTournamentRoundEffectHoldMs);
+                SyncMiniRoomOmokPresentation();
+                return;
+            }
+
+            if (animateState == 1)
+            {
+                _miniRoomOmokTournamentMatchState = 0;
+                _miniRoomOmokTournamentNextOperationMs = 0;
+                _miniRoomOmokTournamentRoundEffectVisible = false;
+                _miniRoomOmokTournamentRoundEffectFadeMs = OmokTournamentRoundEffectFadeMs;
+                _miniRoomOmokTournamentTitle = ResolveOmokTournamentTitle(_miniRoomOmokTournamentRound);
+                SetOmokDialogStatus(
+                    $"COmokDlg::AnimateRoundEffect(1) released the round layer and restored title '{_miniRoomOmokTournamentTitle}'.",
+                    1500);
+                SyncMiniRoomOmokPresentation();
+            }
+        }
+
+        private static string ResolveOmokTournamentTitle(int round)
+        {
+            return round switch
+            {
+                2 => ResolveOmokString(OmokTournamentSemiFinalTitleStringPoolId, "Semi-finals"),
+                4 => ResolveOmokString(OmokTournamentFinalTitleStringPoolId, "Finals"),
+                8 or 16 or 32 => FormatOmokString(OmokTournamentRoundTitleStringPoolId, "Round of {0}", round),
+                _ => round > 0 ? string.Format(CultureInfo.InvariantCulture, "Round {0}", round) : string.Empty
+            };
+        }
+
+        private static bool IsValidOmokCoordinate(int x, int y)
+        {
+            return x >= 0 && x < MiniRoomOmokBoardSize && y >= 0 && y < MiniRoomOmokBoardSize;
+        }
+
+        private bool TryPopOmokMoveHistory(out OmokMoveHistoryEntry move)
+        {
+            if (_miniRoomOmokMoveHistory.Count > 0)
+            {
+                move = _miniRoomOmokMoveHistory[^1];
+                _miniRoomOmokMoveHistory.RemoveAt(_miniRoomOmokMoveHistory.Count - 1);
+                return true;
+            }
+
+            move = default;
+            return false;
+        }
+
+        private bool TryRemoveNewestOmokStoneFromBoardFallback()
+        {
+            for (int y = MiniRoomOmokBoardSize - 1; y >= 0; y--)
+            {
+                for (int x = MiniRoomOmokBoardSize - 1; x >= 0; x--)
+                {
+                    int boardIndex = GetOmokBoardIndex(x, y);
+                    if (_miniRoomOmokBoard[boardIndex] == 0)
+                    {
+                        continue;
+                    }
+
+                    _miniRoomOmokBoard[boardIndex] = 0;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private void UpdateLastOmokMoveFromHistory()
+        {
+            if (_miniRoomOmokMoveHistory.Count == 0)
+            {
+                _miniRoomOmokLastMoveX = -1;
+                _miniRoomOmokLastMoveY = -1;
+                return;
+            }
+
+            OmokMoveHistoryEntry lastMove = _miniRoomOmokMoveHistory[^1];
+            _miniRoomOmokLastMoveX = lastMove.X;
+            _miniRoomOmokLastMoveY = lastMove.Y;
+        }
+
+        private List<TradeVerificationEntry> BuildTradeVerificationEntries(bool isLocalParty)
+        {
+            string ownerName = isLocalParty ? OwnerName : ResolveRemoteTraderName();
+            List<TradeVerificationEntry> entries = new();
+            foreach (SocialRoomItemEntry item in _items
+                .Where(entry => string.Equals(entry.OwnerName, ownerName, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(entry => entry.PacketSlotIndex ?? int.MaxValue)
+                .Take(TradingRoomClientItemSlotCount))
+            {
+                int itemId = item.ItemId;
+                if (itemId <= 0)
+                {
+                    continue;
+                }
+
+                entries.Add(new TradeVerificationEntry(itemId, ResolveTradeVerificationChecksum(itemId)));
+            }
+
+            return entries;
+        }
+
+        private List<TradeVerificationEntry> BuildTradeRequestVerificationEntries()
+        {
+            // IDA: CTradingRoomDlg::Trade (0x7646B0) walks both m_aaItem arrays for each of the 9 slots
+            // before sending opcode 144 subtype 17. CTradingRoomDlg::OnTrade (0x763F20) later answers
+            // subtype 20 from m_aaItem[1] only, so keep that narrower follow-up path separate.
+            List<TradeVerificationEntry> entries = new();
+            string localOwner = OwnerName;
+            string remoteOwner = ResolveRemoteTraderName();
+            for (int slotIndex = 1; slotIndex <= TradingRoomClientItemSlotCount; slotIndex++)
+            {
+                AddTradeRequestVerificationEntryForSlot(entries, localOwner, slotIndex);
+                AddTradeRequestVerificationEntryForSlot(entries, remoteOwner, slotIndex);
+            }
+
+            return entries;
+        }
+
+        private void AddTradeRequestVerificationEntryForSlot(List<TradeVerificationEntry> entries, string ownerName, int slotIndex)
+        {
+            SocialRoomItemEntry item = _items.FirstOrDefault(entry =>
+                entry.PacketSlotIndex == slotIndex
+                && string.Equals(entry.OwnerName, ownerName, StringComparison.OrdinalIgnoreCase));
+            if (item == null || !TryBuildTradeVerificationEntry(item, out TradeVerificationEntry tradeEntry))
+            {
+                return;
+            }
+
+            entries.Add(tradeEntry);
+        }
+
+        private bool TryValidateTradeRequestVerificationEntries(
+            IReadOnlyList<TradeVerificationEntry> receivedEntries,
+            out string detail)
+        {
+            detail = null;
+            List<TradeVerificationEntry> expectedEntries = BuildTradeRequestVerificationEntries();
+            if (expectedEntries.Count == 0 && (receivedEntries == null || receivedEntries.Count == 0))
+            {
+                return true;
+            }
+
+            if (receivedEntries == null)
+            {
+                detail = "the packet did not provide any checksum rows";
+                return false;
+            }
+
+            if (expectedEntries.Count != receivedEntries.Count)
+            {
+                detail = $"expected {expectedEntries.Count} entr{(expectedEntries.Count == 1 ? "y" : "ies")} but received {receivedEntries.Count}";
+                return false;
+            }
+
+            for (int i = 0; i < expectedEntries.Count; i++)
+            {
+                TradeVerificationEntry expected = expectedEntries[i];
+                TradeVerificationEntry received = receivedEntries[i];
+                if (expected.ItemId != received.ItemId)
+                {
+                    detail = $"row {i + 1} expected item {expected.ItemId} but received {received.ItemId}";
+                    return false;
+                }
+
+                if (expected.Checksum != received.Checksum)
+                {
+                    detail = $"row {i + 1} for item {expected.ItemId} expected CRC 0x{expected.Checksum:X8} but received 0x{received.Checksum:X8}";
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static bool TryBuildTradeVerificationEntry(SocialRoomItemEntry item, out TradeVerificationEntry entry)
+        {
+            entry = default;
+            if (item == null)
+            {
+                return false;
+            }
+
+            int itemId = item.ItemId > 0 ? item.ItemId : ResolveItemIdByName(item.ItemName);
+            if (itemId <= 0)
+            {
+                return false;
+            }
+
+            entry = new TradeVerificationEntry(itemId, ResolveTradeVerificationChecksum(itemId));
+            return true;
+        }
+
+        private bool TryValidateTradeVerificationEntries(
+            bool isLocalParty,
+            IReadOnlyList<TradeVerificationEntry> receivedEntries,
+            out string detail)
+        {
+            detail = null;
+            List<TradeVerificationEntry> expectedEntries = BuildTradeVerificationEntries(isLocalParty);
+            if (receivedEntries == null)
+            {
+                detail = "the packet did not provide any checksum rows";
+                return false;
+            }
+
+            if (receivedEntries.Count != expectedEntries.Count)
+            {
+                detail = $"expected {expectedEntries.Count} entr{(expectedEntries.Count == 1 ? "y" : "ies")} but received {receivedEntries.Count}";
+                return false;
+            }
+
+            for (int i = 0; i < expectedEntries.Count; i++)
+            {
+                TradeVerificationEntry expected = expectedEntries[i];
+                TradeVerificationEntry received = receivedEntries[i];
+                if (expected.ItemId != received.ItemId)
+                {
+                    detail = $"row {i + 1} expected item {expected.ItemId} but received {received.ItemId}";
+                    return false;
+                }
+
+                if (expected.Checksum != received.Checksum)
+                {
+                    detail = $"row {i + 1} for item {expected.ItemId} expected CRC 0x{expected.Checksum:X8} but received 0x{received.Checksum:X8}";
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static uint ResolveTradeVerificationChecksum(int itemId)
+        {
+            if (InventoryItemMetadataResolver.TryResolveClientItemCrc(itemId, out uint crc) && crc != 0)
+            {
+                return crc;
+            }
+
+            Span<byte> hashInput = stackalloc byte[sizeof(int)];
+            BinaryPrimitives.WriteInt32LittleEndian(hashInput, itemId);
+            return ComputeFallbackTradeVerificationChecksum(hashInput);
+        }
+
+        private static uint ComputeFallbackTradeVerificationChecksum(ReadOnlySpan<byte> payload)
+        {
+            const uint offsetBasis = 2166136261;
+            const uint prime = 16777619;
+            uint hash = offsetBasis;
+            foreach (byte value in payload)
+            {
+                hash ^= value;
+                hash *= prime;
+            }
+
+            return hash;
+        }
+
+        internal static uint ComputeTradeVerificationChecksumForTest(int itemId)
+        {
+            return ResolveTradeVerificationChecksum(itemId);
+        }
+
+        internal static bool TryDecodePacketOwnedTradeItemForTest(
+            byte[] payload,
+            out byte slotType,
+            out long baseExpirationTime,
+            out int itemId,
+            out int quantity,
+            out InventoryType inventoryType,
+            out string title,
+            out string metadataSummary,
+            out long? nonCashSerialNumber,
+            out long? expirationTime,
+            out int? tailValue,
+            out string tailMetadataSummary,
+            out string error)
+        {
+            slotType = 0;
+            baseExpirationTime = 0;
+            itemId = 0;
+            quantity = 0;
+            inventoryType = InventoryType.NONE;
+            title = string.Empty;
+            metadataSummary = string.Empty;
+            nonCashSerialNumber = null;
+            expirationTime = null;
+            tailValue = null;
+            tailMetadataSummary = string.Empty;
+
+            if (!TryDecodePacketOwnedTradeItem(payload, out PacketOwnedTradeItem item, out error))
+            {
+                return false;
+            }
+
+            slotType = item.SlotType;
+            baseExpirationTime = item.BaseExpirationTime ?? 0;
+            itemId = item.ItemId;
+            quantity = item.Quantity;
+            inventoryType = item.InventoryType;
+            title = item.Title;
+            metadataSummary = item.MetadataSummary;
+            nonCashSerialNumber = item.NonCashSerialNumber;
+            expirationTime = item.ExpirationTime;
+            tailValue = item.TailValue;
+            tailMetadataSummary = item.TailMetadataSummary;
+            return true;
+        }
+
+        private string DescribeTradeVerificationStatus()
+        {
+            if (_tradeLocalVerificationEntries.Count == 0 && _tradeRemoteVerificationEntries.Count == 0 && !_tradeVerificationPending)
+            {
+                return "idle";
+            }
+
+            return $"pending={_tradeVerificationPending.ToString().ToLowerInvariant()}, local={_tradeLocalVerificationEntries.Count}, remote={_tradeRemoteVerificationEntries.Count}";
+        }
+
+        private static string DescribeTradeVerificationSide(IReadOnlyCollection<TradeVerificationEntry> entries, bool ready)
+        {
+            if (entries == null || entries.Count == 0)
+            {
+                return ready ? "CRC ready" : "CRC idle";
+            }
+
+            return ready ? $"CRC {entries.Count} ready" : $"CRC {entries.Count} pending";
+        }
+
+        private void SetOmokSeatStoneValues(int blackSeatIndex)
+        {
+            if (blackSeatIndex == 0)
+            {
+                _miniRoomOmokOwnerStoneValue = 1;
+                _miniRoomOmokGuestStoneValue = 2;
+                return;
+            }
+
+            _miniRoomOmokOwnerStoneValue = 2;
+            _miniRoomOmokGuestStoneValue = 1;
+        }
+
+        private bool TryValidateOmokCoordinates(int x, int y, out string message)
+        {
+            if (x < 0 || x >= MiniRoomOmokBoardSize || y < 0 || y >= MiniRoomOmokBoardSize)
+            {
+                message = $"Omok coordinates must be between 0 and {MiniRoomOmokBoardSize - 1}.";
+                return false;
+            }
+
+            message = null;
+            return true;
+        }
+
+        private bool HasFiveInRow(int x, int y, int stoneValue)
+        {
+            (int dx, int dy)[] directions =
+            {
+                (1, 0),
+                (0, 1),
+                (1, 1),
+                (1, -1)
+            };
+
+            foreach ((int dx, int dy) in directions)
+            {
+                int count = 1 + CountDirection(x, y, dx, dy, stoneValue) + CountDirection(x, y, -dx, -dy, stoneValue);
+                if (count >= 5)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private int CountDirection(int x, int y, int dx, int dy, int stoneValue)
+        {
+            int count = 0;
+            for (int nextX = x + dx, nextY = y + dy;
+                nextX >= 0 && nextX < MiniRoomOmokBoardSize && nextY >= 0 && nextY < MiniRoomOmokBoardSize;
+                nextX += dx, nextY += dy)
+            {
+                if (_miniRoomOmokBoard[GetOmokBoardIndex(nextX, nextY)] != stoneValue)
+                {
+                    break;
+                }
+
+                count++;
+            }
+
+            return count;
+        }
+
+        private static int GetOmokBoardIndex(int x, int y)
+        {
+            return (y * MiniRoomOmokBoardSize) + x;
+        }
+
+        private void ResetOmokTurnClock(int timeLeftMs = 30000)
+        {
+            _miniRoomOmokTimeLeftMs = Math.Max(0, timeLeftMs);
+            _miniRoomOmokTimeFloor = (_miniRoomOmokTimeLeftMs + 999) / 1000;
+            _miniRoomOmokLastCountdownWarningFloor = int.MaxValue;
+            _miniRoomOmokLastTimedStateUtc = null;
+        }
+
+        private void StartOmokStoneAnimation()
+        {
+            _miniRoomOmokStoneAnimationTimeLeftMs = 450;
+        }
+
+        private void SetOmokDialogStatus(string status, int effectTimeLeftMs = 1800)
+        {
+            _miniRoomOmokDialogStatus = status ?? string.Empty;
+            _miniRoomOmokDialogEffectTimeLeftMs = Math.Max(0, effectTimeLeftMs);
+        }
+
+        private void ClearOmokPendingPrompt()
+        {
+            _miniRoomOmokPendingPromptText = string.Empty;
+        }
+
+        private void RecordOmokSoundByStringPoolId(int stringPoolId)
+        {
+            _miniRoomOmokLastClientSoundStringPoolId = stringPoolId;
+            _miniRoomOmokLastClientSoundPath = ResolveOmokSoundLabel(stringPoolId);
+        }
+
+        private void ClearOmokDialogRequests(bool clearMatchRetreatRequest = false)
+        {
+            _miniRoomOmokTieRequested = false;
+            _miniRoomOmokDrawRequestSent = false;
+            _miniRoomOmokDrawRequestSentTurn = false;
+            _miniRoomOmokRetreatRequested = false;
+            _miniRoomOmokRetreatRequestSent = false;
+            _miniRoomOmokRetreatRequestSentTurn = false;
+            _miniRoomOmokTimeOverRequestSent = false;
+            if (clearMatchRetreatRequest)
+            {
+                _miniRoomOmokRetreatRequestSentMatch = false;
+            }
+
+            _miniRoomOmokLastOutboundPacketSummary = string.Empty;
+        }
+
+        private static string ResolveOmokString(int stringPoolId, string fallbackText)
+        {
+            return MapleStoryStringPool.GetOrFallback(stringPoolId, fallbackText);
+        }
+
+        private static string FormatOmokString(int stringPoolId, string fallbackFormat, params object[] args)
+        {
+            string format = MapleStoryStringPool.GetCompositeFormatOrFallback(
+                stringPoolId,
+                fallbackFormat,
+                args?.Length ?? 0,
+                out _);
+            return string.Format(CultureInfo.InvariantCulture, format, args ?? Array.Empty<object>());
+        }
+
+        private static string ResolveOmokSoundLabel(int stringPoolId)
+        {
+            string soundName = ResolveOmokString(stringPoolId, MapleStoryStringPool.FormatFallbackLabel(stringPoolId, 3));
+            return soundName.Contains('/')
+                ? soundName
+                : $"Sound/MiniGame.img/{soundName}";
+        }
+
+        private string FormatOmokTurnStatus(int seatIndex)
+        {
+            return FormatOmokString(
+                OmokTurnTextStringPoolId,
+                "It's [ {0} ]'s turn.",
+                ResolveMiniRoomSeatName(seatIndex));
+        }
+
+        private string BuildOmokDialogOwnerNote()
+        {
+            if (!IsMiniRoomOmokActive)
+            {
+                return string.Empty;
+            }
+
+            if (_miniRoomOmokTieRequested)
+            {
+                return "COmokDlg owner status: draw request waiting on reply.";
+            }
+
+            if (_miniRoomOmokRetreatRequested)
+            {
+                return "COmokDlg owner status: retreat request waiting on reply.";
+            }
+
+            if (!string.IsNullOrWhiteSpace(_miniRoomOmokPendingPromptText))
+            {
+                return $"COmokDlg owner prompt: {_miniRoomOmokPendingPromptText.Replace('\r', ' ').Replace('\n', ' ')}";
+            }
+
+            if (!string.IsNullOrWhiteSpace(_miniRoomOmokLastOutboundPacketSummary))
+            {
+                return _miniRoomOmokLastOutboundPacketSummary;
+            }
+
+            if (!string.IsNullOrWhiteSpace(_miniRoomOmokDialogStatus))
+            {
+                return $"COmokDlg owner status: {_miniRoomOmokDialogStatus}";
+            }
+
+            if (_miniRoomOmokInProgress)
+            {
+                return $"COmokDlg owner status: live round, {ResolveMiniRoomSeatName(_miniRoomOmokCurrentTurnIndex)} on move, {_miniRoomOmokTimeFloor}s on the client timer.";
+            }
+
+            return "COmokDlg owner status: waiting for ready/start flow.";
+        }
+
+        private string BuildOmokInfo0Text()
+        {
+            if (!IsMiniRoomOmokActive)
+            {
+                return string.Empty;
+            }
+
+            if (!string.IsNullOrWhiteSpace(_miniRoomOmokPendingPromptText))
+            {
+                return _miniRoomOmokPendingPromptText.Replace("\r\n", " ").Trim();
+            }
+
+            if (_miniRoomOmokInProgress)
+            {
+                return $"{MiniRoomOmokCountdownText} {FormatOmokTurnStatus(_miniRoomOmokCurrentTurnIndex)}";
+            }
+
+            if (!string.IsNullOrWhiteSpace(StatusMessage))
+            {
+                return StatusMessage;
+            }
+
+            return RoomState;
+        }
+
+        private string BuildOmokInfo1Text()
+        {
+            if (!IsMiniRoomOmokActive)
+            {
+                return string.Empty;
+            }
+
+            if (!string.IsNullOrWhiteSpace(_miniRoomOmokLastOutboundPacketSummary))
+            {
+                return string.IsNullOrWhiteSpace(_miniRoomOmokLastOutboundPacketHex)
+                    ? _miniRoomOmokLastOutboundPacketSummary
+                    : $"{_miniRoomOmokLastOutboundPacketSummary} Raw={_miniRoomOmokLastOutboundPacketHex}.";
+            }
+
+            if (_miniRoomOmokLastClientSoundStringPoolId >= 0)
+            {
+                return $"Client sound: {_miniRoomOmokLastClientSoundPath} (StringPool 0x{_miniRoomOmokLastClientSoundStringPoolId:X3}).";
+            }
+
+            if (!string.IsNullOrWhiteSpace(_miniRoomOmokDialogStatus))
+            {
+                return _miniRoomOmokDialogStatus;
+            }
+
+            return "COmokDlg owner idle.";
+        }
+
+        private string BuildOmokButtonStateSummary()
+        {
+            if (!IsMiniRoomOmokActive)
+            {
+                return string.Empty;
+            }
+
+            return string.Create(
+                CultureInfo.InvariantCulture,
+                $"Ready {(MiniRoomOmokReadyButtonEnabled ? "on" : "off")}  Start {(MiniRoomOmokStartButtonEnabled ? "on" : "off")}  Tie {(MiniRoomOmokTieButtonEnabled ? "on" : "off")}  Retreat {(MiniRoomOmokRetreatButtonEnabled ? "on" : "off")}  GiveUp {(MiniRoomOmokGiveUpButtonEnabled ? "on" : "off")}");
+        }
+
+        private int CountLocalOmokStones()
+        {
+            int localStoneValue = ResolveOmokStoneValueForSeat(_miniRoomLocalSeatIndex);
+            int count = 0;
+            for (int i = 0; i < _miniRoomOmokBoard.Length; i++)
+            {
+                if (_miniRoomOmokBoard[i] == localStoneValue)
+                {
+                    count++;
+                }
+            }
+
+            return count;
+        }
+
+        private bool PublishMiniRoomOmokOutboundPacket(byte packetType, string ownerAction, string summary, params byte[] payloadBytes)
+        {
+            byte[] rawPacket = BuildMiniRoomOutboundPacket(packetType, payloadBytes);
+            _miniRoomOmokLastOutboundPacketHex = Convert.ToHexString(rawPacket);
+            _miniRoomOmokLastOutboundPacketSummary = $"{summary} Raw {_miniRoomOmokLastOutboundPacketHex}.";
+
+            if (MiniRoomOmokOutboundPacketRequested == null)
+            {
+                return false;
+            }
+
+            try
+            {
+                return MiniRoomOmokOutboundPacketRequested.Invoke((byte[])rawPacket.Clone(), $"{ownerAction}: {_miniRoomOmokLastOutboundPacketSummary}");
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static byte[] BuildMiniRoomOutboundPacket(byte packetType, params byte[] payloadBytes)
+        {
+            payloadBytes ??= Array.Empty<byte>();
+            byte[] rawPacket = new byte[sizeof(ushort) + 1 + payloadBytes.Length];
+            rawPacket[0] = (byte)(MiniRoomOutboundOpcode & 0xFF);
+            rawPacket[1] = (byte)(MiniRoomOutboundOpcode >> 8);
+            rawPacket[2] = packetType;
+            Array.Copy(payloadBytes, 0, rawPacket, 3, payloadBytes.Length);
+            return rawPacket;
+        }
+
+        private string BuildOmokSeatDetail(int playerIndex, string seatLabel)
+        {
+            string stoneName = ResolveOmokStoneName(ResolveOmokStoneValueForSeat(playerIndex));
+            string state = _miniRoomOmokWinnerIndex == playerIndex
+                ? "Winner"
+                : _miniRoomOmokInProgress && _miniRoomOmokCurrentTurnIndex == playerIndex
+                    ? "Current turn"
+                    : _miniRoomOmokInProgress
+                        ? "Waiting"
+                        : "Ready";
+            string recordSummary = _miniRoomOmokRecords.TryGetValue(playerIndex, out MiniGameRecord record)
+                ? $" | W/D/L {record.Wins}/{record.Draws}/{record.Losses} | Rate {record.WinRatePercent}% | Score {record.Score} | Grade {record.Grade}"
+                : string.Empty;
+            return $"{seatLabel} | {stoneName} stones | {state}{recordSummary}";
+        }
+
+        private string ResolveMiniRoomSeatName(int index)
+        {
+            if (index >= 0 && index < _occupants.Count && !string.IsNullOrWhiteSpace(_occupants[index].Name))
+            {
+                return _occupants[index].Name;
+            }
+
+            return index == 0 ? OwnerName : "Opponent";
+        }
+
+        private string ResolveOmokTurnName()
+        {
+            if (!IsMiniRoomOmokActive)
+            {
+                return "n/a";
+            }
+
+            if (_miniRoomOmokWinnerIndex >= 0)
+            {
+                return ResolveMiniRoomSeatName(_miniRoomOmokWinnerIndex);
+            }
+
+            return _miniRoomOmokInProgress ? ResolveMiniRoomSeatName(_miniRoomOmokCurrentTurnIndex) : "idle";
+        }
+
+        private string ResolveOmokWinnerName()
+        {
+            return _miniRoomOmokWinnerIndex >= 0 ? ResolveMiniRoomSeatName(_miniRoomOmokWinnerIndex) : "none";
+        }
+
+        private string FormatOmokLastMove()
+        {
+            return _miniRoomOmokLastMoveX >= 0 && _miniRoomOmokLastMoveY >= 0
+                ? $"{_miniRoomOmokLastMoveX},{_miniRoomOmokLastMoveY}"
+                : "none";
+        }
+
+        private static string NormalizeName(string value)
+        {
+            return string.IsNullOrWhiteSpace(value) ? "Visitor" : value.Trim();
+        }
+
+        private static byte[] NormalizePacketPayload(byte[] packetBytes)
+        {
+            if (packetBytes == null || packetBytes.Length == 0)
+            {
+                return Array.Empty<byte>();
+            }
+
+            if (IsKnownPacketType(packetBytes[0]))
+            {
+                return (byte[])packetBytes.Clone();
+            }
+
+            if (packetBytes.Length > sizeof(ushort) && IsKnownPacketType(packetBytes[sizeof(ushort)]))
+            {
+                byte[] trimmed = new byte[packetBytes.Length - sizeof(ushort)];
+                Buffer.BlockCopy(packetBytes, sizeof(ushort), trimmed, 0, trimmed.Length);
+                return trimmed;
+            }
+
+            if (packetBytes.Length > sizeof(ushort) && IsMiniRoomBasePacketSubType(packetBytes[sizeof(ushort)]))
+            {
+                byte[] trimmed = new byte[packetBytes.Length - sizeof(ushort)];
+                Buffer.BlockCopy(packetBytes, sizeof(ushort), trimmed, 0, trimmed.Length);
+                return trimmed;
+            }
+
+            return (byte[])packetBytes.Clone();
+        }
+
+        private static bool TryExtractEmployeePoolPacket(byte[] packetBytes, out ushort opcode, out byte[] payload)
+        {
+            opcode = 0;
+            payload = Array.Empty<byte>();
+            if (packetBytes == null || packetBytes.Length <= sizeof(ushort))
+            {
+                return false;
+            }
+
+            opcode = BitConverter.ToUInt16(packetBytes, 0);
+            if (opcode != EmployeeEnterFieldOpcode
+                && opcode != EmployeeLeaveFieldOpcode
+                && opcode != EmployeeMiniRoomBalloonOpcode)
+            {
+                opcode = 0;
+                return false;
+            }
+
+            payload = new byte[packetBytes.Length - sizeof(ushort)];
+            Buffer.BlockCopy(packetBytes, sizeof(ushort), payload, 0, payload.Length);
+            return true;
+        }
+
+        private static bool IsKnownPacketType(byte packetType)
+        {
+            return packetType is
+                TradingRoomPutItemPacketType or
+                TradingRoomPutMoneyPacketType or
+                TradingRoomTradePacketType or
+                TradingRoomItemCrcPacketType or
+                TradingRoomExceedLimitPacketType or
+                PersonalShopBuyResultPacketType or
+                PersonalShopBasePacketType or
+                PersonalShopSoldItemResultPacketType or
+                PersonalShopMoveItemToInventoryPacketType or
+                EntrustedShopArrangeItemResultPacketType or
+                EntrustedShopWithdrawAllResultPacketType or
+                EntrustedShopWithdrawMoneyResultPacketType or
+                EntrustedShopVisitListResultPacketType or
+                EntrustedShopBlackListResultPacketType or
+                OmokTieRequestPacketType or
+                OmokTieResultPacketType or
+                OmokRetreatRequestPacketType or
+                OmokRetreatResultPacketType or
+                OmokReadyPacketType or
+                OmokCancelReadyPacketType or
+                OmokStartPacketType or
+                OmokGameResultPacketType or
+                OmokTimeOverPacketType or
+                OmokPutStonePacketType or
+                OmokPutStoneErrorPacketType;
+        }
+
+        private static int NormalizeOmokStoneValue(int stoneValue, int fallback)
+        {
+            return stoneValue == 1 || stoneValue == 2 ? stoneValue : fallback;
+        }
+
+        private int ResolveOmokStoneValueForSeat(int seatIndex)
+        {
+            return seatIndex == 0 ? _miniRoomOmokOwnerStoneValue : _miniRoomOmokGuestStoneValue;
+        }
+
+        private int ResolveOmokSeatIndexByStoneValue(int stoneValue)
+        {
+            if (_miniRoomOmokOwnerStoneValue == stoneValue)
+            {
+                return 0;
+            }
+
+            if (_miniRoomOmokGuestStoneValue == stoneValue)
+            {
+                return 1;
+            }
+
+            return -1;
+        }
+
+        private static string ResolveOmokStoneName(int stoneValue)
+        {
+            return stoneValue == 1 ? "Black" : "White";
+        }
+
+        private static int ResolveSuggestedPrice(int itemId, int quantity)
+        {
+            int typeBucket = itemId / 1000000;
+            int baseUnitPrice = typeBucket switch
+            {
+                1 => 250000,
+                2 => 5000,
+                3 => 12000,
+                4 => 8000,
+                5 => 30000,
+                _ => 10000
+            };
+
+            return Math.Max(1000, baseUnitPrice * Math.Max(1, quantity));
+        }
+
+        private static string ResolveItemName(int itemId)
+        {
+            return global::HaCreator.Program.InfoManager?.ItemNameCache != null
+                   && global::HaCreator.Program.InfoManager.ItemNameCache.TryGetValue(itemId, out Tuple<string, string, string> itemInfo)
+                   && !string.IsNullOrWhiteSpace(itemInfo?.Item1)
+                ? itemInfo.Item1
+                : itemId.ToString();
+        }
+
+        private static string ResolveItemTypeName(InventoryType type, int itemId)
+        {
+            return global::HaCreator.Program.InfoManager?.ItemNameCache != null
+                   && global::HaCreator.Program.InfoManager.ItemNameCache.TryGetValue(itemId, out Tuple<string, string, string> itemInfo)
+                   && !string.IsNullOrWhiteSpace(itemInfo?.Item2)
+                ? itemInfo.Item2
+                : type.ToString();
+        }
+
+        private static string ResolveItemDescription(int itemId)
+        {
+            return global::HaCreator.Program.InfoManager?.ItemNameCache != null
+                   && global::HaCreator.Program.InfoManager.ItemNameCache.TryGetValue(itemId, out Tuple<string, string, string> itemInfo)
+                   && !string.IsNullOrWhiteSpace(itemInfo?.Item3)
+                ? itemInfo.Item3
+                : string.Empty;
+        }
+
+        private static int ResolveItemIdByName(string itemName)
+        {
+            if (string.IsNullOrWhiteSpace(itemName) || global::HaCreator.Program.InfoManager?.ItemNameCache == null)
+            {
+                return 0;
+            }
+
+            foreach (KeyValuePair<int, Tuple<string, string, string>> entry in global::HaCreator.Program.InfoManager.ItemNameCache)
+            {
+                if (string.Equals(entry.Value?.Item1, itemName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return entry.Key;
+                }
+            }
+
+            return 0;
+        }
+
+        private void EnsureMiniRoomOccupant(int index, string name, SocialRoomOccupantRole role, string detail, bool isReady, CharacterBuild avatarBuild = null)
+        {
+            while (_occupants.Count <= index)
+            {
+                _occupants.Add(new SocialRoomOccupant(name, role, detail, isReady, avatarBuild));
+            }
+
+            _occupants[index].Update(name, role, detail, isReady, avatarBuild);
+        }
+
+        private static string BuildMiniRoomDetail(int score, bool isCurrentTurn, string seat)
+        {
+            return isCurrentTurn
+                ? $"{seat} | Score {score} | Current turn"
+                : $"{seat} | Score {score}";
+        }
+    }
+}

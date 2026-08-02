@@ -1,0 +1,2437 @@
+using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.Fields;
+using HaCreator.MapSimulator.Effects;
+using HaCreator.MapSimulator.Interaction;
+using HaSharedLibrary.Render.DX;
+using HaSharedLibrary.Wz;
+using MapleLib.WzLib;
+using MapleLib.WzLib.WzProperties;
+using Microsoft.Xna.Framework;
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Text;
+
+using BinaryReader = MapleLib.PacketLib.PacketReader;
+namespace HaCreator.MapSimulator
+{
+    public partial class MapSimulator
+    {
+        private readonly List<PendingPortalSessionValueImpact> _pendingPortalSessionValueImpacts = new();
+        private int _lastPortalSessionValueRequestOpcode = -1;
+        private byte[] _lastPortalSessionValueRequestPayload = Array.Empty<byte>();
+        private string _lastPortalSessionValueRequestSummary;
+        private int _lastPortalSessionValueRequestSentTick = int.MinValue;
+
+        private bool TryApplyPacketOwnedFieldScopedPacket(int packetType, byte[] payload, out string message)
+        {
+            if (TryParsePacketReactorPoolKind(packetType, out _))
+            {
+                return TryApplyPacketOwnedReactorPoolPacket(packetType, payload, out message);
+            }
+
+            if (PacketFieldIngressRouter.IsSupportedFieldStatePacketType(packetType))
+            {
+                return TryApplyPacketOwnedFieldStatePacket(packetType, payload, out message);
+            }
+
+            message = $"Unsupported field-scoped packet type {packetType}.";
+            return false;
+        }
+
+        private bool TryApplyPacketOwnedFieldStatePacket(int packetType, byte[] payload, out string message)
+        {
+            if (packetType == SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode)
+            {
+                bool applied = _specialFieldRuntime.TryDispatchCurrentWrapperRelayPayload(payload, currTickCount, out message);
+                if (TryApplyPendingPortalSessionValueImpactFromPacket(packetType, payload, out string portalImpactMessage))
+                {
+                    message = string.IsNullOrWhiteSpace(message)
+                        ? portalImpactMessage
+                        : $"{message} {portalImpactMessage}";
+                    return true;
+                }
+
+                return applied;
+            }
+
+            if (packetType == MassacreField.PacketTypeResult
+                || packetType == 178)
+            {
+                bool applied = _specialFieldRuntime.TryDispatchCurrentWrapperPacketRelay(packetType, payload, currTickCount, out message);
+                if (TryApplyPendingPortalSessionValueImpactFromPacket(packetType, payload, out string portalImpactMessage))
+                {
+                    message = string.IsNullOrWhiteSpace(message)
+                        ? portalImpactMessage
+                        : $"{message} {portalImpactMessage}";
+                    return true;
+                }
+
+                return applied;
+            }
+
+            if (packetType == PartyRaidField.ClientSessionValuePacketType)
+            {
+                return TryApplyClientOwnedSessionValuePacket(payload, currTickCount, out message);
+            }
+
+            _packetFieldStateRuntime.Initialize(GraphicsDevice, _mapBoard?.MapInfo);
+            bool packetApplied = _packetFieldStateRuntime.TryApplyPacket(
+                packetType,
+                payload,
+                currTickCount,
+                (tag, state, transitionTimeMs, currentTimeMs, stateIndex) =>
+                    SetDynamicObjectTagState(tag, state, transitionTimeMs, currentTimeMs, stateIndex),
+                tag => TryGetDynamicObjectTagState(tag?.Trim()),
+                tag => TryGetDynamicObjectTagStateIndex(tag?.Trim()),
+                (name, stateIndex, currentTick, replayCurrentState) => TryApplyPacketOwnedNamedObjectState(name, stateIndex, currentTick, replayCurrentState),
+                name => TryGetPacketOwnedNamedObjectStateIndex(name),
+                HandleFieldSpecificDataPacketHandoff,
+                out message);
+            if (TryApplyPendingPortalSessionValueImpactFromPacket(packetType, payload, out string fieldStatePortalImpactMessage))
+            {
+                message = string.IsNullOrWhiteSpace(message)
+                    ? fieldStatePortalImpactMessage
+                    : $"{message} {fieldStatePortalImpactMessage}";
+                return true;
+            }
+
+            return packetApplied;
+        }
+
+        private bool TryApplyPacketOwnedNamedObjectState(string objectName, int stateIndex, int currentTick, bool replayCurrentState)
+        {
+            if (stateIndex < 0 || string.IsNullOrWhiteSpace(objectName))
+            {
+                return false;
+            }
+
+            string normalizedObjectName = objectName.Trim();
+            if (!_packetStageTransitionNamedObjects.TryGetValue(normalizedObjectName, out List<BaseDXDrawableItem> objects) ||
+                objects == null ||
+                objects.Count == 0)
+            {
+                return false;
+            }
+
+            if (stateIndex >= objects.Count &&
+                !CanApplyAuthoredSingleObjectStateBranch(objects, stateIndex))
+            {
+                return false;
+            }
+
+            int previousStateIndex = _packetStageTransitionNamedObjectSelectedStateByName.TryGetValue(normalizedObjectName, out int selectedStateIndex)
+                ? selectedStateIndex
+                : 0;
+
+            if (TryApplyAuthoredSingleObjectStateBranch(objects, stateIndex, currentTick, replayCurrentState, previousStateIndex))
+            {
+                _packetStageTransitionNamedObjectSelectedStateByName[normalizedObjectName] = stateIndex;
+                return true;
+            }
+
+            bool applied = false;
+            for (int i = 0; i < objects.Count; i++)
+            {
+                BaseDXDrawableItem mapObject = objects[i];
+                if (mapObject == null)
+                {
+                    continue;
+                }
+
+                bool selected = stateIndex < objects.Count
+                    ? i == stateIndex
+                    : objects.Count == 1;
+                ApplyPacketOwnedNamedObjectLayerLifecycle(
+                    mapObject,
+                    selected,
+                    stateIndex,
+                    currentTick,
+                    previousSelectedLayer: !replayCurrentState && i == previousStateIndex);
+                HidePacketOwnedAuthoredStateBranches(mapObject, currentTick);
+                if (selected)
+                {
+                    if (!replayCurrentState)
+                    {
+                        mapObject.RestartAnimation(currentTick);
+                    }
+
+                    ApplyPacketOwnedNamedObjectAnimationRepeatMode(mapObject, stateIndex, currentTick);
+                    ApplyPacketOwnedNamedObjectSelectedStateLifecycle(mapObject, stateIndex, currentTick, replayCurrentState);
+                }
+
+                applied = true;
+            }
+
+            if (applied)
+            {
+                _packetStageTransitionNamedObjectSelectedStateByName[normalizedObjectName] = stateIndex;
+            }
+
+            return applied;
+        }
+
+        private bool TryApplyAuthoredSingleObjectStateBranch(
+            IReadOnlyList<BaseDXDrawableItem> objects,
+            int stateIndex,
+            int currentTick,
+            bool replayCurrentState,
+            int previousStateIndex)
+        {
+            if (objects == null ||
+                objects.Count != 1 ||
+                objects[0] == null ||
+                !_packetStageTransitionAuthoredStateBranchItems.TryGetValue(objects[0], out Dictionary<int, BaseDXDrawableItem> branchesByState) ||
+                branchesByState == null ||
+                branchesByState.Count == 0)
+            {
+                return false;
+            }
+
+            BaseDXDrawableItem baseObject = objects[0];
+            _packetStageTransitionNamedObjectMetadata.TryGetValue(baseObject, out PacketOwnedNamedObjectStateMetadata metadata);
+            if (stateIndex == 0)
+            {
+                ApplyPacketOwnedNamedObjectLayerLifecycle(baseObject, selected: true, stateIndex, currentTick);
+                HidePacketOwnedAuthoredStateBranches(
+                    baseObject,
+                    currentTick,
+                    replayCurrentState ? (int?)null : previousStateIndex);
+                if (!replayCurrentState)
+                {
+                    baseObject.RestartAnimation(currentTick);
+                }
+
+                ApplyPacketOwnedNamedObjectAnimationRepeatMode(baseObject, metadata, stateIndex, currentTick);
+                ApplyPacketOwnedNamedObjectSelectedStateLifecycle(baseObject, stateIndex, currentTick, replayCurrentState);
+                return true;
+            }
+
+            if (!branchesByState.TryGetValue(stateIndex, out BaseDXDrawableItem branchObject) ||
+                branchObject == null)
+            {
+                return false;
+            }
+
+            ApplyPacketOwnedNamedObjectLayerLifecycle(
+                baseObject,
+                selected: false,
+                stateIndex,
+                currentTick,
+                previousSelectedLayer: !replayCurrentState && previousStateIndex == 0);
+            foreach (KeyValuePair<int, BaseDXDrawableItem> branch in branchesByState)
+            {
+                bool selected = branch.Key == stateIndex;
+                ApplyPacketOwnedNamedObjectLayerLifecycle(
+                    branch.Value,
+                    selected,
+                    branch.Key,
+                    currentTick,
+                    previousSelectedLayer: !replayCurrentState && branch.Key == previousStateIndex);
+                if (selected)
+                {
+                    if (!replayCurrentState)
+                    {
+                        branch.Value.RestartAnimation(currentTick);
+                    }
+
+                    ApplyPacketOwnedNamedObjectAnimationRepeatMode(branch.Value, metadata, stateIndex, currentTick);
+                    ApplyPacketOwnedNamedObjectSelectedStateLifecycle(branch.Value, metadata, stateIndex, currentTick, replayCurrentState);
+                }
+            }
+
+            return true;
+        }
+
+        private void HidePacketOwnedAuthoredStateBranches(
+            BaseDXDrawableItem baseObject,
+            int currentTick,
+            int? previousStateIndex = null)
+        {
+            if (baseObject == null ||
+                !_packetStageTransitionAuthoredStateBranchItems.TryGetValue(baseObject, out Dictionary<int, BaseDXDrawableItem> branchesByState) ||
+                branchesByState == null)
+            {
+                return;
+            }
+
+            foreach (KeyValuePair<int, BaseDXDrawableItem> branch in branchesByState)
+            {
+                BaseDXDrawableItem branchObject = branch.Value;
+                if (branchObject != null)
+                {
+                    ApplyPacketOwnedNamedObjectLayerLifecycle(
+                        branchObject,
+                        selected: false,
+                        stateIndex: 0,
+                        currentTick,
+                        previousSelectedLayer: previousStateIndex.HasValue &&
+                            branch.Key == previousStateIndex.Value);
+                }
+            }
+        }
+
+        private void ApplyPacketOwnedNamedObjectLayerLifecycle(
+            BaseDXDrawableItem mapObject,
+            bool selected,
+            int stateIndex,
+            int currentTick,
+            bool previousSelectedLayer = false)
+        {
+            if (mapObject == null)
+            {
+                return;
+            }
+
+            bool stopsPreviousAnimation = ShouldStopPacketOwnedNamedObjectPreviousLayerAnimation(
+                selected,
+                previousSelectedLayer,
+                mapObject.IsAnimationRunning);
+            _packetStageTransitionObjectVisibility[mapObject] = selected;
+            _packetStageTransitionNamedObjectLayerLifecycle[mapObject] =
+                BuildPacketOwnedNamedObjectLayerLifecycleSnapshot(
+                    stateIndex,
+                    currentTick,
+                    selected,
+                    stopsPreviousAnimation);
+            if (selected)
+            {
+                mapObject.SetLayerAlpha(byte.MaxValue);
+                mapObject.SetLayerRotationDegrees(0f);
+                return;
+            }
+
+            _packetStageTransitionNamedObjectMovingStates.Remove(mapObject);
+            _packetStageTransitionNamedObjectSideLaneLifecycle.Remove(mapObject);
+            _packetStageTransitionNamedObjectAlphaStates.Remove(mapObject);
+            if (stopsPreviousAnimation)
+            {
+                mapObject.StopAnimationAtCurrentFrame(currentTick);
+                mapObject.ApplyMapObjectAnimationRepeatMode(-1, currentTick);
+            }
+
+            mapObject.SetLayerAlpha(byte.MinValue);
+            mapObject.SetLayerRotationDegrees(0f);
+            mapObject.Position = Point.Zero;
+        }
+
+        internal static bool ShouldStopPacketOwnedNamedObjectPreviousLayerAnimation(
+            bool selected,
+            bool previousSelectedLayer,
+            bool animationRunning)
+        {
+            return !selected && previousSelectedLayer && animationRunning;
+        }
+
+        private bool CanApplyAuthoredSingleObjectStateBranch(IReadOnlyList<BaseDXDrawableItem> objects, int stateIndex)
+        {
+            return objects != null &&
+                objects.Count == 1 &&
+                objects[0] != null &&
+                _packetStageTransitionNamedObjectMetadata.TryGetValue(objects[0], out PacketOwnedNamedObjectStateMetadata metadata) &&
+                metadata.HasAuthoredStateBranch(stateIndex);
+        }
+
+        private void ApplyPacketOwnedNamedObjectSelectedStateLifecycle(
+            BaseDXDrawableItem mapObject,
+            int stateIndex,
+            int currentTick,
+            bool replayCurrentState)
+        {
+            if (mapObject == null ||
+                !_packetStageTransitionNamedObjectMetadata.TryGetValue(mapObject, out PacketOwnedNamedObjectStateMetadata metadata))
+            {
+                return;
+            }
+
+            ApplyPacketOwnedNamedObjectSelectedStateLifecycle(mapObject, metadata, stateIndex, currentTick, replayCurrentState);
+        }
+
+        private void ApplyPacketOwnedNamedObjectAnimationRepeatMode(BaseDXDrawableItem mapObject, int stateIndex, int currentTick)
+        {
+            if (mapObject == null ||
+                !_packetStageTransitionNamedObjectMetadata.TryGetValue(mapObject, out PacketOwnedNamedObjectStateMetadata metadata))
+            {
+                return;
+            }
+
+            ApplyPacketOwnedNamedObjectAnimationRepeatMode(mapObject, metadata, stateIndex, currentTick);
+        }
+
+        private static void ApplyPacketOwnedNamedObjectAnimationRepeatMode(
+            BaseDXDrawableItem mapObject,
+            PacketOwnedNamedObjectStateMetadata metadata,
+            int stateIndex,
+            int currentTick)
+        {
+            mapObject?.ApplyMapObjectAnimationRepeatMode(
+                ResolvePacketOwnedNamedObjectSelectedRepeatMode(metadata?.ResolveStateRepeat(stateIndex)),
+                currentTick);
+        }
+
+        internal static int ResolvePacketOwnedNamedObjectSelectedRepeatMode(int? authoredRepeat)
+        {
+            return authoredRepeat ?? -2;
+        }
+
+        private void ApplyPacketOwnedNamedObjectSelectedStateLifecycle(
+            BaseDXDrawableItem mapObject,
+            PacketOwnedNamedObjectStateMetadata metadata,
+            int stateIndex,
+            int currentTick,
+            bool replayCurrentState)
+        {
+            if (mapObject == null || metadata == null)
+            {
+                return;
+            }
+
+            bool hasMovingState = TryBuildPacketOwnedNamedObjectMovingState(metadata, stateIndex, currentTick, out PacketOwnedNamedObjectMovingState movingState);
+            if (hasMovingState)
+            {
+                bool hasReusableMovingState =
+                    _packetStageTransitionNamedObjectMovingStates.TryGetValue(mapObject, out PacketOwnedNamedObjectMovingState existingMovingState) &&
+                    existingMovingState.HasSamePlaybackProfile(movingState);
+                int startTick = ResolvePacketOwnedNamedObjectReplayPlaybackStartTick(
+                    replayCurrentState,
+                    hasReusableMovingState ? existingMovingState.StartTick : (int?)null,
+                    hasReusableMovingState,
+                    currentTick);
+                if (startTick != movingState.StartTick)
+                {
+                    movingState = movingState with { StartTick = startTick };
+                }
+
+                if (!replayCurrentState || !hasReusableMovingState)
+                {
+                    _packetStageTransitionNamedObjectMovingStates[mapObject] = movingState;
+                }
+
+                movingState.Apply(mapObject, currentTick);
+            }
+            else
+            {
+                _packetStageTransitionNamedObjectMovingStates.Remove(mapObject);
+                mapObject.Position = Point.Zero;
+                mapObject.SetLayerRotationDegrees(0f);
+            }
+
+            PacketOwnedNamedObjectAlphaProfile alphaProfile = metadata.ResolveAlphaProfile(stateIndex);
+            if (alphaProfile != null)
+            {
+                if (!replayCurrentState ||
+                    !_packetStageTransitionNamedObjectAlphaStates.TryGetValue(mapObject, out PacketOwnedNamedObjectAlphaPlaybackState alphaState) ||
+                    !ReferenceEquals(alphaState.AlphaProfile, alphaProfile))
+                {
+                    alphaState = new PacketOwnedNamedObjectAlphaPlaybackState(alphaProfile, currentTick);
+                    _packetStageTransitionNamedObjectAlphaStates[mapObject] = alphaState;
+                }
+
+                alphaState.Apply(mapObject, currentTick);
+            }
+            else
+            {
+                _packetStageTransitionNamedObjectAlphaStates.Remove(mapObject);
+                mapObject.SetLayerAlpha(byte.MaxValue);
+            }
+
+            PacketOwnedNamedObjectSideLaneLifecycleSnapshot sideLaneSnapshot =
+                BuildPacketOwnedNamedObjectSideLaneLifecycleSnapshot(
+                    metadata.ResolveMetadataLanes(stateIndex),
+                    stateIndex,
+                    ResolvePacketOwnedNamedObjectReplayAppliedTick(
+                        replayCurrentState,
+                        _packetStageTransitionNamedObjectSideLaneLifecycle.TryGetValue(mapObject, out PacketOwnedNamedObjectSideLaneLifecycleSnapshot existingSideLaneSnapshot) &&
+                            existingSideLaneSnapshot?.StateIndex == stateIndex
+                            ? existingSideLaneSnapshot.AppliedTick
+                            : (int?)null,
+                        currentTick),
+                    hasMovingState);
+            if (sideLaneSnapshot.HasSideLane)
+            {
+                _packetStageTransitionNamedObjectSideLaneLifecycle[mapObject] = sideLaneSnapshot;
+            }
+            else
+            {
+                _packetStageTransitionNamedObjectSideLaneLifecycle.Remove(mapObject);
+            }
+
+            if (sideLaneSnapshot.UpdatesQuestVisible)
+            {
+                ApplyQuestObjectVisibility(mapObject);
+            }
+
+            string stateSfx = metadata.ResolveStateSfx(stateIndex);
+            if (!string.IsNullOrWhiteSpace(stateSfx))
+            {
+                Vector2? listenerPosition = _playerManager?.Player?.Position;
+                Vector2 sourcePosition = ResolvePacketOwnedNamedObjectSoundSourcePosition(
+                    metadata.X,
+                    metadata.Y,
+                    mapObject?.Position ?? Point.Zero);
+                _ = TryPlayPacketOwnedWzSoundAt(
+                    stateSfx,
+                    defaultImageName: "Field.img",
+                    startVolumeScale: 1f,
+                    listenerPosition,
+                    sourcePosition,
+                    out _,
+                    out _);
+            }
+
+            StampPacketOwnedNamedObjectDebugText(mapObject, stateIndex);
+        }
+
+        internal static Vector2 ResolvePacketOwnedNamedObjectSoundSourcePosition(
+            int objectX,
+            int objectY,
+            Point movingOffset)
+        {
+            return new Vector2(objectX + movingOffset.X, objectY + movingOffset.Y);
+        }
+
+        private void StampPacketOwnedNamedObjectDebugText(BaseDXDrawableItem mapObject, int stateIndex)
+        {
+            if (mapObject == null ||
+                !_packetStageTransitionNamedObjectMetadata.TryGetValue(mapObject, out PacketOwnedNamedObjectStateMetadata metadata))
+            {
+                return;
+            }
+
+            string sideLaneSuffix =
+                _packetStageTransitionNamedObjectSideLaneLifecycle.TryGetValue(mapObject, out PacketOwnedNamedObjectSideLaneLifecycleSnapshot sideLaneSnapshot) &&
+                sideLaneSnapshot?.HasSideLane == true
+                    ? $" (sideLaneLifecycle={sideLaneSnapshot.BuildDebugText()})"
+                    : string.Empty;
+            string layerLifecycleSuffix =
+                _packetStageTransitionNamedObjectLayerLifecycle.TryGetValue(mapObject, out PacketOwnedNamedObjectLayerLifecycleSnapshot layerSnapshot)
+                    ? $" (layerLifecycle={layerSnapshot.BuildDebugText()})"
+                    : string.Empty;
+
+            mapObject.DebugText =
+                $"packet-object-state {metadata.Name}[{stateIndex}] {metadata.ObjectPath}{metadata.BuildSelectedStateDebugSuffix(stateIndex)}{metadata.LifecycleDebugSuffix}{sideLaneSuffix}{layerLifecycleSuffix}";
+        }
+
+        private int? TryGetPacketOwnedNamedObjectStateIndex(string objectName)
+        {
+            if (string.IsNullOrWhiteSpace(objectName) ||
+                !_packetStageTransitionNamedObjects.TryGetValue(objectName.Trim(), out List<BaseDXDrawableItem> objects) ||
+                objects == null ||
+                objects.Count == 0)
+            {
+                return null;
+            }
+
+            int? fallbackVisibleIndex = null;
+            for (int i = 0; i < objects.Count; i++)
+            {
+                BaseDXDrawableItem mapObject = objects[i];
+                if (mapObject == null)
+                {
+                    continue;
+                }
+
+                if (_packetStageTransitionAuthoredStateBranchItems.TryGetValue(mapObject, out Dictionary<int, BaseDXDrawableItem> branchesByState) &&
+                    branchesByState != null)
+                {
+                    foreach (KeyValuePair<int, BaseDXDrawableItem> branch in branchesByState)
+                    {
+                        if (branch.Value != null &&
+                            _packetStageTransitionObjectVisibility.TryGetValue(branch.Value, out bool branchVisible) &&
+                            branchVisible)
+                        {
+                            return branch.Key;
+                        }
+                    }
+                }
+
+                if (_packetStageTransitionObjectVisibility.TryGetValue(mapObject, out bool visible))
+                {
+                    if (visible)
+                    {
+                        return i;
+                    }
+
+                    continue;
+                }
+
+                if (!fallbackVisibleIndex.HasValue && mapObject.IsVisible)
+                {
+                    fallbackVisibleIndex = i;
+                }
+            }
+
+            return fallbackVisibleIndex;
+        }
+
+        [Flags]
+        internal enum PacketOwnedNamedObjectMetadataLane
+        {
+            None = 0,
+            ChangingObject = 1 << 0,
+            ReflectionInfo = 1 << 1,
+            QuestVisible = 1 << 2
+        }
+
+        internal static PacketOwnedNamedObjectMetadataLane ResolvePacketOwnedNamedObjectMetadataLanesForPacketParity(
+            bool hasChangingObjectMetadata,
+            bool hasReflectionMetadata,
+            bool hasQuestVisibleMetadata)
+        {
+            PacketOwnedNamedObjectMetadataLane lanes = PacketOwnedNamedObjectMetadataLane.None;
+            if (hasChangingObjectMetadata)
+            {
+                lanes |= PacketOwnedNamedObjectMetadataLane.ChangingObject;
+            }
+
+            if (hasReflectionMetadata)
+            {
+                lanes |= PacketOwnedNamedObjectMetadataLane.ReflectionInfo;
+            }
+
+            if (hasQuestVisibleMetadata)
+            {
+                lanes |= PacketOwnedNamedObjectMetadataLane.QuestVisible;
+            }
+
+            return lanes;
+        }
+
+        internal static bool TryReadPacketOwnedNamedObjectIntProperty(WzImageProperty property, string childName, out int value)
+        {
+            value = 0;
+            WzImageProperty child = property?[childName];
+            switch (child)
+            {
+                case WzIntProperty intProperty:
+                    value = intProperty.Value;
+                    return true;
+
+                case WzShortProperty shortProperty:
+                    value = shortProperty.Value;
+                    return true;
+
+                case WzLongProperty longProperty when longProperty.Value >= int.MinValue && longProperty.Value <= int.MaxValue:
+                    value = (int)longProperty.Value;
+                    return true;
+
+                case WzStringProperty stringProperty:
+                    return int.TryParse(
+                        stringProperty.Value?.Trim(),
+                        NumberStyles.Integer,
+                        CultureInfo.InvariantCulture,
+                        out value);
+
+                default:
+                    return false;
+            }
+        }
+
+        internal static PacketOwnedNamedObjectMetadataLane ResolvePacketOwnedNamedObjectMetadataLanesForPacketParity(
+            bool dynamicObject,
+            bool reflection,
+            bool flow,
+            int? rx,
+            int? ry,
+            int? cx,
+            int? cy,
+            bool hasQuestVisibleMetadata)
+        {
+            bool hasChangingObjectMetadata = dynamicObject || flow || rx.HasValue || ry.HasValue || cx.HasValue || cy.HasValue;
+            return ResolvePacketOwnedNamedObjectMetadataLanesForPacketParity(
+                hasChangingObjectMetadata,
+                reflection,
+                hasQuestVisibleMetadata);
+        }
+
+        internal static PacketOwnedNamedObjectMetadataLane ResolvePacketOwnedNamedObjectMetadataLanesForPacketParity(
+            bool reflection,
+            bool flow,
+            int? rx,
+            int? ry,
+            int? cx,
+            int? cy,
+            bool hasQuestVisibleMetadata)
+        {
+            return ResolvePacketOwnedNamedObjectMetadataLanesForPacketParity(
+                dynamicObject: false,
+                reflection,
+                flow,
+                rx,
+                ry,
+                cx,
+                cy,
+                hasQuestVisibleMetadata);
+        }
+
+        internal static PacketOwnedNamedObjectSideLaneLifecycleSnapshot BuildPacketOwnedNamedObjectSideLaneLifecycleSnapshot(
+            PacketOwnedNamedObjectMetadataLane lanes,
+            int stateIndex,
+            int appliedTick,
+            bool hasMovingState)
+        {
+            return new PacketOwnedNamedObjectSideLaneLifecycleSnapshot(
+                stateIndex,
+                appliedTick,
+                lanes,
+                AllocatesChangingObject: (lanes & PacketOwnedNamedObjectMetadataLane.ChangingObject) != 0,
+                HasChangingObjectMotion: hasMovingState,
+                MutatesReflectionInfo: (lanes & PacketOwnedNamedObjectMetadataLane.ReflectionInfo) != 0,
+                UpdatesQuestVisible: (lanes & PacketOwnedNamedObjectMetadataLane.QuestVisible) != 0);
+        }
+
+        internal static int ResolvePacketOwnedNamedObjectReplayAppliedTick(
+            bool replayCurrentState,
+            int? existingAppliedTick,
+            int currentTick)
+        {
+            return replayCurrentState && existingAppliedTick.HasValue
+                ? existingAppliedTick.Value
+                : currentTick;
+        }
+
+        internal static int ResolvePacketOwnedNamedObjectReplayPlaybackStartTick(
+            bool replayCurrentState,
+            int? existingStartTick,
+            bool samePlaybackProfile,
+            int currentTick)
+        {
+            return replayCurrentState && samePlaybackProfile && existingStartTick.HasValue
+                ? existingStartTick.Value
+                : currentTick;
+        }
+
+        internal static PacketOwnedNamedObjectLayerLifecycleSnapshot BuildPacketOwnedNamedObjectLayerLifecycleSnapshot(
+            int stateIndex,
+            int appliedTick,
+            bool selected,
+            bool previousAnimationActive = true)
+        {
+            return new PacketOwnedNamedObjectLayerLifecycleSnapshot(
+                stateIndex,
+                appliedTick,
+                selected,
+                Alpha: selected ? byte.MaxValue : byte.MinValue,
+                StopsPreviousAnimation: !selected && previousAnimationActive,
+                AnimatesSelectedLayer: selected);
+        }
+
+        internal sealed record PacketOwnedNamedObjectLayerLifecycleSnapshot(
+            int StateIndex,
+            int AppliedTick,
+            bool Selected,
+            byte Alpha,
+            bool StopsPreviousAnimation,
+            bool AnimatesSelectedLayer)
+        {
+            public string BuildDebugText()
+            {
+                List<string> parts = new()
+                {
+                    Selected ? "show" : "hide",
+                    $"alpha={Alpha.ToString(CultureInfo.InvariantCulture)}"
+                };
+
+                if (StopsPreviousAnimation)
+                {
+                    parts.Add("stop-prev-animation");
+                }
+
+                if (AnimatesSelectedLayer)
+                {
+                    parts.Add("animate-selected-layer");
+                }
+
+                return string.Join("/", parts);
+            }
+        }
+
+        internal sealed record PacketOwnedNamedObjectSideLaneLifecycleSnapshot(
+            int StateIndex,
+            int AppliedTick,
+            PacketOwnedNamedObjectMetadataLane Lanes,
+            bool AllocatesChangingObject,
+            bool HasChangingObjectMotion,
+            bool MutatesReflectionInfo,
+            bool UpdatesQuestVisible)
+        {
+            public bool HasSideLane =>
+                AllocatesChangingObject ||
+                MutatesReflectionInfo ||
+                UpdatesQuestVisible;
+
+            public string BuildDebugText()
+            {
+                List<string> parts = new();
+                if (AllocatesChangingObject)
+                {
+                    parts.Add(HasChangingObjectMotion ? "changing-object:motion" : "changing-object:metadata");
+                }
+
+                if (MutatesReflectionInfo)
+                {
+                    parts.Add("reflection-info:update");
+                }
+
+                if (UpdatesQuestVisible)
+                {
+                    parts.Add("quest-visible:update");
+                }
+
+                return parts.Count == 0
+                    ? "none"
+                    : string.Join("/", parts);
+            }
+        }
+
+        private sealed record PacketOwnedNamedObjectStateMetadata(
+            string Name,
+            string ObjectSet,
+            string Layer0,
+            string Layer1,
+            string Layer2,
+            int X,
+            int Y,
+            int Z,
+            int PlatformNumber,
+            bool Dynamic,
+            byte Flow,
+            int? Rx,
+            int? Ry,
+            int? Cx,
+            int? Cy,
+            string StateSfx,
+            IReadOnlyDictionary<int, string> AuthoredStateSfxByIndex,
+            IReadOnlyDictionary<int, int> AuthoredStateRepeatByIndex,
+            PacketOwnedNamedObjectMotionProfile BaseMotionProfile,
+            IReadOnlyDictionary<int, PacketOwnedNamedObjectMotionProfile> AuthoredStateMotionByIndex,
+            PacketOwnedNamedObjectVectorAnimationProfile BaseVectorAnimationProfile,
+            IReadOnlyDictionary<int, PacketOwnedNamedObjectVectorAnimationProfile> AuthoredStateVectorAnimationByIndex,
+            PacketOwnedNamedObjectAlphaProfile BaseAlphaProfile,
+            IReadOnlyDictionary<int, PacketOwnedNamedObjectAlphaProfile> AuthoredStateAlphaByIndex,
+            IReadOnlyDictionary<int, PacketOwnedNamedObjectMetadataLane> AuthoredStateMetadataLanesByIndex,
+            PacketOwnedNamedObjectMetadataLane MetadataLanes,
+            IReadOnlySet<int> AuthoredStateIndexes)
+        {
+            public string ObjectPath => $"Map/Obj/{ObjectSet}.img/{Layer0}/{Layer1}/{Layer2}";
+
+            public bool HasAuthoredStateBranch(int stateIndex)
+            {
+                return stateIndex >= 0 && AuthoredStateIndexes?.Contains(stateIndex) == true;
+            }
+
+            public string ResolveStateSfx(int stateIndex)
+            {
+                if (stateIndex >= 0 &&
+                    AuthoredStateSfxByIndex != null &&
+                    AuthoredStateSfxByIndex.TryGetValue(stateIndex, out string stateSfx) &&
+                    !string.IsNullOrWhiteSpace(stateSfx))
+                {
+                    return stateSfx;
+                }
+
+                return StateSfx;
+            }
+
+            public int? ResolveStateRepeat(int stateIndex)
+            {
+                if (stateIndex >= 0 &&
+                    AuthoredStateRepeatByIndex != null &&
+                    AuthoredStateRepeatByIndex.TryGetValue(stateIndex, out int repeat))
+                {
+                    return repeat;
+                }
+
+                return null;
+            }
+
+            public PacketOwnedNamedObjectMotionProfile ResolveMotionProfile(int stateIndex)
+            {
+                if (stateIndex >= 0 &&
+                    AuthoredStateMotionByIndex != null &&
+                    AuthoredStateMotionByIndex.TryGetValue(stateIndex, out PacketOwnedNamedObjectMotionProfile motionProfile) &&
+                    motionProfile != null)
+                {
+                    return motionProfile;
+                }
+
+                return BaseMotionProfile;
+            }
+
+            public PacketOwnedNamedObjectVectorAnimationProfile ResolveVectorAnimationProfile(int stateIndex)
+            {
+                if (stateIndex >= 0 &&
+                    AuthoredStateVectorAnimationByIndex != null &&
+                    AuthoredStateVectorAnimationByIndex.TryGetValue(stateIndex, out PacketOwnedNamedObjectVectorAnimationProfile vectorProfile) &&
+                    vectorProfile != null)
+                {
+                    return vectorProfile;
+                }
+
+                return BaseVectorAnimationProfile;
+            }
+
+            public PacketOwnedNamedObjectMetadataLane ResolveMetadataLanes(int stateIndex)
+            {
+                PacketOwnedNamedObjectMetadataLane lanes = MetadataLanes;
+                if (ResolveVectorAnimationProfile(stateIndex) != null)
+                {
+                    lanes |= PacketOwnedNamedObjectMetadataLane.ChangingObject;
+                }
+
+                if (stateIndex >= 0 &&
+                    AuthoredStateMetadataLanesByIndex != null &&
+                    AuthoredStateMetadataLanesByIndex.TryGetValue(stateIndex, out PacketOwnedNamedObjectMetadataLane stateLanes))
+                {
+                    lanes |= stateLanes;
+                }
+
+                return lanes;
+            }
+
+            public string BuildSelectedStateDebugSuffix(int stateIndex)
+            {
+                List<string> parts = new();
+                string stateSfx = ResolveStateSfx(stateIndex);
+                if (!string.IsNullOrWhiteSpace(stateSfx))
+                {
+                    parts.Add($"selectedSfx={stateSfx}");
+                }
+
+                int? repeat = ResolveStateRepeat(stateIndex);
+                if (repeat.HasValue)
+                {
+                    parts.Add($"selectedRepeat={repeat.Value}");
+                }
+
+                PacketOwnedNamedObjectMotionProfile motionProfile = ResolveMotionProfile(stateIndex);
+                if (motionProfile != null)
+                {
+                    parts.Add($"selectedMotion={motionProfile.BuildDebugText()}");
+                }
+
+                PacketOwnedNamedObjectVectorAnimationProfile vectorProfile = ResolveVectorAnimationProfile(stateIndex);
+                if (vectorProfile != null)
+                {
+                    parts.Add($"selectedVectorMotion={vectorProfile.BuildDebugText()}");
+                }
+
+                PacketOwnedNamedObjectAlphaProfile alphaProfile = ResolveAlphaProfile(stateIndex);
+                if (alphaProfile != null)
+                {
+                    parts.Add($"selectedAlpha={alphaProfile.BuildDebugText()}");
+                }
+
+                PacketOwnedNamedObjectMetadataLane selectedLanes = ResolveMetadataLanes(stateIndex);
+                if (selectedLanes != MetadataLanes && selectedLanes != PacketOwnedNamedObjectMetadataLane.None)
+                {
+                    parts.Add($"selectedMetadata={FormatMetadataLanes(selectedLanes)}");
+                }
+
+                return parts.Count == 0 ? string.Empty : $" ({string.Join(", ", parts)})";
+            }
+
+            public string LifecycleDebugSuffix
+            {
+                get
+                {
+                    List<string> parts = new();
+                    if (!string.IsNullOrWhiteSpace(StateSfx))
+                    {
+                        parts.Add($"sfx={StateSfx}");
+                    }
+
+                    if (AuthoredStateIndexes?.Count > 0)
+                    {
+                        parts.Add($"authoredStates={string.Join("/", AuthoredStateIndexes.OrderBy(static state => state))}");
+                    }
+
+                    if (AuthoredStateRepeatByIndex?.Count > 0)
+                    {
+                        parts.Add($"stateRepeat={string.Join("/", AuthoredStateRepeatByIndex.OrderBy(static pair => pair.Key).Select(static pair => $"{pair.Key}:{pair.Value}"))}");
+                    }
+
+                    if (BaseMotionProfile != null)
+                    {
+                        parts.Add($"baseMotion={BaseMotionProfile.BuildDebugText()}");
+                    }
+
+                    if (AuthoredStateMotionByIndex?.Count > 0)
+                    {
+                        parts.Add($"stateMotion={string.Join("/", AuthoredStateMotionByIndex.OrderBy(static pair => pair.Key).Select(static pair => $"{pair.Key}:{pair.Value.BuildDebugText()}"))}");
+                    }
+
+                    if (BaseVectorAnimationProfile != null)
+                    {
+                        parts.Add($"baseVectorMotion={BaseVectorAnimationProfile.BuildDebugText()}");
+                    }
+
+                    if (AuthoredStateVectorAnimationByIndex?.Count > 0)
+                    {
+                        parts.Add($"stateVectorMotion={string.Join("/", AuthoredStateVectorAnimationByIndex.OrderBy(static pair => pair.Key).Select(static pair => $"{pair.Key}:{pair.Value.BuildDebugText()}"))}");
+                    }
+
+                    if (BaseAlphaProfile != null)
+                    {
+                        parts.Add($"baseAlpha={BaseAlphaProfile.BuildDebugText()}");
+                    }
+
+                    if (AuthoredStateAlphaByIndex?.Count > 0)
+                    {
+                        parts.Add($"stateAlpha={string.Join("/", AuthoredStateAlphaByIndex.OrderBy(static pair => pair.Key).Select(static pair => $"{pair.Key}:{pair.Value.BuildDebugText()}"))}");
+                    }
+
+                    if (AuthoredStateMetadataLanesByIndex?.Count > 0)
+                    {
+                        parts.Add($"stateMetadata={string.Join("/", AuthoredStateMetadataLanesByIndex.OrderBy(static pair => pair.Key).Select(static pair => $"{pair.Key}:{FormatMetadataLanes(pair.Value)}"))}");
+                    }
+
+                    if (MetadataLanes != PacketOwnedNamedObjectMetadataLane.None)
+                    {
+                        parts.Add($"metadata={FormatMetadataLanes(MetadataLanes)}");
+                    }
+
+                    if (Flow != 0)
+                    {
+                        parts.Add("restartMoving");
+                    }
+
+                    if (Dynamic)
+                    {
+                        parts.Add("dynamic");
+                    }
+
+                    return parts.Count == 0 ? string.Empty : $" ({string.Join(", ", parts)})";
+                }
+            }
+
+            public PacketOwnedNamedObjectAlphaProfile ResolveAlphaProfile(int stateIndex)
+            {
+                if (stateIndex >= 0 &&
+                    AuthoredStateAlphaByIndex != null &&
+                    AuthoredStateAlphaByIndex.TryGetValue(stateIndex, out PacketOwnedNamedObjectAlphaProfile alphaProfile) &&
+                    alphaProfile != null)
+                {
+                    return alphaProfile;
+                }
+
+                return BaseAlphaProfile;
+            }
+
+            private static string FormatMetadataLanes(PacketOwnedNamedObjectMetadataLane lanes)
+            {
+                List<string> names = new();
+                if ((lanes & PacketOwnedNamedObjectMetadataLane.ChangingObject) != 0)
+                {
+                    names.Add("changing-object");
+                }
+
+                if ((lanes & PacketOwnedNamedObjectMetadataLane.ReflectionInfo) != 0)
+                {
+                    names.Add("reflection-info");
+                }
+
+                if ((lanes & PacketOwnedNamedObjectMetadataLane.QuestVisible) != 0)
+                {
+                    names.Add("quest-visible");
+                }
+
+                return names.Count == 0 ? "none" : string.Join("/", names);
+            }
+        }
+
+        internal sealed record PacketOwnedNamedObjectAlphaProfile(
+            PacketOwnedNamedObjectAlphaRange SharedAlpha,
+            IReadOnlyDictionary<int, PacketOwnedNamedObjectAlphaRange> FrameAlphaByIndex)
+        {
+            public static PacketOwnedNamedObjectAlphaProfile FromWzProperty(WzImageProperty property)
+            {
+                property = WzInfoTools.GetRealProperty(property);
+                if (property == null)
+                {
+                    return null;
+                }
+
+                PacketOwnedNamedObjectAlphaRange sharedAlpha = PacketOwnedNamedObjectAlphaRange.FromWzProperty(property);
+                Dictionary<int, PacketOwnedNamedObjectAlphaRange> frameAlphaByIndex = new();
+                foreach (WzImageProperty child in property.WzProperties)
+                {
+                    if (!int.TryParse(child?.Name, NumberStyles.None, CultureInfo.InvariantCulture, out int frameIndex) ||
+                        frameIndex < 0)
+                    {
+                        continue;
+                    }
+
+                    PacketOwnedNamedObjectAlphaRange frameAlpha = PacketOwnedNamedObjectAlphaRange.FromWzProperty(child);
+                    if (frameAlpha != null)
+                    {
+                        frameAlphaByIndex[frameIndex] = frameAlpha;
+                    }
+                }
+
+                return sharedAlpha != null || frameAlphaByIndex.Count > 0
+                    ? new PacketOwnedNamedObjectAlphaProfile(sharedAlpha, frameAlphaByIndex)
+                    : null;
+            }
+
+            public string BuildDebugText()
+            {
+                List<string> parts = new();
+                if (SharedAlpha != null)
+                {
+                    parts.Add($"shared={SharedAlpha.BuildDebugText()}");
+                }
+
+                if (FrameAlphaByIndex?.Count > 0)
+                {
+                    parts.Add($"frames={string.Join("|", FrameAlphaByIndex.OrderBy(static pair => pair.Key).Select(static pair => $"{pair.Key}:{pair.Value.BuildDebugText()}"))}");
+                }
+
+                return parts.Count == 0 ? "none" : string.Join(";", parts);
+            }
+        }
+
+        internal static byte ResolvePacketOwnedNamedObjectLayerAlpha(
+            PacketOwnedNamedObjectAlphaProfile alphaProfile,
+            int frameIndex,
+            int frameElapsedMs,
+            int frameDelayMs)
+        {
+            if (alphaProfile == null)
+            {
+                return byte.MaxValue;
+            }
+
+            PacketOwnedNamedObjectAlphaRange alphaRange = null;
+            if (frameIndex >= 0 &&
+                alphaProfile.FrameAlphaByIndex != null &&
+                alphaProfile.FrameAlphaByIndex.TryGetValue(frameIndex, out PacketOwnedNamedObjectAlphaRange frameAlpha) &&
+                frameAlpha != null)
+            {
+                alphaRange = frameAlpha;
+            }
+
+            alphaRange ??= alphaProfile.SharedAlpha;
+            if (alphaRange == null)
+            {
+                return byte.MaxValue;
+            }
+
+            return ResolvePacketOwnedNamedObjectLayerAlpha(alphaRange, frameElapsedMs, frameDelayMs);
+        }
+
+        internal static byte ResolvePacketOwnedNamedObjectLayerAlpha(
+            PacketOwnedNamedObjectAlphaRange alphaRange,
+            int frameElapsedMs,
+            int frameDelayMs)
+        {
+            if (alphaRange == null)
+            {
+                return byte.MaxValue;
+            }
+
+            if (alphaRange.StartAlpha == alphaRange.EndAlpha)
+            {
+                return alphaRange.StartAlpha;
+            }
+
+            float progress = Math.Clamp(frameElapsedMs / (float)Math.Max(1, frameDelayMs), 0f, 1f);
+            int resolved = (int)Math.Round(alphaRange.StartAlpha + ((alphaRange.EndAlpha - alphaRange.StartAlpha) * progress));
+            return (byte)Math.Clamp(resolved, byte.MinValue, byte.MaxValue);
+        }
+
+        internal sealed record PacketOwnedNamedObjectAlphaRange(byte StartAlpha, byte EndAlpha)
+        {
+            public static PacketOwnedNamedObjectAlphaRange FromWzProperty(WzImageProperty property)
+            {
+                property = WzInfoTools.GetRealProperty(property);
+                if (property == null)
+                {
+                    return null;
+                }
+
+                int? sharedAlpha = TryReadPacketOwnedNamedObjectIntProperty(property, "alpha", out int alphaValue)
+                    ? alphaValue
+                    : null;
+                int? startAlpha = TryReadPacketOwnedNamedObjectIntProperty(property, "a0", out int a0Value)
+                    ? a0Value
+                    : sharedAlpha;
+                int? endAlpha = TryReadPacketOwnedNamedObjectIntProperty(property, "a1", out int a1Value)
+                    ? a1Value
+                    : sharedAlpha;
+                if (!startAlpha.HasValue && !endAlpha.HasValue)
+                {
+                    return null;
+                }
+
+                byte start = (byte)Math.Clamp(startAlpha ?? endAlpha ?? byte.MaxValue, byte.MinValue, byte.MaxValue);
+                byte end = (byte)Math.Clamp(endAlpha ?? startAlpha ?? start, byte.MinValue, byte.MaxValue);
+                return new PacketOwnedNamedObjectAlphaRange(start, end);
+            }
+
+            public string BuildDebugText()
+            {
+                return StartAlpha == EndAlpha
+                    ? StartAlpha.ToString(CultureInfo.InvariantCulture)
+                    : $"{StartAlpha.ToString(CultureInfo.InvariantCulture)}->{EndAlpha.ToString(CultureInfo.InvariantCulture)}";
+            }
+        }
+
+        internal sealed record PacketOwnedNamedObjectVectorAnimationProfile(
+            int MoveType,
+            int MoveWidth,
+            int MoveHeight,
+            int MovePeriodMs,
+            bool CenterStart,
+            int Rotate,
+            bool EllipticalClockwise = true)
+        {
+            public const int DefaultMoveWidth = 100;
+            public const int DefaultMoveHeight = 100;
+            public const int DefaultMovePeriodMs = 5000;
+
+            public static PacketOwnedNamedObjectVectorAnimationProfile FromWzProperty(WzImageProperty property)
+            {
+                WzImageProperty frameProperty = ResolveFirstFrameProperty(property);
+                if (frameProperty == null)
+                {
+                    return null;
+                }
+
+                int moveType = TryReadPacketOwnedNamedObjectIntProperty(frameProperty, "moveType", out int moveTypeValue)
+                    ? moveTypeValue
+                    : 0;
+                int rotate = TryReadPacketOwnedNamedObjectIntProperty(frameProperty, "rotate", out int rotateValue)
+                    ? rotateValue
+                    : 0;
+                if (moveType == 0 && rotate == 0)
+                {
+                    return null;
+                }
+
+                int moveWidth = TryReadPacketOwnedNamedObjectIntProperty(frameProperty, "moveW", out int moveWidthValue)
+                    ? moveWidthValue
+                    : DefaultMoveWidth;
+                int moveHeight = TryReadPacketOwnedNamedObjectIntProperty(frameProperty, "moveH", out int moveHeightValue)
+                    ? moveHeightValue
+                    : DefaultMoveHeight;
+                int movePeriod = TryReadPacketOwnedNamedObjectIntProperty(frameProperty, "moveP", out int movePeriodValue)
+                    ? movePeriodValue
+                    : DefaultMovePeriodMs;
+                bool centerStart = TryReadPacketOwnedNamedObjectIntProperty(frameProperty, "centerStart", out int centerStartValue) &&
+                    centerStartValue != 0;
+
+                return new PacketOwnedNamedObjectVectorAnimationProfile(
+                    moveType,
+                    moveWidth,
+                    moveHeight,
+                    Math.Max(1, Math.Abs(movePeriod)),
+                    centerStart,
+                    rotate,
+                    movePeriod >= 0);
+            }
+
+            public bool UsesEllipticalMove => MoveType == 3;
+
+            public bool TryResolveMoveVector(out int targetOffsetX, out int targetOffsetY, out int durationMs)
+            {
+                durationMs = Math.Max(1, MovePeriodMs);
+                targetOffsetX = 0;
+                targetOffsetY = 0;
+                switch (MoveType)
+                {
+                    case 1:
+                        targetOffsetX = MoveWidth;
+                        break;
+                    case 2:
+                        targetOffsetY = MoveHeight;
+                        break;
+                    case 3:
+                        targetOffsetX = MoveWidth;
+                        targetOffsetY = MoveHeight;
+                        break;
+                    default:
+                        return false;
+                }
+
+                return targetOffsetX != 0 || targetOffsetY != 0;
+            }
+
+            public bool TryResolveRotation(out float targetRotationDegrees, out int durationMs)
+            {
+                durationMs = Math.Max(1, Math.Abs(Rotate));
+                targetRotationDegrees = 360f;
+                return Rotate != 0;
+            }
+
+            public string BuildDebugText()
+            {
+                List<string> parts = new()
+                {
+                    $"moveType={MoveType.ToString(CultureInfo.InvariantCulture)}"
+                };
+                if (MoveWidth != DefaultMoveWidth)
+                {
+                    parts.Add($"moveW={MoveWidth.ToString(CultureInfo.InvariantCulture)}");
+                }
+
+                if (MoveHeight != DefaultMoveHeight)
+                {
+                    parts.Add($"moveH={MoveHeight.ToString(CultureInfo.InvariantCulture)}");
+                }
+
+                if (MovePeriodMs != DefaultMovePeriodMs)
+                {
+                    int debugMovePeriod = EllipticalClockwise ? MovePeriodMs : -MovePeriodMs;
+                    parts.Add($"moveP={debugMovePeriod.ToString(CultureInfo.InvariantCulture)}");
+                }
+
+                if (CenterStart)
+                {
+                    parts.Add("centerStart");
+                }
+
+                if (Rotate != 0)
+                {
+                    parts.Add($"rotate={Rotate.ToString(CultureInfo.InvariantCulture)}");
+                }
+
+                return string.Join("/", parts);
+            }
+
+            private static WzImageProperty ResolveFirstFrameProperty(WzImageProperty property)
+            {
+                property = WzInfoTools.GetRealProperty(property);
+                if (property == null)
+                {
+                    return null;
+                }
+
+                return WzInfoTools.GetRealProperty(property["0"]) ?? property;
+            }
+        }
+
+        internal sealed record PacketOwnedNamedObjectMotionProfile(
+            byte Flow,
+            int? Rx,
+            int? Ry,
+            int? Cx,
+            int? Cy)
+        {
+            public static PacketOwnedNamedObjectMotionProfile FromMapObject(
+                byte flow,
+                int? rx,
+                int? ry,
+                int? cx,
+                int? cy)
+            {
+                return HasMotion(flow, rx, ry, cx, cy)
+                    ? new PacketOwnedNamedObjectMotionProfile(flow, rx, ry, cx, cy)
+                    : null;
+            }
+
+            public static PacketOwnedNamedObjectMotionProfile FromWzProperty(WzImageProperty property)
+            {
+                if (property == null)
+                {
+                    return null;
+                }
+
+                byte flow = TryReadPacketOwnedNamedObjectIntProperty(property, "flow", out int flowValue)
+                    ? (byte)Math.Clamp(flowValue, byte.MinValue, byte.MaxValue)
+                    : (byte)0;
+                int? rx = TryReadPacketOwnedNamedObjectIntProperty(property, "rx", out int rxValue) ? rxValue : null;
+                int? ry = TryReadPacketOwnedNamedObjectIntProperty(property, "ry", out int ryValue) ? ryValue : null;
+                int? cx = TryReadPacketOwnedNamedObjectIntProperty(property, "cx", out int cxValue) ? cxValue : null;
+                int? cy = TryReadPacketOwnedNamedObjectIntProperty(property, "cy", out int cyValue) ? cyValue : null;
+                return FromMapObject(flow, rx, ry, cx, cy);
+            }
+
+            public string BuildDebugText()
+            {
+                List<string> parts = new();
+                if (Flow != 0)
+                {
+                    parts.Add($"flow={Flow.ToString(CultureInfo.InvariantCulture)}");
+                }
+
+                AddNullableIntDebugPart(parts, "rx", Rx);
+                AddNullableIntDebugPart(parts, "ry", Ry);
+                AddNullableIntDebugPart(parts, "cx", Cx);
+                AddNullableIntDebugPart(parts, "cy", Cy);
+                return parts.Count == 0 ? "none" : string.Join("/", parts);
+            }
+
+            private static bool HasMotion(byte flow, int? rx, int? ry, int? cx, int? cy)
+            {
+                return flow != 0 || rx.HasValue || ry.HasValue || cx.HasValue || cy.HasValue;
+            }
+
+            private static void AddNullableIntDebugPart(List<string> parts, string name, int? value)
+            {
+                if (value.HasValue)
+                {
+                    parts.Add($"{name}={value.Value.ToString(CultureInfo.InvariantCulture)}");
+                }
+            }
+        }
+
+        private bool TryApplyClientOwnedSessionValuePacket(byte[] payload, int currentTick, out string message)
+        {
+            if (!TryDecodeMapleStringPairPayload(payload, out string key, out string value, out string error))
+            {
+                message = $"CWvsContext::OnSessionValue packet did not decode into a session key/value pair. {error}";
+                return false;
+            }
+
+            bool animationDisplayerCoolApplied = TryApplyAnimationDisplayerSessionValueCoolOwner(
+                key,
+                value,
+                currentTick,
+                out string animationDisplayerCoolMessage);
+
+            bool releasedPendingImpact = TryApplyPendingPortalSessionValueImpact(
+                key,
+                value,
+                PartyRaidField.ClientSessionValuePacketType,
+                PacketFieldSpecificDataOwnerHint.Session);
+
+            bool structuredApplied = TryApplyStructuredFieldSpecificPair(
+                key,
+                value,
+                PacketFieldSpecificDataOwnerHint.Session,
+                currentTick,
+                out string target);
+            if (structuredApplied)
+            {
+                string impactSuffix = releasedPendingImpact
+                    ? " Released the pending portal session-value impact before the field virtual owner ran."
+                    : string.Empty;
+                string coolSuffix = animationDisplayerCoolApplied
+                    ? $" {animationDisplayerCoolMessage}."
+                    : string.Empty;
+                message = $"CWvsContext::OnSessionValue applied {key}={value} ({target}).{impactSuffix}{coolSuffix}";
+                return true;
+            }
+
+            if (releasedPendingImpact)
+            {
+                string coolSuffix = animationDisplayerCoolApplied
+                    ? $" {animationDisplayerCoolMessage}."
+                    : string.Empty;
+                message = $"CWvsContext::OnSessionValue released pending portal session-value impact for {key}={value} before any active session owner accepted it.{coolSuffix}";
+                return true;
+            }
+
+            if (animationDisplayerCoolApplied)
+            {
+                message = $"CWvsContext::OnSessionValue applied {animationDisplayerCoolMessage}, but no active session owner accepted {key}={value}.";
+                return true;
+            }
+
+            message = $"CWvsContext::OnSessionValue decoded {key}={value}, but no active session owner accepted it.";
+            return false;
+        }
+
+        private string HandleFieldSpecificDataPacketHandoff(byte[] payload, int currentTick)
+        {
+            bool wrapperApplied = _specialFieldRuntime.TryDispatchCurrentWrapperFieldSpecificData(
+                TryApplyShowaBathFieldSpecificPresentationOwner,
+                out string wrapperMessage);
+            if (wrapperApplied || !string.IsNullOrWhiteSpace(wrapperMessage))
+            {
+                return wrapperMessage;
+            }
+
+            if (TryHandleDojoFieldSpecificDataPacket(payload, currentTick, out string dojoMessage))
+            {
+                return dojoMessage;
+            }
+
+            if (TryHandleTutorialFieldSpecificDataPacket(payload, out string tutorialMessage))
+            {
+                return tutorialMessage;
+            }
+
+            if (TryHandleCurrentWrapperFieldSpecificRelayPacket(payload, currentTick, out string relayMessage))
+            {
+                return relayMessage;
+            }
+
+            if (TryApplyStructuredFieldSpecificDataPayload(payload, currentTick, out string structuredMessage))
+            {
+                return structuredMessage;
+            }
+
+            string areaName = _specialFieldRuntime.ActiveArea?.ToString() ?? "no active special-field owner";
+            return $"handoff target={areaName}";
+        }
+
+        private bool TryHandleDojoFieldSpecificDataPacket(byte[] payload, int currentTick, out string message)
+        {
+            message = null;
+            if (_specialFieldRuntime.ActiveArea != SpecialFieldBacklogArea.MuLungDojoFieldFlow)
+            {
+                return false;
+            }
+
+            if (!TryDecodeDojoFieldSpecificRelayPayload(payload, out int packetType, out byte[] packetPayload, out string decodeSummary))
+            {
+                return false;
+            }
+
+            bool applied = _specialFieldRuntime.TryDispatchCurrentWrapperPacket(packetType, packetPayload, currentTick, out string wrapperMessage);
+            string handoffSummary = $"CField_MuLungDojo::OnFieldSpecificData decoded relay packet {packetType} and dispatched it through the active Dojo wrapper owner.";
+            if (string.IsNullOrWhiteSpace(wrapperMessage))
+            {
+                message = $"{handoffSummary} {decodeSummary}";
+            }
+            else
+            {
+                message = $"{handoffSummary} {wrapperMessage} {decodeSummary}";
+            }
+
+            return applied || !string.IsNullOrWhiteSpace(wrapperMessage);
+        }
+
+        private bool TryHandleTutorialFieldSpecificDataPacket(byte[] payload, out string message)
+        {
+            message = null;
+            if (!TryBuildTutorialWrapperContract(_mapBoard?.MapInfo, out TutorialWrapperContract contract) ||
+                contract.Kind != TutorialWrapperKind.Tutorial)
+            {
+                return false;
+            }
+
+            if (!TryApplyTutorialFieldSpecificAppearanceOwner(payload, out string tutorialMessage))
+            {
+                return false;
+            }
+
+            string ownerSummary = "CField_Tutorial::DecodeFieldSpecificData accepted packet-owned field-specific appearance payload.";
+            message = string.IsNullOrWhiteSpace(tutorialMessage)
+                ? ownerSummary
+                : $"{ownerSummary} {tutorialMessage}";
+            return true;
+        }
+
+        private bool TryHandleCurrentWrapperFieldSpecificRelayPacket(byte[] payload, int currentTick, out string message)
+        {
+            message = null;
+            if (payload == null || payload.Length < sizeof(ushort))
+            {
+                return false;
+            }
+
+            if (!TryDecodeFieldSpecificCurrentWrapperRelayPacketChain(
+                    payload,
+                    out int packetType,
+                    out byte[] packetPayload,
+                    out string relayEvidence,
+                    out _))
+            {
+                return false;
+            }
+
+            bool applied = _specialFieldRuntime.TryDispatchCurrentWrapperPacket(
+                packetType,
+                packetPayload,
+                currentTick,
+                out string wrapperMessage);
+            if (!applied)
+            {
+                return false;
+            }
+
+            string relaySummary = $"CField::OnFieldSpecificData decoded wrapper relay packet {packetType} with {packetPayload.Length} payload byte(s).";
+            if (!string.IsNullOrWhiteSpace(relayEvidence))
+            {
+                relaySummary = $"{relaySummary} {relayEvidence}";
+            }
+
+            message = string.IsNullOrWhiteSpace(wrapperMessage)
+                ? relaySummary
+                : $"{relaySummary} {wrapperMessage}";
+            return true;
+        }
+
+        internal static bool TryDecodeFieldSpecificCurrentWrapperRelayPacketChain(
+            byte[] payload,
+            out int packetType,
+            out byte[] packetPayload,
+            out string relayEvidence,
+            out string error)
+        {
+            packetType = -1;
+            packetPayload = Array.Empty<byte>();
+            relayEvidence = string.Empty;
+            error = null;
+            payload ??= Array.Empty<byte>();
+
+            if (!SpecialFieldRuntimeCoordinator.TryDecodeCurrentWrapperRelayPayload(
+                    payload,
+                    out int relayedPacketType,
+                    out byte[] relayedPayload,
+                    out string relayDecodeError))
+            {
+                error = relayDecodeError;
+                return false;
+            }
+
+            List<int> relayPacketTypes = new() { relayedPacketType };
+            packetType = relayedPacketType;
+            packetPayload = relayedPayload;
+            const int maxNestedRelayDepth = 8;
+            for (int depth = 1; depth < maxNestedRelayDepth && packetType == SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode; depth++)
+            {
+                if (!SpecialFieldRuntimeCoordinator.TryDecodeCurrentWrapperRelayPayload(
+                        packetPayload,
+                        out relayedPacketType,
+                        out relayedPayload,
+                        out relayDecodeError))
+                {
+                    error = relayDecodeError;
+                    return false;
+                }
+
+                relayPacketTypes.Add(relayedPacketType);
+                packetType = relayedPacketType;
+                packetPayload = relayedPayload;
+            }
+
+            relayEvidence = relayPacketTypes.Count > 1
+                ? $"Decoded wrapper relay packet-id prefixes {string.Join("->", relayPacketTypes)}."
+                : string.Empty;
+
+            if (packetType == SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode)
+            {
+                error =
+                    $"Field-specific wrapper relay decode exceeded bounded depth while unwrapping nested packet id {SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode}. {relayEvidence}";
+                return false;
+            }
+
+            return true;
+        }
+
+        internal static bool TryDecodeDojoFieldSpecificRelayPayload(
+            byte[] payload,
+            out int packetType,
+            out byte[] packetPayload,
+            out string summary)
+        {
+            packetType = -1;
+            packetPayload = Array.Empty<byte>();
+            if (DojoField.TryDecodeFieldSpecificPacketPayload(payload, out packetType, out packetPayload, out string decodeError))
+            {
+                summary =
+                    $"Dojo field-specific relay decoded packet {packetType} with {packetPayload.Length} payload byte(s).";
+                return true;
+            }
+
+            if (TryDecodeNestedDojoFieldSpecificRelayPayload(payload, out packetType, out packetPayload, out string nestedEvidence))
+            {
+                summary =
+                    $"Dojo field-specific relay decoded packet {packetType} with {packetPayload.Length} payload byte(s) from nested relay packet-id prefixes ({nestedEvidence}).";
+                return true;
+            }
+
+            string candidateSummary = DojoField.DescribeFieldSpecificPayloadCandidates(payload);
+            if (string.IsNullOrWhiteSpace(candidateSummary) ||
+                string.Equals(candidateSummary, "unknown", StringComparison.OrdinalIgnoreCase))
+            {
+                summary = $"Dojo field-specific relay decode failed. {decodeError}";
+            }
+            else
+            {
+                summary = $"Dojo field-specific relay decode failed. {decodeError} Candidate payloads: {candidateSummary}.";
+            }
+
+            return false;
+        }
+
+        private static bool TryDecodeNestedDojoFieldSpecificRelayPayload(
+            byte[] payload,
+            out int packetType,
+            out byte[] packetPayload,
+            out string evidence)
+        {
+            packetType = -1;
+            packetPayload = Array.Empty<byte>();
+            evidence = string.Empty;
+            payload ??= Array.Empty<byte>();
+            if (!SpecialFieldRuntimeCoordinator.TryDecodeCurrentWrapperRelayPayload(
+                    payload,
+                    out int relayPacketType,
+                    out byte[] relayPayload,
+                    out _))
+            {
+                return false;
+            }
+
+            if (!SpecialFieldRuntimeCoordinator.TryDecodeDojoPacketFromRelayPrefixChain(
+                    relayPacketType,
+                    relayPayload,
+                    out packetType,
+                    out packetPayload,
+                    out string relayEvidence))
+            {
+                return false;
+            }
+
+            evidence = $"nested-relay:{relayEvidence}";
+            return true;
+        }
+
+        private bool TryApplyStructuredFieldSpecificDataPayload(byte[] payload, int currentTick, out string message)
+        {
+            message = null;
+            FieldSpecificStringPairOwnerMask activeOwners = GetActiveFieldSpecificStringPairOwners();
+            if (payload == null ||
+                payload.Length == 0 ||
+                activeOwners == FieldSpecificStringPairOwnerMask.None ||
+                !PacketFieldSpecificDataCodec.TryDecodeStringPairs(payload, out IReadOnlyList<KeyValuePair<string, string>> pairs, out int headerSize))
+            {
+                return false;
+            }
+
+            List<string> applied = new();
+            foreach (KeyValuePair<string, string> pair in pairs)
+            {
+                string key = pair.Key;
+                PacketFieldSpecificDataOwnerHint ownerHint = PacketFieldSpecificDataCodec.ResolveOwnerHint(ref key);
+                if (TryApplyStructuredFieldSpecificPair(key, pair.Value, ownerHint, currentTick, out string target))
+                {
+                    string ownerPrefix = ownerHint == PacketFieldSpecificDataOwnerHint.None ? string.Empty : $"{ownerHint.ToString().ToLowerInvariant()}:";
+                    applied.Add($"{ownerPrefix}{key}={pair.Value} ({target})");
+                }
+            }
+
+            if (applied.Count == 0)
+            {
+                message =
+                    $"decoded {pairs.Count} field-specific key/value pair(s) for {DescribeFieldSpecificStringPairOwners(activeOwners)} " +
+                    $"using header size {headerSize}, but no active owner accepted them";
+                return true;
+            }
+
+            message =
+                $"decoded {pairs.Count} field-specific key/value pair(s) for {DescribeFieldSpecificStringPairOwners(activeOwners)} " +
+                $"using header size {headerSize}: {string.Join(", ", applied.Take(4))}";
+            return true;
+        }
+
+        private bool TryApplyStructuredFieldSpecificPair(
+            string key,
+            string value,
+            PacketFieldSpecificDataOwnerHint ownerHint,
+            int currentTick,
+            out string target)
+        {
+            target = null;
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                return false;
+            }
+
+            if (ShouldRouteFieldSpecificPairToPartyRaid(ownerHint) &&
+                _specialFieldRuntime.PartyRaid.IsActive &&
+                _specialFieldRuntime.PartyRaid.TryApplyFieldSpecificPair(key, value, ownerHint, currentTick, out string partyRaidOwner))
+            {
+                TryApplyPendingPortalSessionValueImpact(key, value, 149, ownerHint);
+                target = _specialFieldRuntime.PartyRaid.DescribeStructuredFieldSpecificTarget(partyRaidOwner);
+                return true;
+            }
+
+            if (ShouldRouteFieldSpecificPairToFieldWrappers(ownerHint) &&
+                IsLimitedViewWrapperMap(_mapBoard?.MapInfo) &&
+                TryApplyClientOwnedLimitedViewFieldValue(key, value, out string limitedViewMessage))
+            {
+                TryApplyPendingPortalSessionValueImpact(key, value, 149, ownerHint);
+                target = limitedViewMessage;
+                return true;
+            }
+
+            if (ShouldRouteFieldSpecificPairToFieldWrappers(ownerHint) &&
+                IsEscortResultWrapperMap(_mapBoard?.MapInfo) &&
+                _specialFieldRuntime.TryDispatchCurrentWrapperFieldValue(key, value, currentTick, out string wrapperMessage))
+            {
+                TryApplyPendingPortalSessionValueImpact(key, value, 149, ownerHint);
+                target = wrapperMessage;
+                return true;
+            }
+
+            if (ShouldRouteFieldSpecificPairToFieldWrappers(ownerHint) &&
+                _specialFieldRuntime.TryDispatchCurrentWrapperSessionValue(key, value, out string sessionMessage))
+            {
+                TryApplyPendingPortalSessionValueImpact(key, value, 149, ownerHint);
+                target = sessionMessage;
+                return true;
+            }
+
+            if (ShouldRouteFieldSpecificPairToFieldWrappers(ownerHint) &&
+                _mapBoard?.MapInfo?.fieldType == MapleLib.WzLib.WzStructure.Data.FieldType.FIELDTYPE_HUNTINGADBALLOON &&
+                _specialFieldRuntime.TryDispatchCurrentWrapperFieldValue(key, value, currentTick, out string huntingAdBalloonMessage))
+            {
+                TryApplyPendingPortalSessionValueImpact(key, value, 149, ownerHint);
+                target = huntingAdBalloonMessage;
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool ShouldRouteFieldSpecificPairToPartyRaid(PacketFieldSpecificDataOwnerHint ownerHint)
+        {
+            return ownerHint is PacketFieldSpecificDataOwnerHint.None
+                or PacketFieldSpecificDataOwnerHint.Field
+                or PacketFieldSpecificDataOwnerHint.Party
+                or PacketFieldSpecificDataOwnerHint.Session;
+        }
+
+        private static bool ShouldRouteFieldSpecificPairToFieldWrappers(PacketFieldSpecificDataOwnerHint ownerHint)
+        {
+            return ownerHint is PacketFieldSpecificDataOwnerHint.None
+                or PacketFieldSpecificDataOwnerHint.Field
+                or PacketFieldSpecificDataOwnerHint.Session;
+        }
+
+        private FieldSpecificStringPairOwnerMask GetActiveFieldSpecificStringPairOwners()
+        {
+            FieldSpecificStringPairOwnerMask owners = FieldSpecificStringPairOwnerMask.None;
+            if (_specialFieldRuntime.PartyRaid.IsActive)
+            {
+                owners |= FieldSpecificStringPairOwnerMask.PartyRaid;
+            }
+
+            if (IsEscortResultWrapperMap(_mapBoard?.MapInfo))
+            {
+                owners |= FieldSpecificStringPairOwnerMask.EscortResult;
+            }
+
+            if (_mapBoard?.MapInfo?.fieldType == MapleLib.WzLib.WzStructure.Data.FieldType.FIELDTYPE_HUNTINGADBALLOON)
+            {
+                owners |= FieldSpecificStringPairOwnerMask.HuntingAdBalloon;
+            }
+
+            if (IsChaosZakumPortalSessionWrapperMap(_mapBoard?.MapInfo))
+            {
+                owners |= FieldSpecificStringPairOwnerMask.ChaosZakum;
+            }
+
+            if (IsLimitedViewWrapperMap(_mapBoard?.MapInfo))
+            {
+                owners |= FieldSpecificStringPairOwnerMask.LimitedView;
+            }
+
+            return owners;
+        }
+
+        private string DescribeFieldSpecificStringPairOwners(FieldSpecificStringPairOwnerMask owners)
+        {
+            List<string> names = new();
+            if ((owners & FieldSpecificStringPairOwnerMask.PartyRaid) != 0)
+            {
+                PartyRaidField partyRaid = _specialFieldRuntime.PartyRaid;
+                names.Add(partyRaid.HasNativePartyRaidWrapperOwner
+                    ? partyRaid.ClientWrapperOwnerName
+                    : "PartyRaidField");
+            }
+
+            if ((owners & FieldSpecificStringPairOwnerMask.EscortResult) != 0)
+            {
+                names.Add("escort-result wrapper");
+            }
+
+            if ((owners & FieldSpecificStringPairOwnerMask.HuntingAdBalloon) != 0)
+            {
+                names.Add("hunting-ad-balloon wrapper");
+            }
+
+            if ((owners & FieldSpecificStringPairOwnerMask.ChaosZakum) != 0)
+            {
+                names.Add("chaos-zakum session wrapper");
+            }
+
+            if ((owners & FieldSpecificStringPairOwnerMask.LimitedView) != 0)
+            {
+                names.Add("limited-view wrapper");
+            }
+
+            return names.Count == 0 ? "no known owner" : string.Join(", ", names);
+        }
+
+        private void QueuePendingPortalSessionValueImpact(PendingPortalSessionValueImpact pendingImpact)
+        {
+            if (pendingImpact?.IsValid != true)
+            {
+                ClearPendingPortalSessionValueImpacts();
+                return;
+            }
+
+            int currentMapId = _mapBoard?.MapInfo?.id ?? -1;
+            PrunePendingPortalSessionValueImpacts(currentMapId);
+            _pendingPortalSessionValueImpacts.RemoveAll(entry =>
+                PendingPortalSessionValueImpact.ShouldReplaceQueuedImpact(entry, pendingImpact));
+            _pendingPortalSessionValueImpacts.Add(pendingImpact);
+        }
+
+        private bool TryDispatchPortalSessionValueRequest(string key, int requestTick)
+        {
+            if (!PortalSessionValueRequestCodec.TryBuildPayload(key, out byte[] payload))
+            {
+                _lastPortalSessionValueRequestOpcode = -1;
+                _lastPortalSessionValueRequestPayload = Array.Empty<byte>();
+                _lastPortalSessionValueRequestSummary = "Portal session-value request was not dispatched because the key was empty.";
+                _lastPortalSessionValueRequestSentTick = int.MinValue;
+                return false;
+            }
+
+            _lastPortalSessionValueRequestOpcode = PortalSessionValueRequestCodec.Opcode;
+            _lastPortalSessionValueRequestPayload = payload;
+            _lastPortalSessionValueRequestSentTick = requestTick;
+            _lastPortalSessionValueRequestSummary = DispatchPortalSessionValueRequest(payload, key?.Trim(), requestTick);
+            return true;
+        }
+
+        private string DispatchPortalSessionValueRequest(byte[] payload, string key, int requestTick)
+        {
+            payload ??= Array.Empty<byte>();
+            string source = $"Recorded CWvsContext::SendRequestSessionValue opcode {PortalSessionValueRequestCodec.Opcode} for key '{key}' with reset={PortalSessionValueRequestCodec.RequestResetFlag} at tick {requestTick}.";
+
+            if (_localUtilityOfficialSessionBridge.TrySendOutboundPacket(
+                PortalSessionValueRequestCodec.Opcode,
+                payload,
+                out string bridgeStatus))
+            {
+                return $"{source} Dispatched it through the live official-session bridge. {bridgeStatus}";
+            }
+
+            if (_localUtilityPacketOutbox.TrySendOutboundPacket(
+                PortalSessionValueRequestCodec.Opcode,
+                payload,
+                out string outboxStatus))
+            {
+                return $"{source} Dispatched it through the generic packet outbox after the live bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus}";
+            }
+
+            if (_localUtilityOfficialSessionBridge.IsRunning
+                && _localUtilityOfficialSessionBridge.TryQueueOutboundPacket(
+                    PortalSessionValueRequestCodec.Opcode,
+                    payload,
+                    out string queuedBridgeStatus))
+            {
+                return $"{source} Queued it for deferred official-session injection after the live bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred bridge: {queuedBridgeStatus}";
+            }
+
+            if (_localUtilityPacketOutbox.TryQueueOutboundPacket(
+                PortalSessionValueRequestCodec.Opcode,
+                payload,
+                out string queuedOutboxStatus))
+            {
+                return $"{source} Queued it for deferred generic packet outbox delivery after the live bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred outbox: {queuedOutboxStatus}";
+            }
+
+            return $"{source} The request remained simulator-owned because neither the live bridge nor the packet outbox accepted opcode {PortalSessionValueRequestCodec.Opcode}. Bridge: {bridgeStatus} Outbox: {outboxStatus}";
+        }
+
+        private void PrunePendingPortalSessionValueImpacts(int currentMapId)
+        {
+            MapleLib.WzLib.WzStructure.MapInfo mapInfo = _mapBoard?.MapInfo;
+            bool partyRaidRuntimeActive = _specialFieldRuntime?.PartyRaid.IsActive == true;
+            _pendingPortalSessionValueImpacts.RemoveAll(entry =>
+                entry?.IsValid != true
+                || entry.MapId != currentMapId
+                || !IsPendingPortalSessionValueImpactOwnerStillAdmitted(entry.OwnerKind, mapInfo, partyRaidRuntimeActive));
+        }
+
+        internal static bool IsPendingPortalSessionValueImpactOwnerStillAdmitted(
+            PortalSessionValueImpactOwnerKind ownerKind,
+            MapleLib.WzLib.WzStructure.MapInfo mapInfo,
+            bool partyRaidRuntimeActive)
+        {
+            return ownerKind switch
+            {
+                PortalSessionValueImpactOwnerKind.UnresolvedSessionValue => true,
+                PortalSessionValueImpactOwnerKind.PartyRaid => partyRaidRuntimeActive
+                    && PartyRaidField.IsPartyRaidMap(mapInfo),
+                PortalSessionValueImpactOwnerKind.HuntingAdBalloon =>
+                    mapInfo?.fieldType == MapleLib.WzLib.WzStructure.Data.FieldType.FIELDTYPE_HUNTINGADBALLOON,
+                PortalSessionValueImpactOwnerKind.ChaosZakum => IsChaosZakumPortalSessionWrapperMap(mapInfo),
+                _ => false
+            };
+        }
+
+        private void ClearPendingPortalSessionValueImpacts()
+        {
+            _pendingPortalSessionValueImpacts.Clear();
+            _lastPortalSessionValueRequestSentTick = int.MinValue;
+        }
+
+        private void ConsumePendingPortalSessionValueImpactsFromTransferLifecycle()
+        {
+            if (!ShouldConsumePendingPortalSessionValueImpactsForTransferLifecycle(
+                    _pendingPortalSessionValueImpacts.Count,
+                    _lastPortalSessionValueRequestSentTick))
+            {
+                return;
+            }
+
+            ClearPendingPortalSessionValueImpacts();
+        }
+
+        internal static bool ShouldConsumePendingPortalSessionValueImpactsForTransferLifecycle(
+            int pendingImpactCount,
+            int lastRequestSentTick)
+        {
+            return pendingImpactCount > 0
+                || lastRequestSentTick != int.MinValue;
+        }
+
+        private bool TryApplyPendingPortalSessionValueImpact(
+            string key,
+            string value,
+            int packetType,
+            PacketFieldSpecificDataOwnerHint ownerHint)
+        {
+            int currentMapId = _mapBoard?.MapInfo?.id ?? -1;
+            PrunePendingPortalSessionValueImpacts(currentMapId);
+            if (_pendingPortalSessionValueImpacts.Count == 0)
+            {
+                return false;
+            }
+
+            PortalSessionValueImpactIngress ingress = new(key, value, packetType, ownerHint);
+            int pendingIndex = -1;
+            PendingPortalSessionValueImpact pendingImpact = null;
+            for (int i = _pendingPortalSessionValueImpacts.Count - 1; i >= 0; i--)
+            {
+                PendingPortalSessionValueImpact candidate = _pendingPortalSessionValueImpacts[i];
+                if (!candidate.Matches(currentMapId, ingress))
+                {
+                    continue;
+                }
+
+                pendingIndex = i;
+                pendingImpact = candidate;
+                break;
+            }
+
+            if (pendingIndex < 0 || pendingImpact?.IsValid != true)
+            {
+                return false;
+            }
+
+            PlayerCharacter player = _playerManager?.Player;
+            if (player?.Physics == null)
+            {
+                return false;
+            }
+
+            if (!TryApplyCollisionCustomImpactToPlayer(
+                    player,
+                    pendingImpact.VelocityX,
+                    pendingImpact.VelocityY,
+                    currTickCount))
+            {
+                return false;
+            }
+
+            _pendingPortalSessionValueImpacts.RemoveAt(pendingIndex);
+            _ = ClearPacketOwnedTeleportPassengerLink();
+            return true;
+        }
+
+        private bool TryApplyPendingPortalSessionValueImpactFromPacket(int packetType, byte[] payload)
+        {
+            return TryApplyPendingPortalSessionValueImpactFromPacket(packetType, payload, out _);
+        }
+
+        private bool TryApplyPendingPortalSessionValueImpactFromPacket(int packetType, byte[] payload, out string message)
+        {
+            message = null;
+            int currentMapId = _mapBoard?.MapInfo?.id ?? -1;
+            PrunePendingPortalSessionValueImpacts(currentMapId);
+            if (_pendingPortalSessionValueImpacts.Count == 0
+                || !TryDecodePortalSessionValueImpactPacketPairs(packetType, payload, out IReadOnlyList<PortalSessionValueImpactIngress> pairs, out _))
+            {
+                return false;
+            }
+
+            List<string> releasedPairs = null;
+            foreach (PortalSessionValueImpactIngress pair in pairs)
+            {
+                while (TryApplyPendingPortalSessionValueImpact(pair.Key, pair.Value, pair.PacketType, pair.OwnerHint))
+                {
+                    releasedPairs ??= new List<string>();
+                    releasedPairs.Add($"{pair.Key}={pair.Value}");
+                }
+            }
+
+            if (releasedPairs == null || releasedPairs.Count == 0)
+            {
+                return false;
+            }
+
+            message = releasedPairs.Count == 1
+                ? $"Released pending portal session-value impact from packet {packetType} for {releasedPairs[0]}."
+                : $"Released {releasedPairs.Count} pending portal session-value impacts from packet {packetType}: {string.Join(", ", releasedPairs.Take(4))}.";
+            return true;
+        }
+
+        internal static bool TryDecodePortalSessionValueImpactPacketPairs(
+            int packetType,
+            byte[] payload,
+            out IReadOnlyList<PortalSessionValueImpactIngress> pairs,
+            out string error)
+        {
+            pairs = Array.Empty<PortalSessionValueImpactIngress>();
+            error = null;
+            payload ??= Array.Empty<byte>();
+
+            if (!TryUnwrapCurrentWrapperRelayPacketChain(packetType, payload, out packetType, out payload, out string relayEvidence, out string relayError))
+            {
+                error = relayError;
+                return false;
+            }
+
+            if (packetType == PartyRaidField.ClientSessionValuePacketType
+                || packetType == PartyRaidField.ClientFieldSetVariablePacketType)
+            {
+                if (!TryDecodeMapleStringPairPayload(payload, out string key, out string value, out error))
+                {
+                    return false;
+                }
+
+                PacketFieldSpecificDataOwnerHint ownerHint = packetType == PartyRaidField.ClientFieldSetVariablePacketType
+                    ? PacketFieldSpecificDataOwnerHint.Field
+                    : PacketFieldSpecificDataOwnerHint.Session;
+                PacketFieldSpecificDataOwnerHint prefixedOwnerHint = PacketFieldSpecificDataCodec.ResolveOwnerHint(ref key);
+                if (prefixedOwnerHint != PacketFieldSpecificDataOwnerHint.None)
+                {
+                    ownerHint = prefixedOwnerHint;
+                }
+
+                pairs = new[] { new PortalSessionValueImpactIngress(key, value, packetType, ownerHint) };
+                if (!string.IsNullOrWhiteSpace(relayEvidence))
+                {
+                    error = relayEvidence;
+                }
+
+                return true;
+            }
+
+            if (packetType == 149)
+            {
+                // Try wrapper relay first so field-specific payloads that coincidentally parse as string pairs
+                // still honor the active wrapper owner seam before generic pair fallback.
+                if (TryDecodeFieldSpecificRelayPacketPairs(payload, out pairs, out string relayMessage))
+                {
+                    error = string.IsNullOrWhiteSpace(relayEvidence)
+                        ? relayMessage
+                        : $"{relayEvidence}. {relayMessage}";
+                    return true;
+                }
+
+                if (!PacketFieldSpecificDataCodec.TryDecodeStringPairs(payload, out IReadOnlyList<KeyValuePair<string, string>> decodedPairs, out int headerSize))
+                {
+                    error = "Portal session-value impact packet did not decode into Maple string pairs.";
+                    return false;
+                }
+
+                if (!TryNormalizePortalSessionValueImpactPairs(packetType, decodedPairs, out pairs))
+                {
+                    error = "Portal session-value impact packet did not contain any usable session or field key/value pairs.";
+                    return false;
+                }
+
+                error = string.IsNullOrWhiteSpace(relayEvidence)
+                    ? $"decoded field-specific packet header size {headerSize}"
+                    : $"{relayEvidence}. decoded field-specific packet header size {headerSize}";
+                return true;
+            }
+
+            error = $"Packet type {packetType} does not carry portal session-value impact pairs.";
+            return false;
+        }
+
+        private static bool TryDecodeFieldSpecificRelayPacketPairs(
+            byte[] payload,
+            out IReadOnlyList<PortalSessionValueImpactIngress> pairs,
+            out string error)
+        {
+            pairs = Array.Empty<PortalSessionValueImpactIngress>();
+            error = null;
+            if (!SpecialFieldRuntimeCoordinator.TryDecodeCurrentWrapperRelayPayload(
+                    payload,
+                    out int relayedPacketType,
+                    out byte[] relayedPayload,
+                    out _))
+            {
+                return false;
+            }
+
+            if (!TryDecodePortalSessionValueImpactPacketPairs(
+                    relayedPacketType,
+                    relayedPayload,
+                    out pairs,
+                    out string relayedError))
+            {
+                error =
+                    $"Portal session-value impact field-specific relay packet {relayedPacketType} did not decode into usable key/value pairs. {relayedError}";
+                return false;
+            }
+
+            error = $"decoded field-specific relay packet {relayedPacketType}. {relayedError}";
+            return true;
+        }
+
+        private static bool TryUnwrapCurrentWrapperRelayPacketChain(
+            int packetType,
+            byte[] payload,
+            out int unwrappedPacketType,
+            out byte[] unwrappedPayload,
+            out string relayEvidence,
+            out string error)
+        {
+            unwrappedPacketType = packetType;
+            unwrappedPayload = payload ?? Array.Empty<byte>();
+            relayEvidence = string.Empty;
+            error = null;
+            if (unwrappedPacketType != SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode)
+            {
+                return true;
+            }
+
+            List<int> relayPacketTypes = new();
+            const int maxNestedRelayDepth = 8;
+            for (int depth = 0; depth < maxNestedRelayDepth; depth++)
+            {
+                if (!SpecialFieldRuntimeCoordinator.TryDecodeCurrentWrapperRelayPayload(
+                        unwrappedPayload,
+                        out int relayedPacketType,
+                        out byte[] relayedPayload,
+                        out string relayDecodeError))
+                {
+                    error = relayDecodeError;
+                    return false;
+                }
+
+                relayPacketTypes.Add(relayedPacketType);
+                unwrappedPacketType = relayedPacketType;
+                unwrappedPayload = relayedPayload;
+                if (unwrappedPacketType != SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode)
+                {
+                    relayEvidence = $"decoded relay packet-id prefixes {string.Join("->", relayPacketTypes)}";
+                    return true;
+                }
+            }
+
+            relayEvidence = $"decoded relay packet-id prefixes {string.Join("->", relayPacketTypes)}";
+            error =
+                $"Portal session-value impact relay decode exceeded bounded depth while unwrapping nested packet id {SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode}. {relayEvidence}.";
+            return false;
+        }
+
+        private static bool TryNormalizePortalSessionValueImpactPairs(
+            int packetType,
+            IReadOnlyList<KeyValuePair<string, string>> pairs,
+            out IReadOnlyList<PortalSessionValueImpactIngress> normalizedPairs)
+        {
+            normalizedPairs = Array.Empty<PortalSessionValueImpactIngress>();
+            if (pairs == null || pairs.Count == 0)
+            {
+                return false;
+            }
+
+            List<PortalSessionValueImpactIngress> normalized = new(pairs.Count);
+            foreach (KeyValuePair<string, string> pair in pairs)
+            {
+                string key = pair.Key;
+                PacketFieldSpecificDataOwnerHint ownerHint = PacketFieldSpecificDataCodec.ResolveOwnerHint(ref key);
+                if (string.IsNullOrWhiteSpace(key))
+                {
+                    continue;
+                }
+
+                normalized.Add(new PortalSessionValueImpactIngress(key, pair.Value, packetType, ownerHint));
+            }
+
+            if (normalized.Count == 0)
+            {
+                return false;
+            }
+
+            normalizedPairs = normalized;
+            return true;
+        }
+
+        internal static bool TryDecodeMapleStringPairPayload(
+            byte[] payload,
+            out string key,
+            out string value,
+            out string error)
+        {
+            key = string.Empty;
+            value = string.Empty;
+            error = null;
+            payload ??= Array.Empty<byte>();
+
+            try
+            {
+                using MemoryStream stream = new(payload, writable: false);
+                using BinaryReader reader = new(stream, Encoding.Default, leaveOpen: false);
+                key = ReadMapleString(reader);
+                value = ReadMapleString(reader);
+                if (stream.Position != stream.Length)
+                {
+                    error = "Maple string pair payload had trailing bytes after the value string.";
+                    return false;
+                }
+
+                if (string.IsNullOrWhiteSpace(key))
+                {
+                    error = "Maple string pair payload key was empty.";
+                    return false;
+                }
+
+                return true;
+            }
+            catch (Exception ex) when (ex is IOException || ex is EndOfStreamException || ex is ArgumentException)
+            {
+                error = ex.Message;
+                return false;
+            }
+        }
+
+        private static string ReadMapleString(BinaryReader reader)
+        {
+            ushort length = reader.ReadUInt16();
+            byte[] bytes = reader.ReadBytes(length);
+            if (bytes.Length != length)
+            {
+                throw new EndOfStreamException("Maple string pair payload ended before its declared Maple-string length.");
+            }
+
+            return Encoding.Default.GetString(bytes);
+        }
+
+        [Flags]
+        private enum FieldSpecificStringPairOwnerMask
+        {
+            None = 0,
+            PartyRaid = 1 << 0,
+            EscortResult = 1 << 1,
+            HuntingAdBalloon = 1 << 2,
+            ChaosZakum = 1 << 3,
+            LimitedView = 1 << 4
+        }
+
+        private QuestLogSnapshot BuildQuestLogSnapshotWithPacketState(QuestLogTabType tab, bool showAllLevels)
+        {
+            QuestLogSnapshot snapshot = _questRuntime.BuildQuestLogSnapshot(tab, _playerManager?.Player?.Build, showAllLevels);
+            if (snapshot?.Entries == null || snapshot.Entries.Count == 0)
+            {
+                return snapshot;
+            }
+
+            List<QuestLogEntrySnapshot> updatedEntries = null;
+            for (int i = 0; i < snapshot.Entries.Count; i++)
+            {
+                QuestLogEntrySnapshot entry = snapshot.Entries[i];
+                if (!_packetFieldStateRuntime.TryGetQuestTimerText(entry.QuestId, currTickCount, out string timerText))
+                {
+                    continue;
+                }
+
+                updatedEntries ??= new List<QuestLogEntrySnapshot>(snapshot.Entries);
+                updatedEntries[i] = new QuestLogEntrySnapshot
+                {
+                    QuestId = entry.QuestId,
+                    Name = entry.Name,
+                    State = entry.State,
+                    StatusText = string.IsNullOrWhiteSpace(entry.StatusText)
+                        ? timerText
+                        : $"{entry.StatusText} | {timerText}",
+                    SummaryText = entry.SummaryText,
+                    StageText = string.IsNullOrWhiteSpace(entry.StageText)
+                        ? timerText
+                        : $"{entry.StageText}\n{timerText}",
+                    NpcText = entry.NpcText,
+                    ProgressRatio = entry.ProgressRatio,
+                    CanStart = entry.CanStart,
+                    CanComplete = entry.CanComplete,
+                    RequirementLines = entry.RequirementLines,
+                    RewardLines = entry.RewardLines,
+                    IssueLines = entry.IssueLines
+                };
+            }
+
+            return updatedEntries == null
+                ? snapshot
+                : new QuestLogSnapshot { Entries = updatedEntries };
+        }
+
+        private QuestWindowDetailState GetQuestWindowDetailStateWithPacketState(int questId)
+        {
+            QuestDetailDeliveryType deliveryTypeOverride = ResolvePacketOwnedQuestDeliveryTypeHint(questId);
+            QuestWindowDetailState state = deliveryTypeOverride != QuestDetailDeliveryType.None
+                ? _questRuntime.GetQuestWindowDetailState(questId, _playerManager?.Player?.Build, deliveryTypeOverride)
+                : _questRuntime.GetQuestWindowDetailState(questId, _playerManager?.Player?.Build);
+            state = ApplyPacketOwnedDeliveryDisallowParity(state);
+            if (state == null || !_packetFieldStateRuntime.TryGetQuestTimerText(questId, currTickCount, out string timerText))
+            {
+                return state;
+            }
+
+            string hintText = string.IsNullOrWhiteSpace(state.HintText)
+                ? timerText
+                : $"{timerText}\n{state.HintText}";
+            return new QuestWindowDetailState
+            {
+                QuestId = state.QuestId,
+                Title = state.Title,
+                HeaderNoteText = state.HeaderNoteText,
+                State = state.State,
+                SummaryText = state.SummaryText,
+                RequirementText = state.RequirementText,
+                RewardText = state.RewardText,
+                HintText = hintText,
+                NpcText = state.NpcText,
+                RequirementLines = state.RequirementLines,
+                RewardLines = state.RewardLines,
+                CurrentProgress = state.CurrentProgress,
+                TotalProgress = state.TotalProgress,
+                PrimaryAction = state.PrimaryAction,
+                PrimaryActionEnabled = state.PrimaryActionEnabled,
+                PrimaryActionSelected = state.PrimaryActionSelected,
+                PrimaryActionLabel = state.PrimaryActionLabel,
+                SecondaryAction = state.SecondaryAction,
+                SecondaryActionEnabled = state.SecondaryActionEnabled,
+                SecondaryActionLabel = state.SecondaryActionLabel,
+                TertiaryAction = state.TertiaryAction,
+                TertiaryActionEnabled = state.TertiaryActionEnabled,
+                TertiaryActionLabel = state.TertiaryActionLabel,
+                QuaternaryAction = state.QuaternaryAction,
+                QuaternaryActionEnabled = state.QuaternaryActionEnabled,
+                QuaternaryActionLabel = state.QuaternaryActionLabel,
+                TargetNpcId = state.TargetNpcId,
+                TargetNpcName = state.TargetNpcName,
+                TargetMobId = state.TargetMobId,
+                TargetMobName = state.TargetMobName,
+                TargetItemId = state.TargetItemId,
+                TargetItemName = state.TargetItemName,
+                HasDetailInset = true,
+                TimeLimitSeconds = state.TimeLimitSeconds,
+                RemainingTimeSeconds = state.RemainingTimeSeconds,
+                TimerUiKey = state.TimerUiKey,
+                DeliveryType = state.DeliveryType,
+                DeliveryActionEnabled = state.DeliveryActionEnabled,
+                DeliveryCashItemId = state.DeliveryCashItemId,
+                DeliveryCashItemName = state.DeliveryCashItemName,
+                NpcButtonStyle = state.NpcButtonStyle
+            };
+        }
+    }
+}

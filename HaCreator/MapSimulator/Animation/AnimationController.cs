@@ -81,6 +81,8 @@ namespace HaCreator.MapSimulator.Animation
         /// </summary>
         public int FrameCount => _currentFrames?.Count ?? 0;
 
+        public int CurrentFrameDelayMs => GetCurrentFrameDelay();
+
         /// <summary>
         /// Whether the current animation has completed (for one-shot animations)
         /// </summary>
@@ -281,6 +283,13 @@ namespace HaCreator.MapSimulator.Animation
 
             int index = Math.Clamp(_currentFrameIndex, 0, _currentFrames.Count - 1);
             return _currentFrames[index];
+        }
+
+        public int GetElapsedInCurrentFrameMs(int tickCount)
+        {
+            return _lastFrameSwitchTime <= 0
+                ? 0
+                : Math.Max(0, tickCount - _lastFrameSwitchTime);
         }
 
         /// <summary>

@@ -15,13 +15,21 @@ namespace HaCreator.MapSimulator.Effects
     {
         #region Screen Tremble (Effect_Tremble from CAnimationDisplayer)
 
+        internal const int TrembleHeavyDurationMs = 1500;
+        internal const int TrembleNormalDurationMs = 2000;
+        internal const double TrembleAdditionalTimeReduction = 1.0;
+        internal const double TrembleHeavyReduction = 0.85;
+        internal const double TrembleNormalReduction = 0.92;
+
         // Tremble state
         private bool _trembleActive = false;
         private double _trembleForce = 0;
-        private double _trembleReduction = 0.92;
+        private double _trembleReduction = TrembleNormalReduction;
         private int _trembleStartTime = 0;
         private int _trembleEndTime = 0;
         private Random _random = new Random();
+        private bool _trembleEnabled = true;
+        private ScreenTrembleRecoveredState _lastTrembleRecoveredState;
 
         // Current tremble offset applied to rendering
         private float _trembleOffsetX = 0;
@@ -42,6 +50,21 @@ namespace HaCreator.MapSimulator.Effects
         /// </summary>
         public float TrembleOffsetY => _trembleOffsetY;
 
+        internal double TrembleReduction => _trembleReduction;
+        internal int TrembleStartTime => _trembleStartTime;
+        internal int TrembleEndTime => _trembleEndTime;
+        internal ScreenTrembleRecoveredState LastTrembleRecoveredState => _lastTrembleRecoveredState;
+
+        /// <summary>
+        /// Whether tremble effects are enabled unless explicitly enforced.
+        /// Mirrors the client CConfig gate used by CAnimationDisplayer::Effect_Tremble.
+        /// </summary>
+        public bool TrembleEnabled
+        {
+            get => _trembleEnabled;
+            set => _trembleEnabled = value;
+        }
+
         /// <summary>
         /// Trigger a screen tremble effect.
         /// Based on CAnimationDisplayer::Effect_Tremble from the client.
@@ -56,31 +79,58 @@ namespace HaCreator.MapSimulator.Effects
         public void TriggerTremble(double trembleForce, bool heavyAndShort, int delayMs,
             int additionalTimeMs, bool enforce, int currentTimeMs)
         {
-            // In the real client, there's a config check: TSingleton<CConfig>::ms_pInstance + 36
-            // We'll always allow it for the simulator, or you can add a config option
+            ScreenTrembleRecoveredState recoveredState = BuildRecoveredTrembleState(
+                trembleForce,
+                heavyAndShort,
+                delayMs,
+                additionalTimeMs,
+                enforce,
+                currentTimeMs,
+                _trembleEnabled);
+            _lastTrembleRecoveredState = recoveredState;
+
+            if (!recoveredState.AllowedByConfigGate)
+                return;
 
             _trembleForce = trembleForce;
-            _trembleStartTime = currentTimeMs + delayMs;
-
-            // Duration based on type
-            int baseDuration = heavyAndShort ? 1500 : 2000;
-            _trembleEndTime = _trembleStartTime + additionalTimeMs + baseDuration;
-
-            // Reduction factor based on type
-            if (additionalTimeMs > 0)
-            {
-                _trembleReduction = 1.0; // No reduction during additional time
-            }
-            else if (heavyAndShort)
-            {
-                _trembleReduction = 0.85;
-            }
-            else
-            {
-                _trembleReduction = 0.92;
-            }
+            _trembleStartTime = recoveredState.StartTimeMs;
+            _trembleEndTime = recoveredState.EndTimeMs;
+            _trembleReduction = recoveredState.Reduction;
 
             _trembleActive = true;
+        }
+
+        internal static ScreenTrembleRecoveredState BuildRecoveredTrembleState(
+            double trembleForce,
+            bool heavyAndShort,
+            int delayMs,
+            int additionalTimeMs,
+            bool enforce,
+            int currentTimeMs,
+            bool trembleEnabled)
+        {
+            int baseDuration = heavyAndShort ? TrembleHeavyDurationMs : TrembleNormalDurationMs;
+            int startTimeMs = unchecked(currentTimeMs + delayMs);
+            int endTimeMs = unchecked(startTimeMs + additionalTimeMs + baseDuration);
+            double reduction = additionalTimeMs != 0
+                ? TrembleAdditionalTimeReduction
+                : heavyAndShort
+                    ? TrembleHeavyReduction
+                    : TrembleNormalReduction;
+
+            return new ScreenTrembleRecoveredState(
+                trembleForce,
+                heavyAndShort,
+                delayMs,
+                additionalTimeMs,
+                enforce,
+                currentTimeMs,
+                trembleEnabled,
+                trembleEnabled || enforce,
+                baseDuration,
+                startTimeMs,
+                endTimeMs,
+                reduction);
         }
 
         /// <summary>
@@ -106,8 +156,9 @@ namespace HaCreator.MapSimulator.Effects
                 return;
             }
 
-            // Check if effect has ended
-            if (currentTimeMs >= _trembleEndTime)
+            // Check if effect has ended using the same unsigned tick ordering
+            // used by client-owned time windows.
+            if (!IsTickBefore(currentTimeMs, _trembleEndTime))
             {
                 _trembleActive = false;
                 _trembleOffsetX = 0;
@@ -117,7 +168,7 @@ namespace HaCreator.MapSimulator.Effects
             }
 
             // Check if effect hasn't started yet (delay period)
-            if (currentTimeMs < _trembleStartTime)
+            if (IsTickBefore(currentTimeMs, _trembleStartTime))
             {
                 _trembleOffsetX = 0;
                 _trembleOffsetY = 0;
@@ -125,20 +176,11 @@ namespace HaCreator.MapSimulator.Effects
             }
 
             // Calculate elapsed time since tremble started
-            int elapsedMs = currentTimeMs - _trembleStartTime;
+            int elapsedMs = CalculateElapsedMilliseconds(currentTimeMs, _trembleStartTime);
 
             // Apply reduction over time
             // Each frame reduces the force multiplicatively
             double currentForce = _trembleForce * Math.Pow(_trembleReduction, elapsedMs / 16.67);
-
-            // Minimum threshold
-            if (currentForce < 0.5)
-            {
-                _trembleActive = false;
-                _trembleOffsetX = 0;
-                _trembleOffsetY = 0;
-                return;
-            }
 
             // Generate random offset within force range
             _trembleOffsetX = (float)((_random.NextDouble() * 2 - 1) * currentForce);
@@ -168,6 +210,18 @@ namespace HaCreator.MapSimulator.Effects
         private int _fadeDuration = 0;
         private Color _fadeColor = Color.Black;
         private Action _fadeCompleteCallback = null;  // Optional callback when fade completes
+        private bool _stageTransitionToneFadeActive;
+        private int _stageTransitionFadeInEndTime;
+        private byte _stageTransitionStartRedTone = byte.MaxValue;
+        private byte _stageTransitionStartGreenTone = byte.MaxValue;
+        private byte _stageTransitionStartBlueTone = byte.MaxValue;
+        private byte _stageTransitionRedTone = byte.MaxValue;
+        private byte _stageTransitionGreenTone = byte.MaxValue;
+        private byte _stageTransitionBlueTone = byte.MaxValue;
+        private byte _stageTransitionTargetRedTone = byte.MaxValue;
+        private byte _stageTransitionTargetGreenTone = byte.MaxValue;
+        private byte _stageTransitionTargetBlueTone = byte.MaxValue;
+        private StageTransitionToneRelMoveTrace _lastStageTransitionToneRelMoveTrace;
 
         /// <summary>
         /// Whether a fade effect is currently active
@@ -203,6 +257,7 @@ namespace HaCreator.MapSimulator.Effects
             _fadeStartTime = currentTimeMs;
             _fadeColor = color;
             _fadeCompleteCallback = onComplete;
+            _stageTransitionToneFadeActive = false;
         }
 
         /// <summary>
@@ -230,6 +285,26 @@ namespace HaCreator.MapSimulator.Effects
         }
 
         /// <summary>
+        /// Mirrors the client's tone-vector fade more closely by scaling the
+        /// remaining time to the current tone level instead of always replaying
+        /// the full 600 ms overlay window from scratch.
+        /// </summary>
+        public void StageTransitionFadeIn(int durationMs, int currentTimeMs, Action onComplete = null)
+        {
+            StartStageTransitionToneFade(targetTone: 255, durationMs, currentTimeMs, onComplete);
+        }
+
+        /// <summary>
+        /// Mirrors the client's tone-vector fade more closely by scaling the
+        /// remaining time to the current tone level instead of always replaying
+        /// the full 600 ms overlay window from scratch.
+        /// </summary>
+        public void StageTransitionFadeOut(int durationMs, int currentTimeMs, Action onComplete = null)
+        {
+            StartStageTransitionToneFade(targetTone: 0, durationMs, currentTimeMs, onComplete);
+        }
+
+        /// <summary>
         /// Force the fade to complete state immediately (skip animation)
         /// </summary>
         public void ForceFadeComplete()
@@ -238,6 +313,7 @@ namespace HaCreator.MapSimulator.Effects
             {
                 _fadeAlpha = _fadeTargetAlpha;
                 _fadeActive = false;
+                CompleteStageTransitionToneFade();
                 var callback = _fadeCompleteCallback;
                 _fadeCompleteCallback = null;
                 callback?.Invoke();
@@ -254,6 +330,18 @@ namespace HaCreator.MapSimulator.Effects
         /// </summary>
         public bool IsFadeInComplete => !_fadeActive && _fadeAlpha <= 0.0f;
 
+        internal int FadeDurationMs => _fadeDuration;
+        internal int LastFadeCompletionTimeMs { get; private set; }
+        internal StageTransitionToneSnapshot StageTransitionTone => new(
+            _stageTransitionRedTone,
+            _stageTransitionGreenTone,
+            _stageTransitionBlueTone,
+            _stageTransitionTargetRedTone,
+            _stageTransitionTargetGreenTone,
+            _stageTransitionTargetBlueTone,
+            _stageTransitionFadeInEndTime);
+        internal StageTransitionToneRelMoveTrace LastStageTransitionToneRelMoveTrace => _lastStageTransitionToneRelMoveTrace;
+
         /// <summary>
         /// Update the fade effect
         /// </summary>
@@ -263,12 +351,14 @@ namespace HaCreator.MapSimulator.Effects
             if (!_fadeActive)
                 return;
 
-            int elapsed = currentTimeMs - _fadeStartTime;
+            int elapsed = CalculateElapsedMilliseconds(currentTimeMs, _fadeStartTime);
 
             if (elapsed >= _fadeDuration)
             {
                 _fadeAlpha = _fadeTargetAlpha;
                 _fadeActive = false;
+                LastFadeCompletionTimeMs = currentTimeMs;
+                CompleteStageTransitionToneFade();
 
                 // Invoke callback if set
                 var callback = _fadeCompleteCallback;
@@ -280,6 +370,226 @@ namespace HaCreator.MapSimulator.Effects
             // Linear interpolation from start to target
             float t = (float)elapsed / _fadeDuration;
             _fadeAlpha = MathHelper.Lerp(_fadeStartAlpha, _fadeTargetAlpha, t);
+            UpdateStageTransitionToneFade(t);
+        }
+
+        private void StartStageTransitionToneFade(byte targetTone, int durationMs, int currentTimeMs, Action onComplete)
+        {
+            SynchronizeStageTransitionToneFadeToTime(currentTimeMs);
+
+            bool resetPendingFadeInTone = false;
+            if (targetTone == byte.MaxValue && IsTickBefore(currentTimeMs, _stageTransitionFadeInEndTime))
+            {
+                _stageTransitionRedTone = 0;
+                _stageTransitionGreenTone = 0;
+                _stageTransitionBlueTone = 0;
+                resetPendingFadeInTone = true;
+            }
+
+            byte currentTone = GetCurrentToneLevel();
+            if (currentTone == targetTone)
+            {
+                CompleteImmediateStageTransitionToneFade(
+                    targetTone,
+                    currentTimeMs,
+                    Math.Max(0, durationMs),
+                    resetPendingFadeInTone,
+                    onComplete);
+                return;
+            }
+
+            int scaledDuration = ScaleStageTransitionDuration(durationMs, currentTone, targetTone);
+            if (scaledDuration == 0)
+            {
+                CompleteImmediateStageTransitionToneFade(
+                    targetTone,
+                    currentTimeMs,
+                    Math.Max(0, durationMs),
+                    resetPendingFadeInTone,
+                    onComplete);
+                return;
+            }
+
+            _stageTransitionStartRedTone = _stageTransitionRedTone;
+            _stageTransitionStartGreenTone = _stageTransitionGreenTone;
+            _stageTransitionStartBlueTone = _stageTransitionBlueTone;
+            _stageTransitionTargetRedTone = targetTone;
+            _stageTransitionTargetGreenTone = targetTone;
+            _stageTransitionTargetBlueTone = targetTone;
+            if (targetTone == byte.MaxValue)
+            {
+                _stageTransitionFadeInEndTime = currentTimeMs + scaledDuration;
+            }
+            _lastStageTransitionToneRelMoveTrace = new StageTransitionToneRelMoveTrace(
+                IsFadeIn: targetTone == byte.MaxValue,
+                ResetPendingFadeInTone: resetPendingFadeInTone,
+                CurrentTimeMs: currentTimeMs,
+                BaseDurationMs: Math.Max(0, durationMs),
+                ScaledDurationMs: scaledDuration,
+                EndTimeMs: currentTimeMs + scaledDuration,
+                StartRedTone: _stageTransitionStartRedTone,
+                StartGreenBlueXTone: _stageTransitionStartGreenTone,
+                StartGreenBlueYTone: _stageTransitionStartBlueTone,
+                TargetRedTone: targetTone,
+                TargetGreenBlueXTone: targetTone,
+                TargetGreenBlueYTone: targetTone);
+
+            StartFade(
+                1.0f - (currentTone / 255f),
+                1.0f - (targetTone / 255f),
+                scaledDuration,
+                Color.Black,
+                currentTimeMs,
+                onComplete);
+            _stageTransitionToneFadeActive = true;
+        }
+
+        private void SynchronizeStageTransitionToneFadeToTime(int currentTimeMs)
+        {
+            if (!_fadeActive || !_stageTransitionToneFadeActive)
+            {
+                return;
+            }
+
+            int elapsed = CalculateElapsedMilliseconds(currentTimeMs, _fadeStartTime);
+            if (_fadeDuration <= 0 || elapsed >= _fadeDuration)
+            {
+                _fadeAlpha = _fadeTargetAlpha;
+                _fadeActive = false;
+                _fadeCompleteCallback = null;
+                LastFadeCompletionTimeMs = currentTimeMs;
+                CompleteStageTransitionToneFade();
+                return;
+            }
+
+            float progress = (float)elapsed / _fadeDuration;
+            _fadeAlpha = MathHelper.Lerp(_fadeStartAlpha, _fadeTargetAlpha, progress);
+            UpdateStageTransitionToneFade(progress);
+        }
+
+        private void CompleteImmediateStageTransitionToneFade(
+            byte targetTone,
+            int currentTimeMs,
+            int baseDurationMs,
+            bool resetPendingFadeInTone,
+            Action onComplete)
+        {
+            byte startRedTone = _stageTransitionRedTone;
+            byte startGreenTone = _stageTransitionGreenTone;
+            byte startBlueTone = _stageTransitionBlueTone;
+            _fadeActive = false;
+            _fadeAlpha = 1.0f - (targetTone / 255f);
+            _fadeStartAlpha = _fadeAlpha;
+            _fadeTargetAlpha = _fadeAlpha;
+            _fadeDuration = 0;
+            _fadeStartTime = currentTimeMs;
+            _fadeColor = Color.Black;
+            _fadeCompleteCallback = null;
+            _stageTransitionToneFadeActive = false;
+            SetStageTransitionToneChannels(targetTone);
+            if (targetTone == byte.MaxValue)
+            {
+                _stageTransitionFadeInEndTime = currentTimeMs;
+            }
+            _lastStageTransitionToneRelMoveTrace = new StageTransitionToneRelMoveTrace(
+                IsFadeIn: targetTone == byte.MaxValue,
+                ResetPendingFadeInTone: resetPendingFadeInTone,
+                CurrentTimeMs: currentTimeMs,
+                BaseDurationMs: baseDurationMs,
+                ScaledDurationMs: 0,
+                EndTimeMs: currentTimeMs,
+                StartRedTone: startRedTone,
+                StartGreenBlueXTone: startGreenTone,
+                StartGreenBlueYTone: startBlueTone,
+                TargetRedTone: targetTone,
+                TargetGreenBlueXTone: targetTone,
+                TargetGreenBlueYTone: targetTone);
+            LastFadeCompletionTimeMs = currentTimeMs;
+            onComplete?.Invoke();
+        }
+
+        internal static int ScaleStageTransitionDuration(int durationMs, byte startTone, byte targetTone)
+        {
+            int clampedDuration = Math.Max(0, durationMs);
+            if (clampedDuration == 0 || startTone == targetTone)
+            {
+                return 0;
+            }
+
+            int remaining = Math.Abs(targetTone - startTone);
+            return clampedDuration * remaining / 255;
+        }
+
+        private byte GetCurrentToneLevel()
+        {
+            return ResolveStageTransitionToneAverage(
+                _stageTransitionRedTone,
+                _stageTransitionGreenTone,
+                _stageTransitionBlueTone);
+        }
+
+        internal static byte ResolveStageTransitionToneAverage(byte redTone, byte greenTone, byte blueTone)
+        {
+            return (byte)((redTone + greenTone + blueTone) / 3);
+        }
+
+        private void UpdateStageTransitionToneFade(float progress)
+        {
+            if (!_stageTransitionToneFadeActive)
+            {
+                return;
+            }
+
+            float clampedProgress = MathHelper.Clamp(progress, 0.0f, 1.0f);
+            _stageTransitionRedTone = LerpByte(_stageTransitionStartRedTone, _stageTransitionTargetRedTone, clampedProgress);
+            _stageTransitionGreenTone = LerpByte(_stageTransitionStartGreenTone, _stageTransitionTargetGreenTone, clampedProgress);
+            _stageTransitionBlueTone = LerpByte(_stageTransitionStartBlueTone, _stageTransitionTargetBlueTone, clampedProgress);
+        }
+
+        private void CompleteStageTransitionToneFade()
+        {
+            if (!_stageTransitionToneFadeActive)
+            {
+                return;
+            }
+
+            _stageTransitionToneFadeActive = false;
+            _stageTransitionRedTone = _stageTransitionTargetRedTone;
+            _stageTransitionGreenTone = _stageTransitionTargetGreenTone;
+            _stageTransitionBlueTone = _stageTransitionTargetBlueTone;
+        }
+
+        private void SetStageTransitionToneChannels(byte tone)
+        {
+            _stageTransitionStartRedTone = tone;
+            _stageTransitionStartGreenTone = tone;
+            _stageTransitionStartBlueTone = tone;
+            _stageTransitionRedTone = tone;
+            _stageTransitionGreenTone = tone;
+            _stageTransitionBlueTone = tone;
+            _stageTransitionTargetRedTone = tone;
+            _stageTransitionTargetGreenTone = tone;
+            _stageTransitionTargetBlueTone = tone;
+        }
+
+        private static byte LerpByte(byte start, byte target, float progress)
+        {
+            float value = MathHelper.Lerp(start, target, progress);
+            return (byte)Math.Clamp((int)Math.Round(value, MidpointRounding.AwayFromZero), 0, 255);
+        }
+
+        internal static int CalculateElapsedMilliseconds(int currentTimeMs, int startTimeMs)
+        {
+            uint elapsed = unchecked((uint)currentTimeMs - (uint)startTimeMs);
+            return elapsed > int.MaxValue
+                ? int.MaxValue
+                : (int)elapsed;
+        }
+
+        internal static bool IsTickBefore(int currentTimeMs, int endTimeMs)
+        {
+            return unchecked((uint)endTimeMs - (uint)currentTimeMs) < 0x80000000u
+                && currentTimeMs != endTimeMs;
         }
 
         #endregion
@@ -673,10 +983,51 @@ namespace HaCreator.MapSimulator.Effects
             _fadeStartAlpha = 0.0f;
             _fadeTargetAlpha = 0.0f;
             _fadeCompleteCallback = null;
+            _stageTransitionToneFadeActive = false;
+            _stageTransitionFadeInEndTime = 0;
+            SetStageTransitionToneChannels(byte.MaxValue);
+            _lastStageTransitionToneRelMoveTrace = default;
             _flashActive = false;
             _flashAlpha = 0;
             StopMotionBlur();
             StopExplosion();
         }
     }
+
+    internal readonly record struct StageTransitionToneSnapshot(
+        byte RedTone,
+        byte GreenTone,
+        byte BlueTone,
+        byte TargetRedTone,
+        byte TargetGreenTone,
+        byte TargetBlueTone,
+        int FadeInEndTime);
+
+    internal readonly record struct StageTransitionToneRelMoveTrace(
+        bool IsFadeIn,
+        bool ResetPendingFadeInTone,
+        int CurrentTimeMs,
+        int BaseDurationMs,
+        int ScaledDurationMs,
+        int EndTimeMs,
+        byte StartRedTone,
+        byte StartGreenBlueXTone,
+        byte StartGreenBlueYTone,
+        byte TargetRedTone,
+        byte TargetGreenBlueXTone,
+        byte TargetGreenBlueYTone);
+
+    internal readonly record struct ScreenTrembleRecoveredState(
+        double Force,
+        bool HeavyAndShort,
+        int DelayMs,
+        int AdditionalTimeMs,
+        bool Enforce,
+        int CurrentTimeMs,
+        bool TrembleEnabled,
+        bool AllowedByConfigGate,
+        int BaseDurationMs,
+        int StartTimeMs,
+        int EndTimeMs,
+        double Reduction);
 }

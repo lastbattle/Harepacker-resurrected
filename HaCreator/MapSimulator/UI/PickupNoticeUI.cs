@@ -18,6 +18,12 @@ namespace HaCreator.MapSimulator.UI
         Unknown = -1            // Unknown/default
     }
 
+    public enum PickupNoticeSource
+    {
+        Player = 0,
+        Pet = 1
+    }
+
     /// <summary>
     /// A single pickup notice message with animation state
     /// Based on CUIScreenMsg from MapleStory client analysis
@@ -61,6 +67,8 @@ namespace HaCreator.MapSimulator.UI
         private const int RIGHT_MARGIN = 10;                    // Margin from right edge
         private const int BOTTOM_MARGIN = 60;                   // Margin from bottom (above status bar)
         private const int TEXT_WIDTH = 290;                     // Max text width from client (290 - textWidth)
+        private const int ICON_SIZE = 16;
+        private const int ICON_TEXT_SPACING = 4;
         #endregion
 
         #region Fields
@@ -107,18 +115,11 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         public void AddMesoPickup(int amount, int currentTime)
         {
-            // Official MapleStory format - always "meso(s)" with parenthetical s
-            string message = $"You have gained {amount} meso(s).";
-
-            AddNotice(new PickupNotice
-            {
-                Message = message,
-                Type = PickupMessageType.MesoPickup,
-                TextColor = Color.White, // FONT_BASIC_WHITE in client (yellow is for bonus meso only)
-                OutlineColor = Color.Black,
-                SpawnTime = currentTime,
-                Quantity = amount
-            });
+            AddFormattedNotice(
+                $"You have gained {amount} meso(s).",
+                PickupMessageType.MesoPickup,
+                currentTime,
+                quantity: amount);
         }
 
         /// <summary>
@@ -127,8 +128,13 @@ namespace HaCreator.MapSimulator.UI
         /// - ID 5443 (single): "You have gained a(n) %s (%s)." - ItemTypeName, ItemName
         /// - ID 5442 (multiple): "You have gained a(n) %s (%s) x %d." - ItemTypeName, ItemName, Quantity
         /// </summary>
-        public void AddItemPickup(string itemName, int quantity, int currentTime, Texture2D icon = null,
-            bool isRare = false, string itemTypeName = null)
+        public void AddItemPickup(
+            string itemName,
+            int quantity,
+            int currentTime,
+            Texture2D icon = null,
+            bool isRare = false,
+            string itemTypeName = null)
         {
             string message;
             if (string.IsNullOrEmpty(itemTypeName))
@@ -146,38 +152,34 @@ namespace HaCreator.MapSimulator.UI
                     : $"You have gained a(n) {itemTypeName} ({itemName}).";
             }
 
-            var notice = new PickupNotice
-            {
-                Message = message,
-                Type = PickupMessageType.ItemPickup,
-                TextColor = isRare ? new Color(255, 200, 100) : Color.White, // Gold for rare items
-                OutlineColor = Color.Black,
-                SpawnTime = currentTime,
-                ItemIcon = icon,
-                Quantity = quantity
-            };
-
-            AddNotice(notice);
+            AddFormattedNotice(
+                message,
+                PickupMessageType.ItemPickup,
+                currentTime,
+                icon,
+                quantity,
+                isRare ? new Color(255, 200, 100) : Color.White);
         }
 
         /// <summary>
         /// Add a quest item pickup message.
         /// Uses same format as regular items but with quest-specific color.
         /// </summary>
-        public void AddQuestItemPickup(string itemName, int currentTime, Texture2D icon = null)
+        public void AddQuestItemPickup(
+            string itemName,
+            int currentTime,
+            Texture2D icon = null,
+            string itemTypeName = null)
         {
-            string message = $"You have gained an item ({itemName}).";
+            string message = string.IsNullOrEmpty(itemTypeName)
+                ? $"You have gained an item ({itemName})."
+                : $"You have gained a(n) {itemTypeName} ({itemName}).";
 
-            AddNotice(new PickupNotice
-            {
-                Message = message,
-                Type = PickupMessageType.QuestItemPickup,
-                TextColor = new Color(150, 255, 150), // Light green for quest items
-                OutlineColor = Color.Black,
-                SpawnTime = currentTime,
-                ItemIcon = icon,
-                Quantity = 1
-            });
+            AddFormattedNotice(
+                message,
+                PickupMessageType.QuestItemPickup,
+                currentTime,
+                icon);
         }
 
         /// <summary>
@@ -186,14 +188,7 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         public void AddInventoryFullMessage(int currentTime)
         {
-            AddNotice(new PickupNotice
-            {
-                Message = "Your inventory is full.",
-                Type = PickupMessageType.InventoryFull,
-                TextColor = new Color(255, 100, 100), // Red for error
-                OutlineColor = Color.Black,
-                SpawnTime = currentTime
-            });
+            AddFormattedNotice("Your inventory is full.", PickupMessageType.InventoryFull, currentTime);
         }
 
         /// <summary>
@@ -201,14 +196,7 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         public void AddCantPickupMessage(string reason, int currentTime)
         {
-            AddNotice(new PickupNotice
-            {
-                Message = reason ?? "Unable to pick up item.",
-                Type = PickupMessageType.CantPickup,
-                TextColor = new Color(255, 100, 100), // Red for error
-                OutlineColor = Color.Black,
-                SpawnTime = currentTime
-            });
+            AddFormattedNotice(reason ?? "Unable to pick up the item.", PickupMessageType.CantPickup, currentTime);
         }
 
         /// <summary>
@@ -216,13 +204,26 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         public void AddCustomMessage(string message, Color textColor, int currentTime)
         {
+            AddFormattedNotice(message, PickupMessageType.Unknown, currentTime, textColor: textColor);
+        }
+
+        public void AddFormattedNotice(
+            string message,
+            PickupMessageType type,
+            int currentTime,
+            Texture2D icon = null,
+            int quantity = 1,
+            Color? textColor = null)
+        {
             AddNotice(new PickupNotice
             {
                 Message = message,
-                Type = PickupMessageType.Unknown,
-                TextColor = textColor,
+                Type = type,
+                TextColor = textColor ?? GetDefaultTextColor(type),
                 OutlineColor = Color.Black,
-                SpawnTime = currentTime
+                SpawnTime = currentTime,
+                ItemIcon = icon,
+                Quantity = quantity
             });
         }
 
@@ -245,6 +246,18 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _notices.Add(notice);
+        }
+
+        private static Color GetDefaultTextColor(PickupMessageType type)
+        {
+            switch (type)
+            {
+                case PickupMessageType.InventoryFull:
+                case PickupMessageType.CantPickup:
+                    return Color.White;
+                default:
+                    return Color.White;
+            }
         }
         #endregion
 
@@ -317,15 +330,31 @@ namespace HaCreator.MapSimulator.UI
                     continue;
 
                 // Measure text to right-align
-                Vector2 textSize = _font.MeasureString(notice.Message);
+                Vector2 textSize = ClientTextDrawing.Measure(spriteBatch, notice.Message, 1f, _font);
+                float totalWidth = textSize.X;
+                if (notice.ItemIcon != null)
+                {
+                    totalWidth += ICON_SIZE + ICON_TEXT_SPACING;
+                }
 
                 // Position (right-aligned, stacked from bottom)
-                float x = baseX - textSize.X;
+                float x = baseX - totalWidth;
                 float y = baseY - notice.YOffset - MESSAGE_HEIGHT;
 
                 // Apply alpha
                 Color textColor = notice.TextColor * notice.Alpha;
                 Color outlineColor = notice.OutlineColor * notice.Alpha;
+
+                if (notice.ItemIcon != null)
+                {
+                    Rectangle iconRect = new Rectangle(
+                        (int)Math.Round(x),
+                        (int)Math.Round(y + Math.Max(0f, (MESSAGE_HEIGHT - ICON_SIZE) * 0.5f)),
+                        ICON_SIZE,
+                        ICON_SIZE);
+                    spriteBatch.Draw(notice.ItemIcon, iconRect, Color.White * notice.Alpha);
+                    x += ICON_SIZE + ICON_TEXT_SPACING;
+                }
 
                 // Draw outline (offset by 1 pixel in all directions for bold outline effect)
                 DrawTextWithOutline(spriteBatch, notice.Message, new Vector2(x, y), textColor, outlineColor);
@@ -347,11 +376,11 @@ namespace HaCreator.MapSimulator.UI
 
             foreach (var offset in offsets)
             {
-                spriteBatch.DrawString(_font, text, position + offset, outlineColor);
+                ClientTextDrawing.Draw(spriteBatch, text, position + offset, outlineColor, 1f, _font);
             }
 
             // Draw main text
-            spriteBatch.DrawString(_font, text, position, textColor);
+            ClientTextDrawing.Draw(spriteBatch, text, position, textColor, 1f, _font);
         }
         #endregion
 

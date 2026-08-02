@@ -1,0 +1,1323 @@
+using HaCreator.MapSimulator.Character;
+using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
+using System;
+using System.Collections.Generic;
+
+namespace HaCreator.MapSimulator.Character.Skills
+{
+    public static class MeleeAfterimagePlaybackResolver
+    {
+        internal readonly record struct Snapshot(int FrameIndex, int FrameElapsedMs, IReadOnlyList<AfterimageRenderableLayer> Layers);
+        internal readonly record struct SpriteBatchDrawParameters(
+            Vector2 Position,
+            Vector2 Origin,
+            float Scale,
+            Color Tint,
+            SpriteEffects Effects);
+
+        internal static void ApplySnapshotToCache(
+            in Snapshot snapshot,
+            ref int frameIndex,
+            ref int frameElapsedMs,
+            ref IReadOnlyList<AfterimageRenderableLayer> layers)
+        {
+            frameIndex = snapshot.FrameIndex;
+            frameElapsedMs = snapshot.FrameElapsedMs;
+            layers = snapshot.Layers ?? Array.Empty<AfterimageRenderableLayer>();
+        }
+
+        internal static void ClearSnapshotCache(
+            ref int frameIndex,
+            ref int frameElapsedMs,
+            ref IReadOnlyList<AfterimageRenderableLayer> layers)
+        {
+            frameIndex = -1;
+            frameElapsedMs = 0;
+            layers = Array.Empty<AfterimageRenderableLayer>();
+        }
+
+        internal static bool RefreshSnapshotCache(
+            CharacterAssembler assembler,
+            string actionName,
+            MeleeAfterImageAction action,
+            int animationTime,
+            ref int frameIndex,
+            ref int frameElapsedMs,
+            ref IReadOnlyList<AfterimageRenderableLayer> layers)
+        {
+            if (TryResolveSnapshot(
+                    assembler,
+                    actionName,
+                    action,
+                    animationTime,
+                    out Snapshot snapshot))
+            {
+                ApplySnapshotToCache(snapshot, ref frameIndex, ref frameElapsedMs, ref layers);
+                return true;
+            }
+
+            ClearSnapshotCache(ref frameIndex, ref frameElapsedMs, ref layers);
+            return false;
+        }
+
+        internal static bool CaptureFadeSnapshotOrClearCache(
+            CharacterAssembler assembler,
+            string actionName,
+            MeleeAfterImageAction action,
+            int animationTime,
+            ref int frameIndex,
+            ref int frameElapsedMs,
+            ref IReadOnlyList<AfterimageRenderableLayer> layers)
+        {
+            if (TryCaptureFadeSnapshot(
+                    assembler,
+                    actionName,
+                    action,
+                    animationTime,
+                    out Snapshot snapshot))
+            {
+                ApplySnapshotToCache(snapshot, ref frameIndex, ref frameElapsedMs, ref layers);
+                return true;
+            }
+
+            ClearSnapshotCache(ref frameIndex, ref frameElapsedMs, ref layers);
+            return false;
+        }
+
+        internal static bool ShouldDeferUntilActivation(
+            int currentTime,
+            int activationStartTime,
+            string currentActionName,
+            string afterImageActionName,
+            int animationStartTime,
+            int actionDuration,
+            out bool shouldClear)
+        {
+            shouldClear = false;
+            if (ClientOwnedAvatarEffectParity.HasUnsignedTickReached(currentTime, activationStartTime))
+            {
+                return false;
+            }
+
+            bool sameAction = string.Equals(currentActionName, afterImageActionName, StringComparison.OrdinalIgnoreCase);
+            if (!sameAction
+                || (actionDuration > 0
+                    && ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTime, animationStartTime) >= actionDuration))
+            {
+                shouldClear = true;
+            }
+
+            return true;
+        }
+
+        internal static bool ShouldBeginFadeForActionBoundary(
+            int currentTime,
+            int animationStartTime,
+            int actionDuration,
+            string currentActionName,
+            string afterImageActionName)
+        {
+            if (!string.Equals(currentActionName, afterImageActionName, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            return actionDuration > 0
+                   && ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTime, animationStartTime) >= actionDuration;
+        }
+
+        internal static bool TryResolveSnapshot(
+            CharacterAssembler assembler,
+            string actionName,
+            MeleeAfterImageAction action,
+            int animationTime,
+            out Snapshot snapshot)
+        {
+            snapshot = default;
+            if (assembler == null
+                || action == null
+                || string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            return TryResolveSnapshotFromAnimationFrames(
+                assembler.GetAnimation(actionName),
+                action,
+                animationTime,
+                out snapshot);
+        }
+
+        internal static bool TryCaptureFadeSnapshot(
+            CharacterAssembler assembler,
+            string actionName,
+            MeleeAfterImageAction action,
+            int animationTime,
+            out Snapshot snapshot)
+        {
+            AssembledFrame[] animationFrames = assembler?.GetAnimation(actionName);
+            if (assembler != null
+                && !string.IsNullOrWhiteSpace(actionName)
+                && TryResolveNonLoopingFrameTimingAtTime(
+                    animationFrames,
+                    animationTime,
+                    out int frameIndex,
+                    out int frameElapsedMs))
+            {
+                if (TryResolveFrameSnapshot(animationFrames, action, frameIndex, frameElapsedMs, out snapshot))
+                {
+                    return true;
+                }
+
+                snapshot = new Snapshot(frameIndex, frameElapsedMs, null);
+                return true;
+            }
+
+            snapshot = default;
+            if (!TryResolveNonLoopingFrameTimingAtTime(
+                    animationFrames,
+                    animationTime,
+                    out int fallbackFrameIndex,
+                    out _))
+            {
+                return false;
+            }
+
+            snapshot = new Snapshot(fallbackFrameIndex, 0, null);
+            return true;
+        }
+
+        internal static bool TryResolveSnapshotFromAnimationFrames(
+            AssembledFrame[] animationFrames,
+            MeleeAfterImageAction action,
+            int animationTime,
+            out Snapshot snapshot)
+        {
+            snapshot = default;
+            if (!TryResolveNonLoopingFrameTimingAtTime(
+                    animationFrames,
+                    animationTime,
+                    out int frameIndex,
+                    out int frameElapsedMs))
+            {
+                return false;
+            }
+
+            return TryResolveFrameSnapshot(animationFrames, action, frameIndex, frameElapsedMs, out snapshot);
+        }
+
+        internal static bool TryResolveFrameSnapshot(
+            AssembledFrame[] animationFrames,
+            MeleeAfterImageAction action,
+            int frameIndex,
+            int frameElapsedMs,
+            out Snapshot snapshot)
+        {
+            snapshot = default;
+            if (action == null || frameIndex < 0)
+            {
+                return false;
+            }
+
+            if (!TryResolveFrameSet(action, frameIndex, out MeleeAfterImageFrameSet frameSet, out int authoredFrameIndex))
+            {
+                snapshot = new Snapshot(frameIndex, Math.Max(0, frameElapsedMs), Array.Empty<AfterimageRenderableLayer>());
+                return true;
+            }
+
+            int frameSetElapsedMs = ResolveFrameSetElapsedMs(
+                animationFrames,
+                authoredFrameIndex,
+                frameIndex,
+                frameElapsedMs);
+            snapshot = new Snapshot(frameIndex, frameSetElapsedMs, ResolveRenderableLayers(frameSet, frameSetElapsedMs));
+            return true;
+        }
+
+        internal static bool TryResolveFrameSnapshot(
+            MeleeAfterImageAction action,
+            int frameIndex,
+            int frameElapsedMs,
+            out Snapshot snapshot)
+        {
+            snapshot = default;
+            if (action == null || frameIndex < 0)
+            {
+                return false;
+            }
+
+            snapshot = new Snapshot(frameIndex, Math.Max(0, frameElapsedMs), ResolveRenderableLayers(action, frameIndex, frameElapsedMs));
+            return true;
+        }
+
+        internal static int ResolveFrameSetElapsedMs(
+            AssembledFrame[] animationFrames,
+            int authoredFrameIndex,
+            int currentFrameIndex,
+            int currentFrameElapsedMs)
+        {
+            int elapsed = Math.Max(0, currentFrameElapsedMs);
+            if (animationFrames == null
+                || animationFrames.Length == 0
+                || authoredFrameIndex < 0
+                || currentFrameIndex < 0
+                || authoredFrameIndex >= animationFrames.Length
+                || currentFrameIndex >= animationFrames.Length
+                || authoredFrameIndex > currentFrameIndex)
+            {
+                return elapsed;
+            }
+
+            for (int i = authoredFrameIndex; i < currentFrameIndex; i++)
+            {
+                elapsed += Math.Max(0, animationFrames[i]?.Duration ?? 0);
+            }
+
+            return elapsed;
+        }
+
+        public static SkillFrame ResolveFrame(
+            MeleeAfterImageAction action,
+            int frameIndex,
+            int frameElapsedMs)
+        {
+            if (!TryResolveFrameSet(action, frameIndex, out MeleeAfterImageFrameSet frameSet))
+            {
+                return null;
+            }
+
+            IReadOnlyList<AfterimageRenderableLayer> layers = ResolveRenderableLayers(frameSet, frameElapsedMs);
+            return layers.Count > 0
+                ? layers[0].Frame
+                : null;
+        }
+
+        internal static bool TryResolveFrameSet(
+            MeleeAfterImageAction action,
+            int frameIndex,
+            out MeleeAfterImageFrameSet frameSet)
+        {
+            return TryResolveFrameSet(action, frameIndex, out frameSet, out _);
+        }
+
+        internal static bool TryResolveFrameSet(
+            MeleeAfterImageAction action,
+            int frameIndex,
+            out MeleeAfterImageFrameSet frameSet,
+            out int authoredFrameIndex)
+        {
+            frameSet = null;
+            authoredFrameIndex = -1;
+            if (action?.FrameSets == null || action.FrameSets.Count == 0)
+            {
+                return false;
+            }
+
+            if (action.FrameSets.TryGetValue(frameIndex, out frameSet) && frameSet != null)
+            {
+                authoredFrameIndex = frameIndex;
+                return true;
+            }
+
+            if (action.FrameSets.Count == 1)
+            {
+                foreach (KeyValuePair<int, MeleeAfterImageFrameSet> entry in action.FrameSets)
+                {
+                    frameSet = entry.Value;
+                    if (frameSet != null)
+                    {
+                        authoredFrameIndex = entry.Key;
+                        return true;
+                    }
+
+                    return false;
+                }
+
+                frameSet = null;
+                return false;
+            }
+
+            int latestAuthoredFrameIndex = int.MinValue;
+            MeleeAfterImageFrameSet latestAuthoredFrameSet = null;
+            foreach (KeyValuePair<int, MeleeAfterImageFrameSet> entry in action.FrameSets)
+            {
+                if (entry.Value == null
+                    || entry.Key > frameIndex
+                    || entry.Key < latestAuthoredFrameIndex)
+                {
+                    continue;
+                }
+
+                latestAuthoredFrameIndex = entry.Key;
+                latestAuthoredFrameSet = entry.Value;
+            }
+
+            if (latestAuthoredFrameSet != null)
+            {
+                frameSet = latestAuthoredFrameSet;
+                authoredFrameIndex = latestAuthoredFrameIndex;
+                return true;
+            }
+
+            frameSet = null;
+            return false;
+        }
+
+        public static SkillFrame ResolveFrame(MeleeAfterImageFrameSet frameSet, int frameElapsedMs)
+        {
+            IReadOnlyList<AfterimageRenderableLayer> layers = ResolveRenderableLayers(frameSet, frameElapsedMs);
+            if (layers.Count == 0)
+            {
+                return null;
+            }
+
+            return layers[0].Frame;
+        }
+
+        public static IReadOnlyList<AfterimageRenderableLayer> ResolveRenderableLayers(
+            MeleeAfterImageAction action,
+            int frameIndex,
+            int frameElapsedMs)
+        {
+            return TryResolveFrameSet(action, frameIndex, out MeleeAfterImageFrameSet frameSet)
+                ? ResolveRenderableLayers(frameSet, frameElapsedMs)
+                : Array.Empty<AfterimageRenderableLayer>();
+        }
+
+        public static IReadOnlyList<AfterimageRenderableLayer> ResolveFadingRenderableLayers(
+            MeleeAfterImageAction action,
+            int frameIndex,
+            int capturedFrameElapsedMs,
+            int fadeElapsedMs)
+        {
+            if (action == null || frameIndex < 0)
+            {
+                return Array.Empty<AfterimageRenderableLayer>();
+            }
+
+            int continuedElapsedMs = Math.Max(0, capturedFrameElapsedMs) + Math.Max(0, fadeElapsedMs);
+            return ResolveRenderableLayers(action, frameIndex, continuedElapsedMs);
+        }
+
+        public static IReadOnlyList<AfterimageRenderableLayer> ResolveRenderableLayers(
+            MeleeAfterImageFrameSet frameSet,
+            int frameElapsedMs)
+        {
+            IReadOnlyList<SkillFrame> frames = frameSet?.Frames;
+            if (frames == null || frames.Count == 0)
+            {
+                return Array.Empty<AfterimageRenderableLayer>();
+            }
+
+            int elapsed = Math.Max(0, frameElapsedMs);
+            List<AfterimageRenderableLayer> layers = null;
+            for (int i = 0; i < frames.Count; i++)
+            {
+                SkillFrame frame = frames[i];
+                if (frame == null)
+                {
+                    continue;
+                }
+
+                int frameDelay = Math.Max(0, frame.Delay);
+                if (frameDelay > 0 && elapsed >= frameDelay)
+                {
+                    continue;
+                }
+
+                int localFrameElapsed = frameDelay > 0
+                    ? Math.Min(elapsed, frameDelay)
+                    : elapsed;
+                layers ??= new List<AfterimageRenderableLayer>(frames.Count);
+                layers.Add(new AfterimageRenderableLayer(
+                    frame,
+                    ResolveFrameAlpha(frame, localFrameElapsed),
+                    ResolveFrameZoom(frame, localFrameElapsed),
+                    ResolveAfterimageCanvasObjectId(frame),
+                    ResolveAfterimageCanvasOrdinal(frame),
+                    frame.AfterimageActionRawCode,
+                    frame.AfterimageActionName));
+            }
+
+            return layers ?? (IReadOnlyList<AfterimageRenderableLayer>)Array.Empty<AfterimageRenderableLayer>();
+        }
+
+        public static IReadOnlyList<AfterimageLayerOperation> ResolveCreateAfterimageLayerOperations(
+            MeleeAfterImageFrameSet frameSet)
+        {
+            IReadOnlyList<SkillFrame> frames = frameSet?.Frames;
+            var operations = new List<AfterimageLayerOperation>((frames?.Count ?? 0) + 2)
+            {
+                new(
+                    AfterimageLayerOperationKind.ResetAlpha,
+                    null,
+                    0,
+                    0,
+                    255,
+                    255,
+                    100,
+                    100,
+                    RemoveCanvasIndex: 0),
+                new(
+                    AfterimageLayerOperationKind.RemoveAllCanvases,
+                    null,
+                    0,
+                    0,
+                    255,
+                    255,
+                    100,
+                    100,
+                    RemoveCanvasIndex: ClientRemoveAllCanvasesIndex)
+            };
+
+            if (frames == null || frames.Count == 0)
+            {
+                return operations;
+            }
+
+            for (int i = 0; i < frames.Count; i++)
+            {
+                SkillFrame frame = frames[i];
+                if (frame == null)
+                {
+                    continue;
+                }
+
+                operations.Add(CreateAfterimageLayerOperation(
+                    AfterimageLayerOperationKind.InsertCanvas,
+                    frame,
+                    0,
+                    ResolveClientInsertCanvasDurationMs(frame)));
+            }
+
+            return operations;
+        }
+
+        public const int ClientRemoveAllCanvasesIndex = -2;
+
+        public static IReadOnlyList<AfterimageLayerReferenceOperation> ResolveCreateAfterimageLayerReferenceOperations(
+            MeleeAfterImageFrameSet frameSet,
+            int targetLayerObjectId)
+        {
+            ResolveAfterimageActionMetadata(
+                frameSet,
+                out int? rawActionCode,
+                out string actionName,
+                out Rectangle? actionRange);
+
+            return ResolveCreateAfterimageLayerReferenceOperations(
+                frameSet,
+                targetLayerObjectId,
+                actionName,
+                rawActionCode,
+                actionRange);
+        }
+
+        public static IReadOnlyList<AfterimageLayerReferenceOperation> ResolveCreateAfterimageLayerReferenceOperations(
+            MeleeAfterImageFrameSet frameSet,
+            int targetLayerObjectId,
+            string actionName,
+            int? rawActionCode)
+        {
+            return ResolveCreateAfterimageLayerReferenceOperations(
+                frameSet,
+                targetLayerObjectId,
+                actionName,
+                rawActionCode,
+                frameSet?.HasRange == true ? frameSet.Range : null);
+        }
+
+        public static IReadOnlyList<AfterimageLayerReferenceOperation> ResolveCreateAfterimageLayerReferenceOperations(
+            MeleeAfterImageFrameSet frameSet,
+            int targetLayerObjectId,
+            string actionName,
+            int? rawActionCode,
+            Rectangle? actionRange)
+        {
+            IReadOnlyList<SkillFrame> frames = frameSet?.Frames;
+            int removedCanvasCollectionObjectId = ResolveRemovedCanvasCollectionObjectId(
+                targetLayerObjectId,
+                ClientRemoveAllCanvasesIndex);
+            int actionCanvasArrayObjectId = ResolveAfterimageActionCanvasArrayObjectId(rawActionCode, actionName);
+
+            var operations = new List<AfterimageLayerReferenceOperation>(((frames?.Count ?? 0) * 27) + 13)
+            {
+                new(
+                    AfterimageLayerReferenceOperationKind.AddTargetLayerRef,
+                    targetLayerObjectId,
+                    LayerRefDelta: 1),
+                new(
+                    AfterimageLayerReferenceOperationKind.AddAlphaVectorRef,
+                    targetLayerObjectId,
+                    AlphaVectorRefDelta: 1),
+                new(
+                    AfterimageLayerReferenceOperationKind.RelMoveAlpha,
+                    targetLayerObjectId,
+                    RelMoveArguments: ClientResetAlphaRelMoveArguments),
+                new(
+                    AfterimageLayerReferenceOperationKind.ReleaseAlphaVectorRef,
+                    targetLayerObjectId,
+                    AlphaVectorRefDelta: -1)
+            };
+
+            AddRelMoveArgumentVariantCleanupOperations(operations, targetLayerObjectId);
+            operations.AddRange(new AfterimageLayerReferenceOperation[]
+            {
+                new(
+                    AfterimageLayerReferenceOperationKind.RemoveAllCanvases,
+                    targetLayerObjectId,
+                    CanvasObjectId: removedCanvasCollectionObjectId,
+                    RemoveCanvasIndex: ClientRemoveAllCanvasesIndex),
+                new(
+                    AfterimageLayerReferenceOperationKind.ReleaseRemovedCanvasRef,
+                    targetLayerObjectId,
+                    CanvasObjectId: removedCanvasCollectionObjectId,
+                    CanvasRefDelta: -1,
+                    RemoveCanvasIndex: ClientRemoveAllCanvasesIndex)
+            });
+            AddRemoveCanvasArgumentVariantCleanupOperations(
+                operations,
+                targetLayerObjectId,
+                removedCanvasCollectionObjectId,
+                ClientRemoveAllCanvasesIndex);
+            operations.AddRange(new AfterimageLayerReferenceOperation[]
+            {
+                new(
+                    AfterimageLayerReferenceOperationKind.AddAfterimageUolRef,
+                    targetLayerObjectId,
+                    RawActionCode: rawActionCode,
+                    ActionName: actionName,
+                    AfterimageUolRefDelta: 1,
+                    AfterimageActionCanvasArrayObjectId: actionCanvasArrayObjectId,
+                    ActionRange: actionRange),
+                new(
+                    AfterimageLayerReferenceOperationKind.GetWeaponAfterImage,
+                    targetLayerObjectId,
+                    RawActionCode: rawActionCode,
+                    ActionName: actionName,
+                    AfterimageActionCanvasArrayObjectId: actionCanvasArrayObjectId,
+                    ActionRange: actionRange)
+            });
+
+            if (frames != null && frames.Count > 0)
+            {
+                for (int i = 0; i < frames.Count; i++)
+                {
+                    SkillFrame frame = frames[i];
+                    if (frame == null)
+                    {
+                        continue;
+                    }
+
+                    int canvasObjectId = ResolveAfterimageCanvasObjectId(frame);
+                    int canvasOrdinal = ResolveAfterimageCanvasOrdinal(frame);
+                    int insertCanvasResultObjectId = ResolveInsertCanvasResultObjectId(
+                        targetLayerObjectId,
+                        canvasObjectId,
+                        canvasOrdinal);
+                    int? frameRawActionCode = frame.AfterimageActionRawCode;
+                    string frameActionName = frame.AfterimageActionName;
+
+                    operations.Add(new AfterimageLayerReferenceOperation(
+                        AfterimageLayerReferenceOperationKind.AddCanvasRef,
+                        targetLayerObjectId,
+                        canvasObjectId,
+                        canvasOrdinal,
+                        frameRawActionCode,
+                        frameActionName,
+                        CanvasRefDelta: 1,
+                        AfterimageActionCanvasArrayObjectId: actionCanvasArrayObjectId,
+                        ActionRange: actionRange));
+                    operations.Add(new AfterimageLayerReferenceOperation(
+                        AfterimageLayerReferenceOperationKind.AddLayerRef,
+                        targetLayerObjectId,
+                        canvasObjectId,
+                        canvasOrdinal,
+                        frameRawActionCode,
+                        frameActionName,
+                        LayerRefDelta: 1,
+                        AfterimageActionCanvasArrayObjectId: actionCanvasArrayObjectId,
+                        ActionRange: actionRange));
+                    operations.Add(new AfterimageLayerReferenceOperation(
+                        AfterimageLayerReferenceOperationKind.LoadCanvas,
+                        targetLayerObjectId,
+                        canvasObjectId,
+                        canvasOrdinal,
+                        frameRawActionCode,
+                        frameActionName,
+                        AfterimageActionCanvasArrayObjectId: actionCanvasArrayObjectId,
+                        LoadCanvasArguments: ResolveClientLoadCanvasArguments(frame),
+                        ActionRange: actionRange));
+                    AddLoadCanvasPropertyReadOperations(
+                        operations,
+                        targetLayerObjectId,
+                        canvasObjectId,
+                        canvasOrdinal,
+                        frameRawActionCode,
+                        frameActionName,
+                        actionCanvasArrayObjectId,
+                        actionRange);
+                    operations.Add(new AfterimageLayerReferenceOperation(
+                        AfterimageLayerReferenceOperationKind.InsertCanvas,
+                        targetLayerObjectId,
+                        canvasObjectId,
+                        canvasOrdinal,
+                        frameRawActionCode,
+                        frameActionName,
+                        InsertCanvasResultVariantRefDelta: 1,
+                        InsertCanvasResultObjectId: insertCanvasResultObjectId,
+                        AfterimageActionCanvasArrayObjectId: actionCanvasArrayObjectId,
+                        LoadCanvasArguments: ResolveClientLoadCanvasArguments(frame),
+                        ActionRange: actionRange));
+                    operations.Add(new AfterimageLayerReferenceOperation(
+                        AfterimageLayerReferenceOperationKind.ClearInsertCanvasResultVariant,
+                        targetLayerObjectId,
+                        canvasObjectId,
+                        canvasOrdinal,
+                        frameRawActionCode,
+                        frameActionName,
+                        InsertCanvasResultVariantRefDelta: -1,
+                        InsertCanvasResultObjectId: insertCanvasResultObjectId,
+                        AfterimageActionCanvasArrayObjectId: actionCanvasArrayObjectId,
+                        ActionRange: actionRange));
+                    AddLoadCanvasArgumentVariantCleanupOperations(
+                        operations,
+                        targetLayerObjectId,
+                        canvasObjectId,
+                        canvasOrdinal,
+                        frameRawActionCode,
+                        frameActionName,
+                        actionCanvasArrayObjectId,
+                        actionRange);
+                    operations.Add(new AfterimageLayerReferenceOperation(
+                        AfterimageLayerReferenceOperationKind.ReleaseLayerRef,
+                        targetLayerObjectId,
+                        canvasObjectId,
+                        canvasOrdinal,
+                        frameRawActionCode,
+                        frameActionName,
+                        LayerRefDelta: -1,
+                        AfterimageActionCanvasArrayObjectId: actionCanvasArrayObjectId,
+                        ActionRange: actionRange));
+                    operations.Add(new AfterimageLayerReferenceOperation(
+                        AfterimageLayerReferenceOperationKind.ReleaseCanvasRef,
+                        targetLayerObjectId,
+                        canvasObjectId,
+                        canvasOrdinal,
+                        frameRawActionCode,
+                        frameActionName,
+                        CanvasRefDelta: -1,
+                        AfterimageActionCanvasArrayObjectId: actionCanvasArrayObjectId,
+                        ActionRange: actionRange));
+                }
+            }
+
+            operations.Add(new AfterimageLayerReferenceOperation(
+                AfterimageLayerReferenceOperationKind.ReleaseAfterimageUolRef,
+                targetLayerObjectId,
+                RawActionCode: rawActionCode,
+                ActionName: actionName,
+                AfterimageUolRefDelta: -1,
+                AfterimageActionCanvasArrayObjectId: actionCanvasArrayObjectId,
+                ActionRange: actionRange));
+            operations.Add(new AfterimageLayerReferenceOperation(
+                AfterimageLayerReferenceOperationKind.ReleaseTargetLayerRef,
+                targetLayerObjectId,
+                LayerRefDelta: -1));
+
+            return operations;
+        }
+
+        private static void AddLoadCanvasArgumentVariantCleanupOperations(
+            List<AfterimageLayerReferenceOperation> operations,
+            int targetLayerObjectId,
+            int canvasObjectId,
+            int canvasOrdinal,
+            int? rawActionCode,
+            string actionName,
+            int actionCanvasArrayObjectId,
+            Rectangle? actionRange)
+        {
+            if (operations == null)
+            {
+                return;
+            }
+
+            for (int ordinal = 0; ordinal < ClientLoadCanvasArgumentVariantCount; ordinal++)
+            {
+                operations.Add(new AfterimageLayerReferenceOperation(
+                    AfterimageLayerReferenceOperationKind.ClearLoadCanvasArgumentVariant,
+                    targetLayerObjectId,
+                    canvasObjectId,
+                    canvasOrdinal,
+                    rawActionCode,
+                    actionName,
+                    AfterimageActionCanvasArrayObjectId: actionCanvasArrayObjectId,
+                    LoadCanvasArgumentVariantOrdinal: ordinal,
+                    LoadCanvasArgumentVariantRefDelta: -1,
+                    LoadCanvasArgumentVariantObjectId: ResolveLoadCanvasArgumentVariantObjectId(
+                        canvasObjectId,
+                        canvasOrdinal,
+                        ordinal),
+                    ActionRange: actionRange));
+            }
+        }
+
+        private static void AddLoadCanvasPropertyReadOperations(
+            List<AfterimageLayerReferenceOperation> operations,
+            int targetLayerObjectId,
+            int canvasObjectId,
+            int canvasOrdinal,
+            int? rawActionCode,
+            string actionName,
+            int actionCanvasArrayObjectId,
+            Rectangle? actionRange)
+        {
+            if (operations == null)
+            {
+                return;
+            }
+
+            for (int ordinal = 0; ordinal < ClientLoadCanvasPropertyReadCount; ordinal++)
+            {
+                AfterimageLoadCanvasPropertySpec propertySpec = ClientLoadCanvasPropertyReadSpecs[ordinal];
+                operations.Add(new AfterimageLayerReferenceOperation(
+                    AfterimageLayerReferenceOperationKind.AddLoadCanvasPropertyRef,
+                    targetLayerObjectId,
+                    canvasObjectId,
+                    canvasOrdinal,
+                    rawActionCode,
+                    actionName,
+                    LoadCanvasPropertyOrdinal: ordinal,
+                    CanvasPropertyRefDelta: 1,
+                    LoadCanvasPropertyName: propertySpec.Name,
+                    LoadCanvasPropertyDefaultValue: propertySpec.DefaultValue,
+                    AfterimageActionCanvasArrayObjectId: actionCanvasArrayObjectId,
+                    ActionRange: actionRange));
+                operations.Add(new AfterimageLayerReferenceOperation(
+                    AfterimageLayerReferenceOperationKind.ClearLoadCanvasPropertyValueVariant,
+                    targetLayerObjectId,
+                    canvasObjectId,
+                    canvasOrdinal,
+                    rawActionCode,
+                    actionName,
+                    LoadCanvasPropertyOrdinal: ordinal,
+                    LoadCanvasPropertyValueVariantRefDelta: -1,
+                    LoadCanvasPropertyName: propertySpec.Name,
+                    LoadCanvasPropertyDefaultValue: propertySpec.DefaultValue,
+                    AfterimageActionCanvasArrayObjectId: actionCanvasArrayObjectId,
+                    ActionRange: actionRange));
+                operations.Add(new AfterimageLayerReferenceOperation(
+                    AfterimageLayerReferenceOperationKind.ReleaseLoadCanvasPropertyRef,
+                    targetLayerObjectId,
+                    canvasObjectId,
+                    canvasOrdinal,
+                    rawActionCode,
+                    actionName,
+                    LoadCanvasPropertyOrdinal: ordinal,
+                    CanvasPropertyRefDelta: -1,
+                    LoadCanvasPropertyName: propertySpec.Name,
+                    LoadCanvasPropertyDefaultValue: propertySpec.DefaultValue,
+                    AfterimageActionCanvasArrayObjectId: actionCanvasArrayObjectId,
+                    ActionRange: actionRange));
+            }
+        }
+
+        private static void AddRelMoveArgumentVariantCleanupOperations(
+            List<AfterimageLayerReferenceOperation> operations,
+            int targetLayerObjectId)
+        {
+            if (operations == null)
+            {
+                return;
+            }
+
+            for (int ordinal = 0; ordinal < ClientRelMoveArgumentVariantCount; ordinal++)
+            {
+                operations.Add(new AfterimageLayerReferenceOperation(
+                    AfterimageLayerReferenceOperationKind.ClearRelMoveArgumentVariant,
+                    targetLayerObjectId,
+                    RelMoveArgumentVariantOrdinal: ordinal));
+            }
+        }
+
+        private static void AddRemoveCanvasArgumentVariantCleanupOperations(
+            List<AfterimageLayerReferenceOperation> operations,
+            int targetLayerObjectId,
+            int removedCanvasCollectionObjectId,
+            int removeCanvasIndex)
+        {
+            if (operations == null)
+            {
+                return;
+            }
+
+            operations.Add(new AfterimageLayerReferenceOperation(
+                AfterimageLayerReferenceOperationKind.ClearRemoveCanvasArgumentVariant,
+                targetLayerObjectId,
+                removedCanvasCollectionObjectId,
+                RemoveCanvasIndex: removeCanvasIndex,
+                RemoveCanvasArgumentVariantOrdinal: 0));
+        }
+
+        public const int ClientRelMoveArgumentVariantCount = 2;
+        public const int ClientRemoveCanvasArgumentVariantCount = 1;
+        public const int ClientLoadCanvasPropertyReadCount = 5;
+        public const int ClientLoadCanvasArgumentVariantCount = 5;
+        public static readonly AfterimageRelMoveArguments ClientResetAlphaRelMoveArguments = new(255, 0);
+        public static readonly IReadOnlyList<AfterimageLoadCanvasPropertySpec> ClientLoadCanvasPropertyReadSpecs =
+            new[]
+            {
+                new AfterimageLoadCanvasPropertySpec("delay", SkillLoader.ClientAfterimageCanvasDelayFallbackMs),
+                new AfterimageLoadCanvasPropertySpec("a0", -1),
+                new AfterimageLoadCanvasPropertySpec("a1", -1),
+                new AfterimageLoadCanvasPropertySpec("z0", 0),
+                new AfterimageLoadCanvasPropertySpec("z1", 0)
+            };
+
+        internal static AfterimageLoadCanvasArguments ResolveClientLoadCanvasArguments(SkillFrame frame)
+        {
+            if (frame == null)
+            {
+                return new AfterimageLoadCanvasArguments(
+                    SkillLoader.ClientAfterimageCanvasDelayFallbackMs,
+                    -1,
+                    -1,
+                    0,
+                    0);
+            }
+
+            return new AfterimageLoadCanvasArguments(
+                frame.Delay,
+                frame.HasAlphaStart ? frame.AlphaStart : -1,
+                frame.HasAlphaEnd ? frame.AlphaEnd : -1,
+                frame.HasZoomStart ? frame.ZoomStart : 0,
+                frame.HasZoomEnd ? frame.ZoomEnd : 0);
+        }
+
+        private static void ResolveAfterimageActionMetadata(
+            MeleeAfterImageFrameSet frameSet,
+            out int? rawActionCode,
+            out string actionName,
+            out Rectangle? actionRange)
+        {
+            rawActionCode = frameSet?.RawActionCode;
+            actionName = frameSet?.ActionName;
+            actionRange = frameSet?.HasRange == true ? frameSet.Range : null;
+            IReadOnlyList<SkillFrame> frames = frameSet?.Frames;
+            if (frames == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < frames.Count; i++)
+            {
+                SkillFrame frame = frames[i];
+                if (frame == null)
+                {
+                    continue;
+                }
+
+                rawActionCode ??= frame.AfterimageActionRawCode;
+                if (string.IsNullOrWhiteSpace(actionName)
+                    && !string.IsNullOrWhiteSpace(frame.AfterimageActionName))
+                {
+                    actionName = frame.AfterimageActionName;
+                }
+
+                if (rawActionCode.HasValue && !string.IsNullOrWhiteSpace(actionName))
+                {
+                    return;
+                }
+            }
+        }
+
+        public static IReadOnlyList<AfterimageLayerOperation> ResolveLayerOperations(
+            MeleeAfterImageFrameSet frameSet,
+            int frameElapsedMs)
+        {
+            IReadOnlyList<SkillFrame> frames = frameSet?.Frames;
+            if (frames == null || frames.Count == 0)
+            {
+                return Array.Empty<AfterimageLayerOperation>();
+            }
+
+            int elapsed = Math.Max(0, frameElapsedMs);
+            List<AfterimageLayerOperation> operations = null;
+            for (int i = 0; i < frames.Count; i++)
+            {
+                SkillFrame frame = frames[i];
+                if (frame == null)
+                {
+                    continue;
+                }
+
+                int durationMs = ResolveClientInsertCanvasDurationMs(frame);
+                if (durationMs > 0 && elapsed >= durationMs)
+                {
+                    operations ??= new List<AfterimageLayerOperation>(frames.Count);
+                    operations.Add(CreateAfterimageLayerOperation(
+                        AfterimageLayerOperationKind.RemoveCanvas,
+                        frame,
+                        durationMs,
+                        durationMs));
+                    continue;
+                }
+
+                int localFrameElapsed = durationMs > 0
+                    ? Math.Min(elapsed, durationMs)
+                    : elapsed;
+                operations ??= new List<AfterimageLayerOperation>(frames.Count);
+                operations.Add(CreateAfterimageLayerOperation(
+                    AfterimageLayerOperationKind.InsertCanvas,
+                    frame,
+                    localFrameElapsed,
+                    durationMs));
+            }
+
+            return operations ?? (IReadOnlyList<AfterimageLayerOperation>)Array.Empty<AfterimageLayerOperation>();
+        }
+
+        public static IReadOnlyList<AfterimageLayerOperation> ResolveLayerOperations(
+            MeleeAfterImageFrameSet frameSet,
+            int previousFrameElapsedMs,
+            int frameElapsedMs)
+        {
+            IReadOnlyList<SkillFrame> frames = frameSet?.Frames;
+            if (frames == null || frames.Count == 0)
+            {
+                return Array.Empty<AfterimageLayerOperation>();
+            }
+
+            int previousElapsed = Math.Max(0, previousFrameElapsedMs);
+            int elapsed = Math.Max(0, frameElapsedMs);
+            if (elapsed < previousElapsed)
+            {
+                return ResolveLayerOperations(frameSet, frameElapsedMs);
+            }
+
+            List<AfterimageLayerOperation> operations = null;
+            for (int i = 0; i < frames.Count; i++)
+            {
+                SkillFrame frame = frames[i];
+                if (frame == null)
+                {
+                    continue;
+                }
+
+                int durationMs = ResolveClientInsertCanvasDurationMs(frame);
+                if (durationMs > 0 && elapsed >= durationMs)
+                {
+                    if (previousElapsed < durationMs)
+                    {
+                        operations ??= new List<AfterimageLayerOperation>(frames.Count);
+                        operations.Add(CreateAfterimageLayerOperation(
+                            AfterimageLayerOperationKind.RemoveCanvas,
+                            frame,
+                            durationMs,
+                            durationMs));
+                    }
+
+                    continue;
+                }
+
+                int localFrameElapsed = durationMs > 0
+                    ? Math.Min(elapsed, durationMs)
+                    : elapsed;
+                operations ??= new List<AfterimageLayerOperation>(frames.Count);
+                operations.Add(CreateAfterimageLayerOperation(
+                    AfterimageLayerOperationKind.InsertCanvas,
+                    frame,
+                    localFrameElapsed,
+                    durationMs));
+            }
+
+            return operations ?? (IReadOnlyList<AfterimageLayerOperation>)Array.Empty<AfterimageLayerOperation>();
+        }
+
+        internal static int ResolveClientInsertCanvasDurationMs(SkillFrame frame)
+        {
+            return Math.Max(0, frame?.Delay ?? 0);
+        }
+
+        internal static (int StartAlpha, int EndAlpha) ResolveClientInsertCanvasAlphaEndpoints(SkillFrame frame)
+        {
+            if (frame == null)
+            {
+                return (255, 255);
+            }
+
+            return (
+                Math.Clamp(frame.AlphaStart, 0, 255),
+                Math.Clamp(frame.AlphaEnd, 0, 255));
+        }
+
+        private static AfterimageLayerOperation CreateAfterimageLayerOperation(
+            AfterimageLayerOperationKind kind,
+            SkillFrame frame,
+            int frameElapsedMs,
+            int durationMs)
+        {
+            (int startAlpha, int endAlpha) = ResolveClientInsertCanvasAlphaEndpoints(frame);
+            (int startZoom, int endZoom) = ResolveClientInsertCanvasZoomEndpoints(
+                frame?.HasZoomStart == true || frame?.ZoomStart != 0 ? frame?.ZoomStart : null,
+                frame?.HasZoomEnd == true || frame?.ZoomEnd != 0 ? frame?.ZoomEnd : null);
+
+            return new AfterimageLayerOperation(
+                kind,
+                frame,
+                Math.Max(0, frameElapsedMs),
+                Math.Max(0, durationMs),
+                startAlpha,
+                endAlpha,
+                startZoom,
+                endZoom,
+                ResolveAfterimageCanvasObjectId(frame),
+                ResolveAfterimageCanvasOrdinal(frame),
+                frame?.AfterimageActionRawCode,
+                frame?.AfterimageActionName,
+                kind == AfterimageLayerOperationKind.RemoveAllCanvases
+                    ? ClientRemoveAllCanvasesIndex
+                    : 0);
+        }
+
+        internal static int ResolveAfterimageCanvasObjectId(SkillFrame frame)
+        {
+            if (frame == null)
+            {
+                return 0;
+            }
+
+            int rawActionCode = frame.AfterimageActionRawCode.GetValueOrDefault(-1);
+            int canvasOrdinal = ResolveAfterimageCanvasOrdinal(frame);
+            unchecked
+            {
+                int hash = 17;
+                hash = (hash * 31) + rawActionCode;
+                if (rawActionCode < 0 && !string.IsNullOrWhiteSpace(frame.AfterimageActionName))
+                {
+                    foreach (char token in frame.AfterimageActionName.Trim())
+                    {
+                        hash = (hash * 31) + char.ToLowerInvariant(token);
+                    }
+                }
+
+                hash = (hash * 31) + canvasOrdinal;
+                return hash == 0 ? 1 : hash;
+            }
+        }
+
+        internal static int ResolveAfterimageActionCanvasArrayObjectId(int? rawActionCode, string actionName)
+        {
+            int resolvedRawActionCode = rawActionCode.GetValueOrDefault(-1);
+            unchecked
+            {
+                int hash = 29;
+                hash = (hash * 41) + resolvedRawActionCode;
+                if (resolvedRawActionCode < 0 && !string.IsNullOrWhiteSpace(actionName))
+                {
+                    foreach (char token in actionName.Trim())
+                    {
+                        hash = (hash * 41) + char.ToLowerInvariant(token);
+                    }
+                }
+
+                return hash == 0 ? 1 : hash;
+            }
+        }
+
+        internal static int ResolveRemovedCanvasCollectionObjectId(int targetLayerObjectId, int removeCanvasIndex)
+        {
+            if (targetLayerObjectId == 0)
+            {
+                return 0;
+            }
+
+            unchecked
+            {
+                int hash = 23;
+                hash = (hash * 37) + targetLayerObjectId;
+                hash = (hash * 37) + removeCanvasIndex;
+                return hash == 0 ? 1 : hash;
+            }
+        }
+
+        internal static int ResolveInsertCanvasResultObjectId(int targetLayerObjectId, int canvasObjectId, int canvasOrdinal)
+        {
+            if (targetLayerObjectId == 0 || canvasObjectId == 0)
+            {
+                return 0;
+            }
+
+            unchecked
+            {
+                int hash = 31;
+                hash = (hash * 43) + targetLayerObjectId;
+                hash = (hash * 43) + canvasObjectId;
+                hash = (hash * 43) + canvasOrdinal;
+                return hash == 0 ? 1 : hash;
+            }
+        }
+
+        internal static int ResolveLoadCanvasArgumentVariantObjectId(
+            int canvasObjectId,
+            int canvasOrdinal,
+            int argumentOrdinal)
+        {
+            if (canvasObjectId == 0 || argumentOrdinal < 0)
+            {
+                return 0;
+            }
+
+            unchecked
+            {
+                int hash = 37;
+                hash = (hash * 47) + canvasObjectId;
+                hash = (hash * 47) + canvasOrdinal;
+                hash = (hash * 47) + argumentOrdinal;
+                return hash == 0 ? 1 : hash;
+            }
+        }
+
+        private static int ResolveAfterimageCanvasOrdinal(SkillFrame frame)
+        {
+            return frame?.AfterimageCanvasOrdinal >= 0
+                ? frame.AfterimageCanvasOrdinal
+                : -1;
+        }
+
+        internal static bool TryResolveNonLoopingFrameTimingAtTime(
+            AssembledFrame[] frames,
+            int timeMs,
+            out int frameIndex,
+            out int frameElapsedMs)
+        {
+            frameIndex = -1;
+            frameElapsedMs = 0;
+
+            if (frames == null || frames.Length == 0)
+            {
+                return false;
+            }
+
+            if (frames.Length == 1)
+            {
+                frameIndex = 0;
+                frameElapsedMs = Math.Max(0, timeMs);
+                return true;
+            }
+
+            int clampedTime = Math.Max(0, timeMs);
+            int elapsed = 0;
+            for (int i = 0; i < frames.Length; i++)
+            {
+                int frameDuration = Math.Max(0, frames[i]?.Duration ?? 0);
+                if (clampedTime < elapsed + frameDuration)
+                {
+                    frameIndex = i;
+                    frameElapsedMs = Math.Max(0, clampedTime - elapsed);
+                    return true;
+                }
+
+                elapsed += frameDuration;
+            }
+
+            frameIndex = frames.Length - 1;
+            frameElapsedMs = Math.Max(0, frames[frameIndex]?.Duration ?? 0);
+            return true;
+        }
+
+        public static float ResolveFrameAlpha(SkillFrame frame, int frameElapsedMs)
+        {
+            if (frame == null)
+            {
+                return 1f;
+            }
+
+            int startAlpha = Math.Clamp(frame.AlphaStart, 0, 255);
+            int endAlpha = Math.Clamp(frame.AlphaEnd, 0, 255);
+            if (startAlpha == endAlpha)
+            {
+                return startAlpha / 255f;
+            }
+
+            float progress = frame.Delay <= 0
+                ? 1f
+                : MathHelper.Clamp(frameElapsedMs / (float)Math.Max(1, frame.Delay), 0f, 1f);
+
+            return MathHelper.Lerp(startAlpha, endAlpha, progress) / 255f;
+        }
+
+        public static float ResolveFrameZoom(SkillFrame frame, int frameElapsedMs)
+        {
+            if (frame == null)
+            {
+                return 1f;
+            }
+
+            bool hasStartZoom = frame.HasZoomStart || frame.ZoomStart != 0;
+            bool hasEndZoom = frame.HasZoomEnd || frame.ZoomEnd != 0;
+            if (!hasStartZoom && !hasEndZoom)
+            {
+                return 1f;
+            }
+
+            (int startZoom, int endZoom) = ResolveClientInsertCanvasZoomEndpoints(
+                hasStartZoom ? frame.ZoomStart : null,
+                hasEndZoom ? frame.ZoomEnd : null);
+
+            float progress = frame.Delay <= 0
+                ? 1f
+                : MathHelper.Clamp(frameElapsedMs / (float)Math.Max(1, frame.Delay), 0f, 1f);
+            float interpolatedZoom = MathHelper.Lerp(startZoom, endZoom, progress);
+            return MathHelper.Clamp(interpolatedZoom / 100f, 0.01f, 10f);
+        }
+
+        internal static (int StartZoom, int EndZoom) ResolveClientInsertCanvasZoomEndpoints(int? authoredZoomStart, int? authoredZoomEnd)
+        {
+            int startZoom = authoredZoomStart.GetValueOrDefault(100);
+            int endZoom = authoredZoomEnd.GetValueOrDefault(100);
+
+            return (startZoom, endZoom);
+        }
+
+        internal static bool TryResolveSpriteBatchDrawParameters(
+            SkillFrame frame,
+            int screenX,
+            int screenY,
+            bool facingRight,
+            float alpha,
+            float zoom,
+            Color baseTint,
+            out SpriteBatchDrawParameters parameters)
+        {
+            parameters = default;
+            if (frame?.Texture == null)
+            {
+                return false;
+            }
+
+            bool shouldFlip = facingRight ^ frame.Flip;
+            parameters = new SpriteBatchDrawParameters(
+                new Vector2(screenX, screenY),
+                ResolveSpriteBatchDrawOrigin(frame.Origin, frame.Texture.Width, shouldFlip),
+                ResolveSpriteBatchDrawScale(zoom),
+                baseTint * MathHelper.Clamp(alpha, 0f, 1f),
+                shouldFlip ? SpriteEffects.FlipHorizontally : SpriteEffects.None);
+            return true;
+        }
+
+        internal static Vector2 ResolveSpriteBatchDrawOrigin(Point origin, int textureWidth, bool shouldFlip)
+        {
+            return new Vector2(
+                shouldFlip ? textureWidth - origin.X : origin.X,
+                origin.Y);
+        }
+
+        internal static float ResolveSpriteBatchDrawScale(float zoom)
+        {
+            return MathHelper.Clamp(zoom, 0.01f, 10f);
+        }
+    }
+}

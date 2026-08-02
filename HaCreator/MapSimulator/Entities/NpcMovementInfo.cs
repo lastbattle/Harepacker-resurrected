@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using HaCreator.MapSimulator.Physics;
 
 namespace HaCreator.MapSimulator.Animation
 {
@@ -64,6 +66,61 @@ namespace HaCreator.MapSimulator.Animation
 
             // Random initial facing direction
             FlipX = _random.Next(2) == 0;
+        }
+
+        public void ApplyPacketPosition(int x, int y, int rx0, int rx1, int moveAction)
+        {
+            _spawnX = x;
+            _spawnY = y;
+            X = x;
+            Y = y;
+            RX0 = rx0;
+            RX1 = rx1;
+            CanMove = CanMove && rx1 > rx0;
+            IsMoving = false;
+            _standTimer = 0;
+            _moveTimer = 0;
+            _currentStandDuration = _random.Next(MIN_STAND_TIME, MAX_STAND_TIME);
+            FlipX = (moveAction & 1) != 0;
+        }
+
+        public void ApplyPacketMoveAction(int moveAction)
+        {
+            FlipX = (moveAction & 1) != 0;
+            IsMoving = moveAction >= 2;
+            _moveTimer = 0;
+        }
+
+        public void ApplyPacketMovePath(IReadOnlyList<MovePathElement> elements)
+        {
+            if (elements == null || elements.Count == 0)
+            {
+                return;
+            }
+
+            MovePathElement? tail = null;
+            for (int i = elements.Count - 1; i >= 0; i--)
+            {
+                MovePathElement candidate = elements[i];
+                if (candidate.X != 0 || candidate.Y != 0)
+                {
+                    tail = candidate;
+                    break;
+                }
+            }
+
+            if (!tail.HasValue)
+            {
+                return;
+            }
+
+            MovePathElement element = tail.Value;
+            X = element.X;
+            Y = element.Y;
+            IsMoving = element.Action is MoveAction.Walk or MoveAction.Jump or MoveAction.Fall or MoveAction.Fly or MoveAction.Swim;
+            FlipX = !element.FacingRight;
+            _standTimer = 0;
+            _moveTimer = 0;
         }
 
         /// <summary>

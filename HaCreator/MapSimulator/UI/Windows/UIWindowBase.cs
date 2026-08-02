@@ -1,5 +1,7 @@
+using HaCreator.MapSimulator.Animation;
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.UI;
+using HaCreator.MapSimulator;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
@@ -8,6 +10,7 @@ using Microsoft.Xna.Framework.Input;
 using Spine;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace HaCreator.MapSimulator.UI
 {
@@ -20,9 +23,11 @@ namespace HaCreator.MapSimulator.UI
         #region Fields
         protected readonly List<UIObject> uiButtons = new List<UIObject>();
         protected UIObject closeButton;
+        protected SpriteFont WindowFont;
 
         private bool _isVisible = false;
         private Point? _mouseOffsetOnDragStart = null;
+        private AnimationDisplayerWindowOverlayOwner _animationDisplayerWindowOverlayOwner;
 
         // Toggle cooldown
         private int _lastToggleTime = 0;
@@ -39,13 +44,39 @@ namespace HaCreator.MapSimulator.UI
         public new bool IsVisible
         {
             get => _isVisible;
-            set => _isVisible = value;
+            set => SetVisibility(value, invokeBeforeShow: true);
         }
 
         /// <summary>
         /// Window name for identification
         /// </summary>
         public abstract string WindowName { get; }
+
+        /// <summary>
+        /// Whether the window can be dragged by holding its frame.
+        /// </summary>
+        public virtual bool SupportsDragging { get; protected set; } = true;
+
+        /// <summary>
+        /// Whether the window currently owns keyboard input and should block chat or window hotkeys.
+        /// </summary>
+        public virtual bool CapturesKeyboardInput => false;
+
+        /// <summary>
+        /// Whether the visible window behaves like a client modal dialog and blocks lower owners.
+        /// </summary>
+        public virtual bool IsModalDialogOwner => false;
+
+        /// <summary>
+        /// Whether the window should be skipped when the manager hides the topmost or all windows.
+        /// Used for client-owned overlay hosts that should stay resident.
+        /// </summary>
+        public virtual bool ExcludeFromWindowManagerHide => false;
+
+        /// <summary>
+        /// Optional callback invoked whenever the window is shown through any path.
+        /// </summary>
+        public Action<UIWindowBase> BeforeShow { get; set; }
 
         /// <summary>
         /// Character build for stat windows (AbilityUI, AbilityUIBigBang)
@@ -150,6 +181,15 @@ namespace HaCreator.MapSimulator.UI
                     TickCount);
             }
 
+            _animationDisplayerWindowOverlayOwner?.DrawWindow(
+                WindowName,
+                AnimationDisplayerWindowOverlayPass.Underlay,
+                sprite,
+                skeletonMeshRenderer,
+                gameTime,
+                Position,
+                TickCount);
+
             // Draw window contents (implemented by derived classes)
             DrawContents(sprite, skeletonMeshRenderer, gameTime,
                 mapShiftX, mapShiftY, centerX, centerY,
@@ -177,12 +217,37 @@ namespace HaCreator.MapSimulator.UI
                     renderParameters,
                     TickCount);
             }
+
+            _animationDisplayerWindowOverlayOwner?.DrawWindow(
+                WindowName,
+                AnimationDisplayerWindowOverlayPass.Overlay,
+                sprite,
+                skeletonMeshRenderer,
+                gameTime,
+                Position,
+                TickCount);
+
+            DrawOverlay(sprite, skeletonMeshRenderer, gameTime,
+                mapShiftX, mapShiftY, centerX, centerY,
+                drawReflectionInfo, renderParameters, TickCount);
         }
 
         /// <summary>
         /// Override in derived classes to draw window-specific content
         /// </summary>
         protected virtual void DrawContents(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
+            int mapShiftX, int mapShiftY, int centerX, int centerY,
+            ReflectionDrawableBoundary drawReflectionInfo,
+            RenderParameters renderParameters,
+            int TickCount)
+        {
+            // Base implementation does nothing - override in derived classes
+        }
+
+        /// <summary>
+        /// Override in derived classes to draw overlays that must appear above buttons.
+        /// </summary>
+        protected virtual void DrawOverlay(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
             int mapShiftX, int mapShiftY, int centerX, int centerY,
             ReflectionDrawableBoundary drawReflectionInfo,
             RenderParameters renderParameters,
@@ -202,24 +267,36 @@ namespace HaCreator.MapSimulator.UI
             if (tickCount - _lastToggleTime > TOGGLE_COOLDOWN_MS)
             {
                 _lastToggleTime = tickCount;
-                _isVisible = !_isVisible;
+                if (_isVisible)
+                {
+                    Hide();
+                }
+                else
+                {
+                    Show();
+                }
             }
         }
 
         /// <summary>
         /// Show the window
         /// </summary>
-        public void Show()
+        public virtual void Show()
         {
-            _isVisible = true;
+            SetVisibility(true, invokeBeforeShow: true);
         }
 
         /// <summary>
         /// Hide the window
         /// </summary>
-        public void Hide()
+        public virtual void Hide()
         {
-            _isVisible = false;
+            SetVisibility(false, invokeBeforeShow: false);
+        }
+
+        internal void AttachAnimationDisplayerWindowOverlayOwner(AnimationDisplayerWindowOverlayOwner owner)
+        {
+            _animationDisplayerWindowOverlayOwner = owner;
         }
 
         /// <summary>
@@ -229,6 +306,33 @@ namespace HaCreator.MapSimulator.UI
         {
             _mouseOffsetOnDragStart = null;
         }
+
+        private void SetVisibility(bool visible, bool invokeBeforeShow)
+        {
+            if (_isVisible == visible)
+            {
+                if (visible && invokeBeforeShow)
+                {
+                    // Some scripted owners refresh an already-visible registered window
+                    // to replace dialog content while keeping the same host alive.
+                    // Those refreshes still need the pre-show seam to fire.
+                    BeforeShow?.Invoke(this);
+                }
+                return;
+            }
+
+            if (visible && invokeBeforeShow)
+            {
+                BeforeShow?.Invoke(this);
+            }
+
+            _isVisible = visible;
+            if (!visible)
+            {
+                ResetImePresentationPlacement();
+                _animationDisplayerWindowOverlayOwner?.ClearWindow(WindowName);
+            }
+        }
         #endregion
 
         #region Mouse Events
@@ -236,7 +340,7 @@ namespace HaCreator.MapSimulator.UI
         /// Handle mouse events (buttons, dragging)
         /// Matches MinimapUI behavior exactly
         /// </summary>
-        public bool CheckMouseEvent(int shiftCenteredX, int shiftCenteredY, MouseState mouseState, MouseCursorItem mouseCursor, int renderWidth, int renderHeight)
+        public virtual bool CheckMouseEvent(int shiftCenteredX, int shiftCenteredY, MouseState mouseState, MouseCursorItem mouseCursor, int renderWidth, int renderHeight)
         {
             if (!_isVisible)
                 return false;
@@ -253,7 +357,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             // Handle UI movement (exactly like MinimapUI)
-            if (mouseState.LeftButton == ButtonState.Pressed)
+            if (SupportsDragging && mouseState.LeftButton == ButtonState.Pressed)
             {
                 // Get current frame dimensions (use override frame if set)
                 IDXObject currentFrame = CurrentFrame;
@@ -303,18 +407,63 @@ namespace HaCreator.MapSimulator.UI
             if (!_isVisible)
                 return false;
 
-            // Use CurrentFrame (which respects override frame for expanded views)
-            // instead of LastFrameDrawn which may have stale dimensions
+            if (GetWindowBounds().Contains(x, y))
+            {
+                return true;
+            }
+
+            return GetAdditionalInteractiveBounds().Any(bounds => bounds.Contains(x, y));
+        }
+
+        public virtual void HandleCommittedText(string text)
+        {
+        }
+
+        public virtual void HandleCompositionState(ImeCompositionState state)
+        {
+            HandleCompositionText(state?.Text ?? string.Empty);
+        }
+
+        public virtual void HandleCompositionText(string text)
+        {
+        }
+
+        public virtual void ClearCompositionText()
+        {
+        }
+
+        public virtual void HandleImeCandidateList(ImeCandidateListState state)
+        {
+        }
+
+        public virtual void ClearImeCandidateList()
+        {
+        }
+
+        public virtual void RefreshImePresentationPlacement()
+        {
+        }
+
+        public virtual bool CanStartDragAt(int x, int y)
+        {
+            return GetWindowBounds().Contains(x, y);
+        }
+
+        protected virtual IEnumerable<Rectangle> GetAdditionalInteractiveBounds()
+        {
+            yield break;
+        }
+
+        protected Rectangle GetWindowBounds()
+        {
             int frameWidth = CurrentFrame?.Width ?? 200;
             int frameHeight = CurrentFrame?.Height ?? 200;
 
-            Rectangle windowRect = new Rectangle(
+            return new Rectangle(
                 this.Position.X,
                 this.Position.Y,
                 frameWidth,
                 frameHeight);
-
-            return windowRect.Contains(x, y);
         }
         #endregion
 
@@ -325,6 +474,10 @@ namespace HaCreator.MapSimulator.UI
         protected virtual void OnCloseButtonClicked(UIObject sender)
         {
             Hide();
+        }
+
+        protected virtual void ResetImePresentationPlacement()
+        {
         }
         #endregion
 
@@ -345,7 +498,31 @@ namespace HaCreator.MapSimulator.UI
         /// <param name="font">The font to use</param>
         public virtual void SetFont(SpriteFont font)
         {
-            // Base implementation does nothing - override in derived classes
+            WindowFont = font;
+        }
+
+        protected bool CanDrawWindowText => WindowFont != null;
+
+        protected float WindowLineSpacing => WindowFont?.LineSpacing ?? 0f;
+
+        protected Vector2 MeasureWindowText(SpriteBatch sprite, string text, float scale = 1.0f)
+        {
+            if (WindowFont == null || string.IsNullOrEmpty(text))
+            {
+                return Vector2.Zero;
+            }
+
+            return ClientTextDrawing.Measure(sprite?.GraphicsDevice, text, scale, WindowFont);
+        }
+
+        protected void DrawWindowText(SpriteBatch sprite, string text, Vector2 position, Color color, float scale = 1.0f, float? maxWidth = null)
+        {
+            if (WindowFont == null || string.IsNullOrWhiteSpace(text))
+            {
+                return;
+            }
+
+            ClientTextDrawing.Draw(sprite, text, position, color, scale, WindowFont, maxWidth);
         }
         #endregion
     }

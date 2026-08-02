@@ -1,17 +1,14 @@
-﻿using HaCreator.MapSimulator.UI;
+using HaCreator.MapSimulator.UI;
 using HaSharedLibrary;
 using HaSharedLibrary.Render.DX;
 using HaSharedLibrary.Util;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using Microsoft.Xna.Framework;
-using Microsoft.Xna.Framework.Audio;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
-using NAudio.Wave;
 using System;
 using System.Collections.Generic;
-using System.IO;
 using static HaCreator.MapSimulator.UI.UIObjectButtonEvent;
 
 namespace HaCreator.MapSimulator.UI
@@ -21,10 +18,17 @@ namespace HaCreator.MapSimulator.UI
     /// </summary>
     public class UIObject : UIObjectViewModelBase
     {
+        internal delegate bool ClientSoundEffectPlayback(
+            string key,
+            WzBinaryProperty soundProperty,
+            float startVolumeScale,
+            bool suppressWhileActive);
+
         #region Fields
         private UIObjectState _currentState = UIObjectState.Normal;
 
         private WzSoundResourceStreamer _seMouseClick, _seMouseOver;
+        private WzBinaryProperty _seMouseClickProperty, _seMouseOverProperty;
 
         private readonly BaseDXDrawableItem _normalState;
         private readonly BaseDXDrawableItem _disabledState;
@@ -37,6 +41,7 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         public event UIObjectButtonEventHandler ButtonClickReleased;
 
+        internal static ClientSoundEffectPlayback ClientSoundEffectPlayer { get; set; }
 
         /// <summary>
         /// Gets the current BaseDXDrawableItem based upon the current button state.
@@ -65,16 +70,25 @@ namespace HaCreator.MapSimulator.UI
         #endregion
 
         #region Custom Members
-        private int _CanvasSnapshotHeight = -1, _CanvasSnapshotWidth = -1; // a snapshot of the height and width of the canvas for initialization of the buttons
-        public int CanvasSnapshotHeight
+        private int _canvasSnapshotHeight = -1;
+        private int _canvasSnapshotWidth = -1;
+
+        public int CanvasSnapshotHeight => _canvasSnapshotHeight;
+
+        public int CanvasSnapshotWidth => _canvasSnapshotWidth;
+
+        public UIObjectState CurrentState => _currentState;
+        public bool Enabled => _currentState != UIObjectState.Disabled;
+
+        public Point GetDrawPositionByState(UIObjectState state = UIObjectState.Null)
         {
-            get { return _CanvasSnapshotHeight; }
-            private set { }
-        }
-        public int CanvasSnapshotWidth
-        {
-            get { return _CanvasSnapshotWidth; }
-            private set { }
+            BaseDXDrawableItem normalDrawable = GetBaseDXDrawableItemByState(UIObjectState.Normal);
+            BaseDXDrawableItem stateDrawable = GetBaseDXDrawableItemByState(state);
+            Point normalPosition = normalDrawable?.Position ?? Point.Zero;
+            Point statePosition = stateDrawable?.Position ?? normalPosition;
+            return new Point(
+                X + (statePosition.X - normalPosition.X),
+                Y + (statePosition.Y - normalPosition.Y));
         }
 
         private int _X;
@@ -131,6 +145,19 @@ namespace HaCreator.MapSimulator.UI
             this._disabledState = _disabledState;
             this._pressedState = _pressedState;
             this._mouseOverState = _mouseOverState;
+
+            IDXObject snapshotFrame = _normalState?.Frame0 ?? _normalState?.LastFrameDrawn;
+            if (snapshotFrame != null)
+            {
+                _canvasSnapshotWidth = snapshotFrame.Width;
+                _canvasSnapshotHeight = snapshotFrame.Height;
+            }
+
+            if (_normalState != null)
+            {
+                X = _normalState.Position.X;
+                Y = _normalState.Position.Y;
+            }
         }
 
         /// <summary>
@@ -147,18 +174,31 @@ namespace HaCreator.MapSimulator.UI
             Point relativePositionXY,
             GraphicsDevice graphicsDevice)
         {
-            WzSubProperty normalStateProperty = (WzSubProperty)uiButtonProperty["normal"];
-            WzSubProperty disabledStateProperty = (WzSubProperty)uiButtonProperty["disabled"];
-            WzSubProperty pressedStateProperty = (WzSubProperty)uiButtonProperty["pressed"];
-            WzSubProperty mouseOverStateProperty = (WzSubProperty)uiButtonProperty["mouseOver"];
+            WzSubProperty normalStateProperty = uiButtonProperty?["normal"] as WzSubProperty;
+            WzSubProperty disabledStateProperty = uiButtonProperty?["disabled"] as WzSubProperty;
+            WzSubProperty pressedStateProperty = uiButtonProperty?["pressed"] as WzSubProperty;
+            WzSubProperty mouseOverStateProperty = uiButtonProperty?["mouseOver"] as WzSubProperty;
 
-            this._normalState = CreateBaseDXDrawableItemWithWzProperty(normalStateProperty, flip, relativePositionXY, graphicsDevice);
-            this._disabledState = CreateBaseDXDrawableItemWithWzProperty(disabledStateProperty, flip, relativePositionXY, graphicsDevice);
-            this._pressedState = CreateBaseDXDrawableItemWithWzProperty(pressedStateProperty, flip, relativePositionXY, graphicsDevice);
-            this._mouseOverState = CreateBaseDXDrawableItemWithWzProperty(mouseOverStateProperty, flip, relativePositionXY, graphicsDevice);
+            BaseDXDrawableItem normalState = CreateBaseDXDrawableItemWithWzProperty(normalStateProperty, flip, relativePositionXY, graphicsDevice);
+            BaseDXDrawableItem disabledState = CreateBaseDXDrawableItemWithWzProperty(disabledStateProperty, flip, relativePositionXY, graphicsDevice);
+            BaseDXDrawableItem pressedState = CreateBaseDXDrawableItemWithWzProperty(pressedStateProperty, flip, relativePositionXY, graphicsDevice);
+            BaseDXDrawableItem mouseOverState = CreateBaseDXDrawableItemWithWzProperty(mouseOverStateProperty, flip, relativePositionXY, graphicsDevice);
+
+            normalState ??= pressedState ?? mouseOverState ?? disabledState;
+            if (normalState == null)
+            {
+                throw new InvalidOperationException("UI button could not be created because it has no drawable states.");
+            }
+
+            this._normalState = normalState;
+            this._disabledState = disabledState ?? normalState;
+            this._pressedState = pressedState ?? normalState;
+            this._mouseOverState = mouseOverState ?? normalState;
 
             this._seMouseClick = CreateSoundEffectWithWzProperty(btMouseClickSoundProperty);
             this._seMouseOver = CreateSoundEffectWithWzProperty(btMouseOverSoundProperty);
+            this._seMouseClickProperty = btMouseClickSoundProperty;
+            this._seMouseOverProperty = btMouseOverSoundProperty;
 
             X = this._normalState.Position.X; // origin xy
             Y = this._normalState.Position.Y;
@@ -173,55 +213,97 @@ namespace HaCreator.MapSimulator.UI
         /// <returns></returns>
         private WzSoundResourceStreamer CreateSoundEffectWithWzProperty(WzBinaryProperty wzSoundProperty)
         {
-            WzSoundResourceStreamer currAudio = new WzSoundResourceStreamer(wzSoundProperty, false) {
-                Volume = 1.0f
-            };
-            return currAudio;
-
-            /*using (MemoryStream ms = new MemoryStream(wzSoundProperty.GetBytes(true)))  // dont dispose until its no longer needed
+            if (wzSoundProperty == null)
             {
-                SoundEffect soundEffect = null;
-
-                WaveFormat wavFmt = BtMouseProperty.WavFormat;
-                if (wavFmt.Encoding == WaveFormatEncoding.MpegLayer3)
-                 {
-                     Mp3FileReader mpegStream = new Mp3FileReader(ms);
-                     soundEffect = SoundEffect.FromStream(mpegStream);
-                 }
-                 else if (wavFmt.Encoding == WaveFormatEncoding.Pcm)
-                 {
-                     WaveFileReader waveFileStream = new WaveFileReader(ms);
-                     soundEffect = SoundEffect.FromStream(waveFileStream);
-                 }
-                return soundEffect;
+                return null;
             }
 
-          /*      using (MemoryStream ms = new MemoryStream(BtMouseProperty.GetBytes(true)))  // dont dispose until its no longer needed
-                {
-                    using (Mp3FileReader reader = new Mp3FileReader(ms))
-                    {
-                        using (WaveStream pcmStream = WaveFormatConversionStream.CreatePcmStream(reader))
-                        {
-                            // WaveFileWriter.CreateWaveFile(outputFile, pcmStream);
-                            SoundEffect effect = SoundEffect.FromStream(pcmStream);
-                        }
-                    }
-                }
+            if (ClientSoundEffectPlayer != null)
+            {
+                return null;
+            }
 
-                using (MemoryStream ms = new MemoryStream(BtMouseProperty.GetBytes(true)))  // dont dispose until its no longer needed
-                {
-                    using (WaveStream pcm = WaveFormatConversionStream.CreatePcmStream(new Mp3FileReader(ms)))
-                    {
-                        // convert 16 bit to 8 bit pcm stream
-                        var newFormat = new WaveFormat(8000, 16, 1);
-                        using (var conversionStream = new WaveFormatConversionStream(newFormat, pcm))  // https://stackoverflow.com/questions/49776648/wav-file-conversion-pcm-48khz-16-bit-rate-to-u-law-8khz-8-bit-rate-using-naudio ty
-                        {
-                            SoundEffect effect = SoundEffect.FromStream(conversionStream);
-                            return effect; // TODO: dispose this later
-                        }
-                    }
-                }
-            return null;*/
+            return CreateLocalSoundEffectWithWzProperty(wzSoundProperty);
+        }
+
+        private static WzSoundResourceStreamer CreateLocalSoundEffectWithWzProperty(WzBinaryProperty wzSoundProperty)
+        {
+            if (wzSoundProperty == null)
+            {
+                return null;
+            }
+
+            return new WzSoundResourceStreamer(wzSoundProperty, false)
+            {
+                Volume = 1.0f
+            };
+        }
+
+        internal static string BuildClientSoundKey(WzBinaryProperty wzSoundProperty, string semanticName)
+        {
+            if (wzSoundProperty == null)
+            {
+                return null;
+            }
+
+            string path = wzSoundProperty.FullPath?.Replace('\\', '/');
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                path = wzSoundProperty.Name;
+            }
+
+            if (path.StartsWith("Sound.wz/", StringComparison.OrdinalIgnoreCase))
+            {
+                path = path["Sound.wz/".Length..];
+            }
+
+            if (!path.StartsWith("Sound/", StringComparison.OrdinalIgnoreCase))
+            {
+                path = "Sound/" + path;
+            }
+
+            return string.IsNullOrWhiteSpace(semanticName)
+                ? $"UIObject:{path}"
+                : $"UIObject:{semanticName}:{path}";
+        }
+
+        private bool TryPlayClientSoundEffect(
+            WzBinaryProperty soundProperty,
+            ref WzSoundResourceStreamer fallbackStreamer,
+            string semanticName)
+        {
+            if (soundProperty == null)
+            {
+                return false;
+            }
+
+            ClientSoundEffectPlayback player = ClientSoundEffectPlayer;
+            if (player != null
+                && player(
+                    BuildClientSoundKey(soundProperty, semanticName),
+                    soundProperty,
+                    startVolumeScale: 1f,
+                    suppressWhileActive: true))
+            {
+                return true;
+            }
+
+            if (ShouldCreateLocalFallbackStreamer(
+                sharedPlaybackSucceeded: false,
+                hasExistingFallbackStreamer: fallbackStreamer != null))
+            {
+                fallbackStreamer = CreateLocalSoundEffectWithWzProperty(soundProperty);
+            }
+
+            fallbackStreamer?.Play();
+            return fallbackStreamer != null;
+        }
+
+        internal static bool ShouldCreateLocalFallbackStreamer(
+            bool sharedPlaybackSucceeded,
+            bool hasExistingFallbackStreamer)
+        {
+            return !sharedPlaybackSucceeded && !hasExistingFallbackStreamer;
         }
 
         /// <summary>
@@ -234,6 +316,11 @@ namespace HaCreator.MapSimulator.UI
         /// <returns></returns>
         private BaseDXDrawableItem CreateBaseDXDrawableItemWithWzProperty(WzSubProperty subProperty, bool flip, Point relativePositionXY_, GraphicsDevice graphicsDevice)
         {
+            if (subProperty == null)
+            {
+                return null;
+            }
+
             bool bAddedOriginXY = false;
             Point relativePositionXY = new Point(relativePositionXY_.X, relativePositionXY_.Y);
 
@@ -245,16 +332,22 @@ namespace HaCreator.MapSimulator.UI
                 if (imgProperty is WzCanvasProperty property)
                 {
                     System.Drawing.Bitmap btImage = property.GetLinkedWzCanvasBitmap(); // maximise
+                    if (btImage == null)
+                    {
+                        i++;
+                        continue;
+                    }
+
                     System.Drawing.PointF origin = property.GetCanvasOriginPosition();
                     int? delay = property[WzCanvasProperty.AnimationDelayPropertyName]?.GetInt();
 
-                    if (_CanvasSnapshotHeight == -1)
+                    if (_canvasSnapshotHeight == -1)
                     {
-                        _CanvasSnapshotHeight = btImage.Height; // set the snapshot width and height
-                        _CanvasSnapshotWidth = btImage.Width;
+                        _canvasSnapshotHeight = btImage.Height; // set the snapshot width and height
+                        _canvasSnapshotWidth = btImage.Width;
                     }
 
-                    IDXObject dxObj = new DXObject(origin, btImage.ToTexture2D(graphicsDevice), delay != null ? (int)delay : 0);
+                    IDXObject dxObj = new DXObject(origin, btImage.ToTexture2DAndDispose(graphicsDevice), delay != null ? (int)delay : 0);
                     drawableImages.Add(dxObj);
 
                     // the origin X Y needed to update to this UIObject object
@@ -268,21 +361,15 @@ namespace HaCreator.MapSimulator.UI
                 }
                 i++;
             }
-            if (drawableImages.Count == 0) // oh noz u sux
-                throw new Exception("Error creating BaseDXDrawableItem from WzSubProperty.");
+            if (drawableImages.Count == 0)
+            {
+                return null;
+            }
 
-            BaseDXDrawableItem ret;
-            if (drawableImages.Count > 0) {
-                ret = new BaseDXDrawableItem(drawableImages, flip) {
-                    Position = relativePositionXY
-                };
-            }
-            else {
-                ret = new BaseDXDrawableItem(drawableImages[0], flip) {
-                    Position = relativePositionXY
-                };
-            }
-            return ret;
+            return new BaseDXDrawableItem(drawableImages, flip)
+            {
+                Position = relativePositionXY
+            };
         }
         #endregion
 
@@ -313,18 +400,7 @@ namespace HaCreator.MapSimulator.UI
             if (lastFrameDrawn == null)
                 return false;
          */
-            // The position of the button relative to the minimap
-            int buttonRelativeX = -(containerParentX) - X/* - lastFrameDrawn.X*/; // Left to right
-            int buttonRelativeY = -(containerParentY) - Y/* - lastFrameDrawn.Y*/; // Top to bottom
-
-            int buttonPositionXToMap = shiftCenteredX - buttonRelativeX;
-            int buttonPositionYToMap = shiftCenteredY - buttonRelativeY;
-
-            // The position of the mouse relative to the game
-            Rectangle rect = new Rectangle(
-                buttonPositionXToMap - (shiftCenteredX),
-                buttonPositionYToMap - (shiftCenteredY),
-                CanvasSnapshotWidth, CanvasSnapshotHeight);
+            Rectangle rect = ResolveInteractionBounds(containerParentX, containerParentY);
 
             //System.Diagnostics.Debug.WriteLine("Button rect: " + rect.ToString());
             //System.Diagnostics.Debug.WriteLine("Mouse X: " + mouseState.X + ", Y: " + mouseState.Y);
@@ -337,25 +413,22 @@ namespace HaCreator.MapSimulator.UI
                 {
                     SetButtonState(UIObjectState.Pressed);
 
-                    if (_seMouseClick != null) // play mouse click sound
-                        _seMouseClick.Play();
+                    if (_seMouseClickProperty != null || _seMouseClick != null) // play mouse click sound
+                        TryPlayClientSoundEffect(_seMouseClickProperty, ref _seMouseClick, "click");
                 }
                 else if (mouseState.LeftButton == ButtonState.Released && priorState == UIObjectState.Pressed)
                 {
                     SetButtonState(UIObjectState.MouseOver);
 
-                    if (priorState == UIObjectState.Pressed) // this after setting the MouseOver state, so user-code does not get override
-                    {
-                        // Invoke clicked event
-                        ButtonClickReleased?.Invoke(this);
-                    }
+                    // Invoke after setting MouseOver so the handler sees the released state.
+                    ButtonClickReleased?.Invoke(this);
                 }
                 else
                 {
                     // hover over sound effect
                     if (priorState != UIObjectState.Pressed && priorState != UIObjectState.Disabled && priorState != UIObjectState.MouseOver) {
-                        if (_seMouseOver != null) // play mouse over sound
-                            _seMouseOver.Play();
+                        if (_seMouseOverProperty != null || _seMouseOver != null) // play mouse over sound
+                            TryPlayClientSoundEffect(_seMouseOverProperty, ref _seMouseOver, "hover");
                     }
 
                     SetButtonState(UIObjectState.MouseOver);
@@ -368,6 +441,20 @@ namespace HaCreator.MapSimulator.UI
                 SetButtonState(UIObjectState.Normal);
             }
             return false;
+        }
+
+        public Rectangle ResolveInteractionBounds(int containerParentX, int containerParentY, UIObjectState state = UIObjectState.Null)
+        {
+            Point drawPosition = GetDrawPositionByState(state);
+            BaseDXDrawableItem drawable = GetBaseDXDrawableItemByState(state);
+            IDXObject snapshotFrame = drawable?.LastFrameDrawn ?? drawable?.Frame0;
+            int width = Math.Max(1, snapshotFrame?.Width ?? CanvasSnapshotWidth);
+            int height = Math.Max(1, snapshotFrame?.Height ?? CanvasSnapshotHeight);
+            return new Rectangle(
+                containerParentX + drawPosition.X,
+                containerParentY + drawPosition.Y,
+                width,
+                height);
         }
 
         /// <summary>

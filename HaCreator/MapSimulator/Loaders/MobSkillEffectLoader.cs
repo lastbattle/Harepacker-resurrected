@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using HaCreator.MapSimulator.Character.Skills;
 using HaCreator.MapSimulator.Pools;
 using HaSharedLibrary.Render.DX;
 using MapleLib.WzLib;
@@ -39,11 +41,17 @@ namespace HaCreator.MapSimulator.Loaders
         /// <summary>Animation frames for the "affected" effect (played on player)</summary>
         public List<IDXObject> AffectedFrames { get; set; } = new List<IDXObject>();
 
+        public string AffectedSourceUol { get; set; }
+
         /// <summary>Animation frames for the skill "effect" (played at mob or screen)</summary>
         public List<IDXObject> EffectFrames { get; set; } = new List<IDXObject>();
 
+        public string EffectSourceUol { get; set; }
+
         /// <summary>Animation frames for the "mob" icon effect</summary>
         public List<IDXObject> MobIconFrames { get; set; } = new List<IDXObject>();
+
+        public string MobIconSourceUol { get; set; }
 
         /// <summary>Position type for the affected effect</summary>
         public MobSkillEffectPosition AffectedPosition { get; set; } = MobSkillEffectPosition.Target;
@@ -60,11 +68,33 @@ namespace HaCreator.MapSimulator.Loaders
         /// <summary>Total animation duration for affected effect in ms</summary>
         public int AffectedDuration { get; set; }
 
+        /// <summary>Tile animation for field-owned mist / affected-area visuals</summary>
+        public SkillAnimation TileAnimation { get; set; }
+
+        /// <summary>Animation frames for delayed bomb detonation visuals from bombInfo/effect</summary>
+        public List<IDXObject> BombEffectFrames { get; set; } = new List<IDXObject>();
+
+        public string BombEffectSourceUol { get; set; }
+
+        /// <summary>Animation frames for delayed bomb hit visuals from hit</summary>
+        public List<IDXObject> HitFrames { get; set; } = new List<IDXObject>();
+
+        public string HitSourceUol { get; set; }
+
         /// <summary>Whether this effect has valid affected frames</summary>
         public bool HasAffectedEffect => AffectedFrames != null && AffectedFrames.Count > 0;
 
         /// <summary>Whether this effect has valid skill effect frames</summary>
         public bool HasEffect => EffectFrames != null && EffectFrames.Count > 0;
+
+        /// <summary>Whether this effect has valid delayed bomb detonation frames</summary>
+        public bool HasBombEffect => BombEffectFrames != null && BombEffectFrames.Count > 0;
+
+        /// <summary>Whether this effect has valid hit frames</summary>
+        public bool HasHitEffect => HitFrames != null && HitFrames.Count > 0;
+
+        /// <summary>Whether this effect has valid tile frames for field-area rendering</summary>
+        public bool HasTileAnimation => TileAnimation?.Frames.Count > 0;
     }
 
     /// <summary>
@@ -159,16 +189,10 @@ namespace HaCreator.MapSimulator.Loaders
                 return null;
             }
 
-            var specificLevelNode = levelNode[level.ToString()];
-            if (specificLevelNode == null)
+            if (MobSkillLevelResolver.ResolveLevelNode(levelNode as WzSubProperty, level) == null)
             {
-                // Try level 1 as fallback
-                specificLevelNode = levelNode["1"];
-                if (specificLevelNode == null)
-                {
-                    System.Diagnostics.Debug.WriteLine($"[MobSkillEffectLoader] Level {level} not found for skill {skillId}");
-                    return null;
-                }
+                System.Diagnostics.Debug.WriteLine($"[MobSkillEffectLoader] Level {level} not found for skill {skillId}");
+                return null;
             }
 
             var effectData = new MobSkillEffectData
@@ -178,11 +202,13 @@ namespace HaCreator.MapSimulator.Loaders
             };
 
             // Load affected effect (plays on player)
-            var affectedNode = specificLevelNode["affected"];
+            var levelProperty = levelNode as WzSubProperty;
+            var affectedNode = MobSkillLevelResolver.FindInheritedProperty(levelProperty, level, "affected");
             if (affectedNode != null)
             {
-                var usedProps = new List<WzObject>();
-                effectData.AffectedFrames = MapSimulatorLoader.LoadFrames(_texturePool, affectedNode, 0, 0, _device, ref usedProps);
+                var usedProps = new ConcurrentBag<WzObject>();
+                effectData.AffectedFrames = MapSimulatorLoader.LoadFrames(_texturePool, affectedNode, 0, 0, _device, usedProps);
+                effectData.AffectedSourceUol = BuildMobSkillEffectSourceUol(skillId, level, "affected");
 
                 // Get position type
                 var posNode = affectedNode["pos"];
@@ -211,11 +237,12 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             // Load skill effect (plays at mob or screen)
-            var effectNode = specificLevelNode["effect"];
+            var effectNode = MobSkillLevelResolver.FindInheritedProperty(levelProperty, level, "effect");
             if (effectNode != null)
             {
-                var usedProps = new List<WzObject>();
-                effectData.EffectFrames = MapSimulatorLoader.LoadFrames(_texturePool, effectNode, 0, 0, _device, ref usedProps);
+                var usedProps = new ConcurrentBag<WzObject>();
+                effectData.EffectFrames = MapSimulatorLoader.LoadFrames(_texturePool, effectNode, 0, 0, _device, usedProps);
+                effectData.EffectSourceUol = BuildMobSkillEffectSourceUol(skillId, level, "effect");
 
                 // Get position type
                 var posNode = effectNode["pos"];
@@ -226,22 +253,143 @@ namespace HaCreator.MapSimulator.Loaders
                 }
             }
 
+            var tileNode = MobSkillLevelResolver.FindInheritedProperty(levelProperty, level, "tile");
+            if (tileNode != null)
+            {
+                effectData.TileAnimation = LoadTileAnimation(tileNode);
+            }
+
+            var bombInfoNode = MobSkillLevelResolver.FindInheritedProperty(levelProperty, level, "bombInfo") as WzSubProperty;
+            var bombEffectNode = bombInfoNode?["effect"];
+            if (bombEffectNode != null)
+            {
+                var usedProps = new ConcurrentBag<WzObject>();
+                effectData.BombEffectFrames = MapSimulatorLoader.LoadFrames(_texturePool, bombEffectNode, 0, 0, _device, usedProps);
+                effectData.BombEffectSourceUol = BuildMobSkillEffectSourceUol(skillId, level, "bombInfo/effect");
+            }
+
+            var hitNode = MobSkillLevelResolver.FindInheritedProperty(levelProperty, level, "hit");
+            if (hitNode != null)
+            {
+                var usedProps = new ConcurrentBag<WzObject>();
+                effectData.HitFrames = MapSimulatorLoader.LoadFrames(_texturePool, hitNode, 0, 0, _device, usedProps);
+                effectData.HitSourceUol = BuildMobSkillEffectSourceUol(skillId, level, "hit");
+            }
+
             // Load mob icon effect
-            var mobNode = specificLevelNode["mob"];
+            var mobNode = MobSkillLevelResolver.FindInheritedProperty(levelProperty, level, "mob");
             if (mobNode != null)
             {
-                var usedProps = new List<WzObject>();
-                effectData.MobIconFrames = MapSimulatorLoader.LoadFrames(_texturePool, mobNode, 0, 0, _device, ref usedProps);
+                var usedProps = new ConcurrentBag<WzObject>();
+                effectData.MobIconFrames = MapSimulatorLoader.LoadFrames(_texturePool, mobNode, 0, 0, _device, usedProps);
+                effectData.MobIconSourceUol = BuildMobSkillEffectSourceUol(skillId, level, "mob");
             }
 
             // Get skill duration
-            var timeNode = specificLevelNode["time"];
+            var timeNode = MobSkillLevelResolver.FindInheritedProperty(levelProperty, level, "time");
             if (timeNode != null)
             {
                 effectData.Time = ((WzIntProperty)timeNode).Value;
             }
 
             return effectData;
+        }
+
+        internal static string BuildMobSkillEffectSourceUol(int skillId, int level, string branchPath)
+        {
+            return $"Skill/MobSkill.img/{Math.Max(0, skillId)}/level/{Math.Max(1, level)}/{branchPath?.Trim()}";
+        }
+
+        private SkillAnimation LoadTileAnimation(WzImageProperty tileNode)
+        {
+            if (tileNode == null)
+            {
+                return null;
+            }
+
+            foreach (WzImageProperty child in tileNode.WzProperties)
+            {
+                if (!int.TryParse(child.Name, out _))
+                {
+                    continue;
+                }
+
+                SkillAnimation animation = LoadAnimation(child, "tile");
+                if (animation.Frames.Count > 0)
+                {
+                    animation.Loop = true;
+                    return animation;
+                }
+            }
+
+            SkillAnimation fallbackAnimation = LoadAnimation(tileNode, "tile");
+            if (fallbackAnimation.Frames.Count > 0)
+            {
+                fallbackAnimation.Loop = true;
+                return fallbackAnimation;
+            }
+
+            return null;
+        }
+
+        private SkillAnimation LoadAnimation(WzImageProperty node, string name)
+        {
+            var animation = new SkillAnimation { Name = name };
+            if (node == null)
+            {
+                return animation;
+            }
+
+            foreach (WzImageProperty child in node.WzProperties)
+            {
+                if (!int.TryParse(child.Name, out _))
+                {
+                    continue;
+                }
+
+                var usedProps = new ConcurrentBag<WzObject>();
+                List<IDXObject> frames = MapSimulatorLoader.LoadFrames(_texturePool, child, 0, 0, _device, usedProps);
+                if (frames.Count == 0)
+                {
+                    continue;
+                }
+
+                int frameDelay = 100;
+                if (child["delay"] is WzIntProperty delayProperty)
+                {
+                    frameDelay = Math.Max(1, delayProperty.Value);
+                }
+
+                IDXObject texture = frames[0];
+                animation.Frames.Add(new SkillFrame
+                {
+                    Texture = texture,
+                    Delay = frameDelay,
+                    Bounds = new Microsoft.Xna.Framework.Rectangle(0, 0, texture.Width, texture.Height),
+                    Origin = new Microsoft.Xna.Framework.Point(0, 0),
+                    Flip = false
+                });
+            }
+
+            if (animation.Frames.Count == 0)
+            {
+                var usedProps = new ConcurrentBag<WzObject>();
+                List<IDXObject> frames = MapSimulatorLoader.LoadFrames(_texturePool, node, 0, 0, _device, usedProps);
+                foreach (IDXObject texture in frames)
+                {
+                    animation.Frames.Add(new SkillFrame
+                    {
+                        Texture = texture,
+                        Delay = Math.Max(1, texture.Delay > 0 ? texture.Delay : 100),
+                        Bounds = new Microsoft.Xna.Framework.Rectangle(0, 0, texture.Width, texture.Height),
+                        Origin = new Microsoft.Xna.Framework.Point(0, 0),
+                        Flip = false
+                    });
+                }
+            }
+
+            animation.CalculateDuration();
+            return animation;
         }
 
         /// <summary>

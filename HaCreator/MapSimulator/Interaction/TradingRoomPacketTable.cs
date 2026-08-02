@@ -1,0 +1,315 @@
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
+
+namespace HaCreator.MapSimulator.Interaction
+{
+    internal static class TradingRoomPacketTable
+    {
+        internal const ushort TradingRoomInboundOpcode = 373;
+        internal const ushort TradingRoomOutboundOpcode = 144;
+
+        internal enum TradingRoomButtonRoute
+        {
+            TradingRoomOutbound,
+            MiniRoomBaseChat,
+            DialogControl
+        }
+
+        private static readonly ushort[] TradingRoomInboundOpcodeSet = { TradingRoomInboundOpcode };
+        private static readonly ushort[] TradingRoomOutboundOpcodeSet = { TradingRoomOutboundOpcode };
+
+        private static readonly IReadOnlyDictionary<byte, string> TradingRoomInboundSubtypeHandlers =
+            new Dictionary<byte, string>
+            {
+                [15] = "CTradingRoomDlg::OnPutItem",
+                [16] = "CTradingRoomDlg::OnPutMoney",
+                [17] = "CTradingRoomDlg::OnTrade (handoff)",
+                [21] = "CTradingRoomDlg::OnExceedLimit"
+            };
+
+        private static readonly IReadOnlyDictionary<byte, string> TradingRoomOnTradeFollowUpSubtypeHandlers =
+            new Dictionary<byte, string>
+            {
+                [20] = "CTradingRoomDlg::OnTrade CRC follow-up"
+            };
+
+        private static readonly IReadOnlyDictionary<byte, string> TradingRoomOutboundSubtypeHandlers =
+            new Dictionary<byte, string>
+            {
+                [15] = "CTradingRoomDlg::OnPutItem request",
+                [16] = "CTradingRoomDlg::OnPutMoney request",
+                [17] = "CTradingRoomDlg::OnTrade request",
+                [20] = "CTradingRoomDlg::OnTrade CRC follow-up"
+            };
+
+        private static readonly IReadOnlyDictionary<string, (int ControlId, string Handler, TradingRoomButtonRoute Route)> TradingRoomButtonHandlers =
+            new Dictionary<string, (int ControlId, string Handler, TradingRoomButtonRoute Route)>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["BtTrade"] = (1002, "CTradingRoomDlg::Trade -> outbound opcode 144 subtype 17", TradingRoomButtonRoute.TradingRoomOutbound),
+                ["BtCoin"] = (1003, "CTradingRoomDlg::PutMoney -> outbound opcode 144 subtype 16", TradingRoomButtonRoute.TradingRoomOutbound),
+                ["BtEnter"] = (1004, "CTradingRoomDlg::OnButtonClicked -> CMiniRoomBaseDlg::CheckAndSendChat", TradingRoomButtonRoute.MiniRoomBaseChat),
+                ["BtReset"] = (1005, "CDialog::OnButtonClicked default reset/control branch, not a recovered CTradingRoomDlg::OnPacket branch", TradingRoomButtonRoute.DialogControl),
+                ["BtClame"] = (2, "CDialog::OnButtonClicked default claim/cancel control, not a trade acceptance packet", TradingRoomButtonRoute.DialogControl)
+            };
+
+        internal static IReadOnlyList<ushort> GetRecoveredInboundOpcodes()
+        {
+            return TradingRoomInboundOpcodeSet;
+        }
+
+        internal static IReadOnlyList<ushort> GetRecoveredOutboundOpcodes()
+        {
+            return TradingRoomOutboundOpcodeSet;
+        }
+
+        internal static ushort ResolveRecoveredInboundOpcode(ushort requestedOpcode)
+        {
+            if (requestedOpcode != 0 && TradingRoomInboundOpcodeSet.Contains(requestedOpcode))
+            {
+                return requestedOpcode;
+            }
+
+            return TradingRoomInboundOpcodeSet.Length > 0 ? TradingRoomInboundOpcodeSet[0] : requestedOpcode;
+        }
+
+        internal static bool IsRecoveredInboundOpcode(ushort opcode)
+        {
+            return opcode != 0 && TradingRoomInboundOpcodeSet.Contains(opcode);
+        }
+
+        internal static bool IsRecoveredInboundSubtype(byte subtype)
+        {
+            return TradingRoomInboundSubtypeHandlers.ContainsKey(subtype)
+                || TradingRoomOnTradeFollowUpSubtypeHandlers.ContainsKey(subtype);
+        }
+
+        internal static bool IsRecoveredDirectOnPacketSubtype(byte subtype)
+        {
+            return TradingRoomInboundSubtypeHandlers.ContainsKey(subtype);
+        }
+
+        internal static bool IsRecoveredOnTradeFollowUpSubtype(byte subtype)
+        {
+            return TradingRoomOnTradeFollowUpSubtypeHandlers.ContainsKey(subtype);
+        }
+
+        internal static bool IsRecoveredOutboundSubtype(byte subtype)
+        {
+            return TradingRoomOutboundSubtypeHandlers.ContainsKey(subtype);
+        }
+
+        internal static bool TryResolveRecoveredInboundOpcodeToken(string token, out ushort inboundOpcode)
+        {
+            inboundOpcode = ResolveRecoveredInboundOpcode(0);
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return true;
+            }
+
+            string normalizedToken = token.Trim();
+            if (string.Equals(normalizedToken, "table", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedToken, "default", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedToken, "auto", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            if (!ushort.TryParse(normalizedToken, NumberStyles.Integer, CultureInfo.InvariantCulture, out ushort parsedOpcode))
+            {
+                return false;
+            }
+
+            if (!IsRecoveredInboundOpcode(parsedOpcode))
+            {
+                return false;
+            }
+
+            inboundOpcode = parsedOpcode;
+            return true;
+        }
+
+        internal static string DescribeRecoveredInboundOpcodeSet()
+        {
+            return $"Recovered TradingRoom inbound opcodes are {string.Join("/", TradingRoomInboundOpcodeSet.Select(opcode => opcode.ToString(CultureInfo.InvariantCulture)))}.";
+        }
+
+        internal static string DescribeRecoveredPacketTable()
+        {
+            string inboundSet = string.Join("/", TradingRoomInboundOpcodeSet.Select(opcode => opcode.ToString(CultureInfo.InvariantCulture)));
+            string outboundSet = string.Join("/", TradingRoomOutboundOpcodeSet.Select(opcode => opcode.ToString(CultureInfo.InvariantCulture)));
+            string inboundSubtypes = string.Join(
+                ", ",
+                TradingRoomInboundSubtypeHandlers.Select(entry => $"{entry.Key}: {entry.Value}"));
+            string followUpSubtypes = string.Join(
+                ", ",
+                TradingRoomOnTradeFollowUpSubtypeHandlers.Select(entry => $"{entry.Key}: {entry.Value}"));
+            string outboundSubtypes = string.Join(
+                ", ",
+                TradingRoomOutboundSubtypeHandlers.Select(entry => $"{entry.Key}: {entry.Value}"));
+            return $"Recovered TradingRoom packet table: inbound opcode {inboundSet} to CTradingRoomDlg::OnPacket ({inboundSubtypes}); OnTrade follow-up ({followUpSubtypes}); outbound opcode {outboundSet} ({outboundSubtypes}).";
+        }
+
+        internal static bool TryResolveRecoveredButtonHandler(string buttonName, out int controlId, out string handler)
+        {
+            controlId = 0;
+            handler = string.Empty;
+            if (!TryResolveRecoveredButtonRoute(buttonName, out controlId, out handler, out _))
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        internal static bool TryResolveRecoveredButtonRoute(
+            string buttonName,
+            out int controlId,
+            out string handler,
+            out TradingRoomButtonRoute route)
+        {
+            controlId = 0;
+            handler = string.Empty;
+            route = TradingRoomButtonRoute.DialogControl;
+            if (string.IsNullOrWhiteSpace(buttonName)
+                || !TradingRoomButtonHandlers.TryGetValue(buttonName.Trim(), out (int ControlId, string Handler, TradingRoomButtonRoute Route) entry))
+            {
+                return false;
+            }
+
+            controlId = entry.ControlId;
+            handler = entry.Handler;
+            route = entry.Route;
+            return true;
+        }
+
+        internal static string DescribeRecoveredButtonTable()
+        {
+            string controls = string.Join(
+                ", ",
+                TradingRoomButtonHandlers.Select(entry =>
+                    $"{entry.Key}=id {entry.Value.ControlId.ToString(CultureInfo.InvariantCulture)} route {entry.Value.Route} ({entry.Value.Handler})"));
+            return $"Recovered TradingRoom button table from CTradingRoomDlg::OnCreate/OnButtonClicked: {controls}.";
+        }
+
+        internal static bool ResolveClientDrawButtonEnabled(string buttonName, int currentUserCount, bool localLocked)
+        {
+            if (string.IsNullOrWhiteSpace(buttonName))
+            {
+                return false;
+            }
+
+            // IDA: Draw refreshes BtTrade from m_nCurUsers/m_bMyLock, while Trade disables BtCoin after locking.
+            int normalizedUserCount = Math.Max(0, currentUserCount);
+            bool hasPeer = normalizedUserCount > 1;
+            return buttonName.Trim() switch
+            {
+                "BtTrade" => hasPeer && !localLocked,
+                "BtCoin" => hasPeer && !localLocked,
+                "BtEnter" => true,
+                "BtReset" => true,
+                "BtClame" => true,
+                _ => false
+            };
+        }
+
+        internal static bool TryBuildRecoveredResultExpectation(
+            int requestOpcode,
+            ReadOnlySpan<byte> payload,
+            out int[] expectedInboundOpcodes,
+            out byte[] expectedInboundSubtypes,
+            out string expectationSummary)
+        {
+            expectedInboundOpcodes = Array.Empty<int>();
+            expectedInboundSubtypes = Array.Empty<byte>();
+            expectationSummary = string.Empty;
+
+            if (requestOpcode != TradingRoomOutboundOpcode || payload.Length == 0)
+            {
+                return false;
+            }
+
+            byte requestSubtype = payload[0];
+            switch (requestSubtype)
+            {
+                case 15:
+                    expectedInboundOpcodes = new[] { (int)TradingRoomInboundOpcode };
+                    expectedInboundSubtypes = new byte[] { 15, 21 };
+                    expectationSummary = "expect CTradingRoomDlg::OnPutItem echo or OnExceedLimit failure (subtypes 15/21)";
+                    return true;
+                case 16:
+                    expectedInboundOpcodes = new[] { (int)TradingRoomInboundOpcode };
+                    expectedInboundSubtypes = new byte[] { 16, 21 };
+                    expectationSummary = "expect CTradingRoomDlg::OnPutMoney echo or OnExceedLimit failure (subtypes 16/21)";
+                    return true;
+                case 17:
+                    expectedInboundOpcodes = new[] { (int)TradingRoomInboundOpcode };
+                    expectedInboundSubtypes = new byte[] { 17, 20, 21 };
+                    expectationSummary = "expect CTradingRoomDlg::OnTrade handoff/checksum branch or OnExceedLimit failure (subtypes 17/20/21)";
+                    return true;
+                case 20:
+                    expectedInboundOpcodes = new[] { (int)TradingRoomInboundOpcode };
+                    expectedInboundSubtypes = new byte[] { 20, 21 };
+                    expectationSummary = "expect CTradingRoomDlg::OnTrade checksum follow-up or OnExceedLimit failure (subtypes 20/21)";
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        internal static bool TryDecodeRecoveredInboundBranch(
+            int inboundOpcode,
+            ReadOnlySpan<byte> payload,
+            out byte inboundSubtype,
+            out string branchSummary)
+        {
+            inboundSubtype = byte.MaxValue;
+            branchSummary = string.Empty;
+            if (inboundOpcode != TradingRoomInboundOpcode || payload.Length == 0)
+            {
+                return false;
+            }
+
+            inboundSubtype = payload[0];
+            if (TradingRoomInboundSubtypeHandlers.TryGetValue(inboundSubtype, out string handlerName))
+            {
+                branchSummary = $"{handlerName} (subtype {inboundSubtype.ToString(CultureInfo.InvariantCulture)})";
+                return true;
+            }
+
+            if (TradingRoomOnTradeFollowUpSubtypeHandlers.TryGetValue(inboundSubtype, out handlerName))
+            {
+                branchSummary = $"{handlerName} (subtype {inboundSubtype.ToString(CultureInfo.InvariantCulture)}, not a direct CTradingRoomDlg::OnPacket switch arm)";
+                return true;
+            }
+
+            branchSummary = $"CTradingRoomDlg::OnPacket subtype {inboundSubtype.ToString(CultureInfo.InvariantCulture)}";
+            return true;
+        }
+
+        internal static bool TryDecodeRecoveredOutboundBranch(
+            int outboundOpcode,
+            ReadOnlySpan<byte> payload,
+            out byte outboundSubtype,
+            out string branchSummary)
+        {
+            outboundSubtype = byte.MaxValue;
+            branchSummary = string.Empty;
+            if (outboundOpcode != TradingRoomOutboundOpcode || payload.Length == 0)
+            {
+                return false;
+            }
+
+            outboundSubtype = payload[0];
+            if (TradingRoomOutboundSubtypeHandlers.TryGetValue(outboundSubtype, out string handlerName))
+            {
+                branchSummary = $"{handlerName} (subtype {outboundSubtype.ToString(CultureInfo.InvariantCulture)})";
+                return true;
+            }
+
+            branchSummary = $"opcode {TradingRoomOutboundOpcode.ToString(CultureInfo.InvariantCulture)} subtype {outboundSubtype.ToString(CultureInfo.InvariantCulture)} is not a recovered CTradingRoomDlg outbound branch";
+            return false;
+        }
+    }
+}

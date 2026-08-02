@@ -1,0 +1,188 @@
+using System.Collections.Generic;
+using HaCreator.MapSimulator.AI;
+using Microsoft.Xna.Framework;
+
+namespace HaCreator.MapSimulator.Combat;
+
+internal static class MobSkillSelectionParity
+{
+    public static bool ShouldAutoSelectMobStatusSkill(
+        MobSkillStatusDefinition definition,
+        MobSkillRuntimeData runtimeData,
+        IEnumerable<MobAI> candidateTargets,
+        int currentTick = 0,
+        int recastLeadTimeMs = 0)
+    {
+        if (candidateTargets == null)
+        {
+            return false;
+        }
+
+        switch (definition.Operation)
+        {
+            case MobSkillOperation.Heal:
+                int healThresholdPercent = ResolveHealThresholdPercent(runtimeData);
+                foreach (MobAI target in candidateTargets)
+                {
+                    if (target != null
+                        && !target.IsDead
+                        && target.HpPercent * 100f < healThresholdPercent)
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+
+            case MobSkillOperation.ClearNegativeStatuses:
+                foreach (MobAI target in candidateTargets)
+                {
+                    if (target?.IsDead != false)
+                    {
+                        continue;
+                    }
+
+                    if (target.HasNegativeStatusEffects())
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+
+            case MobSkillOperation.ApplyStatus:
+                int statusValue = MobSkillStatusMapper.ResolveStatusValue(
+                    definition.Effect,
+                    runtimeData?.X ?? 0,
+                    runtimeData?.Y ?? 0,
+                    runtimeData?.Hp ?? 0);
+                if (statusValue <= 0)
+                {
+                    return false;
+                }
+
+                foreach (MobAI target in candidateTargets)
+                {
+                    if (ShouldApplyStatusToTarget(
+                            target,
+                            definition,
+                            runtimeData,
+                            statusValue,
+                            currentTick,
+                            recastLeadTimeMs))
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+
+            default:
+                return false;
+        }
+    }
+
+    public static bool ShouldAutoSelectPlayerTargetSkill(Rectangle area, Rectangle playerHitbox)
+    {
+        return !area.IsEmpty
+            && !playerHitbox.IsEmpty
+            && playerHitbox.Intersects(area);
+    }
+
+    public static bool ShouldApplyMobSkillRuntimeProp(MobSkillRuntimeData runtimeData, int rollPercent)
+    {
+        int propPercent = runtimeData?.PropPercent ?? 0;
+        if (propPercent <= 0 || propPercent >= 100)
+        {
+            return true;
+        }
+
+        int normalizedRoll = System.Math.Clamp(rollPercent, 0, 99);
+        return normalizedRoll < propPercent;
+    }
+
+    internal static bool ShouldApplyStatusToTarget(
+        MobAI target,
+        MobSkillStatusDefinition definition,
+        MobSkillRuntimeData runtimeData,
+        int currentTick = 0,
+        int recastLeadTimeMs = 0)
+    {
+        int statusValue = MobSkillStatusMapper.ResolveStatusValue(
+            definition.Effect,
+            runtimeData?.X ?? 0,
+            runtimeData?.Y ?? 0,
+            runtimeData?.Hp ?? 0);
+        return ShouldApplyStatusToTarget(
+            target,
+            definition,
+            runtimeData,
+            statusValue,
+            currentTick,
+            recastLeadTimeMs);
+    }
+
+    private static bool ShouldApplyStatusToTarget(
+        MobAI target,
+        MobSkillStatusDefinition definition,
+        MobSkillRuntimeData runtimeData,
+        int statusValue,
+        int currentTick,
+        int recastLeadTimeMs)
+    {
+        if (target?.IsDead != false)
+        {
+            return false;
+        }
+
+        if (!IsAuthoredHpGateOpen(target, definition, runtimeData))
+        {
+            return false;
+        }
+
+        if (!target.HasStatusEffect(definition.Effect))
+        {
+            return true;
+        }
+
+        if (target.GetStatusEffectValue(definition.Effect) < statusValue)
+        {
+            return true;
+        }
+
+        int refreshLeadTimeMs = System.Math.Max(0, recastLeadTimeMs);
+        return refreshLeadTimeMs > 0 &&
+               target.GetStatusEffectRemaining(definition.Effect, currentTick) <= refreshLeadTimeMs;
+    }
+
+    private static bool IsAuthoredHpGateOpen(
+        MobAI target,
+        MobSkillStatusDefinition definition,
+        MobSkillRuntimeData runtimeData)
+    {
+        if (definition.Operation != MobSkillOperation.ApplyStatus || runtimeData == null)
+        {
+            return true;
+        }
+
+        int hpThresholdPercent = runtimeData.Hp;
+        if (hpThresholdPercent <= 0 || hpThresholdPercent >= 100)
+        {
+            return true;
+        }
+
+        float hpPercent = System.Math.Clamp(target.HpPercent, 0f, 1f) * 100f;
+        return hpPercent <= hpThresholdPercent;
+    }
+
+    private static int ResolveHealThresholdPercent(MobSkillRuntimeData runtimeData)
+    {
+        int healThresholdPercent = runtimeData?.Hp ?? 0;
+        if (healThresholdPercent <= 0)
+        {
+            healThresholdPercent = 100;
+        }
+
+        return System.Math.Clamp(healThresholdPercent, 1, 100);
+    }
+}

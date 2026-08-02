@@ -1,0 +1,1113 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+
+using BinaryWriter = MapleLib.PacketLib.PacketWriter;
+namespace HaCreator.MapSimulator.Physics
+{
+    internal static class CMovePathClientPacketCodec
+    {
+        internal readonly struct ClientFlushTail
+        {
+            public ClientFlushTail(
+                IReadOnlyList<byte> passiveKeyPadStates,
+                short left,
+                short top,
+                short right,
+                short bottom)
+            {
+                PassiveKeyPadStates = passiveKeyPadStates ?? Array.Empty<byte>();
+                Left = left;
+                Top = top;
+                Right = right;
+                Bottom = bottom;
+            }
+
+            public IReadOnlyList<byte> PassiveKeyPadStates { get; }
+            public short Left { get; }
+            public short Top { get; }
+            public short Right { get; }
+            public short Bottom { get; }
+        }
+
+        public static bool TryEncode(
+            IReadOnlyList<MovePathElement> path,
+            out byte[] payload,
+            out string error,
+            bool includeClientRandomCounts = false,
+            bool includeClientFlushTail = false,
+            IReadOnlyList<byte> passiveKeyPadStates = null,
+            MovePathElement? headerElement = null)
+        {
+            payload = Array.Empty<byte>();
+            error = null;
+            if (path == null || path.Count == 0)
+            {
+                error = "Move path is empty.";
+                return false;
+            }
+
+            if (path.Count > byte.MaxValue)
+            {
+                error = $"Move path has {path.Count} elements; the client packet count is one byte.";
+                return false;
+            }
+
+            using var stream = new MemoryStream();
+            using var writer = new BinaryWriter(stream);
+            MovePathElement start = headerElement ?? path[0];
+            writer.Write(ClampToShort(start.X));
+            writer.Write(ClampToShort(start.Y));
+            writer.Write(start.VelocityX);
+            writer.Write(start.VelocityY);
+            writer.Write((byte)path.Count);
+
+            for (int i = 0; i < path.Count; i++)
+            {
+                WriteElement(writer, path[i], includeClientRandomCounts);
+            }
+
+            if (includeClientFlushTail)
+            {
+                WriteFlushTail(writer, path, start, passiveKeyPadStates);
+            }
+
+            writer.Flush();
+            payload = stream.ToArray();
+            return true;
+        }
+
+        public static bool TryDecode(
+            byte[] payload,
+            out IReadOnlyList<MovePathElement> path,
+            out string error,
+            bool includeClientRandomCounts = false)
+        {
+            return TryDecodeCore(
+                payload,
+                out path,
+                out _,
+                out error,
+                includeClientRandomCounts,
+                includeClientFlushTail: false);
+        }
+
+        internal static bool TryDecodeWithClientFlushTail(
+            byte[] payload,
+            out IReadOnlyList<MovePathElement> path,
+            out ClientFlushTail flushTail,
+            out string error,
+            bool includeClientRandomCounts = false)
+        {
+            return TryDecodeCore(
+                payload,
+                out path,
+                out flushTail,
+                out error,
+                includeClientRandomCounts,
+                includeClientFlushTail: true);
+        }
+
+        private static bool TryDecodeCore(
+            byte[] payload,
+            out IReadOnlyList<MovePathElement> path,
+            out ClientFlushTail flushTail,
+            out string error,
+            bool includeClientRandomCounts,
+            bool includeClientFlushTail)
+        {
+            path = Array.Empty<MovePathElement>();
+            flushTail = default;
+            error = null;
+            if (payload == null || payload.Length == 0)
+            {
+                error = "Move path payload is empty.";
+                return false;
+            }
+
+            try
+            {
+                using var stream = new MemoryStream(payload, writable: false);
+                using var reader = new System.IO.BinaryReader(stream);
+                short startX = reader.ReadInt16();
+                short startY = reader.ReadInt16();
+                short startVx = reader.ReadInt16();
+                short startVy = reader.ReadInt16();
+                short currentX = startX;
+                short currentY = startY;
+                short currentVx = startVx;
+                short currentVy = startVy;
+                int count = reader.ReadByte();
+                var decoded = new List<MovePathElement>(count);
+                for (int i = 0; i < count; i++)
+                {
+                    MovePathElement element = ReadElement(
+                        reader,
+                        includeClientRandomCounts,
+                        currentX,
+                        currentY,
+                        currentVx,
+                        currentVy,
+                        out bool refreshClientCarryState);
+                    decoded.Add(element);
+                    if (refreshClientCarryState)
+                    {
+                        currentX = ClampToShort(element.X);
+                        currentY = ClampToShort(element.Y);
+                        currentVx = element.VelocityX;
+                        currentVy = element.VelocityY;
+                    }
+                }
+
+                if (includeClientFlushTail)
+                {
+                    flushTail = ReadFlushTail(reader);
+                }
+
+                if (stream.Position != stream.Length)
+                {
+                    error = $"Move path payload has {(stream.Length - stream.Position).ToString(System.Globalization.CultureInfo.InvariantCulture)} trailing byte(s).";
+                    return false;
+                }
+
+                if (decoded.Count == 0)
+                {
+                    decoded.Add(new MovePathElement
+                    {
+                        X = startX,
+                        Y = startY,
+                        VelocityX = startVx,
+                        VelocityY = startVy,
+                        Action = MoveAction.Stand,
+                        FacingRight = true
+                    });
+                }
+
+                path = decoded;
+                return true;
+            }
+            catch (EndOfStreamException ex)
+            {
+                error = $"Move path payload ended early: {ex.Message}";
+                return false;
+            }
+            catch (IOException ex)
+            {
+                error = $"Move path payload could not be read: {ex.Message}";
+                return false;
+            }
+        }
+
+        internal static IReadOnlyList<MovePathElement> NormalizeForPortalOwnedClientMakeMovePath(
+            IReadOnlyList<MovePathElement> path)
+        {
+            return NormalizeForPortalOwnedClientMakeMovePath(
+                path,
+                normalizePortalOwnedImpactDuration: true);
+        }
+
+        internal static IReadOnlyList<MovePathElement> NormalizeForPortalOwnedClientFlushRetention(
+            IReadOnlyList<MovePathElement> path)
+        {
+            return NormalizeForPortalOwnedClientMakeMovePath(
+                path,
+                normalizePortalOwnedImpactDuration: false);
+        }
+
+        private static IReadOnlyList<MovePathElement> NormalizeForPortalOwnedClientMakeMovePath(
+            IReadOnlyList<MovePathElement> path,
+            bool normalizePortalOwnedImpactDuration)
+        {
+            if (path == null || path.Count == 0)
+            {
+                return Array.Empty<MovePathElement>();
+            }
+
+            if (path.Count == 1)
+            {
+                return new[]
+                {
+                    NormalizePortalOwnedClientMakeMovePathElement(
+                        path[0],
+                        normalizePortalOwnedImpactDuration)
+                };
+            }
+
+            List<MovePathElement> normalized = new(path.Count);
+            for (int i = 0; i < path.Count; i++)
+            {
+                MovePathElement current = NormalizePortalOwnedClientMakeMovePathElement(
+                    path[i],
+                    normalizePortalOwnedImpactDuration);
+                if (normalized.Count == 0)
+                {
+                    normalized.Add(current);
+                    continue;
+                }
+
+                int tailIndex = normalized.Count - 1;
+                MovePathElement tail = normalized[tailIndex];
+                if (CanCoalesceClientMakeMovePathTail(tail, current))
+                {
+                    tail.Duration = ClampDurationToShort(tail.Duration + Math.Max(0, (int)current.Duration));
+                    tail.X = current.X;
+                    tail.Y = current.Y;
+                    tail.VelocityX = current.VelocityX;
+                    tail.VelocityY = current.VelocityY;
+                    tail.FallStartFootholdId = current.FallStartFootholdId;
+                    tail.XOffset = current.XOffset;
+                    tail.YOffset = current.YOffset;
+                    tail.RandomCount = current.RandomCount;
+                    tail.ActualRandomCount = current.ActualRandomCount;
+                    tail.HasClientKeyPadState = current.HasClientKeyPadState;
+                    tail.ClientKeyPadState = current.ClientKeyPadState;
+                    normalized[tailIndex] = tail;
+                    continue;
+                }
+
+                if (CanReplacePlaceholderTailWithCurrent(tail))
+                {
+                    normalized[tailIndex] = current;
+                    continue;
+                }
+
+                normalized.Add(current);
+            }
+
+            return normalized;
+        }
+
+        internal static IReadOnlyList<byte> NormalizePassiveKeyPadStatesForClientMakeMovePath(
+            IReadOnlyList<MovePathElement> path,
+            IReadOnlyList<byte> passiveKeyPadStates)
+        {
+            if (path == null || path.Count == 0 || passiveKeyPadStates == null || passiveKeyPadStates.Count == 0)
+            {
+                return Array.Empty<byte>();
+            }
+
+            List<MovePathElement> normalized = new(path.Count);
+            List<byte> normalizedKeyPadStates = new(Math.Min(path.Count, passiveKeyPadStates.Count));
+            for (int i = 0; i < path.Count; i++)
+            {
+                MovePathElement current = NormalizePortalOwnedClientMakeMovePathElement(path[i]);
+                byte currentKeyPadState = i < passiveKeyPadStates.Count
+                    ? (byte)(passiveKeyPadStates[i] & 0x0F)
+                    : (byte)0;
+
+                if (normalized.Count == 0)
+                {
+                    normalized.Add(current);
+                    normalizedKeyPadStates.Add(currentKeyPadState);
+                    continue;
+                }
+
+                int tailIndex = normalized.Count - 1;
+                MovePathElement tail = normalized[tailIndex];
+                if (CanCoalesceClientMakeMovePathTail(tail, current))
+                {
+                    tail.Duration = ClampDurationToShort(tail.Duration + Math.Max(0, (int)current.Duration));
+                    tail.X = current.X;
+                    tail.Y = current.Y;
+                    tail.VelocityX = current.VelocityX;
+                    tail.VelocityY = current.VelocityY;
+                    tail.FallStartFootholdId = current.FallStartFootholdId;
+                    tail.XOffset = current.XOffset;
+                    tail.YOffset = current.YOffset;
+                    tail.RandomCount = current.RandomCount;
+                    tail.ActualRandomCount = current.ActualRandomCount;
+                    tail.HasClientKeyPadState = current.HasClientKeyPadState;
+                    tail.ClientKeyPadState = current.ClientKeyPadState;
+                    normalized[tailIndex] = tail;
+                    normalizedKeyPadStates[tailIndex] = currentKeyPadState;
+                    continue;
+                }
+
+                if (CanReplacePlaceholderTailWithCurrent(tail))
+                {
+                    normalized[tailIndex] = current;
+                    normalizedKeyPadStates[tailIndex] = currentKeyPadState;
+                    continue;
+                }
+
+                normalized.Add(current);
+                normalizedKeyPadStates.Add(currentKeyPadState);
+            }
+
+            return normalizedKeyPadStates;
+        }
+
+        private static MovePathElement NormalizePortalOwnedClientMakeMovePathElement(MovePathElement element)
+        {
+            return NormalizePortalOwnedClientMakeMovePathElement(
+                element,
+                normalizePortalOwnedImpactDuration: true);
+        }
+
+        private static MovePathElement NormalizePortalOwnedClientMakeMovePathElement(
+            MovePathElement element,
+            bool normalizePortalOwnedImpactDuration)
+        {
+            if (!normalizePortalOwnedImpactDuration
+                || !IsPortalOwnedImpactAttribute(element.MovePathAttribute))
+            {
+                return element;
+            }
+
+            element.Duration = 0;
+            return element;
+        }
+
+        internal static IReadOnlyList<MovePathElement> ApplyPortalOwnedFlushCadenceHint(
+            IReadOnlyList<MovePathElement> path,
+            bool isTimeForFlush)
+        {
+            if (path == null || path.Count <= 1 || isTimeForFlush)
+            {
+                return path ?? Array.Empty<MovePathElement>();
+            }
+
+            return new[] { path[path.Count - 1] };
+        }
+
+        internal static IReadOnlyList<MovePathElement> ShapePortalOwnedMovePathForEncode(
+            IReadOnlyList<MovePathElement> path,
+            bool flushAdmitted,
+            IReadOnlyList<MovePathElement> postFlushCarry,
+            bool includeClientRandomCounts,
+            out bool consumedPostFlushCarry)
+        {
+            IReadOnlyList<MovePathElement> cadenceShapedPath =
+                ApplyPortalOwnedFlushCadenceHintWithRetainedCarrySuffix(
+                    path,
+                    flushAdmitted,
+                    postFlushCarry,
+                    includeClientRandomCounts,
+                    out consumedPostFlushCarry);
+            cadenceShapedPath = ApplyPortalOwnedPostFlushCarryHint(
+                cadenceShapedPath,
+                !flushAdmitted && !consumedPostFlushCarry ? postFlushCarry : Array.Empty<MovePathElement>(),
+                includeClientRandomCounts,
+                out bool prependedPostFlushCarry);
+            consumedPostFlushCarry |= prependedPostFlushCarry;
+
+            return NormalizeForPortalOwnedClientMakeMovePath(cadenceShapedPath);
+        }
+
+        internal static IReadOnlyList<byte> ResolveClientFlushTailPassiveKeyPadStates(
+            IReadOnlyList<MovePathElement> encodedPath,
+            byte? fallbackKeyPadState = null)
+        {
+            if (encodedPath == null || encodedPath.Count == 0)
+            {
+                return Array.Empty<byte>();
+            }
+
+            bool hasAnySampledState = fallbackKeyPadState.HasValue;
+            for (int i = 0; i < encodedPath.Count && !hasAnySampledState; i++)
+            {
+                hasAnySampledState = encodedPath[i].HasClientKeyPadState;
+            }
+
+            if (!hasAnySampledState)
+            {
+                return Array.Empty<byte>();
+            }
+
+            byte fallback = (byte)(fallbackKeyPadState.GetValueOrDefault() & 0x0F);
+            byte[] states = new byte[Math.Min(encodedPath.Count, byte.MaxValue)];
+            for (int i = 0; i < states.Length; i++)
+            {
+                MovePathElement element = encodedPath[i];
+                states[i] = element.HasClientKeyPadState
+                    ? (byte)(element.ClientKeyPadState & 0x0F)
+                    : fallback;
+            }
+
+            return states;
+        }
+
+        internal static bool TryDecodeClientFlushTailPassiveKeyPadStates(
+            IReadOnlyList<byte> bytes,
+            bool packedNibbles,
+            out byte[] states,
+            out string error)
+        {
+            states = Array.Empty<byte>();
+            error = null;
+            if (bytes == null)
+            {
+                error = "Captured keypad bytes are empty.";
+                return false;
+            }
+
+            if (!packedNibbles)
+            {
+                states = new byte[bytes.Count];
+                for (int i = 0; i < bytes.Count; i++)
+                {
+                    states[i] = (byte)(bytes[i] & 0x0F);
+                }
+
+                return true;
+            }
+
+            if (bytes.Count == 0)
+            {
+                return true;
+            }
+
+            int stateCount = bytes[0];
+            int packedByteCount = (stateCount + 1) / 2;
+            if (bytes.Count - 1 < packedByteCount)
+            {
+                error = $"Packed keypad capture declares {stateCount} state(s), but only {bytes.Count - 1} packed byte(s) were supplied.";
+                return false;
+            }
+
+            if (bytes.Count - 1 > packedByteCount)
+            {
+                error = $"Packed keypad capture has {bytes.Count - 1 - packedByteCount} trailing byte(s).";
+                return false;
+            }
+
+            states = new byte[stateCount];
+            for (int i = 0; i < stateCount; i += 2)
+            {
+                byte packed = bytes[1 + (i / 2)];
+                states[i] = (byte)(packed & 0x0F);
+                if (i + 1 < stateCount)
+                {
+                    states[i + 1] = (byte)((packed >> 4) & 0x0F);
+                }
+            }
+
+            return true;
+        }
+
+        internal static bool AreClientFlushTailPassiveKeyPadStatesEqual(
+            IReadOnlyList<byte> left,
+            IReadOnlyList<byte> right)
+        {
+            int leftCount = left?.Count ?? 0;
+            int rightCount = right?.Count ?? 0;
+            if (leftCount != rightCount)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < leftCount; i++)
+            {
+                if ((left[i] & 0x0F) != (right[i] & 0x0F))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        internal static IReadOnlyList<MovePathElement> ShapePortalOwnedMovePathForEncode(
+            IReadOnlyList<MovePathElement> path,
+            bool flushAdmitted,
+            IReadOnlyList<MovePathElement> postFlushCarry,
+            out bool consumedPostFlushCarry)
+        {
+            return ShapePortalOwnedMovePathForEncode(
+                path,
+                flushAdmitted,
+                postFlushCarry,
+                includeClientRandomCounts: true,
+                out consumedPostFlushCarry);
+        }
+
+        private static IReadOnlyList<MovePathElement> ApplyPortalOwnedFlushCadenceHintWithRetainedCarrySuffix(
+            IReadOnlyList<MovePathElement> path,
+            bool flushAdmitted,
+            IReadOnlyList<MovePathElement> carryPath,
+            bool includeClientRandomCounts,
+            out bool consumedCarry)
+        {
+            consumedCarry = false;
+            if (path == null || path.Count == 0 || flushAdmitted || carryPath == null || carryPath.Count == 0)
+            {
+                return ApplyPortalOwnedFlushCadenceHint(path, flushAdmitted);
+            }
+
+            if (!TryFindFirstEncodedCarryShapeIndex(path, carryPath, includeClientRandomCounts, out int carryIndex))
+            {
+                return ApplyPortalOwnedFlushCadenceHint(path, flushAdmitted);
+            }
+
+            consumedCarry = true;
+            if (carryIndex <= 0)
+            {
+                return path;
+            }
+
+            MovePathElement[] suffix = new MovePathElement[path.Count - carryIndex];
+            for (int i = carryIndex; i < path.Count; i++)
+            {
+                suffix[i - carryIndex] = path[i];
+            }
+
+            return suffix;
+        }
+
+        internal static IReadOnlyList<MovePathElement> ApplyPortalOwnedPostFlushCarryHint(
+            IReadOnlyList<MovePathElement> path,
+            IReadOnlyList<MovePathElement> carryPath,
+            out bool consumedCarry)
+        {
+            return ApplyPortalOwnedPostFlushCarryHint(
+                path,
+                carryPath,
+                includeClientRandomCounts: true,
+                out consumedCarry);
+        }
+
+        internal static IReadOnlyList<MovePathElement> ApplyPortalOwnedPostFlushCarryHint(
+            IReadOnlyList<MovePathElement> path,
+            IReadOnlyList<MovePathElement> carryPath,
+            bool includeClientRandomCounts,
+            out bool consumedCarry)
+        {
+            consumedCarry = false;
+            if (carryPath == null || carryPath.Count == 0)
+            {
+                return path ?? Array.Empty<MovePathElement>();
+            }
+
+            if (path == null || path.Count == 0)
+            {
+                return Array.Empty<MovePathElement>();
+            }
+
+            if (ContainsAllEncodedCarryShapes(path, carryPath, includeClientRandomCounts))
+            {
+                consumedCarry = true;
+                return path;
+            }
+
+            if (path.Count != 1)
+            {
+                return path;
+            }
+
+            List<MovePathElement> merged = new(carryPath.Count + path.Count);
+            for (int i = 0; i < carryPath.Count; i++)
+            {
+                MovePathElement carry = carryPath[i];
+                if (HasEncodedShape(path, carry, includeClientRandomCounts))
+                {
+                    consumedCarry = true;
+                    continue;
+                }
+
+                merged.Add(carry);
+                consumedCarry = true;
+            }
+
+            if (merged.Count == 0)
+            {
+                return path;
+            }
+
+            merged.AddRange(path);
+            return merged;
+        }
+
+        internal static IReadOnlyList<MovePathElement> CapturePortalOwnedPostFlushCarryHint(
+            IReadOnlyList<MovePathElement> flushAdmittedPath)
+        {
+            if (flushAdmittedPath == null || flushAdmittedPath.Count == 0)
+            {
+                return Array.Empty<MovePathElement>();
+            }
+
+            int lastGroundedIndex = -1;
+            for (int i = flushAdmittedPath.Count - 1; i >= 0; i--)
+            {
+                if (flushAdmittedPath[i].FootholdId > 0)
+                {
+                    lastGroundedIndex = i;
+                    break;
+                }
+            }
+
+            int carryStartIndex = lastGroundedIndex + 1;
+            if (carryStartIndex <= 0 || carryStartIndex >= flushAdmittedPath.Count)
+            {
+                return Array.Empty<MovePathElement>();
+            }
+
+            return new[] { flushAdmittedPath[carryStartIndex] };
+        }
+
+        internal static IReadOnlyList<MovePathElement> TrimPortalOwnedClientFlushRetainedTailForEncode(
+            IReadOnlyList<MovePathElement> flushAdmittedPath,
+            bool retainsPostGroundTail)
+        {
+            if (!retainsPostGroundTail
+                || flushAdmittedPath == null
+                || flushAdmittedPath.Count <= 1)
+            {
+                return flushAdmittedPath ?? Array.Empty<MovePathElement>();
+            }
+
+            int lastGroundedIndex = -1;
+            for (int i = flushAdmittedPath.Count - 1; i >= 0; i--)
+            {
+                if (flushAdmittedPath[i].FootholdId > 0)
+                {
+                    lastGroundedIndex = i;
+                    break;
+                }
+            }
+
+            if (lastGroundedIndex < 0 || lastGroundedIndex >= flushAdmittedPath.Count - 1)
+            {
+                return flushAdmittedPath;
+            }
+
+            MovePathElement[] encoded = new MovePathElement[lastGroundedIndex + 1];
+            for (int i = 0; i <= lastGroundedIndex; i++)
+            {
+                encoded[i] = flushAdmittedPath[i];
+            }
+
+            return encoded;
+        }
+
+        private static void WriteElement(BinaryWriter writer, MovePathElement element, bool includeClientRandomCounts)
+        {
+            byte attribute = (byte)Math.Clamp(element.MovePathAttribute, byte.MinValue, byte.MaxValue);
+            writer.Write(attribute);
+            bool writesCommonMoveSuffix = true;
+
+            switch (attribute)
+            {
+                case 0:
+                case 5:
+                case 12:
+                case 14:
+                case 35:
+                case 36:
+                    writer.Write(ClampToShort(element.X));
+                    writer.Write(ClampToShort(element.Y));
+                    writer.Write(element.VelocityX);
+                    writer.Write(element.VelocityY);
+                    writer.Write(ClampToShort(element.FootholdId));
+                    if (attribute == 12)
+                    {
+                        writer.Write(ClampToShort(element.FallStartFootholdId));
+                    }
+
+                    writer.Write(element.XOffset);
+                    writer.Write(element.YOffset);
+                    break;
+                case 1:
+                case 2:
+                case 13:
+                case 16:
+                case 18:
+                case 31:
+                case 32:
+                case 33:
+                case 34:
+                    writer.Write(element.VelocityX);
+                    writer.Write(element.VelocityY);
+                    break;
+                case 3:
+                case 4:
+                case 6:
+                case 7:
+                case 8:
+                case 10:
+                    writer.Write(ClampToShort(element.X));
+                    writer.Write(ClampToShort(element.Y));
+                    writer.Write(ClampToShort(element.FootholdId));
+                    break;
+                case 9:
+                    writer.Write(element.StatChanged ? (byte)1 : (byte)0);
+                    writesCommonMoveSuffix = false;
+                    break;
+                case 11:
+                    writer.Write(element.VelocityX);
+                    writer.Write(element.VelocityY);
+                    writer.Write((short)0);
+                    break;
+                case 17:
+                    writer.Write(ClampToShort(element.X));
+                    writer.Write(ClampToShort(element.Y));
+                    writer.Write(element.VelocityX);
+                    writer.Write(element.VelocityY);
+                    break;
+                case >= 20 and <= 30:
+                    break;
+                default:
+                    break;
+            }
+
+            if (!writesCommonMoveSuffix)
+            {
+                return;
+            }
+
+            writer.Write(EncodeMoveAction(element.Action, element.FacingRight));
+            writer.Write(element.Duration);
+            if (includeClientRandomCounts)
+            {
+                // Keep the packet-owned suffix shape aligned with client CMovePath payloads.
+                writer.Write(element.RandomCount);
+                writer.Write(element.ActualRandomCount);
+            }
+        }
+
+        private static MovePathElement ReadElement(
+            System.IO.BinaryReader reader,
+            bool includeClientRandomCounts,
+            short currentX,
+            short currentY,
+            short currentVelocityX,
+            short currentVelocityY,
+            out bool refreshClientCarryState)
+        {
+            byte attribute = reader.ReadByte();
+            var element = new MovePathElement
+            {
+                MovePathAttribute = attribute
+            };
+            bool readsCommonMoveSuffix = true;
+            refreshClientCarryState = true;
+
+            switch (attribute)
+            {
+                case 0:
+                case 5:
+                case 12:
+                case 14:
+                case 35:
+                case 36:
+                    element.X = reader.ReadInt16();
+                    element.Y = reader.ReadInt16();
+                    element.VelocityX = reader.ReadInt16();
+                    element.VelocityY = reader.ReadInt16();
+                    element.FootholdId = reader.ReadInt16();
+                    if (attribute == 12)
+                    {
+                        element.FallStartFootholdId = reader.ReadInt16();
+                    }
+
+                    element.XOffset = reader.ReadInt16();
+                    element.YOffset = reader.ReadInt16();
+                    break;
+                case 1:
+                case 2:
+                case 13:
+                case 16:
+                case 18:
+                case 31:
+                case 32:
+                case 33:
+                case 34:
+                    element.X = currentX;
+                    element.Y = currentY;
+                    element.FootholdId = 0;
+                    element.VelocityX = reader.ReadInt16();
+                    element.VelocityY = reader.ReadInt16();
+                    break;
+                case 3:
+                case 4:
+                case 6:
+                case 7:
+                case 8:
+                case 10:
+                    element.X = reader.ReadInt16();
+                    element.Y = reader.ReadInt16();
+                    element.FootholdId = reader.ReadInt16();
+                    element.VelocityX = 0;
+                    element.VelocityY = 0;
+                    break;
+                case 9:
+                    element.StatChanged = reader.ReadByte() != 0;
+                    element.X = currentX;
+                    element.Y = currentY;
+                    element.VelocityX = 0;
+                    element.VelocityY = 0;
+                    element.FootholdId = 0;
+                    element.Action = MoveAction.Stand;
+                    element.FacingRight = true;
+                    element.Duration = 0;
+                    readsCommonMoveSuffix = false;
+                    refreshClientCarryState = false;
+                    break;
+                case 11:
+                    element.X = currentX;
+                    element.Y = currentY;
+                    element.FootholdId = 0;
+                    element.VelocityX = reader.ReadInt16();
+                    element.VelocityY = reader.ReadInt16();
+                    element.FallStartFootholdId = reader.ReadInt16();
+                    break;
+                case 17:
+                    element.X = reader.ReadInt16();
+                    element.Y = reader.ReadInt16();
+                    element.VelocityX = reader.ReadInt16();
+                    element.VelocityY = reader.ReadInt16();
+                    break;
+                case >= 20 and <= 30:
+                    element.X = currentX;
+                    element.Y = currentY;
+                    element.VelocityX = currentVelocityX;
+                    element.VelocityY = currentVelocityY;
+                    break;
+                default:
+                    break;
+            }
+
+            if (!readsCommonMoveSuffix)
+            {
+                return element;
+            }
+
+            DecodeMoveAction(reader.ReadByte(), out element.Action, out element.FacingRight);
+            element.Duration = reader.ReadInt16();
+            if (includeClientRandomCounts)
+            {
+                element.RandomCount = reader.ReadUInt16();
+                element.ActualRandomCount = reader.ReadUInt16();
+            }
+
+            return element;
+        }
+
+        private static byte EncodeMoveAction(MoveAction action, bool facingRight)
+        {
+            int actionCode = Math.Clamp((int)action, 0, 0x0F);
+            return (byte)((actionCode << 1) | (facingRight ? 0 : 1));
+        }
+
+        private static void DecodeMoveAction(byte encoded, out MoveAction action, out bool facingRight)
+        {
+            int actionCode = (encoded >> 1) & 0x0F;
+            action = Enum.IsDefined(typeof(MoveAction), actionCode)
+                ? (MoveAction)actionCode
+                : MoveAction.Stand;
+            facingRight = (encoded & 1) == 0;
+        }
+
+        private static void WriteFlushTail(
+            BinaryWriter writer,
+            IReadOnlyList<MovePathElement> path,
+            MovePathElement start,
+            IReadOnlyList<byte> passiveKeyPadStates)
+        {
+            int stateCount = Math.Clamp(passiveKeyPadStates?.Count ?? 0, 0, byte.MaxValue);
+            writer.Write((byte)stateCount);
+            for (int i = 0; i < stateCount; i += 2)
+            {
+                byte low = (byte)(passiveKeyPadStates[i] & 0x0F);
+                byte packed = low;
+                if (i + 1 < stateCount)
+                {
+                    packed |= (byte)((passiveKeyPadStates[i + 1] & 0x0F) << 4);
+                }
+
+                writer.Write(packed);
+            }
+
+            short left = ClampToShort(start.X);
+            short top = ClampToShort(start.Y);
+            short right = left;
+            short bottom = top;
+
+            for (int i = 0; i < path.Count; i++)
+            {
+                if (!ShouldUpdateClientMoveRectFromEncodedElement(path[i]))
+                {
+                    continue;
+                }
+
+                short x = ClampToShort(path[i].X);
+                short y = ClampToShort(path[i].Y);
+                left = (short)Math.Min(left, x);
+                top = (short)Math.Min(top, y);
+                right = (short)Math.Max(right, x);
+                bottom = (short)Math.Max(bottom, y);
+            }
+
+            writer.Write(left);
+            writer.Write(top);
+            writer.Write(right);
+            writer.Write(bottom);
+        }
+
+        private static ClientFlushTail ReadFlushTail(System.IO.BinaryReader reader)
+        {
+            int stateCount = reader.ReadByte();
+            byte[] passiveKeyPadStates = new byte[stateCount];
+            for (int i = 0; i < stateCount; i += 2)
+            {
+                byte packed = reader.ReadByte();
+                passiveKeyPadStates[i] = (byte)(packed & 0x0F);
+                if (i + 1 < stateCount)
+                {
+                    passiveKeyPadStates[i + 1] = (byte)((packed >> 4) & 0x0F);
+                }
+            }
+
+            short left = reader.ReadInt16();
+            short top = reader.ReadInt16();
+            short right = reader.ReadInt16();
+            short bottom = reader.ReadInt16();
+            return new ClientFlushTail(passiveKeyPadStates, left, top, right, bottom);
+        }
+
+        private static bool ShouldUpdateClientMoveRectFromEncodedElement(MovePathElement element)
+        {
+            return element.MovePathAttribute != 9;
+        }
+
+        private static short ClampToShort(int value)
+        {
+            return (short)Math.Clamp(value, short.MinValue, short.MaxValue);
+        }
+
+        private static short ClampDurationToShort(int duration)
+        {
+            return (short)Math.Clamp(duration, short.MinValue, short.MaxValue);
+        }
+
+        private static bool CanReplacePlaceholderTailWithCurrent(MovePathElement tail)
+        {
+            return tail.MovePathAttribute == 0 && tail.Duration == 0;
+        }
+
+        private static bool CanCoalesceClientMakeMovePathTail(MovePathElement tail, MovePathElement current)
+        {
+            if (!IsClientCoalesceAttribute(current.MovePathAttribute)
+                || tail.MovePathAttribute != current.MovePathAttribute
+                || tail.FootholdId != current.FootholdId
+                || tail.FallStartFootholdId != current.FallStartFootholdId
+                || tail.Action != current.Action
+                || tail.FacingRight != current.FacingRight
+                || tail.XOffset != current.XOffset
+                || tail.YOffset != current.YOffset)
+            {
+                return false;
+            }
+
+            return HasStableVelocityDirection(tail.VelocityX, current.VelocityX)
+                && HasStableVelocityDirection(tail.VelocityY, current.VelocityY);
+        }
+
+        private static bool IsClientCoalesceAttribute(int attribute)
+        {
+            return attribute == 0 || attribute == 12 || attribute == 14;
+        }
+
+        private static bool IsPortalOwnedImpactAttribute(int attribute)
+        {
+            return attribute == 24 || attribute == 25;
+        }
+
+        private static bool HasStableVelocityDirection(short previousVelocity, short currentVelocity)
+        {
+            if (previousVelocity == 0 || currentVelocity == 0)
+            {
+                return previousVelocity == currentVelocity;
+            }
+
+            return (previousVelocity < 0 && currentVelocity < 0)
+                || (previousVelocity > 0 && currentVelocity > 0);
+        }
+
+        private static bool HasSameEncodedShape(
+            MovePathElement left,
+            MovePathElement right,
+            bool includeClientRandomCounts = true)
+        {
+            left = NormalizePortalOwnedClientMakeMovePathElement(left);
+            right = NormalizePortalOwnedClientMakeMovePathElement(right);
+            return TryEncodeElementShape(left, includeClientRandomCounts, out byte[] leftShape)
+                   && TryEncodeElementShape(right, includeClientRandomCounts, out byte[] rightShape)
+                   && leftShape.AsSpan().SequenceEqual(rightShape);
+        }
+
+        private static bool TryEncodeElementShape(
+            MovePathElement element,
+            bool includeClientRandomCounts,
+            out byte[] shape)
+        {
+            shape = Array.Empty<byte>();
+            try
+            {
+                using var stream = new MemoryStream();
+                using var writer = new BinaryWriter(stream);
+                WriteElement(writer, element, includeClientRandomCounts);
+                writer.Flush();
+                shape = stream.ToArray();
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static bool HasEncodedShape(
+            IReadOnlyList<MovePathElement> path,
+            MovePathElement candidate,
+            bool includeClientRandomCounts = true)
+        {
+            for (int i = 0; i < path.Count; i++)
+            {
+                if (HasSameEncodedShape(path[i], candidate, includeClientRandomCounts))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool ContainsAllEncodedCarryShapes(
+            IReadOnlyList<MovePathElement> path,
+            IReadOnlyList<MovePathElement> carryPath,
+            bool includeClientRandomCounts = true)
+        {
+            for (int i = 0; i < carryPath.Count; i++)
+            {
+                if (!HasEncodedShape(path, carryPath[i], includeClientRandomCounts))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static bool TryFindFirstEncodedCarryShapeIndex(
+            IReadOnlyList<MovePathElement> path,
+            IReadOnlyList<MovePathElement> carryPath,
+            bool includeClientRandomCounts,
+            out int carryIndex)
+        {
+            carryIndex = -1;
+            for (int i = 0; i < path.Count; i++)
+            {
+                for (int j = 0; j < carryPath.Count; j++)
+                {
+                    if (HasSameEncodedShape(path[i], carryPath[j], includeClientRandomCounts))
+                    {
+                        carryIndex = i;
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+    }
+}

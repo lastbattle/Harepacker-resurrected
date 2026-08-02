@@ -1,0 +1,184 @@
+using System;
+using System.Collections.Generic;
+using HaCreator.MapSimulator.AI;
+using HaCreator.MapSimulator.Entities;
+
+namespace HaCreator.MapSimulator.Pools
+{
+    internal static class HypnotizeTargetResolver
+    {
+        private const float MinimumHypnotizeTargetRange = 320f;
+        private const float CurrentTargetRetentionRangeMultiplier = 1.5f;
+
+        public static MobItem ResolveTarget(MobItem source, IReadOnlyList<MobItem> activeMobs, int preferredTargetId = 0)
+        {
+            if (source?.AI == null || source.AI.IsDead || activeMobs == null || activeMobs.Count == 0)
+            {
+                return null;
+            }
+
+            float maxDistance = Math.Max(MinimumHypnotizeTargetRange, source.AI.AggroRange);
+            int currentTargetId = source.AI.ExternalTargetSource == MobExternalTargetSource.Hypnotize
+                ? source.AI.Target.TargetId
+                : 0;
+            int? sourceTeam = source.MobInstance?.Team;
+            float maxDistanceSq = maxDistance * maxDistance;
+            float retentionMaxDistanceSq = maxDistanceSq * CurrentTargetRetentionRangeMultiplier * CurrentTargetRetentionRangeMultiplier;
+            MobItem bestTarget = null;
+            int bestPriorityTier = int.MaxValue;
+            float bestDistanceSq = maxDistanceSq;
+
+            for (int i = 0; i < activeMobs.Count; i++)
+            {
+                MobItem candidate = activeMobs[i];
+                if (!IsEligibleTarget(source, candidate, allowEncounterTargets: true))
+                {
+                    continue;
+                }
+
+                float dx = candidate.CurrentX - source.CurrentX;
+                float dy = candidate.CurrentY - source.CurrentY;
+                float distanceSq = dx * dx + dy * dy;
+                if (!IsWithinResolutionDistance(
+                        candidate.PoolId,
+                        currentTargetId,
+                        distanceSq,
+                        maxDistanceSq,
+                        retentionMaxDistanceSq))
+                {
+                    continue;
+                }
+
+                int candidatePriorityTier = ResolvePriorityTier(sourceTeam, candidate.MobInstance?.Team, candidate.UsesMobCombatLane);
+                if (candidatePriorityTier == SpecialMobInteractionRules.InvalidEncounterTargetPriority)
+                {
+                    continue;
+                }
+
+                if (!ShouldPreferCandidate(
+                    currentTargetId,
+                    bestTarget?.PoolId ?? 0,
+                    currentPriorityTier: bestPriorityTier,
+                    candidatePriorityTier: candidatePriorityTier,
+                    currentDistanceSq: bestDistanceSq,
+                    candidateDistanceSq: distanceSq,
+                    candidateId: candidate.PoolId,
+                    preferredTargetId: preferredTargetId))
+                {
+                    continue;
+                }
+
+                bestPriorityTier = candidatePriorityTier;
+                bestDistanceSq = distanceSq;
+                bestTarget = candidate;
+            }
+
+            return bestTarget;
+        }
+
+        internal static bool IsWithinResolutionDistance(
+            int candidateId,
+            int currentTargetId,
+            float distanceSq,
+            float maxDistanceSq,
+            float retentionMaxDistanceSq)
+        {
+            if (distanceSq <= maxDistanceSq)
+            {
+                return true;
+            }
+
+            return currentTargetId > 0
+                   && candidateId == currentTargetId
+                   && distanceSq <= retentionMaxDistanceSq;
+        }
+
+        private static bool IsEligibleTarget(MobItem source, MobItem candidate, bool allowEncounterTargets)
+        {
+            if (source == null ||
+                candidate == null ||
+                ReferenceEquals(source, candidate) ||
+                candidate.AI == null ||
+                candidate.AI.IsDead ||
+                candidate.AI.IsHypnotized ||
+                candidate.AI.IsDoomed)
+            {
+                return false;
+            }
+
+            if (!allowEncounterTargets && candidate.UsesMobCombatLane)
+            {
+                return false;
+            }
+
+            if (!source.UsesMobCombatLane && candidate.IsProtectedFromPlayerDamage)
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        internal static int ResolvePriorityTier(int? sourceTeam, int? candidateTeam, bool usesEncounterTarget)
+        {
+            int teamPriority = SpecialMobInteractionRules.ResolveEncounterTargetPriority(sourceTeam, candidateTeam);
+            if (teamPriority == SpecialMobInteractionRules.InvalidEncounterTargetPriority)
+            {
+                return SpecialMobInteractionRules.InvalidEncounterTargetPriority;
+            }
+
+            if (teamPriority == 0)
+            {
+                return usesEncounterTarget ? 0 : 1;
+            }
+
+            return usesEncounterTarget ? 2 : 3;
+        }
+
+        internal static bool ShouldPreferCandidate(
+            int currentTargetId,
+            int currentBestId,
+            int currentPriorityTier,
+            int candidatePriorityTier,
+            float currentDistanceSq,
+            float candidateDistanceSq,
+            int candidateId,
+            int preferredTargetId = 0)
+        {
+            if (candidatePriorityTier != currentPriorityTier)
+            {
+                return candidatePriorityTier < currentPriorityTier;
+            }
+
+            if (preferredTargetId > 0)
+            {
+                bool candidateIsPreferred = candidateId == preferredTargetId;
+                bool currentBestIsPreferred = currentBestId == preferredTargetId;
+                if (candidateIsPreferred != currentBestIsPreferred)
+                {
+                    return candidateIsPreferred;
+                }
+            }
+
+            if (currentTargetId > 0)
+            {
+                if (candidateId == currentTargetId)
+                {
+                    return true;
+                }
+
+                if (currentBestId == currentTargetId)
+                {
+                    return false;
+                }
+            }
+
+            if (candidateDistanceSq != currentDistanceSq)
+            {
+                return candidateDistanceSq < currentDistanceSq;
+            }
+
+            return currentBestId <= 0 || candidateId < currentBestId;
+        }
+    }
+}

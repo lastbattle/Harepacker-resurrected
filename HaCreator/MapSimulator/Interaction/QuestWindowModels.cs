@@ -1,0 +1,398 @@
+using System;
+using System.Collections.Generic;
+using HaCreator.MapSimulator.Fields;
+using MapleLib.WzLib.WzStructure.Data.ItemStructure;
+using MapleLib.WzLib.WzStructure.Data.QuestStructure;
+
+namespace HaCreator.MapSimulator.Interaction
+{
+    internal enum QuestWindowActionKind
+    {
+        None,
+        Accept,
+        Complete,
+        GiveUp,
+        Track,
+        LocateNpc,
+        LocateMob,
+        QuestGuide,
+        QuestDeliveryAccept,
+        QuestDeliveryComplete
+    }
+
+    internal enum QuestDetailNpcButtonStyle
+    {
+        None,
+        GenericNpc,
+        GotoNpc,
+        MarkNpc
+    }
+
+    public enum QuestDetailDeliveryType
+    {
+        None,
+        Accept,
+        Complete
+    }
+
+    internal enum QuestDetailInlineReferenceKind
+    {
+        None,
+        Npc,
+        Map,
+        Mob,
+        Item
+    }
+
+    public enum QuestDetailInlineReferenceSource
+    {
+        Unknown,
+        RequirementText,
+        RequirementLine,
+        RewardText,
+        RewardLine,
+        HintText,
+        SummaryText,
+        DemandRect,
+        DeliveryAcceptRect,
+        DeliveryCompleteRect,
+        DeliveryInset
+    }
+
+    internal enum QuestDetailCtSection
+    {
+        Log,
+        Summary
+    }
+
+    internal enum QuestDetailCtEntryKind
+    {
+        SectionHeader,
+        RichText,
+        Canvas,
+        ConditionLines,
+        Progress
+    }
+
+    internal enum QuestDetailCtEntryPalette
+    {
+        Default,
+        Requirement,
+        Reward,
+        Hint,
+        Summary
+    }
+
+    internal sealed class QuestDetailCtEntry
+    {
+        public QuestDetailCtSection Section { get; init; }
+        public QuestDetailCtEntryKind Kind { get; init; }
+        public string Text { get; init; } = string.Empty;
+        public string HeaderSurfaceKey { get; init; } = string.Empty;
+        public string HeaderFallbackText { get; init; } = string.Empty;
+        public string CanvasSurfaceKey { get; init; } = string.Empty;
+        public IReadOnlyList<QuestLogLineSnapshot> Lines { get; init; } = Array.Empty<QuestLogLineSnapshot>();
+        public QuestDetailCtEntryPalette Palette { get; init; }
+        public QuestDetailInlineReferenceSource Source { get; init; }
+        public bool HasAuthoredXOffset { get; init; }
+        public int XOffset { get; init; }
+        public int YOffset { get; init; }
+        public int Width { get; init; }
+        public int Height { get; init; }
+        public int CanvasOriginX { get; init; }
+        public int CanvasOriginY { get; init; }
+        public int VerticalGapAfter { get; init; }
+        public int? RowIndex { get; init; }
+        public int RowHeight { get; init; }
+        public int DrawOrder { get; init; }
+        public int? DrawLayer { get; init; }
+        public bool RewardSection { get; init; }
+        public bool Bold { get; init; }
+        public string FontFamily { get; init; } = string.Empty;
+        public string FontStyleToken { get; init; } = string.Empty;
+        public float FontPixelSize { get; init; }
+        public int? TextColorArgb { get; init; }
+    }
+
+    internal readonly record struct QuestDetailInlineReference
+    {
+        public QuestDetailInlineReference(
+            QuestDetailInlineReferenceKind kind,
+            int targetId,
+            string label,
+            QuestDetailInlineReferenceSource source = QuestDetailInlineReferenceSource.Unknown)
+        {
+            Kind = kind;
+            TargetId = targetId;
+            Label = label ?? string.Empty;
+            Source = source;
+        }
+
+        public QuestDetailInlineReferenceKind Kind { get; }
+        public int TargetId { get; }
+        public string Label { get; }
+        public QuestDetailInlineReferenceSource Source { get; }
+    }
+
+    internal static class QuestDetailDeliveryTypeCodec
+    {
+        // `CUIQuestInfo::LoadData` writes the client `QuestInfo::nDeliveryType` as 0=accept, 1=complete, 2=none.
+        public static QuestDetailDeliveryType FromClientRawValue(int rawType)
+        {
+            return rawType switch
+            {
+                0 => QuestDetailDeliveryType.Accept,
+                1 => QuestDetailDeliveryType.Complete,
+                2 => QuestDetailDeliveryType.None,
+                _ => QuestDetailDeliveryType.None
+            };
+        }
+
+        public static bool TryParseToken(string token, out QuestDetailDeliveryType deliveryType)
+        {
+            switch (token?.Trim().ToLowerInvariant())
+            {
+                case "accept":
+                    deliveryType = QuestDetailDeliveryType.Accept;
+                    return true;
+                case "complete":
+                    deliveryType = QuestDetailDeliveryType.Complete;
+                    return true;
+                case "none":
+                    deliveryType = QuestDetailDeliveryType.None;
+                    return true;
+                case "0":
+                    deliveryType = QuestDetailDeliveryType.Accept;
+                    return true;
+                case "1":
+                    deliveryType = QuestDetailDeliveryType.Complete;
+                    return true;
+                case "2":
+                    deliveryType = QuestDetailDeliveryType.None;
+                    return true;
+                default:
+                    deliveryType = QuestDetailDeliveryType.None;
+                    return false;
+            }
+        }
+    }
+
+    internal enum QuestWorldMapTargetKind
+    {
+        None,
+        Npc,
+        Mob,
+        Item
+    }
+
+    internal sealed class QuestWindowListEntry
+    {
+        public int QuestId { get; init; }
+        public string Title { get; init; } = string.Empty;
+        public string Summary { get; init; } = string.Empty;
+        public QuestStateType State { get; init; }
+        public int CurrentProgress { get; init; }
+        public int TotalProgress { get; init; }
+    }
+
+    internal sealed class QuestWindowDetailState
+    {
+        public const int MateNameHeaderQuestId = 4451;
+
+        public int QuestId { get; init; }
+        public string Title { get; init; } = string.Empty;
+        public string HeaderNoteText { get; init; } = string.Empty;
+        public QuestStateType State { get; init; }
+        public string SummaryText { get; init; } = string.Empty;
+        public string RequirementText { get; init; } = string.Empty;
+        public string RewardText { get; init; } = string.Empty;
+        public string HintText { get; init; } = string.Empty;
+        public string NpcText { get; init; } = string.Empty;
+        public IReadOnlyList<QuestLogLineSnapshot> RequirementLines { get; init; } = Array.Empty<QuestLogLineSnapshot>();
+        public IReadOnlyList<QuestLogLineSnapshot> RewardLines { get; init; } = Array.Empty<QuestLogLineSnapshot>();
+        public int CurrentProgress { get; init; }
+        public int TotalProgress { get; init; }
+        public QuestWindowActionKind PrimaryAction { get; init; }
+        public bool PrimaryActionEnabled { get; init; }
+        public bool PrimaryActionSelected { get; init; }
+        public string PrimaryActionLabel { get; init; } = string.Empty;
+        public QuestWindowActionKind SecondaryAction { get; init; }
+        public bool SecondaryActionEnabled { get; init; }
+        public string SecondaryActionLabel { get; init; } = string.Empty;
+        public QuestWindowActionKind TertiaryAction { get; init; }
+        public bool TertiaryActionEnabled { get; init; }
+        public string TertiaryActionLabel { get; init; } = string.Empty;
+        public QuestWindowActionKind QuaternaryAction { get; init; }
+        public bool QuaternaryActionEnabled { get; init; }
+        public string QuaternaryActionLabel { get; init; } = string.Empty;
+        public int? TargetNpcId { get; init; }
+        public string TargetNpcName { get; init; } = string.Empty;
+        public int? TargetMobId { get; init; }
+        public string TargetMobName { get; init; } = string.Empty;
+        public int? TargetItemId { get; init; }
+        public string TargetItemName { get; init; } = string.Empty;
+        public bool HasDetailInset { get; init; }
+        public int TimeLimitSeconds { get; init; }
+        public int RemainingTimeSeconds { get; init; }
+        public string TimerUiKey { get; init; } = string.Empty;
+        public QuestDetailDeliveryType DeliveryType { get; init; }
+        public bool DeliveryActionEnabled { get; init; }
+        public int? DeliveryCashItemId { get; init; }
+        public string DeliveryCashItemName { get; init; } = string.Empty;
+        public QuestDetailNpcButtonStyle NpcButtonStyle { get; set; }
+        public IReadOnlyList<QuestDetailCtEntry> LogCtEntries { get; init; } = Array.Empty<QuestDetailCtEntry>();
+        public IReadOnlyList<QuestDetailCtEntry> SummaryCtEntries { get; init; } = Array.Empty<QuestDetailCtEntry>();
+    }
+
+    internal sealed class QuestWindowActionResult
+    {
+        public bool StateChanged { get; init; }
+        public int? QuestId { get; init; }
+        public IReadOnlyList<string> Messages { get; init; } = Array.Empty<string>();
+        public IReadOnlyList<string> PublishedScriptNames { get; init; } = Array.Empty<string>();
+        public IReadOnlyList<FieldObjectScriptPublication> PublishedScriptPublications { get; init; } =
+            Array.Empty<FieldObjectScriptPublication>();
+        public QuestRewardChoicePrompt PendingRewardChoicePrompt { get; init; }
+    }
+
+    internal sealed class QuestRewardChoicePrompt
+    {
+        public int QuestId { get; init; }
+        public string QuestName { get; init; } = string.Empty;
+        public bool CompletionPhase { get; init; }
+        public string ActionLabel { get; init; } = string.Empty;
+        public int? NpcId { get; init; }
+        public QuestRewardRaiseOwnerContext OwnerContext { get; init; }
+        public IReadOnlyList<QuestRewardChoiceGroup> Groups { get; init; } = Array.Empty<QuestRewardChoiceGroup>();
+    }
+
+    internal sealed class QuestRewardChoiceGroup
+    {
+        public int GroupKey { get; init; }
+        public string PromptText { get; init; } = string.Empty;
+        public IReadOnlyList<QuestRewardChoiceOption> Options { get; init; } = Array.Empty<QuestRewardChoiceOption>();
+    }
+
+    internal sealed class QuestRewardChoiceOption
+    {
+        public int ItemId { get; init; }
+        public string Label { get; init; } = string.Empty;
+        public string DetailText { get; init; } = string.Empty;
+        public InventoryType InventoryType { get; init; } = InventoryType.NONE;
+    }
+
+    internal enum QuestRewardRaiseWindowMode
+    {
+        Selection,
+        PiecePlacement
+    }
+
+    internal enum QuestRewardRaiseClientWindowKind
+    {
+        Selection,
+        RaiseWnd,
+        RaisePieceWnd
+    }
+
+    internal sealed class QuestRewardRaiseOwnerContext
+    {
+        public int OwnerItemId { get; init; }
+        public QuestRewardRaiseWindowMode WindowMode { get; init; }
+        public QuestRewardRaiseClientWindowKind ClientWindowKind { get; init; }
+        public int MaxDropCount { get; init; } = 1;
+        public int InitialQrData { get; init; }
+        public string UiData { get; init; } = string.Empty;
+        public int IncrementExpUnit { get; init; }
+        public int Grade { get; init; }
+        public IReadOnlyList<string> MessageLines { get; init; } = Array.Empty<string>();
+    }
+
+    internal sealed class QuestWorldMapTarget
+    {
+        public QuestWorldMapTargetKind Kind { get; init; }
+        public int QuestId { get; init; }
+        public int MapId { get; init; }
+        public IReadOnlyList<int> MapIds { get; init; } = Array.Empty<int>();
+        public int? EntityId { get; init; }
+        public string Label { get; init; } = string.Empty;
+        public string Description { get; init; } = string.Empty;
+        public string FallbackNpcName { get; init; } = string.Empty;
+    }
+
+    internal sealed class QuestDemandItemQueryState
+    {
+        public int QuestId { get; init; }
+        public IReadOnlyList<int> RequestItemIds { get; init; } = Array.Empty<int>();
+        public IReadOnlyList<int> VisibleItemIds { get; init; } = Array.Empty<int>();
+        public IReadOnlyDictionary<int, IReadOnlyList<int>> VisibleItemMapIds { get; init; } =
+            new Dictionary<int, IReadOnlyList<int>>();
+        public IReadOnlyDictionary<int, QuestDemandItemMapResultSet> VisibleItemMapResults { get; init; } =
+            new Dictionary<int, QuestDemandItemMapResultSet>();
+        public int PreferredItemId { get; init; }
+        public int HiddenItemCount { get; init; }
+        public string FallbackNpcName { get; init; } = string.Empty;
+        public bool HasPacketOwnedMapResults { get; init; }
+    }
+
+    internal enum QuestDemandItemMapResultSource
+    {
+        None,
+        PacketOwnedMap,
+        PacketOwnedMob,
+        WzMobDemand,
+        WzNpcFallback,
+        CurrentFieldFallback
+    }
+
+    internal sealed class QuestDemandItemMapResultSet
+    {
+        public IReadOnlyList<int> MapIds { get; init; } = Array.Empty<int>();
+        public QuestDemandItemMapResultSource Source { get; init; }
+    }
+
+    internal sealed class QuestDeliveryEntrySnapshot
+    {
+        public int QuestId { get; init; }
+        public int DisplayQuestId { get; init; }
+        public int TargetNpcId { get; init; }
+        public string Title { get; init; } = string.Empty;
+        public string NpcName { get; init; } = string.Empty;
+        public string StatusText { get; init; } = string.Empty;
+        public string DetailText { get; init; } = string.Empty;
+        public bool CompletionPhase { get; init; }
+        public bool CanConfirm { get; init; }
+        public bool IsBlocked { get; init; }
+        public bool IsSeriesRepresentative { get; init; }
+        public int? DeliveryCashItemId { get; init; }
+        public string DeliveryCashItemName { get; init; } = string.Empty;
+        public int DeliveryCashItemRuntimeSlotIndex { get; init; } = -1;
+        public int DeliveryCashItemClientSlotIndex { get; init; }
+    }
+
+    internal sealed class QuestAlarmEntrySnapshot
+    {
+        public int QuestId { get; init; }
+        public string Title { get; init; } = string.Empty;
+        public string TooltipText { get; init; } = string.Empty;
+        public bool IsRegistrationCandidate { get; init; }
+        public string StatusText { get; init; } = string.Empty;
+        public long UpdateSequence { get; init; }
+        public long AutoRegisterActivitySequence { get; init; }
+        public int CurrentProgress { get; init; }
+        public int TotalProgress { get; init; }
+        public float ProgressRatio { get; init; }
+        public bool IsReadyToComplete { get; init; }
+        public bool IsRecentlyUpdated { get; init; }
+        public bool IsAutoRegisterCandidate { get; init; }
+        public bool IsAutoRegisterActive { get; init; }
+        public IReadOnlyList<QuestLogLineSnapshot> RequirementLines { get; init; } = Array.Empty<QuestLogLineSnapshot>();
+        public IReadOnlyList<string> IssueLines { get; init; } = Array.Empty<string>();
+        public string DemandText { get; init; } = string.Empty;
+    }
+
+    internal sealed class QuestAlarmSnapshot
+    {
+        public IReadOnlyList<QuestAlarmEntrySnapshot> Entries { get; init; } = Array.Empty<QuestAlarmEntrySnapshot>();
+        public bool HasAlertAnimation { get; init; }
+    }
+}

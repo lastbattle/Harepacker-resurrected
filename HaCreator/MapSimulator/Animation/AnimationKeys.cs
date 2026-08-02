@@ -293,6 +293,37 @@ namespace HaCreator.MapSimulator.Animation
             _ => Die1
         };
 
+        public static string ResolveFirstAvailableAction(AnimationSetBase animationSet, params string[] candidates)
+        {
+            if (animationSet != null && candidates != null)
+            {
+                foreach (string candidate in candidates)
+                {
+                    if (!string.IsNullOrEmpty(candidate) && animationSet.HasAnimation(candidate))
+                    {
+                        return candidate;
+                    }
+                }
+
+                if (animationSet.HasAnimation(Stand))
+                {
+                    return Stand;
+                }
+            }
+
+            return candidates != null && candidates.Length > 0 ? candidates[0] : Stand;
+        }
+
+        public static string ResolveMobDeathAction(AnimationSetBase animationSet)
+        {
+            return ResolveFirstAvailableAction(animationSet, Die1, Die2, Die);
+        }
+
+        public static string ResolveMobHitAction(AnimationSetBase animationSet)
+        {
+            return ResolveFirstAvailableAction(animationSet, Hit1, Hit2, Hit);
+        }
+
         /// <summary>
         /// Check if action is a movement action
         /// </summary>

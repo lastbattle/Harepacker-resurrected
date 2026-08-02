@@ -35,6 +35,13 @@ namespace HaCreator.MapSimulator.Pools
         public int PickupTime { get; set; }
         public int PickerId { get; set; }       // Player or pet ID
         public bool PickedByPet { get; set; }
+        public DropPickupActorKind ActorKind { get; set; } = DropPickupActorKind.Other;
+        public string ActorName { get; set; }
+        public DropOwnershipType OwnershipType { get; set; } = DropOwnershipType.None;
+        public int OwnerId { get; set; }
+        public bool OwnershipWindowActive { get; set; }
+        public float PickupX { get; set; }
+        public float PickupY { get; set; }
     }
 
     /// <summary>
@@ -57,6 +64,62 @@ namespace HaCreator.MapSimulator.Pools
         Item,           // Equipment/use/etc item
         QuestItem,      // Quest-specific item
         InstallItem     // Installation item (chair, etc)
+    }
+
+    public enum DropOwnershipType : byte
+    {
+        Character = 0,
+        Party = 1,
+        None = 2,
+        Explosive = 3
+    }
+
+    public enum PacketDropLeaveReason : byte
+    {
+        Remove = 0,
+        // Client reason 1 removes the packet drop without decoding a pickup actor.
+        OtherPickup = 1,
+        PlayerPickup = 2,
+        MobPickup = 3,
+        Explode = 4,
+        PetPickup = 5
+    }
+
+    public enum DropPickupFailureReason
+    {
+        None = 0,
+        NoDropInRange,
+        OwnershipRestricted,
+        InventoryFull,
+        PetPickupBlocked,
+        FieldRestricted,
+        Unavailable
+    }
+
+    public enum DropPickupActorKind
+    {
+        Player = 0,
+        Pet,
+        Mob,
+        Other
+    }
+
+    public sealed class DropPickupAttemptResult
+    {
+        public DropItem Drop { get; init; }
+        public DropItem ContextDrop { get; init; }
+        public DropPickupFailureReason FailureReason { get; init; }
+        public RecentPickupRecord RecentPickup { get; init; }
+
+        public bool Success => Drop != null && FailureReason == DropPickupFailureReason.None;
+    }
+
+    public readonly record struct PetPickupCapabilities(
+        bool PickupMeso,
+        bool PickupItems,
+        bool PickupOthers)
+    {
+        public static PetPickupCapabilities Full { get; } = new(true, true, true);
     }
 
     /// <summary>
@@ -101,6 +164,9 @@ namespace HaCreator.MapSimulator.Pools
         public float Alpha { get; set; } = 1.0f;
         public float Scale { get; set; } = 1.0f;
         public float Rotation { get; set; }             // For item icons
+        public int LastPickupFailureTime { get; set; } = int.MinValue;
+        public DropPickupFailureReason LastPickupFailureReason { get; set; } = DropPickupFailureReason.None;
+        public int LastPickupAttemptTime { get; set; } = int.MinValue;
         public int LastStateChangeTime { get; set; }
 
         // Visual
@@ -110,12 +176,50 @@ namespace HaCreator.MapSimulator.Pools
         public int LastFrameTime { get; set; }
         public bool IsRare { get; set; }                // Glow effect for rare items
         public Color GlowColor { get; set; } = Color.White;
+        public bool UseLayeredMesoAnimation { get; set; }
+        public int MesoAnimationLayerCount { get; set; }
+        public int MesoAnimationIconType { get; set; }
+        public bool DrawOnElevatedLayer { get; set; }
+        public int PacketLayerPage { get; set; }
+        public int PacketLayerZMass { get; set; }
+        public int PacketLayerZ { get; set; }
 
         // Pickup state
         public bool CanPickup { get; set; } = true;
         public int OwnerId { get; set; } = 0;           // Player ID with pickup priority (0 = anyone)
         public int OwnerExpireTime { get; set; }        // When ownership expires
         public int ExpireTime { get; set; }             // When drop disappears
+        public DropOwnershipType OwnershipType { get; set; } = DropOwnershipType.None;
+        public int SourceId { get; set; }
+        public bool IsReal { get; set; } = true;
+        public bool AllowPetPickup { get; set; } = true;
+        public bool IsPacketControlled { get; set; }
+        public byte PacketEnterType { get; set; }
+        public int CreateDelayMs { get; set; }
+        public int ScheduledRemovalTime { get; set; }
+        public float HoverAmplitude { get; set; }
+        public float HoverFrequency { get; set; } = 1f;
+        public float HoverPhase { get; set; }
+        public float TargetX { get; set; }
+        public float TargetY { get; set; }
+        public int MotionElapsedMs { get; set; }
+        public int MotionLastUpdateTime { get; set; }
+        public int ParabolicDurationMs { get; set; }
+        public float PickupStartX { get; set; }
+        public float PickupStartY { get; set; }
+        public float PickupTargetX { get; set; }
+        public float PickupTargetY { get; set; }
+        public int PickupDurationMs { get; set; }
+        public bool UsePickupAbsorbMotion { get; set; }
+        public bool UseClientPacketAbsorbMotion { get; set; }
+        public Func<Vector2?> PickupTargetPositionResolver { get; set; }
+        public int RemovalFadeDurationMs { get; set; }
+        public bool TriggerPacketExplodeEffectOnRemove { get; set; }
+        public float RemovalStartScale { get; set; } = 1f;
+        public float RemovalTargetScale { get; set; } = 1f;
+        public int PacketEnterAlphaRampStartTime { get; set; }
+        public int PacketEnterAlphaRampDurationMs { get; set; }
+        public bool FreezeAnimationDuringRemovalFade { get; set; }
         #endregion
 
         #region Constants
@@ -129,6 +233,16 @@ namespace HaCreator.MapSimulator.Pools
         public const int EXPIRE_FADE_DURATION = 1000;   // Fade out duration before expire
         public const int PICKUP_DURATION = 200;         // Pickup animation duration
         public const float SPAWN_FLOAT_HEIGHT = 50f;    // Initial offset (client uses parabolic arc)
+        public const int PACKET_REMOVE_DURATION = 1000;
+        public const int PACKET_ABSORB_DURATION = 220;
+        public const int CLIENT_PACKET_ABSORB_DURATION = 700;
+        public const int CLIENT_PACKET_ABSORB_FADE_START_MS = 420;
+        public const float CLIENT_PACKET_ABSORB_ARC_HEIGHT = 40f;
+        public const int PACKET_ENTER_TYPE3_ALPHA_RAMP_DURATION = 1000;
+        public const int PACKET_MOTION_STEP_MS = 30;
+        public const int PACKET_LAYER_Z_BASE = -1073711825;
+        public const int PACKET_LAYER_ENTER_TYPE4_Z = -1073471623;
+        public const int PACKET_LAYER_ELEVATED_Z = -1073471723;
         #endregion
 
         public bool IsExpired => State == DropState.Expired || State == DropState.Removed;
@@ -141,7 +255,7 @@ namespace HaCreator.MapSimulator.Pools
                     UpdateSpawning(currentTime);
                     break;
                 case DropState.Falling:
-                    UpdateFalling(deltaTime);
+                    UpdateFalling(currentTime, deltaTime);
                     break;
                 case DropState.Bouncing:
                     UpdateBouncing(currentTime, deltaTime);
@@ -153,9 +267,11 @@ namespace HaCreator.MapSimulator.Pools
                     UpdatePickingUp(currentTime);
                     break;
                 case DropState.Expired:
-                    State = DropState.Removed;
+                    UpdateExpired(currentTime);
                     break;
             }
+
+            ApplyPacketEnterAlphaRamp(currentTime);
 
             // Update animation frames
             UpdateAnimation(currentTime);
@@ -163,13 +279,37 @@ namespace HaCreator.MapSimulator.Pools
 
         private void UpdateSpawning(int currentTime)
         {
-            // Skip spawn animation - go directly to physics-based falling
+            if (ShouldHoldPacketEnterAlphaAtZero(currentTime))
+            {
+                Alpha = 0f;
+            }
+
+            if (IsPacketCreateDelayPending(currentTime))
+            {
+                return;
+            }
+
             State = DropState.Falling;
             LastStateChangeTime = currentTime;
+            MotionElapsedMs = 0;
+            MotionLastUpdateTime = currentTime;
+            CurrentFrame = 0;
+            LastFrameTime = currentTime;
+            if (IsPacketEnterType3AlphaRampActive)
+            {
+                PacketEnterAlphaRampStartTime = currentTime;
+                Alpha = 0f;
+            }
         }
 
-        private void UpdateFalling(float deltaTime)
+        private void UpdateFalling(int currentTime, float deltaTime)
         {
+            if (UsesClientPacketMotion())
+            {
+                UpdatePacketParabolicMotion(currentTime);
+                return;
+            }
+
             VelocityY += GRAVITY * deltaTime;
             Y += VelocityY * deltaTime;
             X += VelocityX * deltaTime;
@@ -193,15 +333,21 @@ namespace HaCreator.MapSimulator.Pools
                     VelocityX = 0;
                     VelocityY = 0;
                     State = DropState.Idle;
-                    LastStateChangeTime = Environment.TickCount;
+                    LastStateChangeTime = currentTime;
                 }
             }
         }
 
         private void UpdateBouncing(int currentTime, float deltaTime)
         {
+            if (UsesClientPacketMotion())
+            {
+                UpdatePacketSettleMotion(currentTime);
+                return;
+            }
+
             // Same as falling but tracks bounce count
-            UpdateFalling(deltaTime);
+            UpdateFalling(currentTime, deltaTime);
         }
 
         private void UpdateIdle(int currentTime)
@@ -222,6 +368,16 @@ namespace HaCreator.MapSimulator.Pools
                 }
             }
 
+            if (HoverAmplitude > 0f)
+            {
+                float elapsedSeconds = Math.Max(0, currentTime - SpawnTime) / 1000f;
+                Y = GroundY + HoverAmplitude * MathF.Sin(HoverPhase + elapsedSeconds * HoverFrequency * MathF.PI * 2f);
+            }
+            else
+            {
+                Y = GroundY;
+            }
+
             // Gentle hover animation for rare items
             if (IsRare)
             {
@@ -232,8 +388,9 @@ namespace HaCreator.MapSimulator.Pools
 
         private void UpdatePickingUp(int currentTime)
         {
+            int durationMs = Math.Max(1, PickupDurationMs > 0 ? PickupDurationMs : PICKUP_DURATION);
             int elapsed = currentTime - LastStateChangeTime;
-            float t = (float)elapsed / PICKUP_DURATION;
+            float t = (float)elapsed / durationMs;
 
             if (t >= 1.0f)
             {
@@ -242,16 +399,196 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
-            // Rise up and fade out
+            if (UsePickupAbsorbMotion)
+            {
+                if (PickupTargetPositionResolver?.Invoke() is Vector2 liveTargetPosition)
+                {
+                    PickupTargetX = liveTargetPosition.X;
+                    PickupTargetY = liveTargetPosition.Y;
+                }
+
+                if (UseClientPacketAbsorbMotion)
+                {
+                    float clampedElapsed = Math.Clamp(elapsed, 0, CLIENT_PACKET_ABSORB_DURATION);
+                    float clientT = clampedElapsed / CLIENT_PACKET_ABSORB_DURATION;
+                    X = MathHelper.Lerp(PickupStartX, PickupTargetX, clientT);
+
+                    float arcOffset = CalculateClientPacketAbsorbArcOffset(clampedElapsed);
+                    Y = MathHelper.Lerp(PickupStartY, PickupTargetY, clientT) + arcOffset;
+                    Alpha = ResolveClientPacketAbsorbAlpha(clampedElapsed);
+                    Scale = 1f;
+                    return;
+                }
+
+                float easedT = 1f - MathF.Pow(1f - t, 3f);
+                X = MathHelper.Lerp(PickupStartX, PickupTargetX, easedT);
+                Y = MathHelper.Lerp(PickupStartY, PickupTargetY, easedT) - (18f * MathF.Sin(t * MathF.PI));
+                Alpha = 1f - t;
+                Scale = 1f - (0.35f * t);
+                return;
+            }
+
             Y = GroundY - (30f * t);
             Alpha = 1f - t;
-            Scale = 1f + (0.3f * t); // Slight grow
+            Scale = 1f + (0.3f * t);
+        }
+
+        private void UpdateExpired(int currentTime)
+        {
+            if (RemovalFadeDurationMs > 0)
+            {
+                int elapsed = currentTime - LastStateChangeTime;
+                float t = Math.Clamp((float)elapsed / RemovalFadeDurationMs, 0f, 1f);
+                Alpha = 1f - t;
+                Scale = MathHelper.Lerp(RemovalStartScale, RemovalTargetScale, t);
+                if (t >= 1f)
+                {
+                    State = DropState.Removed;
+                    Alpha = 0f;
+                }
+
+                return;
+            }
+
+            if (ScheduledRemovalTime <= 0 || currentTime >= ScheduledRemovalTime)
+            {
+                State = DropState.Removed;
+            }
+        }
+
+        private bool UsesClientPacketMotion()
+        {
+            return IsPacketControlled && PacketEnterType != 2 && ParabolicDurationMs > 0;
+        }
+
+        private void UpdatePacketParabolicMotion(int currentTime)
+        {
+            MotionLastUpdateTime = currentTime;
+            MotionElapsedMs += PACKET_MOTION_STEP_MS;
+
+            float horizontalHalfDistance = (TargetX - SpawnX) * 0.5f;
+            float progressA = MathF.Min(MotionElapsedMs / 500f, 1f);
+            float progressB = MotionElapsedMs <= 500
+                ? 0f
+                : MathF.Min((MotionElapsedMs - 500f) / MathF.Max(1f, ParabolicDurationMs - 500f), 1f);
+            float arcTimeSeconds = MotionElapsedMs / 1000f;
+            if (PacketEnterType == 4)
+            {
+                arcTimeSeconds /= 3f;
+            }
+
+            float launchVelocity = OwnershipType == DropOwnershipType.Explosive ? 720f : 400f;
+            X = SpawnX + (progressA + progressB) * horizontalHalfDistance;
+            Y = SpawnY - (launchVelocity * arcTimeSeconds) + (400f * arcTimeSeconds * arcTimeSeconds);
+
+            if (MotionElapsedMs < ParabolicDurationMs)
+            {
+                return;
+            }
+
+            if (SpawnY < TargetY)
+            {
+                State = DropState.Bouncing;
+                MotionElapsedMs = 0;
+                MotionLastUpdateTime = currentTime;
+                return;
+            }
+
+            SnapToPacketIdle(currentTime);
+        }
+
+        private void UpdatePacketSettleMotion(int currentTime)
+        {
+            MotionLastUpdateTime = currentTime;
+            MotionElapsedMs += PACKET_MOTION_STEP_MS;
+
+            float settleTimeSeconds = MotionElapsedMs / 1000f;
+            float launchVelocity = OwnershipType == DropOwnershipType.Explosive ? 720f : 400f;
+            float settledY = SpawnY + (settleTimeSeconds * launchVelocity);
+
+            X = SpawnY < TargetY ? TargetX : SpawnX;
+            Y = settledY;
+            if (settledY >= TargetY)
+            {
+                SnapToPacketIdle(currentTime);
+            }
+        }
+
+        private void SnapToPacketIdle(int currentTime)
+        {
+            X = TargetX;
+            Y = TargetY;
+            VelocityX = 0f;
+            VelocityY = 0f;
+            State = DropState.Idle;
+            LastStateChangeTime = currentTime;
+            MotionElapsedMs = 0;
+            MotionLastUpdateTime = currentTime;
+        }
+
+        private bool IsPacketEnterType3AlphaRampActive =>
+            IsPacketControlled
+            && PacketEnterType == 3
+            && PacketEnterAlphaRampDurationMs > 0;
+
+        private bool ShouldHoldPacketEnterAlphaAtZero(int currentTime)
+        {
+            return IsPacketEnterType3AlphaRampActive
+                && IsPacketCreateDelayPending(currentTime);
+        }
+
+        private bool IsPacketCreateDelayPending(int currentTime)
+        {
+            if (!IsPacketControlled || CreateDelayMs <= 0)
+            {
+                return false;
+            }
+
+            return currentTime - (SpawnTime + CreateDelayMs) <= 0;
+        }
+
+        private void ApplyPacketEnterAlphaRamp(int currentTime)
+        {
+            if (!IsPacketEnterType3AlphaRampActive
+                || State == DropState.PickingUp
+                || State == DropState.Expired
+                || State == DropState.Removed)
+            {
+                return;
+            }
+
+            if (ShouldHoldPacketEnterAlphaAtZero(currentTime))
+            {
+                Alpha = 0f;
+                return;
+            }
+
+            int elapsed = currentTime - PacketEnterAlphaRampStartTime;
+            if (elapsed <= 0)
+            {
+                Alpha = 0f;
+                return;
+            }
+
+            Alpha = Math.Min(Alpha, 1f);
+            Alpha = Math.Max(Alpha, Math.Clamp(elapsed / (float)PacketEnterAlphaRampDurationMs, 0f, 1f));
         }
 
         private void UpdateAnimation(int currentTime)
         {
             if (AnimFrames == null || AnimFrames.Count <= 1)
                 return;
+
+            if (FreezeAnimationDuringRemovalFade)
+            {
+                return;
+            }
+
+            if (State == DropState.Spawning
+                && IsPacketCreateDelayPending(currentTime))
+            {
+                return;
+            }
 
             var frame = AnimFrames[CurrentFrame];
             int delay = frame?.Delay ?? 100;
@@ -266,13 +603,93 @@ namespace HaCreator.MapSimulator.Pools
         /// <summary>
         /// Start pickup animation
         /// </summary>
-        public void StartPickup(int currentTime)
+        public void StartPickup(
+            int currentTime,
+            Vector2? targetPosition = null,
+            int durationMs = PICKUP_DURATION,
+            Func<Vector2?> targetPositionResolver = null,
+            Vector2? startPositionOverride = null,
+            bool useClientPacketAbsorbMotion = false)
         {
-            if (State != DropState.Idle)
+            if (State == DropState.Removed || State == DropState.Expired)
                 return;
 
             State = DropState.PickingUp;
             LastStateChangeTime = currentTime;
+            ScheduledRemovalTime = 0;
+            Vector2 startPosition = startPositionOverride ?? new Vector2(X, Y);
+            PickupStartX = startPosition.X;
+            PickupStartY = startPosition.Y;
+            X = startPosition.X;
+            Y = startPosition.Y;
+            PickupDurationMs = Math.Max(1, durationMs);
+            bool usePacketAbsorbFallback = useClientPacketAbsorbMotion;
+            UsePickupAbsorbMotion = targetPosition.HasValue || usePacketAbsorbFallback;
+            PickupTargetX = targetPosition?.X ?? (usePacketAbsorbFallback ? startPosition.X : X);
+            PickupTargetY = targetPosition?.Y ?? (usePacketAbsorbFallback ? startPosition.Y : GroundY - 30f);
+            PickupTargetPositionResolver = targetPositionResolver;
+            UseClientPacketAbsorbMotion = useClientPacketAbsorbMotion && UsePickupAbsorbMotion;
+            RemovalFadeDurationMs = 0;
+        }
+
+        public void ScheduleRemoval(int currentTime, int delayMs, bool fadeOut)
+        {
+            CanPickup = false;
+            ScheduledRemovalTime = currentTime + Math.Max(0, delayMs);
+            State = DropState.Expired;
+            LastStateChangeTime = currentTime;
+            RemovalFadeDurationMs = 0;
+            if (fadeOut && delayMs <= 0)
+            {
+                StartRemoveFade(currentTime, PACKET_REMOVE_DURATION);
+            }
+        }
+
+        public void StartRemoveFade(int currentTime, int durationMs, float targetScale = 1f)
+        {
+            CanPickup = false;
+            State = DropState.Expired;
+            LastStateChangeTime = currentTime;
+            ScheduledRemovalTime = 0;
+            RemovalFadeDurationMs = Math.Max(1, durationMs);
+            RemovalStartScale = Scale;
+            RemovalTargetScale = targetScale;
+            Alpha = Math.Max(Alpha, 0f);
+            UseClientPacketAbsorbMotion = false;
+
+            if (IsPacketControlled && AnimFrames != null && AnimFrames.Count > 1)
+            {
+                FreezeAnimationDuringRemovalFade = true;
+            }
+        }
+
+        internal static float CalculateClientPacketAbsorbArcOffset(float elapsedMs)
+        {
+            float midpoint = CLIENT_PACKET_ABSORB_DURATION * 0.5f;
+            float normalized = (elapsedMs - midpoint) / midpoint;
+            return (CLIENT_PACKET_ABSORB_ARC_HEIGHT * normalized * normalized) - CLIENT_PACKET_ABSORB_ARC_HEIGHT;
+        }
+
+        internal static float ResolveClientPacketAbsorbAlpha(float elapsedMs)
+        {
+            if (elapsedMs <= CLIENT_PACKET_ABSORB_FADE_START_MS)
+            {
+                return 1f;
+            }
+
+            float fadeDuration = CLIENT_PACKET_ABSORB_DURATION - CLIENT_PACKET_ABSORB_FADE_START_MS;
+            float fadeT = Math.Clamp((elapsedMs - CLIENT_PACKET_ABSORB_FADE_START_MS) / fadeDuration, 0f, 1f);
+            return MathHelper.Lerp(1f, 63f / 255f, fadeT);
+        }
+
+        public void SnapToTargetPosition()
+        {
+            X = TargetX;
+            Y = TargetY;
+            VelocityX = 0f;
+            VelocityY = 0f;
+            MotionElapsedMs = 0;
+            MotionLastUpdateTime = LastStateChangeTime;
         }
 
         /// <summary>
@@ -297,6 +714,7 @@ namespace HaCreator.MapSimulator.Pools
     {
         #region Constants
         private const int DEFAULT_DROP_LIFETIME = 120000;       // 2 minutes
+        private const int MIN_DROP_LIFETIME = DropItem.EXPIRE_FADE_DURATION;
         private const int OWNER_PRIORITY_DURATION = 15000;      // 15 seconds owner priority
         private const float DROP_SPREAD = 30f;                  // Horizontal spread of multiple drops
         private const float DROP_INITIAL_VELOCITY_Y = -200f;    // Initial upward velocity (tuned for snappy feel)
@@ -306,14 +724,25 @@ namespace HaCreator.MapSimulator.Pools
         private const float PET_PICKUP_RANGE = 80f;             // Range at which pet detects drops
         private const float PET_LOOT_RANGE = 300f;              // Max range pet will travel to loot
         private const float PET_CHASE_SPEED = 150f;             // Pet movement speed when chasing drops
-        private const int PET_PICKUP_COOLDOWN = 200;            // Cooldown between pet pickups (ms)
+        private const int PICKUP_FAILURE_REPORT_COOLDOWN = 1500;
+        internal const int ClientDropPickupRetryDelayMs = 3000;
+        internal const int ClientPlayerPickupHalfWidth = 25;
+        internal const int ClientPlayerPickupTopOffset = 50;
+        internal const int ClientPlayerPickupBottomOffset = 10;
+        internal const int ClientPetPickupHalfWidth = 25;
+        internal const int ClientPetPickupTopOffset = 50;
+        internal const int ClientPetPickupBottomOffset = 10;
 
         // Mob pickup constants
-        private const float MOB_PICKUP_RANGE = 30f;             // Range for mob pickup detection
+        internal const int ClientMobPickupHalfWidth = 20;
+        internal const int ClientMobPickupTopOffset = 40;
+        internal const int ClientMobPickupBottomOffset = 10;
 
         // Meso explosion constants
         private const float MESO_EXPLOSION_RANGE = 150f;        // Default meso explosion range
         private const int MAX_MESO_EXPLOSION_DROPS = 10;        // Max mesos in single explosion
+        private const int PACKET_ENTER_SOUND_COOLDOWN = 300;
+        private const int PACKET_EXPLODE_SOUND_COOLDOWN = 90;
 
         // Recent pickup history
         private const int MAX_RECENT_PICKUPS = 50;              // Max pickup history entries
@@ -328,7 +757,6 @@ namespace HaCreator.MapSimulator.Pools
 
         // Pet chasing system
         private readonly Dictionary<int, PetDropTarget> _petTargets = new Dictionary<int, PetDropTarget>();
-        private readonly Dictionary<int, int> _petLastPickupTime = new Dictionary<int, int>();
 
         // Mob pickup tracking
         private readonly HashSet<int> _mobsWithPickupAbility = new HashSet<int>();
@@ -347,21 +775,46 @@ namespace HaCreator.MapSimulator.Pools
         #region State
         private int _nextDropId = 1;
         private int _lastUpdateTick = 0;
+        private int _lastPacketEnterSoundTime = int.MinValue;
+        private int _lastPacketExplodeSoundTime = int.MinValue;
+        private int _lastPacketEnterAppliedTime = int.MinValue;
         private Action<DropItem> _onDropSpawned;
         private Action<DropItem> _onDropPickedUp;
         private Action<DropItem> _onDropExpired;
+        private Action<DropItem, int, bool> _onPickupResolved;
+        private Action<DropPickupAttemptResult, int, bool> _onPickupFailed;
+        private Func<DropItem, DropPickupFailureReason> _pickupAvailabilityEvaluator;
+        private Func<DropItem, DropPickupFailureReason> _petPickupAvailabilityEvaluator;
+        private Func<DropItem, bool> _clientPickupBlockEvaluator;
+        private Func<DropPickupActorKind, int, bool, string> _pickupActorNameResolver;
+        private Action<DropItem, int, string> _onRemotePlayerPickedUp;
+        private Action<DropItem, int, string> _onRemotePetPickedUp;
+        private Action<DropItem, int, string> _onRemoteOtherPickedUp;
+        private Func<int, int, bool> _partyPickupMembershipEvaluator;
+        private Func<string, IReadOnlyList<IDXObject>> _packetItemVisualResolver;
+        private Action<DropItem, int> _onPacketEnterSoundRequested;
+        private Action<DropItem, int> _onPacketExploded;
+        private Func<DropItem, int, bool> _onPacketRemoveFadeRequested;
+        private Action<int, int> _onPacketPartyPickupLinkedActors;
+        private Func<DateTime> _packetExpireTimeUtcResolver = () => DateTime.UtcNow;
+        private int _localDropLifetimeMs = DEFAULT_DROP_LIFETIME;
 
         // Ground level lookup function
         private Func<float, float, float> _getGroundY;
+        private Func<float, float, (int page, int zMass)?> _getPacketLayerFootholdMetadata;
+        private Func<int, Vector2?> _sourcePositionResolver;
         #endregion
 
         #region Resources
         private IDXObject _mesoIcon;
+        private readonly List<IDXObject>[] _mesoAnimationFrames = new List<IDXObject>[] { new(), new(), new(), new() };
         private Dictionary<string, IDXObject> _itemIcons = new Dictionary<string, IDXObject>();
+        private readonly Dictionary<string, List<IDXObject>> _packetItemVisualFrames = new Dictionary<string, List<IDXObject>>(StringComparer.Ordinal);
         #endregion
 
         #region Public Properties
         public int ActiveDropCount => _activeDrops.Count;
+        public int LastPacketEnterAppliedTime => _lastPacketEnterAppliedTime;
         public IReadOnlyList<DropItem> ActiveDrops => _activeDrops;
         #endregion
 
@@ -369,7 +822,31 @@ namespace HaCreator.MapSimulator.Pools
         public void SetOnDropSpawned(Action<DropItem> callback) => _onDropSpawned = callback;
         public void SetOnDropPickedUp(Action<DropItem> callback) => _onDropPickedUp = callback;
         public void SetOnDropExpired(Action<DropItem> callback) => _onDropExpired = callback;
+        public void SetOnPickupResolved(Action<DropItem, int, bool> callback) => _onPickupResolved = callback;
+        public void SetOnPickupFailed(Action<DropPickupAttemptResult, int, bool> callback) => _onPickupFailed = callback;
+        public void SetPickupAvailabilityEvaluator(Func<DropItem, DropPickupFailureReason> callback) => _pickupAvailabilityEvaluator = callback;
+        public void SetPetPickupAvailabilityEvaluator(Func<DropItem, DropPickupFailureReason> callback) => _petPickupAvailabilityEvaluator = callback;
+        public void SetClientPickupBlockEvaluator(Func<DropItem, bool> callback) => _clientPickupBlockEvaluator = callback;
+        public void SetPickupActorNameResolver(Func<DropPickupActorKind, int, bool, string> callback) => _pickupActorNameResolver = callback;
         public void SetGroundLevelLookup(Func<float, float, float> getGroundY) => _getGroundY = getGroundY;
+        public void SetPacketLayerFootholdMetadataLookup(Func<float, float, (int page, int zMass)?> lookup) => _getPacketLayerFootholdMetadata = lookup;
+        public void SetSourcePositionResolver(Func<int, Vector2?> resolver) => _sourcePositionResolver = resolver;
+        public void SetPartyPickupMembershipEvaluator(Func<int, int, bool> evaluator) => _partyPickupMembershipEvaluator = evaluator;
+        public void SetPacketItemVisualResolver(Func<string, IReadOnlyList<IDXObject>> resolver) => _packetItemVisualResolver = resolver;
+        public void SetPacketExpireTimeUtcResolver(Func<DateTime> resolver) => _packetExpireTimeUtcResolver = resolver ?? (() => DateTime.UtcNow);
+        public void SetLocalDropLifetimeSeconds(int dropExpireSeconds)
+        {
+            _localDropLifetimeMs = dropExpireSeconds > 0
+                ? (int)Math.Min(int.MaxValue, Math.Max((long)MIN_DROP_LIFETIME, dropExpireSeconds * 1000L))
+                : DEFAULT_DROP_LIFETIME;
+        }
+        public void SetOnRemotePlayerPickedUp(Action<DropItem, int, string> callback) => _onRemotePlayerPickedUp = callback;
+        public void SetOnRemotePetPickedUp(Action<DropItem, int, string> callback) => _onRemotePetPickedUp = callback;
+        public void SetOnRemoteOtherPickedUp(Action<DropItem, int, string> callback) => _onRemoteOtherPickedUp = callback;
+        public void SetOnPacketEnterSoundRequested(Action<DropItem, int> callback) => _onPacketEnterSoundRequested = callback;
+        public void SetOnPacketExploded(Action<DropItem, int> callback) => _onPacketExploded = callback;
+        public void SetOnPacketPartyPickupLinkedActors(Action<int, int> callback) => _onPacketPartyPickupLinkedActors = callback;
+        public void SetOnPacketRemoveFadeRequested(Func<DropItem, int, bool> callback) => _onPacketRemoveFadeRequested = callback;
 
         // Pet pickup events
         private Action<DropItem, int> _onPetPickedUp;          // (drop, petId)
@@ -378,8 +855,8 @@ namespace HaCreator.MapSimulator.Pools
         public void SetOnPetStartChasing(Action<int, DropItem> callback) => _onPetStartChasing = callback;
 
         // Mob pickup events
-        private Action<DropItem, int> _onMobPickedUp;          // (drop, mobId)
-        public void SetOnMobPickedUp(Action<DropItem, int> callback) => _onMobPickedUp = callback;
+        private Action<DropItem, int, string> _onMobPickedUp;          // (drop, mobId, mobName)
+        public void SetOnMobPickedUp(Action<DropItem, int, string> callback) => _onMobPickedUp = callback;
 
         // Booby trap events
         private Action<DropItem, int> _onBoobyTrapTriggered;   // (drop, trapOwnerId)
@@ -398,6 +875,22 @@ namespace HaCreator.MapSimulator.Pools
             _mesoIcon = icon;
         }
 
+        public void SetMesoAnimationFrames(int iconType, List<IDXObject> frames)
+        {
+            if ((uint)iconType >= _mesoAnimationFrames.Length)
+            {
+                return;
+            }
+
+            _mesoAnimationFrames[iconType].Clear();
+            if (frames == null)
+            {
+                return;
+            }
+
+            _mesoAnimationFrames[iconType].AddRange(frames.Where(frame => frame != null));
+        }
+
         public void SetItemIcon(string itemId, IDXObject icon)
         {
             _itemIcons[itemId] = icon;
@@ -412,14 +905,30 @@ namespace HaCreator.MapSimulator.Pools
             _activeDrops.Clear();
             _dropById.Clear();
             _nextDropId = 1;
+            _lastPacketEnterSoundTime = int.MinValue;
+            _lastPacketExplodeSoundTime = int.MinValue;
+            _lastPacketEnterAppliedTime = int.MinValue;
 
             // Clear new collections
             _petTargets.Clear();
-            _petLastPickupTime.Clear();
             _mobsWithPickupAbility.Clear();
             _recentPickups.Clear();
             _boobyTrapDrops.Clear();
             // Note: Exception list is preserved across clear (user preference)
+        }
+
+        public void ClearPacketDrops()
+        {
+            for (int i = _activeDrops.Count - 1; i >= 0; i--)
+            {
+                DropItem drop = _activeDrops[i];
+                if (!drop.IsPacketControlled)
+                {
+                    continue;
+                }
+
+                RemoveDrop(drop);
+            }
         }
         #endregion
 
@@ -433,6 +942,7 @@ namespace HaCreator.MapSimulator.Pools
             InitializeDrop(drop, DropType.Meso, null, x, y, currentTime, ownerId);
             drop.MesoAmount = amount;
             drop.Icon = _mesoIcon;
+            ApplyMesoVisuals(drop, packetControlled: false);
 
             // Meso glow based on amount
             if (amount >= 10000)
@@ -455,12 +965,13 @@ namespace HaCreator.MapSimulator.Pools
         /// <summary>
         /// Spawn an item drop
         /// </summary>
-        public DropItem SpawnItemDrop(float x, float y, string itemId, int quantity, int currentTime, int ownerId = 0, bool isRare = false)
+        public DropItem SpawnItemDrop(float x, float y, string itemId, int quantity, int currentTime, int ownerId = 0, bool isRare = false, int sourceId = 0)
         {
             var drop = GetOrCreateDrop();
             InitializeDrop(drop, DropType.Item, itemId, x, y, currentTime, ownerId);
             drop.Quantity = quantity;
             drop.IsRare = isRare;
+            drop.SourceId = Math.Max(0, sourceId);
 
             // Try to get item icon
             if (_itemIcons.TryGetValue(itemId, out var icon))
@@ -545,6 +1056,8 @@ namespace HaCreator.MapSimulator.Pools
             drop.X = x;
             drop.SpawnX = x;
             drop.SpawnY = y;
+            drop.TargetX = x;
+            drop.TargetY = y;
             // Start above spawn point so the arc animation is visible
             // The drop will arc up slightly then fall to ground
             drop.Y = y - 60;  // Start 60px above mob position
@@ -563,14 +1076,68 @@ namespace HaCreator.MapSimulator.Pools
             drop.LastStateChangeTime = currentTime;
             drop.OwnerId = ownerId;
             drop.OwnerExpireTime = ownerId > 0 ? currentTime + OWNER_PRIORITY_DURATION : 0;
-            drop.ExpireTime = currentTime + DEFAULT_DROP_LIFETIME;
+            drop.ExpireTime = currentTime + _localDropLifetimeMs;
+            drop.OwnershipType = ownerId > 0 ? DropOwnershipType.Character : DropOwnershipType.None;
+            drop.SourceId = 0;
+            drop.IsReal = true;
+            drop.AllowPetPickup = true;
+            drop.IsPacketControlled = false;
+            drop.PacketEnterType = 0;
+            drop.CreateDelayMs = 0;
+            drop.ScheduledRemovalTime = 0;
+            drop.HoverAmplitude = 0f;
+            drop.HoverFrequency = 1f;
+            drop.HoverPhase = 0f;
+            drop.MotionElapsedMs = 0;
+            drop.MotionLastUpdateTime = currentTime;
+            drop.ParabolicDurationMs = 0;
+            drop.PickupStartX = 0f;
+            drop.PickupStartY = 0f;
+            drop.PickupTargetX = 0f;
+            drop.PickupTargetY = 0f;
+            drop.PickupDurationMs = 0;
+            drop.UsePickupAbsorbMotion = false;
+            drop.UseClientPacketAbsorbMotion = false;
+            drop.PickupTargetPositionResolver = null;
+            drop.RemovalFadeDurationMs = 0;
+            drop.TriggerPacketExplodeEffectOnRemove = false;
+            drop.RemovalStartScale = 1f;
+            drop.RemovalTargetScale = 1f;
+            drop.PacketEnterAlphaRampStartTime = 0;
+            drop.PacketEnterAlphaRampDurationMs = 0;
+            drop.FreezeAnimationDuringRemovalFade = false;
             drop.CanPickup = true;
             drop.IsRare = false;
             drop.GlowColor = Color.White;
+            drop.UseLayeredMesoAnimation = false;
+            drop.MesoAnimationLayerCount = 0;
+            drop.MesoAnimationIconType = 0;
+            drop.DrawOnElevatedLayer = false;
+            drop.PacketLayerPage = 0;
+            drop.PacketLayerZMass = 0;
+            drop.PacketLayerZ = 0;
             drop.AnimFrames = null;
             drop.Icon = null;
             drop.Quantity = 1;
             drop.MesoAmount = 0;
+            drop.LastPickupFailureTime = int.MinValue;
+            drop.LastPickupFailureReason = DropPickupFailureReason.None;
+            drop.LastPickupAttemptTime = currentTime - ClientDropPickupRetryDelayMs;
+        }
+
+        public static int GetMoneyIconTypeForAmount(int amount)
+        {
+            if (amount < 50)
+            {
+                return 0;
+            }
+
+            if (amount < 100)
+            {
+                return 1;
+            }
+
+            return amount < 1000 ? 2 : 3;
         }
         #endregion
 
@@ -610,8 +1177,10 @@ namespace HaCreator.MapSimulator.Pools
                 if (drop.State != DropState.Idle || !drop.CanPickup)
                     continue;
 
-                // Check ownership
-                if (drop.OwnerId > 0 && drop.OwnerId != playerId && currentTime < drop.OwnerExpireTime)
+                if (IsClientPickupBlocked(drop))
+                    continue;
+
+                if (!CanPlayerPickup(drop, playerId, currentTime))
                     continue;
 
                 float dx = drop.X - x;
@@ -638,13 +1207,265 @@ namespace HaCreator.MapSimulator.Pools
             if (drop == null || drop.State != DropState.Idle || !drop.CanPickup)
                 return false;
 
-            // Check ownership
-            if (drop.OwnerId > 0 && drop.OwnerId != playerId && currentTime < drop.OwnerExpireTime)
+            if (IsClientPickupBlocked(drop))
                 return false;
 
-            drop.StartPickup(currentTime);
-            _onDropPickedUp?.Invoke(drop);
-            return true;
+            if (!CanRetryClientDropPickupAttempt(drop, currentTime))
+                return false;
+
+            if (!CanPlayerPickup(drop, playerId, currentTime))
+                return false;
+
+            MarkClientDropPickupAttempt(drop, currentTime);
+            return CompletePickup(drop, playerId, pickedByPet: false, currentTime, DropPickupActorKind.Player, notifyLocalPickup: true);
+        }
+
+        public bool ResolveRemotePickup(
+            DropItem drop,
+            int actorId,
+            int currentTime,
+            DropPickupActorKind actorKind,
+            string actorName = null,
+            bool pickedByPet = false,
+            Vector2? pickupTargetPosition = null,
+            Func<Vector2?> pickupTargetPositionResolver = null,
+            Vector2? pickupStartPositionOverride = null,
+            bool bypassStateValidation = false,
+            bool useClientPacketAbsorbMotion = false)
+        {
+            int pickupDurationMs = useClientPacketAbsorbMotion
+                ? DropItem.CLIENT_PACKET_ABSORB_DURATION
+                : DropItem.PACKET_ABSORB_DURATION;
+
+            if (actorKind == DropPickupActorKind.Player)
+            {
+                return CompletePickup(
+                    drop,
+                    actorId,
+                    pickedByPet: false,
+                    currentTime,
+                    actorKind,
+                    notifyLocalPickup: false,
+                    actorName,
+                    pickupTargetPosition,
+                    pickupDurationMs,
+                    pickupTargetPositionResolver: pickupTargetPositionResolver,
+                    pickupStartPositionOverride: pickupStartPositionOverride,
+                    bypassStateValidation: bypassStateValidation,
+                    useClientPacketAbsorbMotion: useClientPacketAbsorbMotion);
+            }
+
+            if (actorKind == DropPickupActorKind.Pet)
+            {
+                return CompletePickup(
+                    drop,
+                    actorId,
+                    pickedByPet: true,
+                    currentTime,
+                    actorKind,
+                    notifyLocalPickup: false,
+                    actorName,
+                    pickupTargetPosition,
+                    pickupDurationMs,
+                    pickupTargetPositionResolver: pickupTargetPositionResolver,
+                    pickupStartPositionOverride: pickupStartPositionOverride,
+                    bypassStateValidation: bypassStateValidation,
+                    useClientPacketAbsorbMotion: useClientPacketAbsorbMotion);
+            }
+
+            if (actorKind == DropPickupActorKind.Mob)
+            {
+                return CompletePickup(
+                    drop,
+                    actorId,
+                    pickedByPet: false,
+                    currentTime,
+                    actorKind,
+                    notifyLocalPickup: false,
+                    actorName,
+                    pickupTargetPosition,
+                    pickupDurationMs,
+                    pickupTargetPositionResolver: pickupTargetPositionResolver,
+                    pickupStartPositionOverride: pickupStartPositionOverride,
+                    bypassStateValidation: bypassStateValidation,
+                    useClientPacketAbsorbMotion: useClientPacketAbsorbMotion);
+            }
+
+            if (actorKind == DropPickupActorKind.Other)
+            {
+                return CompletePickup(
+                    drop,
+                    actorId,
+                    pickedByPet: false,
+                    currentTime,
+                    actorKind,
+                    notifyLocalPickup: false,
+                    actorName,
+                    pickupTargetPosition,
+                    pickupDurationMs,
+                    pickupTargetPositionResolver: pickupTargetPositionResolver,
+                    pickupStartPositionOverride: pickupStartPositionOverride,
+                    bypassStateValidation: bypassStateValidation,
+                    useClientPacketAbsorbMotion: useClientPacketAbsorbMotion);
+            }
+
+            return false;
+        }
+
+        public DropItem TryPickUpDropByRemotePlayer(
+            int playerId,
+            float playerX,
+            float playerY,
+            int currentTime,
+            string playerName = null,
+            float pickupRange = 40f)
+        {
+            if (playerId <= 0)
+            {
+                return null;
+            }
+
+            float rangeSq = pickupRange * pickupRange;
+            DropItem selectedDrop = null;
+
+            foreach (var drop in _activeDrops)
+            {
+                if (drop.State != DropState.Idle || !drop.CanPickup)
+                {
+                    continue;
+                }
+
+                if (IsClientPickupBlocked(drop))
+                {
+                    continue;
+                }
+
+                if (!CanRetryClientDropPickupAttempt(drop, currentTime))
+                {
+                    continue;
+                }
+
+                if (!CanPlayerPickup(drop, playerId, currentTime))
+                {
+                    continue;
+                }
+
+                float dx = drop.X - playerX;
+                float dy = drop.Y - playerY;
+                float distSq = dx * dx + dy * dy;
+                if (distSq > rangeSq
+                    || !IsWithinClientPickupRect(
+                        playerX,
+                        playerY,
+                        drop.X,
+                        drop.Y,
+                        ClientPlayerPickupHalfWidth,
+                        ClientPlayerPickupTopOffset,
+                        ClientPlayerPickupBottomOffset))
+                {
+                    continue;
+                }
+
+                selectedDrop = drop;
+                break;
+            }
+
+            if (selectedDrop == null)
+            {
+                return null;
+            }
+
+            MarkClientDropPickupAttempt(selectedDrop, currentTime);
+            return ResolveRemotePickup(
+                selectedDrop,
+                playerId,
+                currentTime,
+                DropPickupActorKind.Player,
+                playerName)
+                ? selectedDrop
+                : null;
+        }
+
+        public DropItem TryPickUpDropByRemotePet(
+            int petId,
+            int ownerId,
+            float petX,
+            float petY,
+            int currentTime,
+            string petName = null,
+            float petPickupRange = 0,
+            Func<DropItem, DropPickupFailureReason> pickupValidator = null)
+        {
+            if (petPickupRange <= 0)
+            {
+                petPickupRange = PET_PICKUP_RANGE;
+            }
+
+            float rangeSq = petPickupRange * petPickupRange;
+            DropItem selectedDrop = null;
+
+            foreach (var drop in _activeDrops)
+            {
+                if (drop.State != DropState.Idle || !drop.CanPickup)
+                {
+                    continue;
+                }
+
+                if (IsClientPickupBlocked(drop))
+                {
+                    continue;
+                }
+
+                if (!CanRetryClientDropPickupAttempt(drop, currentTime))
+                {
+                    continue;
+                }
+
+                float dx = drop.X - petX;
+                float dy = drop.Y - petY;
+                float distSq = dx * dx + dy * dy;
+                if (distSq > rangeSq
+                    || !IsWithinClientPickupRect(
+                        petX,
+                        petY,
+                        drop.X,
+                        drop.Y,
+                        ClientPetPickupHalfWidth,
+                        ClientPetPickupTopOffset,
+                        ClientPetPickupBottomOffset))
+                {
+                    continue;
+                }
+
+                if (ResolvePetPickupFailureReason(drop, ownerId, currentTime) != DropPickupFailureReason.None)
+                {
+                    continue;
+                }
+
+                if ((pickupValidator?.Invoke(drop) ?? DropPickupFailureReason.None) != DropPickupFailureReason.None)
+                {
+                    continue;
+                }
+
+                selectedDrop = drop;
+                break;
+            }
+
+            if (selectedDrop == null)
+            {
+                return null;
+            }
+
+            MarkClientDropPickupAttempt(selectedDrop, currentTime);
+            return ResolveRemotePickup(
+                selectedDrop,
+                petId,
+                currentTime,
+                DropPickupActorKind.Pet,
+                petName,
+                pickedByPet: true)
+                ? selectedDrop
+                : null;
         }
 
         /// <summary>
@@ -652,10 +1473,127 @@ namespace HaCreator.MapSimulator.Pools
         /// </summary>
         public DropItem TryPickupClosest(float x, float y, int playerId, int currentTime, float range = 40f)
         {
-            var drop = GetClosestDrop(x, y, range, playerId);
-            if (drop != null && TryPickup(drop, playerId, currentTime))
-                return drop;
-            return null;
+            return TryPickupClosestDetailed(x, y, playerId, currentTime, range).Drop;
+        }
+
+        public DropPickupAttemptResult TryPickupClosestDetailed(
+            float x,
+            float y,
+            int playerId,
+            int currentTime,
+            float range = 40f,
+            Func<DropItem, DropPickupFailureReason> pickupValidator = null)
+        {
+            pickupValidator ??= _pickupAvailabilityEvaluator;
+            float rangeSq = range * range;
+            DropItem selectedAvailable = null;
+            DropItem firstFailureDrop = null;
+            DropPickupFailureReason firstFailureReason = DropPickupFailureReason.NoDropInRange;
+
+            foreach (var drop in _activeDrops)
+            {
+                if (drop.State != DropState.Idle || !drop.CanPickup)
+                {
+                    continue;
+                }
+
+                if (IsClientPickupBlocked(drop))
+                {
+                    continue;
+                }
+
+                if (!CanRetryClientDropPickupAttempt(drop, currentTime))
+                {
+                    continue;
+                }
+
+                float dx = drop.X - x;
+                float dy = drop.Y - y;
+                float distSq = dx * dx + dy * dy;
+                if (distSq > rangeSq
+                    || !IsWithinClientPickupRect(
+                        x,
+                        y,
+                        drop.X,
+                        drop.Y,
+                        ClientPlayerPickupHalfWidth,
+                        ClientPlayerPickupTopOffset,
+                        ClientPlayerPickupBottomOffset))
+                {
+                    continue;
+                }
+
+                if (!CanPlayerPickup(drop, playerId, currentTime))
+                {
+                    if (firstFailureDrop == null)
+                    {
+                        firstFailureDrop = drop;
+                        firstFailureReason = DropPickupFailureReason.OwnershipRestricted;
+                    }
+
+                    continue;
+                }
+
+                DropPickupFailureReason validatorReason = pickupValidator?.Invoke(drop) ?? DropPickupFailureReason.None;
+                if (validatorReason != DropPickupFailureReason.None)
+                {
+                    if (firstFailureDrop == null)
+                    {
+                        firstFailureDrop = drop;
+                        firstFailureReason = validatorReason;
+                    }
+
+                    continue;
+                }
+
+                selectedAvailable = drop;
+                break;
+            }
+
+            if (selectedAvailable != null && TryPickup(selectedAvailable, playerId, currentTime))
+            {
+                return new DropPickupAttemptResult
+                {
+                    Drop = selectedAvailable,
+                    FailureReason = DropPickupFailureReason.None
+                };
+            }
+
+            if (selectedAvailable != null)
+            {
+                return new DropPickupAttemptResult
+                {
+                    Drop = null,
+                    ContextDrop = selectedAvailable,
+                    FailureReason = DropPickupFailureReason.Unavailable,
+                    RecentPickup = FindRecentPickup(selectedAvailable.PoolId, currentTime)
+                };
+            }
+
+            if (firstFailureDrop == null)
+            {
+                RecentPickupRecord recentPickup = FindRecentPickupNear(x, y, range, currentTime);
+                if (recentPickup != null)
+                {
+                    return new DropPickupAttemptResult
+                    {
+                        Drop = null,
+                        ContextDrop = null,
+                        FailureReason = DropPickupFailureReason.Unavailable,
+                        RecentPickup = recentPickup
+                    };
+                }
+            }
+
+            return new DropPickupAttemptResult
+            {
+                Drop = null,
+                ContextDrop = firstFailureDrop,
+                FailureReason = firstFailureReason,
+                RecentPickup = firstFailureReason == DropPickupFailureReason.Unavailable && firstFailureDrop != null
+                    ? FindRecentPickup(firstFailureDrop.PoolId, currentTime)
+                    : null
+            };
         }
         #endregion
 
@@ -672,10 +1610,34 @@ namespace HaCreator.MapSimulator.Pools
             for (int i = _activeDrops.Count - 1; i >= 0; i--)
             {
                 var drop = _activeDrops[i];
+                DropState previousState = drop.State;
                 drop.Update(currentTime, deltaTime);
+
+                if (previousState == DropState.Spawning
+                    && drop.State == DropState.Falling
+                    && drop.IsPacketControlled
+                    && drop.PacketEnterType == 1
+                    && currentTime - _lastPacketEnterSoundTime >= PACKET_ENTER_SOUND_COOLDOWN)
+                {
+                    _lastPacketEnterSoundTime = currentTime;
+                    _onPacketEnterSoundRequested?.Invoke(drop, currentTime);
+                }
+
+                if (ShouldRemoveClientFakeDrop(drop, currentTime))
+                {
+                    RemoveDrop(drop);
+                    continue;
+                }
 
                 if (drop.State == DropState.Removed)
                 {
+                    if (drop.TriggerPacketExplodeEffectOnRemove
+                        && currentTime - _lastPacketExplodeSoundTime >= PACKET_EXPLODE_SOUND_COOLDOWN)
+                    {
+                        _lastPacketExplodeSoundTime = currentTime;
+                        _onPacketExploded?.Invoke(drop, currentTime);
+                    }
+
                     if (drop.Alpha <= 0)
                         _onDropExpired?.Invoke(drop);
                     RemoveDrop(drop);
@@ -683,11 +1645,49 @@ namespace HaCreator.MapSimulator.Pools
             }
         }
 
+        private static bool ShouldRemoveClientFakeDrop(DropItem drop, int currentTime)
+        {
+            if (drop == null || !drop.IsPacketControlled || drop.IsReal)
+            {
+                return false;
+            }
+
+            if (drop.State == DropState.Idle)
+            {
+                return true;
+            }
+
+            int createTime = drop.SpawnTime + Math.Max(0, drop.CreateDelayMs);
+            return currentTime - createTime > 3000;
+        }
+
         private void RemoveDrop(DropItem drop)
         {
             _activeDrops.Remove(drop);
-            _dropById.Remove(drop.PoolId);
+            RemoveDropLookupIfCurrent(drop);
             _dropPool.Enqueue(drop);
+        }
+
+        private void RemoveDropLookupIfCurrent(DropItem drop)
+        {
+            if (drop == null)
+            {
+                return;
+            }
+
+            if (_dropById.TryGetValue(drop.PoolId, out DropItem mappedDrop)
+                && ReferenceEquals(mappedDrop, drop))
+            {
+                _dropById.Remove(drop.PoolId);
+            }
+        }
+
+        private void DetachPacketDropLookupForLeave(DropItem drop)
+        {
+            if (drop?.IsPacketControlled == true)
+            {
+                RemoveDropLookupIfCurrent(drop);
+            }
         }
         #endregion
 
@@ -695,12 +1695,37 @@ namespace HaCreator.MapSimulator.Pools
         /// <summary>
         /// Get all drops that should be rendered (with screen culling)
         /// </summary>
-        public IEnumerable<DropItem> GetRenderableDrops(int screenLeft, int screenRight, int screenTop, int screenBottom, int mapShiftX, int mapShiftY, int centerX, int centerY)
+        public void GetRenderableDrops(
+            List<DropItem> destination,
+            int screenLeft,
+            int screenRight,
+            int screenTop,
+            int screenBottom,
+            int mapShiftX,
+            int mapShiftY,
+            int centerX,
+            int centerY,
+            bool elevatedOnly = false)
         {
-            foreach (var drop in _activeDrops)
+            if (destination == null)
             {
+                return;
+            }
+
+            destination.Clear();
+
+            for (int i = 0; i < _activeDrops.Count; i++)
+            {
+                DropItem drop = _activeDrops[i];
                 if (drop.Alpha <= 0)
+                {
                     continue;
+                }
+
+                if (drop.DrawOnElevatedLayer != elevatedOnly)
+                {
+                    continue;
+                }
 
                 int screenX = (int)drop.X - mapShiftX + centerX;
                 int screenY = (int)drop.Y - mapShiftY + centerY;
@@ -709,7 +1734,62 @@ namespace HaCreator.MapSimulator.Pools
                 if (screenX >= screenLeft - 50 && screenX <= screenRight + 50 &&
                     screenY >= screenTop - 50 && screenY <= screenBottom + 50)
                 {
-                    yield return drop;
+                    destination.Add(drop);
+                }
+            }
+
+            SortRenderablePacketDrops(destination);
+        }
+
+        internal static void SortRenderablePacketDrops(List<DropItem> drops)
+        {
+            if (drops == null || drops.Count < 2)
+            {
+                return;
+            }
+
+            int packetCount = 0;
+            for (int i = 0; i < drops.Count; i++)
+            {
+                if (drops[i]?.IsPacketControlled == true)
+                {
+                    packetCount++;
+                }
+            }
+
+            if (packetCount < 2)
+            {
+                return;
+            }
+
+            if (packetCount != drops.Count)
+            {
+                return;
+            }
+
+            List<DropItem> packetDrops = new(packetCount);
+            for (int i = 0; i < drops.Count; i++)
+            {
+                if (drops[i]?.IsPacketControlled == true)
+                {
+                    packetDrops.Add(drops[i]);
+                }
+            }
+
+            packetDrops.Sort(static (left, right) =>
+            {
+                int zCompare = left.PacketLayerZ.CompareTo(right.PacketLayerZ);
+                return zCompare != 0
+                    ? zCompare
+                    : left.PoolId.CompareTo(right.PoolId);
+            });
+
+            int packetIndex = 0;
+            for (int i = 0; i < drops.Count; i++)
+            {
+                if (drops[i]?.IsPacketControlled == true)
+                {
+                    drops[i] = packetDrops[packetIndex++];
                 }
             }
         }
@@ -752,69 +1832,217 @@ namespace HaCreator.MapSimulator.Pools
         /// <param name="currentTime">Current game tick</param>
         /// <param name="petPickupRange">Override pickup range (default: PET_PICKUP_RANGE)</param>
         /// <returns>The picked up drop, or null if nothing picked up</returns>
-        public DropItem TryPickUpDropByPet(int petId, float petX, float petY, int playerId, int currentTime, float petPickupRange = 0)
+        public DropItem TryPickUpDropByPet(
+            int petId,
+            float petX,
+            float petY,
+            int playerId,
+            int currentTime,
+            float petPickupRange = 0,
+            Func<DropItem, DropPickupFailureReason> pickupValidator = null,
+            PetPickupCapabilities? capabilities = null)
+        {
+            return TryPickUpDropByPetDetailed(petId, petX, petY, playerId, currentTime, petPickupRange, pickupValidator, capabilities).Drop;
+        }
+
+        public DropPickupAttemptResult TryPickUpDropByPetDetailed(
+            int petId,
+            float petX,
+            float petY,
+            int playerId,
+            int currentTime,
+            float petPickupRange = 0,
+            Func<DropItem, DropPickupFailureReason> pickupValidator = null,
+            PetPickupCapabilities? capabilities = null)
         {
             if (petPickupRange <= 0)
                 petPickupRange = PET_PICKUP_RANGE;
 
-            // Check cooldown
-            if (_petLastPickupTime.TryGetValue(petId, out int lastPickup))
-            {
-                if (currentTime - lastPickup < PET_PICKUP_COOLDOWN)
-                    return null;
-            }
-
-            // Find closest pickupable drop within range
-            DropItem closestDrop = null;
-            float closestDistSq = petPickupRange * petPickupRange;
+            float rangeSq = petPickupRange * petPickupRange;
+            DropItem selectedDrop = null;
+            DropItem firstFailureDrop = null;
+            DropPickupFailureReason firstFailureReason = DropPickupFailureReason.NoDropInRange;
+            PetPickupCapabilities resolvedCapabilities = capabilities ?? PetPickupCapabilities.Full;
 
             foreach (var drop in _activeDrops)
             {
                 if (drop.State != DropState.Idle || !drop.CanPickup)
                     continue;
 
-                // Check ownership - pets can only pick up drops owned by their owner
-                if (drop.OwnerId > 0 && drop.OwnerId != playerId && currentTime < drop.OwnerExpireTime)
+                if (IsClientPickupBlocked(drop))
                     continue;
 
-                // Check exception list
-                if (IsInExceptionList(drop))
+                if (!CanRetryClientDropPickupAttempt(drop, currentTime))
                     continue;
 
                 float dx = drop.X - petX;
                 float dy = drop.Y - petY;
                 float distSq = dx * dx + dy * dy;
+                if (distSq > rangeSq
+                    || !IsWithinClientPickupRect(
+                        petX,
+                        petY,
+                        drop.X,
+                        drop.Y,
+                        ClientPetPickupHalfWidth,
+                        ClientPetPickupTopOffset,
+                        ClientPetPickupBottomOffset))
+                    continue;
 
-                if (distSq < closestDistSq)
+                DropPickupFailureReason petGateFailureReason = ResolvePetPickupFailureReason(drop, playerId, currentTime, resolvedCapabilities);
+                if (petGateFailureReason != DropPickupFailureReason.None)
                 {
-                    closestDistSq = distSq;
-                    closestDrop = drop;
+                    if (petGateFailureReason != DropPickupFailureReason.NoDropInRange && firstFailureDrop == null)
+                    {
+                        firstFailureDrop = drop;
+                        firstFailureReason = petGateFailureReason;
+                    }
+
+                    continue;
                 }
+
+                // Check exception list
+                if (IsInExceptionList(drop))
+                    continue;
+
+                DropPickupFailureReason validatorReason =
+                    pickupValidator?.Invoke(drop)
+                    ?? _petPickupAvailabilityEvaluator?.Invoke(drop)
+                    ?? _pickupAvailabilityEvaluator?.Invoke(drop)
+                    ?? DropPickupFailureReason.None;
+                if (validatorReason != DropPickupFailureReason.None)
+                {
+                    if (firstFailureDrop == null)
+                    {
+                        firstFailureDrop = drop;
+                        firstFailureReason = validatorReason;
+                    }
+
+                    continue;
+                }
+
+                selectedDrop = drop;
+                break;
             }
 
-            if (closestDrop != null)
+            if (selectedDrop != null)
             {
-                // Perform pickup
-                closestDrop.StartPickup(currentTime);
-                _petLastPickupTime[petId] = currentTime;
-
-                // Record pickup
-                RecordRecentPickupItem(closestDrop, petId, true, currentTime);
-
                 // Clear chase target if this was it
-                if (_petTargets.TryGetValue(petId, out var target) && target.DropId == closestDrop.PoolId)
+                if (_petTargets.TryGetValue(petId, out var target) && target.DropId == selectedDrop.PoolId)
                 {
                     _petTargets.Remove(petId);
                 }
 
-                // Invoke callbacks
-                _onDropPickedUp?.Invoke(closestDrop);
-                _onPetPickedUp?.Invoke(closestDrop, petId);
+                MarkClientDropPickupAttempt(selectedDrop, currentTime);
+                bool pickupSucceeded = CompletePickup(
+                    selectedDrop,
+                    petId,
+                    pickedByPet: true,
+                    currentTime,
+                    DropPickupActorKind.Pet,
+                    notifyLocalPickup: true);
 
-                return closestDrop;
+                if (!pickupSucceeded)
+                {
+                    RecentPickupRecord unavailableRecentPickup = FindRecentPickup(selectedDrop.PoolId, currentTime);
+                    ReportPickupFailure(
+                        selectedDrop,
+                        DropPickupFailureReason.Unavailable,
+                        petId,
+                        true,
+                        currentTime,
+                        unavailableRecentPickup);
+                    return new DropPickupAttemptResult
+                    {
+                        Drop = null,
+                        ContextDrop = selectedDrop,
+                        FailureReason = DropPickupFailureReason.Unavailable,
+                        RecentPickup = unavailableRecentPickup
+                    };
+                }
+
+                return new DropPickupAttemptResult
+                {
+                    Drop = selectedDrop,
+                    ContextDrop = selectedDrop,
+                    FailureReason = DropPickupFailureReason.None
+                };
             }
 
-            return null;
+            if (firstFailureDrop == null)
+            {
+                RecentPickupRecord recentPickup = FindRecentPickupNear(petX, petY, petPickupRange, currentTime);
+                if (recentPickup != null)
+                {
+                    ReportPickupFailure(
+                        null,
+                        DropPickupFailureReason.Unavailable,
+                        petId,
+                        true,
+                        currentTime,
+                        recentPickup);
+                    return new DropPickupAttemptResult
+                    {
+                        Drop = null,
+                        ContextDrop = null,
+                        FailureReason = DropPickupFailureReason.Unavailable,
+                        RecentPickup = recentPickup
+                    };
+                }
+            }
+
+            ReportPickupFailure(firstFailureDrop, firstFailureReason, petId, true, currentTime);
+            return new DropPickupAttemptResult
+            {
+                Drop = null,
+                ContextDrop = firstFailureDrop,
+                FailureReason = firstFailureReason,
+                RecentPickup = firstFailureReason == DropPickupFailureReason.Unavailable && firstFailureDrop != null
+                    ? FindRecentPickup(firstFailureDrop.PoolId, currentTime)
+                    : null
+            };
+        }
+
+        private void ReportPickupFailure(
+            DropItem drop,
+            DropPickupFailureReason reason,
+            int pickerId,
+            bool pickedByPet,
+            int currentTime,
+            RecentPickupRecord recentPickup = null)
+        {
+            if (reason == DropPickupFailureReason.None || reason == DropPickupFailureReason.NoDropInRange)
+            {
+                return;
+            }
+
+            if (drop != null)
+            {
+                if (drop.LastPickupFailureReason == reason
+                    && currentTime - drop.LastPickupFailureTime < PICKUP_FAILURE_REPORT_COOLDOWN)
+                {
+                    return;
+                }
+
+                drop.LastPickupFailureReason = reason;
+                drop.LastPickupFailureTime = currentTime;
+            }
+
+            RecentPickupRecord resolvedRecentPickup = recentPickup;
+            if (resolvedRecentPickup == null
+                && reason == DropPickupFailureReason.Unavailable
+                && drop != null)
+            {
+                resolvedRecentPickup = FindRecentPickup(drop.PoolId, currentTime);
+            }
+
+            _onPickupFailed?.Invoke(new DropPickupAttemptResult
+            {
+                Drop = null,
+                ContextDrop = drop,
+                FailureReason = reason,
+                RecentPickup = resolvedRecentPickup
+            }, pickerId, pickedByPet);
         }
 
         /// <summary>
@@ -830,16 +2058,36 @@ namespace HaCreator.MapSimulator.Pools
         /// <param name="currentTime">Current game tick</param>
         /// <param name="deltaTime">Time since last update</param>
         /// <returns>The target drop the pet should chase, or null if none</returns>
-        public PetDropTarget UpdateChasingDropForPet(int petId, float petX, float petY, int playerId,
-            float playerX, float playerY, int currentTime, float deltaTime)
+        public PetDropTarget UpdateChasingDropForPet(
+            int petId,
+            float petX,
+            float petY,
+            int playerId,
+            float playerX,
+            float playerY,
+            int currentTime,
+            float deltaTime,
+            Func<DropItem, DropPickupFailureReason> pickupValidator = null,
+            PetPickupCapabilities? capabilities = null)
         {
+            PetPickupCapabilities resolvedCapabilities = capabilities ?? PetPickupCapabilities.Full;
+
             // Check if pet already has a target
             if (_petTargets.TryGetValue(petId, out var existingTarget))
             {
                 var targetDrop = GetDrop(existingTarget.DropId);
 
                 // Validate target still exists and is pickupable
-                if (targetDrop != null && targetDrop.State == DropState.Idle && targetDrop.CanPickup)
+                if (targetDrop != null
+                    && targetDrop.State == DropState.Idle
+                    && targetDrop.CanPickup
+                    && !IsClientPickupBlocked(targetDrop)
+                    && ResolvePetPickupFailureReason(targetDrop, playerId, currentTime, resolvedCapabilities) == DropPickupFailureReason.None
+                    && !IsInExceptionList(targetDrop)
+                    && (pickupValidator?.Invoke(targetDrop)
+                        ?? _petPickupAvailabilityEvaluator?.Invoke(targetDrop)
+                        ?? _pickupAvailabilityEvaluator?.Invoke(targetDrop)
+                        ?? DropPickupFailureReason.None) == DropPickupFailureReason.None)
                 {
                     // Update target position
                     existingTarget.TargetX = targetDrop.X;
@@ -877,12 +2125,22 @@ namespace HaCreator.MapSimulator.Pools
                 if (drop.State != DropState.Idle || !drop.CanPickup)
                     continue;
 
-                // Check ownership
-                if (drop.OwnerId > 0 && drop.OwnerId != playerId && currentTime < drop.OwnerExpireTime)
+                if (IsClientPickupBlocked(drop))
+                    continue;
+
+                if (ResolvePetPickupFailureReason(drop, playerId, currentTime, resolvedCapabilities) != DropPickupFailureReason.None)
                     continue;
 
                 // Check exception list
                 if (IsInExceptionList(drop))
+                    continue;
+
+                DropPickupFailureReason validatorReason =
+                    pickupValidator?.Invoke(drop)
+                    ?? _petPickupAvailabilityEvaluator?.Invoke(drop)
+                    ?? _pickupAvailabilityEvaluator?.Invoke(drop)
+                    ?? DropPickupFailureReason.None;
+                if (validatorReason != DropPickupFailureReason.None)
                     continue;
 
                 // Check if another pet is already targeting this drop
@@ -985,47 +2243,60 @@ namespace HaCreator.MapSimulator.Pools
         /// <param name="mobY">Mob's Y position</param>
         /// <param name="currentTime">Current game tick</param>
         /// <returns>The picked up drop, or null if nothing picked up</returns>
-        public DropItem TryPickUpDropByMob(int mobId, float mobX, float mobY, int currentTime)
+        public DropItem TryPickUpDropByMob(
+            int mobId,
+            float mobX,
+            float mobY,
+            int currentTime,
+            int pickupActorId = 0,
+            string actorName = null)
         {
             // Check if this mob has pickup ability
             if (!_mobsWithPickupAbility.Contains(mobId))
                 return null;
 
-            // Find closest drop within range
-            DropItem closestDrop = null;
-            float closestDistSq = MOB_PICKUP_RANGE * MOB_PICKUP_RANGE;
-
+            // Client scans m_lDrop in pool order and sends the first eligible drop.
+            DropItem selectedDrop = null;
             foreach (var drop in _activeDrops)
             {
                 if (drop.State != DropState.Idle || !drop.CanPickup)
                     continue;
 
-                // Mobs can pick up any drop regardless of ownership
-                float dx = drop.X - mobX;
-                float dy = drop.Y - mobY;
-                float distSq = dx * dx + dy * dy;
+                if (IsClientPickupBlocked(drop))
+                    continue;
 
-                if (distSq < closestDistSq)
-                {
-                    closestDistSq = distSq;
-                    closestDrop = drop;
-                }
+                if (!CanRetryClientDropPickupAttempt(drop, currentTime))
+                    continue;
+
+                if (!CanMobPickup(drop))
+                    continue;
+
+                if (!IsWithinClientPickupRect(
+                        mobX,
+                        mobY,
+                        drop.X,
+                        drop.Y,
+                        ClientMobPickupHalfWidth,
+                        ClientMobPickupTopOffset,
+                        ClientMobPickupBottomOffset))
+                    continue;
+
+                selectedDrop = drop;
+                break;
             }
 
-            if (closestDrop != null)
+            if (selectedDrop != null)
             {
-                // Mark as picked up by mob (stolen)
-                closestDrop.CanPickup = false;
-                closestDrop.State = DropState.PickingUp;
-                closestDrop.LastStateChangeTime = currentTime;
-
-                // Record pickup
-                RecordRecentPickupItem(closestDrop, mobId, false, currentTime);
-
-                // Invoke callback
-                _onMobPickedUp?.Invoke(closestDrop, mobId);
-
-                return closestDrop;
+                int resolvedPickupActorId = pickupActorId > 0 ? pickupActorId : mobId;
+                MarkClientDropPickupAttempt(selectedDrop, currentTime);
+                return ResolveRemotePickup(
+                    selectedDrop,
+                    resolvedPickupActorId,
+                    currentTime,
+                    DropPickupActorKind.Mob,
+                    actorName)
+                    ? selectedDrop
+                    : null;
             }
 
             return null;
@@ -1048,7 +2319,7 @@ namespace HaCreator.MapSimulator.Pools
         /// <param name="maxCount">Maximum mesos to explode</param>
         /// <returns>List of meso drops that will explode</returns>
         public List<DropItem> GetExplosiveDropInRect(float centerX, float centerY, float width, float height,
-            int playerId, int currentTime, int maxCount = 0)
+            int playerId, int currentTime, int maxCount = 0, bool enforceOwnership = true)
         {
             if (maxCount <= 0)
                 maxCount = MAX_MESO_EXPLOSION_DROPS;
@@ -1071,8 +2342,10 @@ namespace HaCreator.MapSimulator.Pools
                 if (drop.Type != DropType.Meso)
                     continue;
 
-                // Check ownership - can only explode your own mesos
-                if (drop.OwnerId > 0 && drop.OwnerId != playerId && currentTime < drop.OwnerExpireTime)
+                if (enforceOwnership
+                    && drop.OwnerId > 0
+                    && drop.OwnerId != playerId
+                    && currentTime < drop.OwnerExpireTime)
                     continue;
 
                 // Check if in rect
@@ -1093,7 +2366,7 @@ namespace HaCreator.MapSimulator.Pools
         /// Convenience overload using radius instead of rectangle.
         /// </summary>
         public List<DropItem> GetExplosiveDropInRange(float centerX, float centerY, float radius,
-            int playerId, int currentTime, int maxCount = 0)
+            int playerId, int currentTime, int maxCount = 0, bool enforceOwnership = true)
         {
             if (maxCount <= 0)
                 maxCount = MAX_MESO_EXPLOSION_DROPS;
@@ -1109,7 +2382,10 @@ namespace HaCreator.MapSimulator.Pools
                 if (drop.Type != DropType.Meso)
                     continue;
 
-                if (drop.OwnerId > 0 && drop.OwnerId != playerId && currentTime < drop.OwnerExpireTime)
+                if (enforceOwnership
+                    && drop.OwnerId > 0
+                    && drop.OwnerId != playerId
+                    && currentTime < drop.OwnerExpireTime)
                     continue;
 
                 float dx = drop.X - centerX;
@@ -1212,24 +2488,18 @@ namespace HaCreator.MapSimulator.Pools
         /// Record a recently picked up item for history tracking.
         /// Based on CDropPool::RecordRecentPickupItem from MapleStory client.
         /// </summary>
-        public void RecordRecentPickupItem(DropItem drop, int pickerId, bool pickedByPet, int currentTime)
+        public RecentPickupRecord RecordRecentPickupItem(
+            DropItem drop,
+            int pickerId,
+            bool pickedByPet,
+            int currentTime,
+            DropPickupActorKind actorKind = DropPickupActorKind.Other,
+            string actorName = null)
         {
             if (drop == null)
-                return;
+                return null;
 
-            // Clean up old records first
-            while (_recentPickups.Count > 0)
-            {
-                var oldest = _recentPickups.Peek();
-                if (currentTime - oldest.PickupTime > RECENT_PICKUP_LIFETIME)
-                {
-                    _recentPickups.Dequeue();
-                }
-                else
-                {
-                    break;
-                }
-            }
+            PruneRecentPickupHistory(currentTime);
 
             // Enforce max size
             while (_recentPickups.Count >= MAX_RECENT_PICKUPS)
@@ -1247,10 +2517,58 @@ namespace HaCreator.MapSimulator.Pools
                 Quantity = drop.Quantity,
                 PickupTime = currentTime,
                 PickerId = pickerId,
-                PickedByPet = pickedByPet
+                PickedByPet = pickedByPet,
+                ActorKind = actorKind,
+                ActorName = actorName,
+                OwnershipType = drop.OwnershipType,
+                OwnerId = drop.OwnerId,
+                OwnershipWindowActive = IsOwnershipWindowActive(drop, currentTime),
+                PickupX = drop.State == DropState.PickingUp ? drop.PickupStartX : drop.X,
+                PickupY = drop.State == DropState.PickingUp ? drop.PickupStartY : drop.Y
             };
 
             _recentPickups.Enqueue(record);
+            return record;
+        }
+
+        public RecentPickupRecord FindRecentPickup(int dropId, int currentTime)
+        {
+            PruneRecentPickupHistory(currentTime);
+
+            RecentPickupRecord latestRecord = null;
+            foreach (RecentPickupRecord record in _recentPickups)
+            {
+                if (record.DropId == dropId)
+                {
+                    latestRecord = record;
+                }
+            }
+
+            return latestRecord;
+        }
+
+        public RecentPickupRecord FindRecentPickupNear(float x, float y, float maxRange, int currentTime)
+        {
+            PruneRecentPickupHistory(currentTime);
+
+            float maxDistanceSq = maxRange * maxRange;
+            RecentPickupRecord closestRecord = null;
+            float closestDistanceSq = float.MaxValue;
+            foreach (RecentPickupRecord record in _recentPickups)
+            {
+                float dx = record.PickupX - x;
+                float dy = record.PickupY - y;
+                float distanceSq = (dx * dx) + (dy * dy);
+                if (distanceSq > maxDistanceSq || distanceSq >= closestDistanceSq)
+                {
+                    continue;
+                }
+
+                closestRecord = record;
+                closestDistanceSq = distanceSq;
+            }
+
+            return closestRecord;
         }
 
         /// <summary>
@@ -1283,6 +2601,810 @@ namespace HaCreator.MapSimulator.Pools
         public void ClearRecentPickups()
         {
             _recentPickups.Clear();
+        }
+
+        private void PruneRecentPickupHistory(int currentTime)
+        {
+            while (_recentPickups.Count > 0)
+            {
+                RecentPickupRecord oldest = _recentPickups.Peek();
+                if (currentTime - oldest.PickupTime > RECENT_PICKUP_LIFETIME)
+                {
+                    _recentPickups.Dequeue();
+                    continue;
+                }
+
+                break;
+            }
+        }
+
+        private bool CompletePickup(
+            DropItem drop,
+            int pickerId,
+            bool pickedByPet,
+            int currentTime,
+            DropPickupActorKind actorKind,
+            bool notifyLocalPickup,
+            string actorName = null,
+            Vector2? pickupTargetPosition = null,
+            int pickupDurationMs = DropItem.PACKET_ABSORB_DURATION,
+            Func<Vector2?> pickupTargetPositionResolver = null,
+            Vector2? pickupStartPositionOverride = null,
+            bool bypassStateValidation = false,
+            bool useClientPacketAbsorbMotion = false)
+        {
+            if (drop == null || drop.State == DropState.Removed || drop.State == DropState.Expired)
+            {
+                return false;
+            }
+
+            if (!bypassStateValidation && (drop.State != DropState.Idle || !drop.CanPickup))
+            {
+                return false;
+            }
+
+            actorName = string.IsNullOrWhiteSpace(actorName)
+                ? _pickupActorNameResolver?.Invoke(actorKind, pickerId, pickedByPet)
+                : actorName;
+            drop.StartPickup(
+                currentTime,
+                pickupTargetPosition,
+                pickupDurationMs,
+                pickupTargetPositionResolver,
+                pickupStartPositionOverride,
+                useClientPacketAbsorbMotion);
+            RecordRecentPickupItem(drop, pickerId, pickedByPet, currentTime, actorKind, actorName);
+            _onDropPickedUp?.Invoke(drop);
+
+            if (notifyLocalPickup)
+            {
+                _onPickupResolved?.Invoke(drop, pickerId, pickedByPet);
+                if (pickedByPet)
+                {
+                    _onPetPickedUp?.Invoke(drop, pickerId);
+                }
+
+                return true;
+            }
+
+            switch (actorKind)
+            {
+                case DropPickupActorKind.Player:
+                    _onRemotePlayerPickedUp?.Invoke(drop, pickerId, actorName);
+                    break;
+                case DropPickupActorKind.Pet:
+                    _onRemotePetPickedUp?.Invoke(drop, pickerId, actorName);
+                    break;
+                case DropPickupActorKind.Mob:
+                    _onMobPickedUp?.Invoke(drop, pickerId, actorName);
+                    break;
+                case DropPickupActorKind.Other:
+                    _onRemoteOtherPickedUp?.Invoke(drop, pickerId, actorName);
+                    break;
+            }
+
+            return true;
+        }
+
+        private static Vector2 ResolvePacketLeaveOrigin(DropItem drop)
+        {
+            if (drop == null)
+            {
+                return Vector2.Zero;
+            }
+
+            return drop.IsPacketControlled
+                ? new Vector2(drop.TargetX, drop.TargetY)
+                : new Vector2(drop.X, drop.Y);
+        }
+
+        public bool ApplyPacketEnter(RemoteDropEnterPacket packet, int currentTime)
+        {
+            if (packet.DropId <= 0)
+            {
+                return false;
+            }
+
+            if (_dropById.TryGetValue(packet.DropId, out DropItem existingDrop))
+            {
+                if ((packet.EnterType == 1 || packet.EnterType == 2) && !existingDrop.IsReal)
+                {
+                    PromoteClientFakeDrop(existingDrop);
+                }
+
+                _lastPacketEnterAppliedTime = currentTime;
+                return true;
+            }
+
+            DropItem drop = GetOrCreateDrop();
+            InitializeDrop(
+                drop,
+                packet.IsMoney ? DropType.Meso : DropType.Item,
+                packet.IsMoney ? null : packet.Info.ToString("D8"),
+                packet.TargetX,
+                packet.TargetY,
+                currentTime,
+                packet.OwnerId);
+
+            drop.PoolId = packet.DropId;
+            _nextDropId = Math.Max(_nextDropId, packet.DropId + 1);
+            drop.OwnershipType = packet.OwnershipType;
+            drop.SourceId = packet.SourceId;
+            drop.IsReal = packet.EnterType == 1 || packet.EnterType == 2;
+            drop.AllowPetPickup = packet.AllowPetPickup;
+            drop.IsPacketControlled = true;
+            drop.PacketEnterType = packet.EnterType;
+            drop.CreateDelayMs = packet.DelayMs;
+            drop.OwnerExpireTime = ResolveClientOwnershipExpireTime(currentTime, packet.DelayMs, packet.OwnerId);
+            drop.ExpireTime = ResolvePacketExpireTime(
+                currentTime,
+                packet.IsMoney,
+                packet.ExpireRaw,
+                _packetExpireTimeUtcResolver?.Invoke() ?? DateTime.UtcNow);
+            drop.HoverAmplitude = packet.IsMoney ? 3f : 2f;
+            drop.HoverFrequency = packet.EnterType == 4 ? 0.6f : 1f;
+            drop.HoverPhase = drop.PoolId * 0.31f;
+
+            Vector2 startPosition = ResolvePacketDropStartPosition(packet);
+            drop.SpawnX = startPosition.X;
+            drop.SpawnY = startPosition.Y;
+            drop.TargetX = packet.TargetX;
+            drop.X = startPosition.X;
+            drop.Y = startPosition.Y;
+            drop.GroundY = _getGroundY?.Invoke(packet.TargetX, packet.TargetY) ?? packet.TargetY;
+            drop.TargetY = drop.GroundY;
+            drop.VelocityX = 0f;
+            drop.VelocityY = packet.EnterType == 4 ? DROP_INITIAL_VELOCITY_Y * 0.45f : DROP_INITIAL_VELOCITY_Y;
+            drop.MotionElapsedMs = 0;
+            drop.MotionLastUpdateTime = currentTime;
+            drop.ParabolicDurationMs = CalculateParabolicMotionDuration(
+                drop.SpawnY,
+                drop.TargetY,
+                drop.OwnershipType == DropOwnershipType.Explosive,
+                packet.EnterType == 4);
+
+            ApplyPacketDropPresentation(drop, packet);
+
+            drop.DrawOnElevatedLayer = ShouldDrawPacketDropOnElevatedLayer(packet);
+            (int page, int zMass) layerMetadata = ResolvePacketDropLayerMetadata(packet.TargetX, packet.TargetY);
+            ApplyPacketDropLayerOrdering(drop, packet, layerMetadata.page, layerMetadata.zMass);
+            drop.PacketEnterAlphaRampDurationMs = packet.EnterType == 3
+                ? DropItem.PACKET_ENTER_TYPE3_ALPHA_RAMP_DURATION
+                : 0;
+            drop.PacketEnterAlphaRampStartTime = currentTime + Math.Max(0, (int)packet.DelayMs);
+
+            if (packet.EnterType == 2)
+            {
+                SnapDropToPacketIdle(drop, currentTime);
+            }
+            else
+            {
+                drop.State = DropState.Spawning;
+                if (packet.EnterType == 3)
+                {
+                    drop.Alpha = 0f;
+                }
+            }
+
+            if (ShouldRetireExpiredPacketEnter(drop, packet, currentTime))
+            {
+                drop.SnapToTargetPosition();
+                drop.StartRemoveFade(currentTime, DropItem.EXPIRE_FADE_DURATION);
+            }
+
+            _activeDrops.Add(drop);
+            _dropById[drop.PoolId] = drop;
+            _lastPacketEnterAppliedTime = currentTime;
+            _onDropSpawned?.Invoke(drop);
+            return true;
+        }
+
+        private static void PromoteClientFakeDrop(DropItem drop)
+        {
+            if (drop == null)
+            {
+                return;
+            }
+
+            drop.IsReal = true;
+        }
+
+        private void ApplyPacketDropPresentation(DropItem drop, RemoteDropEnterPacket packet)
+        {
+            if (drop == null)
+            {
+                return;
+            }
+
+            drop.AnimFrames = null;
+            drop.Icon = null;
+            drop.UseLayeredMesoAnimation = false;
+            drop.MesoAnimationLayerCount = 0;
+            drop.MesoAnimationIconType = 0;
+            drop.Quantity = 1;
+
+            if (packet.IsMoney)
+            {
+                drop.Type = DropType.Meso;
+                drop.ItemId = null;
+                drop.MesoAmount = Math.Max(0, packet.Info);
+                drop.Icon = _mesoIcon;
+                ApplyMesoVisuals(drop, packetControlled: true);
+                return;
+            }
+
+            string itemId = packet.Info.ToString("D8");
+            drop.Type = DropType.Item;
+            drop.ItemId = itemId;
+            drop.MesoAmount = 0;
+            if (!TryApplyPacketItemVisuals(drop, itemId)
+                && _itemIcons.TryGetValue(itemId, out IDXObject icon))
+            {
+                drop.Icon = icon;
+            }
+        }
+
+        internal static bool ShouldDrawPacketDropOnElevatedLayer(RemoteDropEnterPacket packet)
+        {
+            return packet.ElevateLayer || packet.EnterType == 4;
+        }
+
+        private static void ApplyPacketDropLayerOrdering(DropItem drop, RemoteDropEnterPacket packet, int page, int zMass)
+        {
+            if (drop == null)
+            {
+                return;
+            }
+
+            drop.PacketLayerPage = page;
+            drop.PacketLayerZMass = zMass;
+            drop.PacketLayerZ = ResolvePacketDropLayerZ(packet.EnterType, packet.ElevateLayer, page, zMass);
+        }
+
+        private (int page, int zMass) ResolvePacketDropLayerMetadata(float x, float y)
+        {
+            (int page, int zMass)? metadata = _getPacketLayerFootholdMetadata?.Invoke(x, y);
+            return metadata.HasValue
+                ? (Math.Max(0, metadata.Value.page), Math.Max(0, metadata.Value.zMass))
+                : (0, 0);
+        }
+
+        internal static int ResolvePacketDropLayerZ(byte enterType, bool elevateLayer, int page, int zMass)
+        {
+            if (elevateLayer)
+            {
+                return DropItem.PACKET_LAYER_ELEVATED_Z;
+            }
+
+            if (enterType == 4)
+            {
+                return DropItem.PACKET_LAYER_ENTER_TYPE4_Z;
+            }
+
+            return (10 * ((3000 * page) - zMass)) + DropItem.PACKET_LAYER_Z_BASE;
+        }
+
+        private static bool ShouldRetireExpiredPacketEnter(DropItem drop, RemoteDropEnterPacket packet, int currentTime)
+        {
+            return drop?.IsPacketControlled == true
+                && !packet.IsMoney
+                && drop.ExpireTime > 0
+                && drop.ExpireTime <= currentTime;
+        }
+
+        public bool ApplyPacketLeave(
+            RemoteDropLeavePacket packet,
+            int currentTime,
+            int localCharacterId,
+            Func<PacketDropLeaveReason, RemoteDropLeavePacket, string> actorNameResolver = null,
+            Func<PacketDropLeaveReason, RemoteDropLeavePacket, Vector2?> actorPositionResolver = null,
+            Func<RemoteDropLeavePacket, int> petPickupActorIdResolver = null,
+            Action<RemoteDropLeavePacket> beforeLocalPetPickup = null)
+        {
+            if (!_dropById.TryGetValue(packet.DropId, out DropItem drop))
+            {
+                return false;
+            }
+
+            switch (packet.Reason)
+            {
+                case PacketDropLeaveReason.Remove:
+                    DetachPacketDropLookupForLeave(drop);
+                    if (drop.IsPacketControlled)
+                    {
+                        drop.SnapToTargetPosition();
+
+                        if (drop.Type != DropType.Meso
+                            && _onPacketRemoveFadeRequested?.Invoke(drop, currentTime) == true)
+                        {
+                            RemoveDrop(drop);
+                            return true;
+                        }
+                    }
+
+                    drop.ScheduleRemoval(currentTime, 0, fadeOut: true);
+                    return true;
+
+                case PacketDropLeaveReason.Explode:
+                    drop.TriggerPacketExplodeEffectOnRemove = true;
+                    drop.ScheduleRemoval(currentTime, packet.DelayMs, fadeOut: false);
+                    return true;
+
+                case PacketDropLeaveReason.PlayerPickup:
+                    ObservePacketPartyPickupLink(drop, packet, packet.ActorId);
+                    DetachPacketDropLookupForLeave(drop);
+                    if (packet.ActorId == localCharacterId)
+                    {
+                        return CompletePickup(
+                            drop,
+                            packet.ActorId,
+                            pickedByPet: false,
+                            currentTime,
+                            DropPickupActorKind.Player,
+                            notifyLocalPickup: true,
+                            pickupTargetPosition: actorPositionResolver?.Invoke(packet.Reason, packet),
+                            pickupDurationMs: DropItem.CLIENT_PACKET_ABSORB_DURATION,
+                            pickupStartPositionOverride: ResolvePacketLeaveOrigin(drop),
+                            bypassStateValidation: drop.IsPacketControlled,
+                            useClientPacketAbsorbMotion: drop.IsPacketControlled,
+                            pickupTargetPositionResolver: actorPositionResolver == null
+                                ? null
+                                : () => actorPositionResolver(packet.Reason, packet));
+                    }
+
+                    return ResolveRemotePickup(
+                        drop,
+                        packet.ActorId,
+                        currentTime,
+                        DropPickupActorKind.Player,
+                        actorNameResolver?.Invoke(packet.Reason, packet),
+                        pickupTargetPosition: actorPositionResolver?.Invoke(packet.Reason, packet),
+                        pickupStartPositionOverride: ResolvePacketLeaveOrigin(drop),
+                        bypassStateValidation: drop.IsPacketControlled,
+                        useClientPacketAbsorbMotion: drop.IsPacketControlled,
+                        pickupTargetPositionResolver: actorPositionResolver == null
+                            ? null
+                            : () => actorPositionResolver(packet.Reason, packet));
+
+                case PacketDropLeaveReason.OtherPickup:
+                    DetachPacketDropLookupForLeave(drop);
+                    RemoveDrop(drop);
+                    return true;
+
+                case PacketDropLeaveReason.MobPickup:
+                    DetachPacketDropLookupForLeave(drop);
+                    return ResolveRemotePickup(
+                        drop,
+                        packet.ActorId,
+                        currentTime,
+                        DropPickupActorKind.Mob,
+                        actorNameResolver?.Invoke(packet.Reason, packet),
+                        pickupTargetPosition: actorPositionResolver?.Invoke(packet.Reason, packet),
+                        pickupStartPositionOverride: ResolvePacketLeaveOrigin(drop),
+                        bypassStateValidation: drop.IsPacketControlled,
+                        useClientPacketAbsorbMotion: drop.IsPacketControlled,
+                        pickupTargetPositionResolver: actorPositionResolver == null
+                            ? null
+                            : () => actorPositionResolver(packet.Reason, packet));
+
+                case PacketDropLeaveReason.PetPickup:
+                    int resolvedPetActorId = petPickupActorIdResolver?.Invoke(packet) ?? packet.ActorId;
+                    ObservePacketPartyPickupLink(drop, packet, resolvedPetActorId);
+                    DetachPacketDropLookupForLeave(drop);
+                    if (packet.ActorId == localCharacterId)
+                    {
+                        int localPetId = resolvedPetActorId;
+                        beforeLocalPetPickup?.Invoke(packet);
+                        return CompletePickup(
+                            drop,
+                            localPetId,
+                            pickedByPet: true,
+                            currentTime,
+                            DropPickupActorKind.Pet,
+                            notifyLocalPickup: true,
+                            pickupTargetPosition: actorPositionResolver?.Invoke(packet.Reason, packet),
+                            pickupDurationMs: DropItem.CLIENT_PACKET_ABSORB_DURATION,
+                            pickupStartPositionOverride: ResolvePacketLeaveOrigin(drop),
+                            bypassStateValidation: drop.IsPacketControlled,
+                            useClientPacketAbsorbMotion: drop.IsPacketControlled,
+                            pickupTargetPositionResolver: actorPositionResolver == null
+                                ? null
+                                : () => actorPositionResolver(packet.Reason, packet));
+                    }
+
+                    return ResolveRemotePickup(
+                        drop,
+                        resolvedPetActorId,
+                        currentTime,
+                        DropPickupActorKind.Pet,
+                        actorNameResolver?.Invoke(packet.Reason, packet),
+                        pickedByPet: true,
+                        pickupTargetPosition: actorPositionResolver?.Invoke(packet.Reason, packet),
+                        pickupStartPositionOverride: ResolvePacketLeaveOrigin(drop),
+                        bypassStateValidation: drop.IsPacketControlled,
+                        useClientPacketAbsorbMotion: drop.IsPacketControlled,
+                        pickupTargetPositionResolver: actorPositionResolver == null
+                            ? null
+                            : () => actorPositionResolver(packet.Reason, packet));
+
+                default:
+                    return false;
+            }
+        }
+
+        private void ObservePacketPartyPickupLink(
+            DropItem drop,
+            RemoteDropLeavePacket packet,
+            int resolvedActorId)
+        {
+            if (drop?.IsPacketControlled != true
+                || drop.OwnershipType != DropOwnershipType.Party
+                || drop.OwnerId <= 0
+                || packet.ActorId <= 0)
+            {
+                return;
+            }
+
+            _onPacketPartyPickupLinkedActors?.Invoke(drop.OwnerId, packet.ActorId);
+            if (resolvedActorId != 0 && resolvedActorId != packet.ActorId)
+            {
+                _onPacketPartyPickupLinkedActors?.Invoke(drop.OwnerId, resolvedActorId);
+            }
+        }
+
+        private Vector2 ResolvePacketDropStartPosition(RemoteDropEnterPacket packet)
+        {
+            if (packet.SourceId > 0 && _sourcePositionResolver?.Invoke(packet.SourceId) is Vector2 sourcePosition)
+            {
+                return sourcePosition;
+            }
+
+            if (packet.HasStartPosition)
+            {
+                return new Vector2(packet.StartX, packet.StartY);
+            }
+
+            return new Vector2(packet.TargetX, packet.TargetY);
+        }
+
+        private static bool IsOwnershipWindowActive(DropItem drop, int currentTime)
+        {
+            if (drop.OwnerId <= 0 || currentTime >= drop.OwnerExpireTime)
+            {
+                return false;
+            }
+
+            // CDropPool pickup gates bypass owner-restricted pickup windows when dwSourceID == 0.
+            // Keep ownership-window admission on the same source-id seam for local and packet drops.
+            return drop.SourceId != 0;
+        }
+
+        internal static int ResolveClientOwnershipExpireTime(int currentTime, int createDelayMs, int ownerId)
+        {
+            if (ownerId <= 0)
+            {
+                return 0;
+            }
+
+            return currentTime + Math.Max(0, createDelayMs) + OWNER_PRIORITY_DURATION;
+        }
+
+        internal static bool CanRetryClientDropPickupAttempt(DropItem drop, int currentTime)
+        {
+            return drop != null
+                && currentTime - drop.LastPickupAttemptTime >= ClientDropPickupRetryDelayMs;
+        }
+
+        private static void MarkClientDropPickupAttempt(DropItem drop, int currentTime)
+        {
+            if (drop != null)
+            {
+                drop.LastPickupAttemptTime = currentTime;
+            }
+        }
+
+        internal static int ResolvePacketExpireTime(int currentTime, bool isMoney, long expireRaw)
+        {
+            return ResolvePacketExpireTime(currentTime, isMoney, expireRaw, DateTime.UtcNow);
+        }
+
+        internal static int ResolvePacketExpireTime(int currentTime, bool isMoney, long expireRaw, DateTime referenceUtc)
+        {
+            if (isMoney)
+            {
+                return currentTime + DEFAULT_DROP_LIFETIME;
+            }
+
+            if (expireRaw <= 0 || expireRaw == long.MaxValue)
+            {
+                return currentTime + DEFAULT_DROP_LIFETIME;
+            }
+
+            try
+            {
+                DateTime expireUtc = DateTime.FromFileTimeUtc(expireRaw);
+                if (referenceUtc.Kind == DateTimeKind.Local)
+                {
+                    referenceUtc = referenceUtc.ToUniversalTime();
+                }
+                else if (referenceUtc.Kind == DateTimeKind.Unspecified)
+                {
+                    referenceUtc = DateTime.SpecifyKind(referenceUtc, DateTimeKind.Utc);
+                }
+
+                double remainingMs = (expireUtc - referenceUtc).TotalMilliseconds;
+                if (remainingMs <= 0)
+                {
+                    return currentTime;
+                }
+
+                if (remainingMs >= int.MaxValue - currentTime)
+                {
+                    return int.MaxValue;
+                }
+
+                return currentTime + (int)Math.Ceiling(remainingMs);
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                return currentTime + DEFAULT_DROP_LIFETIME;
+            }
+        }
+
+        private bool IsPlayerOwnershipBlocked(DropItem drop, int actorId, int currentTime)
+        {
+            if (!IsOwnershipWindowActive(drop, currentTime))
+            {
+                return false;
+            }
+
+            return drop.OwnershipType switch
+            {
+                DropOwnershipType.Character => drop.OwnerId != actorId,
+                DropOwnershipType.Party => !AreActorsPartyLinked(drop.OwnerId, actorId),
+                _ => false
+            };
+        }
+
+        private bool CanPlayerPickup(DropItem drop, int actorId, int currentTime)
+        {
+            return drop != null
+                && drop.IsReal
+                && !IsPlayerOwnershipBlocked(drop, actorId, currentTime);
+        }
+
+        private bool CanPetPickup(DropItem drop, int ownerId, int currentTime)
+        {
+            return ResolvePetPickupFailureReason(drop, ownerId, currentTime) == DropPickupFailureReason.None;
+        }
+
+        internal DropPickupFailureReason ResolvePetPickupFailureReason(DropItem drop, int ownerId, int currentTime)
+        {
+            return ResolvePetPickupFailureReason(drop, ownerId, currentTime, PetPickupCapabilities.Full);
+        }
+
+        internal DropPickupFailureReason ResolvePetPickupFailureReason(
+            DropItem drop,
+            int ownerId,
+            int currentTime,
+            PetPickupCapabilities capabilities)
+        {
+            if (drop == null || !drop.IsReal)
+            {
+                return DropPickupFailureReason.NoDropInRange;
+            }
+
+            if (!drop.AllowPetPickup)
+            {
+                return DropPickupFailureReason.PetPickupBlocked;
+            }
+
+            DropPickupFailureReason capabilityFailureReason =
+                ResolveClientPetPickupCapabilityFailure(drop, ownerId, currentTime, capabilities);
+            if (capabilityFailureReason != DropPickupFailureReason.None)
+            {
+                return capabilityFailureReason;
+            }
+
+            return IsPetOwnershipBlocked(drop, ownerId, currentTime, capabilities.PickupOthers)
+                ? DropPickupFailureReason.OwnershipRestricted
+                : DropPickupFailureReason.None;
+        }
+
+        internal DropPickupFailureReason ResolveClientPetPickupCapabilityFailure(
+            DropItem drop,
+            int ownerId,
+            int currentTime,
+            PetPickupCapabilities capabilities)
+        {
+            if (drop == null)
+            {
+                return DropPickupFailureReason.NoDropInRange;
+            }
+
+            if (drop.Type == DropType.Meso)
+            {
+                return capabilities.PickupMeso
+                    ? DropPickupFailureReason.None
+                    : DropPickupFailureReason.NoDropInRange;
+            }
+
+            if (!capabilities.PickupItems)
+            {
+                return DropPickupFailureReason.NoDropInRange;
+            }
+
+            if (!capabilities.PickupOthers
+                && IsOtherOwnerSourcedDropPastPetPickupOthersThreshold(drop, ownerId, currentTime))
+            {
+                return DropPickupFailureReason.OwnershipRestricted;
+            }
+
+            return DropPickupFailureReason.None;
+        }
+
+        private bool IsPetOwnershipBlocked(
+            DropItem drop,
+            int ownerId,
+            int currentTime,
+            bool canPickupOthers)
+        {
+            bool pastPickupOthersThreshold = IsPastPetPickupOthersThreshold(drop, currentTime);
+            if (canPickupOthers && pastPickupOthersThreshold)
+            {
+                return false;
+            }
+
+            if (!IsOwnershipWindowActive(drop, currentTime)
+                && (drop.SourceId == 0 || drop.OwnerId <= 0 || pastPickupOthersThreshold))
+            {
+                return !canPickupOthers
+                    && IsOtherOwnerSourcedDropPastPetPickupOthersThreshold(drop, ownerId, currentTime);
+            }
+
+            return drop.OwnershipType switch
+            {
+                DropOwnershipType.Character => drop.OwnerId != ownerId,
+                DropOwnershipType.Party => !AreActorsPartyLinked(drop.OwnerId, ownerId),
+                _ => false
+            };
+        }
+
+        private static bool IsPastPetPickupOthersThreshold(DropItem drop, int currentTime)
+        {
+            if (drop == null || drop.SourceId == 0 || drop.OwnerId <= 0)
+            {
+                return false;
+            }
+
+            int thresholdTime = drop.OwnerExpireTime > 0
+                ? drop.OwnerExpireTime
+                : drop.SpawnTime + OWNER_PRIORITY_DURATION;
+            return currentTime - thresholdTime > 0;
+        }
+
+        private static bool IsOtherOwnerSourcedDropPastPetPickupOthersThreshold(
+            DropItem drop,
+            int ownerId,
+            int currentTime)
+        {
+            return drop != null
+                && drop.SourceId != 0
+                && drop.OwnerId > 0
+                && ownerId > 0
+                && drop.OwnerId != ownerId
+                && IsPastPetPickupOthersThreshold(drop, currentTime);
+        }
+
+        private static bool CanMobPickup(DropItem drop)
+        {
+            return drop != null && drop.IsReal;
+        }
+
+        private bool IsClientPickupBlocked(DropItem drop)
+        {
+            return drop != null
+                && drop.Type != DropType.Meso
+                && _clientPickupBlockEvaluator?.Invoke(drop) == true;
+        }
+
+        private bool AreActorsPartyLinked(int ownerId, int actorId)
+        {
+            if (ownerId == 0 || actorId == 0)
+            {
+                return false;
+            }
+
+            if (ownerId == actorId)
+            {
+                return true;
+            }
+
+            return _partyPickupMembershipEvaluator?.Invoke(ownerId, actorId) == true;
+        }
+
+        internal static bool IsWithinClientPickupRect(
+            float actorX,
+            float actorY,
+            float dropX,
+            float dropY,
+            int halfWidth,
+            int topOffset,
+            int bottomOffset)
+        {
+            return dropX >= actorX - halfWidth
+                && dropX <= actorX + halfWidth
+                && dropY >= actorY - topOffset
+                && dropY <= actorY + bottomOffset;
+        }
+
+        private static int CalculateParabolicMotionDuration(float startY, float targetY, bool explosiveOwnership, bool elongatedEnter)
+        {
+            float launchVelocity = explosiveOwnership ? 720f : 400f;
+            float verticalDistance = Math.Max(0f, targetY - startY);
+            float discriminant = (launchVelocity * launchVelocity) + (1600f * verticalDistance);
+            float durationSeconds = (launchVelocity + MathF.Sqrt(discriminant)) / 800f;
+            int durationMs = Math.Max(500, (int)MathF.Ceiling(durationSeconds * 1000f));
+            return elongatedEnter ? durationMs * 2 : durationMs;
+        }
+
+        private static void SnapDropToPacketIdle(DropItem drop, int currentTime)
+        {
+            drop.State = DropState.Idle;
+            drop.X = drop.TargetX;
+            drop.Y = drop.TargetY;
+            drop.VelocityX = 0f;
+            drop.VelocityY = 0f;
+            drop.LastStateChangeTime = currentTime;
+            drop.MotionElapsedMs = 0;
+            drop.MotionLastUpdateTime = currentTime;
+        }
+
+        private void ApplyMesoVisuals(DropItem drop, bool packetControlled)
+        {
+            if (drop == null || drop.Type != DropType.Meso)
+            {
+                return;
+            }
+
+            int iconType = GetMoneyIconTypeForAmount(drop.MesoAmount);
+            List<IDXObject> frames = _mesoAnimationFrames[iconType];
+            if (frames != null && frames.Count > 0)
+            {
+                drop.AnimFrames = frames;
+                drop.Icon = frames[0];
+            }
+
+            drop.MesoAnimationIconType = iconType;
+            drop.UseLayeredMesoAnimation = packetControlled && frames != null && frames.Count > 1;
+            drop.MesoAnimationLayerCount = drop.UseLayeredMesoAnimation
+                ? PacketOwnedMesoAnimationPresentation.ResolveLayerCount(iconType, frames.Count)
+                : 0;
+        }
+
+        private bool TryApplyPacketItemVisuals(DropItem drop, string itemId)
+        {
+            if (drop == null || string.IsNullOrWhiteSpace(itemId))
+            {
+                return false;
+            }
+
+            if (!_packetItemVisualFrames.TryGetValue(itemId, out List<IDXObject> frames))
+            {
+                frames = _packetItemVisualResolver?.Invoke(itemId)?
+                    .Where(frame => frame != null)
+                    .ToList();
+                _packetItemVisualFrames[itemId] = frames;
+            }
+
+            if (frames == null || frames.Count == 0)
+            {
+                return false;
+            }
+
+            drop.AnimFrames = frames;
+            drop.Icon = frames[0];
+            return true;
         }
 
         #endregion

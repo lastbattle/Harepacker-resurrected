@@ -1,0 +1,1185 @@
+using System;
+using System.Buffers.Binary;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using MapleLib.PacketLib;
+using MapleLib.WzLib;
+using MapleLib.WzLib.WzProperties;
+using HaCreator.MapSimulator.Interaction;
+using MapleLib.Img;
+
+namespace HaCreator.MapSimulator.Managers
+{
+    internal enum AccountMoreInfoEditableField
+    {
+        AreaGroup = 0,
+        AreaDetail = 1,
+        BirthYear = 2,
+        BirthMonth = 3,
+        BirthDay = 4,
+    }
+
+    internal sealed class AccountMoreInfoOwnerSnapshot
+    {
+        public bool IsOpen { get; init; }
+        public bool IsFirstEntry { get; init; }
+        public bool HasLoadedProfile { get; init; }
+        public bool LoadPending { get; init; }
+        public bool SavePending { get; init; }
+        public int AreaGroup { get; init; }
+        public int AreaDetail { get; init; }
+        public string AreaGroupText { get; init; } = string.Empty;
+        public string AreaDetailText { get; init; } = string.Empty;
+        public int BirthYear { get; init; }
+        public int BirthMonth { get; init; }
+        public int BirthDay { get; init; }
+        public IReadOnlyList<AccountMoreInfoComboItem> AreaGroupItems { get; init; } = Array.Empty<AccountMoreInfoComboItem>();
+        public IReadOnlyList<AccountMoreInfoComboItem> AreaDetailItems { get; init; } = Array.Empty<AccountMoreInfoComboItem>();
+        public IReadOnlyList<AccountMoreInfoComboItem> BirthYearItems { get; init; } = Array.Empty<AccountMoreInfoComboItem>();
+        public IReadOnlyList<AccountMoreInfoComboItem> BirthMonthItems { get; init; } = Array.Empty<AccountMoreInfoComboItem>();
+        public IReadOnlyList<AccountMoreInfoComboItem> BirthDayItems { get; init; } = Array.Empty<AccountMoreInfoComboItem>();
+        public IReadOnlyList<string> PlayStyleLabels { get; init; } = Array.Empty<string>();
+        public IReadOnlyList<bool> PlayStyleSelections { get; init; } = Array.Empty<bool>();
+        public IReadOnlyList<string> ActivityLabels { get; init; } = Array.Empty<string>();
+        public IReadOnlyList<bool> ActivitySelections { get; init; } = Array.Empty<bool>();
+        public string GenderStatusText { get; init; } = string.Empty;
+        public string StatusText { get; init; } = string.Empty;
+        public string LastDispatchText { get; init; } = string.Empty;
+    }
+
+    internal sealed class AccountMoreInfoComboItem
+    {
+        public int Value { get; init; }
+
+        public string Text { get; init; } = string.Empty;
+    }
+
+    internal sealed class AccountMoreInfoRuntime
+    {
+        internal const int ClientOpcode = 193;
+        internal const string CountryNameRootPath = "Etc/CountryName.img";
+        private const int LoadResultPayloadLength = 17;
+        private const int SaveResultPayloadLength = 2;
+        private const uint ClientPlayStyleMask = (1u << 5) - 1u;
+        private const uint ClientActivityMask = (1u << 19) - 1u;
+        private static readonly string[] PlayStyleLabels =
+        {
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+        };
+
+        private static readonly string[] ActivityLabels =
+        {
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+        };
+
+        private static readonly object CountryNameCatalogSync = new();
+        private static bool _countryNameCatalogLoaded;
+        private static bool _hasCountryNameCatalogData;
+        private static IReadOnlyDictionary<int, string> _areaGroupDisplayNames = new Dictionary<int, string>();
+        private static IReadOnlyDictionary<int, IReadOnlyDictionary<int, string>> _areaDetailDisplayNames = new Dictionary<int, IReadOnlyDictionary<int, string>>();
+        private static IReadOnlyList<int> _areaGroupItemParams = Array.Empty<int>();
+        private static IReadOnlyDictionary<int, IReadOnlyList<int>> _areaDetailItemParams = new Dictionary<int, IReadOnlyList<int>>();
+
+        private bool _isOpen;
+        private bool _isFirstEntry;
+        private bool _hasLoadedProfile;
+        private bool _loadPending;
+        private bool _savePending;
+        private int _areaGroup;
+        private int _areaDetail;
+        private int _birthYear = GetDefaultBirthYear();
+        private int _birthMonth = 1;
+        private int _birthDay = 1;
+        private uint _playStyleMask;
+        private uint _activityMask;
+        private byte? _lastGender;
+        private int _lastGenderTick = int.MinValue;
+        private string _statusText = "Account-more-info owner idle.";
+        private string _lastDispatchText = string.Empty;
+
+        internal bool IsOpen => _isOpen;
+
+        internal bool OpenOrRefreshFromPacket(bool firstEntry)
+        {
+            if (_isOpen)
+            {
+                _isFirstEntry = firstEntry;
+                _statusText = "CWvsContext::OnAccountMoreInfo subtype 0 refreshed the existing owner without issuing a duplicate load request.";
+                return false;
+            }
+
+            Open(firstEntry);
+            return true;
+        }
+
+        internal void Open(bool firstEntry)
+        {
+            ResetDraftToClientDefaults();
+            _isOpen = true;
+            _isFirstEntry = firstEntry;
+            _hasLoadedProfile = false;
+            _loadPending = true;
+            _savePending = false;
+            _statusText = firstEntry
+                ? "CWvsContext::OnAccountMoreInfo subtype 0 opened UI owner 40 and queued a load request."
+                : "Account-more-info owner reopened and queued a load request.";
+            _lastDispatchText = string.Empty;
+        }
+
+        internal bool Close(string reason = null)
+        {
+            bool shouldShowFirstEntryCloseNotice = _isFirstEntry;
+            _isOpen = false;
+            _isFirstEntry = false;
+            _loadPending = false;
+            _savePending = false;
+            if (!string.IsNullOrWhiteSpace(reason))
+            {
+                _statusText = reason.Trim();
+            }
+
+            return shouldShowFirstEntryCloseNotice;
+        }
+
+        internal void RecordDispatchStatus(string status)
+        {
+            _lastDispatchText = status?.Trim() ?? string.Empty;
+        }
+
+        internal void ApplySetGender(byte gender, int currentTick)
+        {
+            _lastGender = gender;
+            _lastGenderTick = currentTick;
+            _statusText = $"Applied adjacent CWvsContext::OnSetGender mutation with raw gender byte {gender}.";
+        }
+
+        internal byte[] BuildLoadRequestPayload()
+        {
+            _loadPending = true;
+            return new byte[] { 1 };
+        }
+
+        internal byte[] BuildSaveRequestPayload()
+        {
+            if (!CanBuildSaveRequestPayload())
+            {
+                return null;
+            }
+
+            uint playStyleMask = MaskClientPlayStyleBits(_playStyleMask);
+            uint activityMask = MaskClientActivityBits(_activityMask);
+            _playStyleMask = playStyleMask;
+            _activityMask = activityMask;
+
+            using PacketWriter writer = new();
+            writer.WriteByte(3);
+            writer.Write(BuildClientAreaCodeForSave(_areaGroup, _areaDetail));
+            writer.Write(BuildClientBirthdayForSave(_birthYear, _birthMonth, _birthDay));
+            writer.Write(playStyleMask);
+            writer.Write(activityMask);
+            _savePending = true;
+            _isFirstEntry = false;
+            _statusText = "Queued an account-more-info save request and disabled further saves until server subtype 4 returns.";
+            return writer.ToArray();
+        }
+
+        internal bool CanBuildSaveRequestPayload()
+        {
+            return _isOpen && !_loadPending && !_savePending;
+        }
+
+        internal bool TryApplyLoadResult(byte[] payload, out string message)
+        {
+            if (!_isOpen)
+            {
+                message = "Ignored account-more-info load result because the owner was not open.";
+                return false;
+            }
+
+            if (payload == null || payload.Length < LoadResultPayloadLength)
+            {
+                message = "Account-more-info load result payload was shorter than the client-owned 16-byte body.";
+                return false;
+            }
+
+            uint area = BinaryPrimitives.ReadUInt32LittleEndian(payload.AsSpan(1, 4));
+            uint birthday = BinaryPrimitives.ReadUInt32LittleEndian(payload.AsSpan(5, 4));
+            // CUIAccountMoreInfo::OnLoadAccountMoreInfoResult only calls
+            // CCtrlCheckBox::SetChecked for bits present in the packet body;
+            // it does not clear previously checked boxes on a later load.
+            _playStyleMask = MaskClientPlayStyleBits(
+                _playStyleMask | BinaryPrimitives.ReadUInt32LittleEndian(payload.AsSpan(9, 4)));
+            _activityMask = MaskClientActivityBits(
+                _activityMask | BinaryPrimitives.ReadUInt32LittleEndian(payload.AsSpan(13, 4)));
+
+            int requestedAreaGroup = (int)(area & 0xFF);
+            int requestedAreaDetail = (int)((area >> 8) & 0xFF);
+            int requestedBirthYear = (int)(birthday / 10000);
+            int requestedBirthMonth = (int)((birthday / 100) % 100);
+            int requestedBirthDay = (int)(birthday % 100);
+
+            _areaGroup = ResolveLoadedAreaGroup(requestedAreaGroup);
+            _areaDetail = ResolveLoadedAreaDetail(_areaGroup, requestedAreaDetail);
+            _birthYear = ResolveLoadedBirthYearFromCurrent(requestedBirthYear, _birthYear);
+            _birthMonth = ResolveLoadedBirthMonthFromCurrent(requestedBirthMonth, _birthMonth);
+            _birthDay = ResolveLoadedBirthDayFromCurrent(_birthYear, _birthMonth, requestedBirthDay, _birthDay);
+            _hasLoadedProfile = true;
+            _loadPending = false;
+            _savePending = false;
+            _statusText = "Applied server subtype 2 load result onto the dedicated account-more-info owner.";
+            message = $"Applied account-more-info load result: area=0x{area:X8}, birthday={birthday}, playMask=0x{_playStyleMask:X8}, activityMask=0x{_activityMask:X8}.";
+            return true;
+        }
+
+        internal bool TryApplySaveResult(byte[] payload, out bool succeeded, out string message)
+        {
+            succeeded = false;
+            if (!_isOpen)
+            {
+                message = "Ignored account-more-info save result because the owner was not open.";
+                return false;
+            }
+
+            if (payload == null || payload.Length < SaveResultPayloadLength)
+            {
+                message = "Account-more-info save result payload was shorter than the client-owned success byte.";
+                return false;
+            }
+
+            succeeded = payload[1] != 0;
+            _savePending = false;
+            if (succeeded)
+            {
+                Close("Account-more-info save completed and the client-owned owner closed.");
+                message = "Applied account-more-info save result: success.";
+                return true;
+            }
+
+            _statusText = "Server subtype 4 save result failed, so the owner stayed open and re-enabled saving.";
+            message = "Applied account-more-info save result: failure.";
+            return true;
+        }
+
+        internal void AdjustField(AccountMoreInfoEditableField field, int delta)
+        {
+            if (!CanEditDraft() || delta == 0)
+            {
+                return;
+            }
+
+            switch (field)
+            {
+                case AccountMoreInfoEditableField.AreaGroup:
+                    _areaGroup = AdjustAreaGroup(_areaGroup, delta);
+                    _areaDetail = 0;
+                    break;
+
+                case AccountMoreInfoEditableField.AreaDetail:
+                    _areaDetail = AdjustAreaDetail(_areaGroup, _areaDetail, delta);
+                    break;
+
+                case AccountMoreInfoEditableField.BirthYear:
+                    _birthYear = Wrap(_birthYear + delta, GetMinimumBirthYear(), DateTime.Now.Year);
+                    _birthDay = Math.Min(_birthDay, DateTime.DaysInMonth(_birthYear, _birthMonth));
+                    break;
+
+                case AccountMoreInfoEditableField.BirthMonth:
+                    _birthMonth = Wrap(_birthMonth + delta, 1, 12);
+                    _birthDay = Math.Min(_birthDay, DateTime.DaysInMonth(_birthYear, _birthMonth));
+                    break;
+
+                case AccountMoreInfoEditableField.BirthDay:
+                    _birthDay = Wrap(_birthDay + delta, 1, DateTime.DaysInMonth(_birthYear, _birthMonth));
+                    break;
+            }
+
+            _statusText = "Adjusted account-more-info draft state inside the dedicated owner.";
+        }
+
+        internal void SelectField(AccountMoreInfoEditableField field, int value)
+        {
+            if (!CanEditDraft())
+            {
+                return;
+            }
+
+            switch (field)
+            {
+                case AccountMoreInfoEditableField.AreaGroup:
+                    _areaGroup = ResolveLoadedAreaGroup(value);
+                    _areaDetail = 0;
+                    break;
+
+                case AccountMoreInfoEditableField.AreaDetail:
+                    _areaDetail = ResolveLoadedAreaDetail(_areaGroup, value);
+                    break;
+
+                case AccountMoreInfoEditableField.BirthYear:
+                    _birthYear = ResolveLoadedBirthYear(value);
+                    _birthDay = Math.Min(_birthDay, DateTime.DaysInMonth(_birthYear, _birthMonth));
+                    break;
+
+                case AccountMoreInfoEditableField.BirthMonth:
+                    _birthMonth = ResolveLoadedBirthMonth(value);
+                    _birthDay = Math.Min(_birthDay, DateTime.DaysInMonth(_birthYear, _birthMonth));
+                    break;
+
+                case AccountMoreInfoEditableField.BirthDay:
+                    _birthDay = ResolveLoadedBirthDay(_birthYear, _birthMonth, value);
+                    break;
+            }
+
+            _statusText = "Selected an account-more-info combo item inside the dedicated owner.";
+        }
+
+        internal void TogglePlayStyle(int index)
+        {
+            if (!CanEditDraft() || index < 0 || index >= PlayStyleLabels.Length)
+            {
+                return;
+            }
+
+            _playStyleMask = MaskClientPlayStyleBits(_playStyleMask ^ (1u << index));
+            _statusText = $"Toggled play-style bit {index + 1}.";
+        }
+
+        internal void ToggleActivity(int index)
+        {
+            if (!CanEditDraft() || index < 0 || index >= ActivityLabels.Length)
+            {
+                return;
+            }
+
+            _activityMask = MaskClientActivityBits(_activityMask ^ (1u << index));
+            _statusText = $"Toggled activity bit {index + 1}.";
+        }
+
+        internal AccountMoreInfoOwnerSnapshot BuildSnapshot()
+        {
+            return new AccountMoreInfoOwnerSnapshot
+            {
+                IsOpen = _isOpen,
+                IsFirstEntry = _isFirstEntry,
+                HasLoadedProfile = _hasLoadedProfile,
+                LoadPending = _loadPending,
+                SavePending = _savePending,
+                AreaGroup = _areaGroup,
+                AreaDetail = _areaDetail,
+                AreaGroupText = ResolveAreaGroupComboText(_areaGroup),
+                AreaDetailText = ResolveAreaDetailComboText(_areaGroup, _areaDetail),
+                BirthYear = _birthYear,
+                BirthMonth = _birthMonth,
+                BirthDay = _birthDay,
+                AreaGroupItems = BuildAreaGroupComboItems(),
+                AreaDetailItems = BuildAreaDetailComboItems(_areaGroup),
+                BirthYearItems = BuildBirthYearComboItems(),
+                BirthMonthItems = BuildBirthMonthComboItems(),
+                BirthDayItems = BuildBirthDayComboItems(_birthYear, _birthMonth),
+                PlayStyleLabels = PlayStyleLabels,
+                PlayStyleSelections = Enumerable.Range(0, PlayStyleLabels.Length)
+                    .Select(index => ((_playStyleMask >> index) & 1u) != 0)
+                    .ToArray(),
+                ActivityLabels = ActivityLabels,
+                ActivitySelections = Enumerable.Range(0, ActivityLabels.Length)
+                    .Select(index => ((_activityMask >> index) & 1u) != 0)
+                    .ToArray(),
+                GenderStatusText = BuildGenderStatusText(),
+                StatusText = _statusText,
+                LastDispatchText = _lastDispatchText
+            };
+        }
+
+        internal static bool TryResolveSubtype(byte[] payload, out byte subtype, out string error)
+        {
+            subtype = 0;
+            error = null;
+            if (payload == null || payload.Length == 0)
+            {
+                return true;
+            }
+
+            subtype = payload[0];
+            return true;
+        }
+
+        internal static bool ResolveFirstEntryFlagFromOpenPayload(byte[] payload)
+        {
+            // CWvsContext::OnAccountMoreInfo subtype 0 carries the owner-local
+            // m_bMoreInfoFirst byte after the subtype when the server includes
+            // it. Older simulator injections only provided the subtype; keep
+            // those on the first-entry branch so existing packet scripts still
+            // exercise the prompt/close-notice path.
+            return payload == null || payload.Length < 2 || payload[1] != 0;
+        }
+
+        internal static string ResolveAreaGroupComboText(int areaCode)
+        {
+            EnsureCountryNameCatalogLoaded();
+            if (_areaGroupDisplayNames.TryGetValue(areaCode, out string displayName)
+                && !string.IsNullOrWhiteSpace(displayName))
+            {
+                return displayName;
+            }
+
+            return ResolveRegionComboText(areaCode);
+        }
+
+        internal static string ResolveAreaDetailComboText(int areaGroup, int areaCode)
+        {
+            EnsureCountryNameCatalogLoaded();
+            if (_areaDetailDisplayNames.TryGetValue(areaGroup, out IReadOnlyDictionary<int, string> detailDisplayNames)
+                && detailDisplayNames != null
+                && detailDisplayNames.TryGetValue(areaCode, out string displayName)
+                && !string.IsNullOrWhiteSpace(displayName))
+            {
+                return displayName;
+            }
+
+            return ResolveRegionComboText(areaCode);
+        }
+
+        internal static string ResolveRegionComboText(int areaCode)
+        {
+            return areaCode == 0
+                ? AccountMoreInfoOwnerStringPoolText.ResolveDefaultRegionItem()
+                : FormatComboNumericValue(areaCode);
+        }
+
+        internal static IReadOnlyList<AccountMoreInfoComboItem> BuildCountryNameComboItems(
+            IReadOnlyList<int> itemParams,
+            Func<int, string> textResolver)
+        {
+            if (itemParams == null || itemParams.Count == 0)
+            {
+                return new[]
+                {
+                    new AccountMoreInfoComboItem
+                    {
+                        Value = 0,
+                        Text = ResolveRegionComboText(0)
+                    }
+                };
+            }
+
+            List<AccountMoreInfoComboItem> items = new(itemParams.Count);
+            foreach (int itemParam in itemParams)
+            {
+                string text = textResolver?.Invoke(itemParam);
+                items.Add(new AccountMoreInfoComboItem
+                {
+                    Value = itemParam,
+                    Text = string.IsNullOrWhiteSpace(text) ? ResolveRegionComboText(itemParam) : text
+                });
+            }
+
+            return items;
+        }
+
+        internal static string FormatBirthdayComboText(int value)
+        {
+            return FormatComboNumericValue(Math.Max(0, value));
+        }
+
+        internal static string ResolveAreaDetailCountryNamePath(int areaGroup)
+        {
+            return $"{CountryNameRootPath}/{Math.Max(0, areaGroup)}";
+        }
+
+        internal static string FormatComboNumericValue(int value)
+        {
+            return value.ToString(CultureInfo.InvariantCulture);
+        }
+
+        internal static uint BuildClientAreaCodeForSave(int areaGroup, int areaDetail)
+        {
+            // SendSaveAccountMoreInfoRequest writes the selected combo item
+            // params directly as area0 | (area1 << 8). Do not narrow here;
+            // recovered data sets with wider params should round-trip through
+            // the outbound request exactly like the client.
+            return (uint)(Math.Max(0, areaGroup) | (Math.Max(0, areaDetail) << 8));
+        }
+
+        internal static uint BuildClientBirthdayForSave(int year, int month, int day)
+        {
+            int resolvedYear = ResolveLoadedBirthYear(year);
+            int resolvedMonth = ResolveLoadedBirthMonth(month);
+            int resolvedDay = ResolveLoadedBirthDay(resolvedYear, resolvedMonth, day);
+            return (uint)((resolvedYear * 10000) + (resolvedMonth * 100) + resolvedDay);
+        }
+
+        internal static uint MaskClientPlayStyleBits(uint value)
+        {
+            return value & ClientPlayStyleMask;
+        }
+
+        internal static uint MaskClientActivityBits(uint value)
+        {
+            return value & ClientActivityMask;
+        }
+
+        internal static IReadOnlyDictionary<int, string> BuildCountryNameLookup(IPropertyContainer propertyContainer)
+        {
+            Dictionary<int, string> lookup = new();
+            if (propertyContainer?.WzProperties == null)
+            {
+                return lookup;
+            }
+
+            lookup[0] = AccountMoreInfoOwnerStringPoolText.ResolveDefaultRegionItem();
+            foreach (WzImageProperty child in propertyContainer.WzProperties)
+            {
+                if (!TryGetCountryNameEntry(child, out int id, out string name))
+                {
+                    continue;
+                }
+
+                lookup[id] = name;
+            }
+
+            return lookup;
+        }
+
+        internal static IReadOnlyList<int> BuildClientSortedCountryNameItemParams(IReadOnlyDictionary<int, string> lookup)
+        {
+            if (lookup == null || lookup.Count == 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            Dictionary<string, int> nameToItemParam = new(StringComparer.Ordinal);
+            List<string> sortedNames = new();
+            foreach (KeyValuePair<int, string> entry in lookup)
+            {
+                if (entry.Key == 0 || string.IsNullOrWhiteSpace(entry.Value))
+                {
+                    continue;
+                }
+
+                // CUIAccountMoreInfo::LoadCountryName keeps a sorted name list and
+                // resolves each displayed name through a name->SN map on insertion.
+                // If duplicate names exist, later entries overwrite the map slot.
+                sortedNames.Add(entry.Value);
+                nameToItemParam[entry.Value] = entry.Key;
+            }
+
+            if (sortedNames.Count == 0)
+            {
+                return new[] { 0 };
+            }
+
+            sortedNames.Sort(StringComparer.Ordinal);
+            List<int> itemParams = new(sortedNames.Count + 1) { 0 };
+            foreach (string name in sortedNames)
+            {
+                if (nameToItemParam.TryGetValue(name, out int itemParam))
+                {
+                    itemParams.Add(itemParam);
+                }
+            }
+
+            return itemParams;
+        }
+
+        internal static int SelectClientComboItemParamForLoad(int requestedValue, IReadOnlyList<int> itemParams, int fallbackValue = 0)
+        {
+            if (itemParams == null || itemParams.Count == 0)
+            {
+                return fallbackValue;
+            }
+
+            foreach (int itemParam in itemParams)
+            {
+                if (itemParam == requestedValue)
+                {
+                    return itemParam;
+                }
+            }
+
+            return fallbackValue;
+        }
+
+        internal static int ResolveLoadedBirthYear(int requestedYear)
+        {
+            return requestedYear >= GetMinimumBirthYear() && requestedYear <= DateTime.Now.Year
+                ? requestedYear
+                : GetDefaultBirthYear();
+        }
+
+        internal static int ResolveLoadedBirthMonth(int requestedMonth)
+        {
+            return requestedMonth >= 1 && requestedMonth <= 12
+                ? requestedMonth
+                : 1;
+        }
+
+        internal static int ResolveLoadedBirthYearFromCurrent(int requestedYear, int currentYear)
+        {
+            return requestedYear >= GetMinimumBirthYear() && requestedYear <= DateTime.Now.Year
+                ? requestedYear
+                : ResolveLoadedBirthYear(currentYear);
+        }
+
+        internal static int ResolveLoadedBirthMonthFromCurrent(int requestedMonth, int currentMonth)
+        {
+            return requestedMonth >= 1 && requestedMonth <= 12
+                ? requestedMonth
+                : ResolveLoadedBirthMonth(currentMonth);
+        }
+
+        internal static int ResolveLoadedBirthDay(int resolvedYear, int resolvedMonth, int requestedDay)
+        {
+            int safeYear = ResolveLoadedBirthYear(resolvedYear);
+            int safeMonth = ResolveLoadedBirthMonth(resolvedMonth);
+            int maxDay = DateTime.DaysInMonth(safeYear, safeMonth);
+            return requestedDay >= 1 && requestedDay <= maxDay
+                ? requestedDay
+                : 1;
+        }
+
+        internal static int ResolveLoadedBirthDayFromCurrent(
+            int resolvedYear,
+            int resolvedMonth,
+            int requestedDay,
+            int currentDay)
+        {
+            int safeYear = ResolveLoadedBirthYear(resolvedYear);
+            int safeMonth = ResolveLoadedBirthMonth(resolvedMonth);
+            int maxDay = DateTime.DaysInMonth(safeYear, safeMonth);
+            if (requestedDay >= 1 && requestedDay <= maxDay)
+            {
+                return requestedDay;
+            }
+
+            return Math.Clamp(currentDay, 1, maxDay);
+        }
+
+        internal static IReadOnlyList<AccountMoreInfoComboItem> BuildBirthYearComboItems()
+        {
+            int minYear = GetMinimumBirthYear();
+            int maxYear = DateTime.Now.Year;
+            List<AccountMoreInfoComboItem> items = new((maxYear - minYear) + 1);
+            for (int year = minYear; year <= maxYear; year++)
+            {
+                items.Add(new AccountMoreInfoComboItem
+                {
+                    Value = year,
+                    Text = FormatComboNumericValue(year)
+                });
+            }
+
+            return items;
+        }
+
+        internal static IReadOnlyList<AccountMoreInfoComboItem> BuildBirthMonthComboItems()
+        {
+            List<AccountMoreInfoComboItem> items = new(12);
+            for (int month = 1; month <= 12; month++)
+            {
+                items.Add(new AccountMoreInfoComboItem
+                {
+                    Value = month,
+                    Text = FormatComboNumericValue(month)
+                });
+            }
+
+            return items;
+        }
+
+        internal static IReadOnlyList<AccountMoreInfoComboItem> BuildBirthDayComboItems(int year, int month)
+        {
+            int safeYear = ResolveLoadedBirthYear(year);
+            int safeMonth = ResolveLoadedBirthMonth(month);
+            int maxDay = DateTime.DaysInMonth(safeYear, safeMonth);
+            List<AccountMoreInfoComboItem> items = new(maxDay);
+            for (int day = 1; day <= maxDay; day++)
+            {
+                items.Add(new AccountMoreInfoComboItem
+                {
+                    Value = day,
+                    Text = FormatComboNumericValue(day)
+                });
+            }
+
+            return items;
+        }
+
+        private static int Wrap(int value, int minInclusive, int maxInclusive)
+        {
+            if (minInclusive >= maxInclusive)
+            {
+                return minInclusive;
+            }
+
+            int span = (maxInclusive - minInclusive) + 1;
+            int normalized = value - minInclusive;
+            normalized %= span;
+            if (normalized < 0)
+            {
+                normalized += span;
+            }
+
+            return minInclusive + normalized;
+        }
+
+        private static int GetMinimumBirthYear()
+        {
+            return DateTime.Now.Year - 100;
+        }
+
+        private static int GetDefaultBirthYear()
+        {
+            // CUIAccountMoreInfo::SetBrithDayComboBox selects m_uCount - 15
+            // from the inclusive currentYear-100..currentYear year list.
+            return DateTime.Now.Year - 14;
+        }
+
+        private static int ClampBirthYear(int year)
+        {
+            return Math.Clamp(year, GetMinimumBirthYear(), DateTime.Now.Year);
+        }
+
+        private void ResetDraftToClientDefaults()
+        {
+            _areaGroup = 0;
+            _areaDetail = 0;
+            _birthYear = GetDefaultBirthYear();
+            _birthMonth = 1;
+            _birthDay = 1;
+            _playStyleMask = 0;
+            _activityMask = 0;
+        }
+
+        private bool CanEditDraft()
+        {
+            return _isOpen && !_loadPending && !_savePending;
+        }
+
+        private static void EnsureCountryNameCatalogLoaded()
+        {
+            if (_countryNameCatalogLoaded)
+            {
+                return;
+            }
+
+            lock (CountryNameCatalogSync)
+            {
+                if (_countryNameCatalogLoaded)
+                {
+                    return;
+                }
+
+                Dictionary<int, string> areaGroups = new();
+                Dictionary<int, IReadOnlyDictionary<int, string>> areaDetails = new();
+                Dictionary<int, IReadOnlyList<int>> areaDetailItemParams = new();
+                TryPopulateCountryNameCatalog(areaGroups, areaDetails, areaDetailItemParams);
+
+                if (!areaGroups.ContainsKey(0))
+                {
+                    areaGroups[0] = AccountMoreInfoOwnerStringPoolText.ResolveDefaultRegionItem();
+                }
+
+                _hasCountryNameCatalogData = areaGroups.Count > 1;
+                _areaGroupDisplayNames = areaGroups;
+                _areaDetailDisplayNames = areaDetails;
+                _areaGroupItemParams = BuildClientSortedCountryNameItemParams(areaGroups);
+                _areaDetailItemParams = areaDetailItemParams;
+                _countryNameCatalogLoaded = true;
+            }
+        }
+
+        private static void TryPopulateCountryNameCatalog(
+            IDictionary<int, string> areaGroups,
+            IDictionary<int, IReadOnlyDictionary<int, string>> areaDetails,
+            IDictionary<int, IReadOnlyList<int>> areaDetailItemParams)
+        {
+            if (areaGroups == null || areaDetails == null || areaDetailItemParams == null)
+            {
+                return;
+            }
+
+            string currentDirectoryPath = HaCreator.Program.DataSource?.VersionInfo?.DirectoryPath;
+            string preferredDirectoryPath = AccountMoreInfoOwnerStringPoolText.GetPreferredAccountMoreInfoDataSourceDirectory();
+            if (ShouldTryPreferredCountryNameDataSourceBeforeActive(preferredDirectoryPath, currentDirectoryPath)
+                && TryPopulateCountryNameCatalogFromDirectory(preferredDirectoryPath, areaGroups, areaDetails, areaDetailItemParams))
+            {
+                AccountMoreInfoOwnerStringPoolText.RememberPreferredAccountMoreInfoDataSourceDirectory(preferredDirectoryPath);
+                return;
+            }
+
+            WzImage countryNameImage = HaCreator.Program.FindImage("Etc", "CountryName.img");
+            if (TryPopulateCountryNameCatalogFromImage(countryNameImage, areaGroups, areaDetails, areaDetailItemParams))
+            {
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(currentDirectoryPath)
+                && TryPopulateCountryNameCatalogFromDirectory(currentDirectoryPath, areaGroups, areaDetails, areaDetailItemParams))
+            {
+                AccountMoreInfoOwnerStringPoolText.RememberPreferredAccountMoreInfoDataSourceDirectory(currentDirectoryPath);
+                return;
+            }
+
+            IReadOnlyList<string> fallbackDirectories = PrioritizePreferredDataSourceDirectory(
+                preferredDirectoryPath,
+                EnumerateFallbackCountryNameDataSourceDirectories(currentDirectoryPath));
+            foreach (string candidateDirectory in fallbackDirectories)
+            {
+                if (TryPopulateCountryNameCatalogFromDirectory(candidateDirectory, areaGroups, areaDetails, areaDetailItemParams))
+                {
+                    AccountMoreInfoOwnerStringPoolText.RememberPreferredAccountMoreInfoDataSourceDirectory(candidateDirectory);
+                    return;
+                }
+            }
+        }
+
+        internal static bool ShouldTryPreferredCountryNameDataSourceBeforeActive(
+            string preferredDirectoryPath,
+            string currentDirectoryPath)
+        {
+            if (string.IsNullOrWhiteSpace(preferredDirectoryPath))
+            {
+                return false;
+            }
+
+            try
+            {
+                string preferredFullPath = Path.GetFullPath(preferredDirectoryPath);
+                if (!Directory.Exists(preferredFullPath)
+                    || !File.Exists(Path.Combine(preferredFullPath, CountryNameRootPath.Replace('/', Path.DirectorySeparatorChar))))
+                {
+                    return false;
+                }
+
+                return string.IsNullOrWhiteSpace(currentDirectoryPath)
+                    || !string.Equals(
+                        preferredFullPath,
+                        Path.GetFullPath(currentDirectoryPath),
+                        StringComparison.OrdinalIgnoreCase);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static bool TryPopulateCountryNameCatalogFromDirectory(
+            string directoryPath,
+            IDictionary<int, string> areaGroups,
+            IDictionary<int, IReadOnlyDictionary<int, string>> areaDetails,
+            IDictionary<int, IReadOnlyList<int>> areaDetailItemParams)
+        {
+            if (string.IsNullOrWhiteSpace(directoryPath))
+            {
+                return false;
+            }
+
+            try
+            {
+                using ImgFileSystemDataSource dataSource = new(directoryPath);
+                WzImage image = dataSource.GetImage("Etc", "CountryName.img");
+                return TryPopulateCountryNameCatalogFromImage(image, areaGroups, areaDetails, areaDetailItemParams);
+            }
+            catch
+            {
+                // Ignore malformed or incompatible data sources and keep searching.
+                return false;
+            }
+        }
+
+        private static bool TryPopulateCountryNameCatalogFromImage(
+            WzImage countryNameImage,
+            IDictionary<int, string> areaGroups,
+            IDictionary<int, IReadOnlyDictionary<int, string>> areaDetails,
+            IDictionary<int, IReadOnlyList<int>> areaDetailItemParams)
+        {
+            if (countryNameImage == null)
+            {
+                return false;
+            }
+
+            countryNameImage.ParseImage();
+            IReadOnlyDictionary<int, string> groupLookup = BuildCountryNameLookup(countryNameImage);
+            foreach (KeyValuePair<int, string> entry in groupLookup)
+            {
+                areaGroups[entry.Key] = entry.Value;
+            }
+
+            foreach (WzImageProperty child in countryNameImage.WzProperties)
+            {
+                if (child is not IPropertyContainer container
+                    || !int.TryParse(child.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int areaGroup))
+                {
+                    continue;
+                }
+
+                IReadOnlyDictionary<int, string> detailLookup = BuildCountryNameLookup(container);
+                areaDetails[areaGroup] = detailLookup;
+                areaDetailItemParams[areaGroup] = BuildClientSortedCountryNameItemParams(detailLookup);
+            }
+
+            return areaGroups.Count > 1;
+        }
+
+        internal static IReadOnlyList<string> EnumerateFallbackCountryNameDataSourceDirectories(string currentDirectoryPath)
+        {
+            return AccountMoreInfoOwnerStringPoolText.EnumerateFallbackCountryNameDataSourceDirectories(currentDirectoryPath);
+        }
+
+        internal static IReadOnlyList<string> PrioritizePreferredDataSourceDirectory(
+            string preferredDirectoryPath,
+            IReadOnlyList<string> fallbackDirectories)
+        {
+            if (fallbackDirectories == null || fallbackDirectories.Count == 0)
+            {
+                return Array.Empty<string>();
+            }
+
+            List<string> ordered = new(fallbackDirectories.Count + 1);
+            if (!string.IsNullOrWhiteSpace(preferredDirectoryPath)
+                && fallbackDirectories.Any(directory => string.Equals(directory, preferredDirectoryPath, StringComparison.OrdinalIgnoreCase)))
+            {
+                ordered.Add(preferredDirectoryPath);
+            }
+
+            foreach (string directory in fallbackDirectories)
+            {
+                if (ordered.Any(existing => string.Equals(existing, directory, StringComparison.OrdinalIgnoreCase)))
+                {
+                    continue;
+                }
+
+                ordered.Add(directory);
+            }
+
+            return ordered;
+        }
+
+        private static int AdjustAreaGroup(int currentAreaGroup, int delta)
+        {
+            EnsureCountryNameCatalogLoaded();
+            return AdjustAreaGroupFromCatalogState(
+                _hasCountryNameCatalogData,
+                _areaGroupItemParams,
+                currentAreaGroup,
+                delta);
+        }
+
+        private static int AdjustAreaDetail(int currentAreaGroup, int currentAreaDetail, int delta)
+        {
+            EnsureCountryNameCatalogLoaded();
+            return AdjustAreaDetailFromCatalogState(
+                _hasCountryNameCatalogData,
+                _areaDetailItemParams,
+                currentAreaGroup,
+                currentAreaDetail,
+                delta);
+        }
+
+        private static int CycleCountryNameItemParam(IReadOnlyList<int> itemParams, int currentValue, int delta)
+        {
+            if (itemParams == null || itemParams.Count == 0)
+            {
+                return currentValue;
+            }
+
+            int currentIndex = -1;
+            for (int i = 0; i < itemParams.Count; i++)
+            {
+                if (itemParams[i] == currentValue)
+                {
+                    currentIndex = i;
+                    break;
+                }
+            }
+
+            if (currentIndex < 0)
+            {
+                currentIndex = 0;
+            }
+
+            return itemParams[Wrap(currentIndex + delta, 0, itemParams.Count - 1)];
+        }
+
+        private static int ResolveLoadedAreaGroup(int requestedAreaGroup)
+        {
+            EnsureCountryNameCatalogLoaded();
+            return ResolveLoadedAreaGroupFromCatalogState(
+                _hasCountryNameCatalogData,
+                requestedAreaGroup,
+                _areaGroupItemParams);
+        }
+
+        private static int ResolveLoadedAreaDetail(int selectedAreaGroup, int requestedAreaDetail)
+        {
+            EnsureCountryNameCatalogLoaded();
+            return ResolveLoadedAreaDetailFromCatalogState(
+                _hasCountryNameCatalogData,
+                selectedAreaGroup,
+                requestedAreaDetail,
+                _areaDetailItemParams);
+        }
+
+        internal static int ResolveLoadedAreaGroupFromCatalogState(
+            bool hasCountryNameCatalogData,
+            int requestedAreaGroup,
+            IReadOnlyList<int> areaGroupItemParams)
+        {
+            return hasCountryNameCatalogData
+                ? SelectClientComboItemParamForLoad(requestedAreaGroup, areaGroupItemParams)
+                : 0;
+        }
+
+        internal static int ResolveLoadedAreaDetailFromCatalogState(
+            bool hasCountryNameCatalogData,
+            int selectedAreaGroup,
+            int requestedAreaDetail,
+            IReadOnlyDictionary<int, IReadOnlyList<int>> areaDetailItemParams)
+        {
+            if (!hasCountryNameCatalogData)
+            {
+                return 0;
+            }
+
+            if (selectedAreaGroup <= 0)
+            {
+                return 0;
+            }
+
+            return areaDetailItemParams != null
+                && areaDetailItemParams.TryGetValue(selectedAreaGroup, out IReadOnlyList<int> itemParams)
+                    ? SelectClientComboItemParamForLoad(requestedAreaDetail, itemParams)
+                    : 0;
+        }
+
+        internal static int AdjustAreaGroupFromCatalogState(
+            bool hasCountryNameCatalogData,
+            IReadOnlyList<int> areaGroupItemParams,
+            int currentAreaGroup,
+            int delta)
+        {
+            if (!hasCountryNameCatalogData)
+            {
+                return 0;
+            }
+
+            return areaGroupItemParams != null && areaGroupItemParams.Count > 0
+                ? CycleCountryNameItemParam(areaGroupItemParams, currentAreaGroup, delta)
+                : 0;
+        }
+
+        internal static int AdjustAreaDetailFromCatalogState(
+            bool hasCountryNameCatalogData,
+            IReadOnlyDictionary<int, IReadOnlyList<int>> areaDetailItemParams,
+            int currentAreaGroup,
+            int currentAreaDetail,
+            int delta)
+        {
+            if (!hasCountryNameCatalogData)
+            {
+                return 0;
+            }
+
+            if (currentAreaGroup <= 0)
+            {
+                return 0;
+            }
+
+            return areaDetailItemParams != null
+                && areaDetailItemParams.TryGetValue(currentAreaGroup, out IReadOnlyList<int> itemParams)
+                && itemParams.Count > 0
+                    ? CycleCountryNameItemParam(itemParams, currentAreaDetail, delta)
+                    : 0;
+        }
+
+        private static IReadOnlyList<AccountMoreInfoComboItem> BuildAreaGroupComboItems()
+        {
+            EnsureCountryNameCatalogLoaded();
+            return BuildCountryNameComboItems(
+                _hasCountryNameCatalogData ? _areaGroupItemParams : new[] { 0 },
+                ResolveAreaGroupComboText);
+        }
+
+        private static IReadOnlyList<AccountMoreInfoComboItem> BuildAreaDetailComboItems(int selectedAreaGroup)
+        {
+            EnsureCountryNameCatalogLoaded();
+            if (!_hasCountryNameCatalogData
+                || selectedAreaGroup <= 0
+                || _areaDetailItemParams == null
+                || !_areaDetailItemParams.TryGetValue(selectedAreaGroup, out IReadOnlyList<int> itemParams))
+            {
+                itemParams = new[] { 0 };
+            }
+
+            return BuildCountryNameComboItems(
+                itemParams,
+                value => ResolveAreaDetailComboText(selectedAreaGroup, value));
+        }
+
+        private static bool TryGetCountryNameEntry(WzImageProperty child, out int id, out string name)
+        {
+            id = 0;
+            name = null;
+            if (!int.TryParse(child.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out id))
+            {
+                return false;
+            }
+
+            if (child is not IPropertyContainer container)
+            {
+                return false;
+            }
+
+            if (container["name"] is not WzStringProperty nameProperty
+                || string.IsNullOrWhiteSpace(nameProperty.Value))
+            {
+                return false;
+            }
+
+            name = nameProperty.Value;
+            return true;
+        }
+
+        private string BuildGenderStatusText()
+        {
+            if (!_lastGender.HasValue)
+            {
+                return "No adjacent OnSetGender mutation has been observed yet.";
+            }
+
+            string genderText = _lastGender.Value switch
+            {
+                0 => "male",
+                1 => "female",
+                _ => $"raw={_lastGender.Value}"
+            };
+
+            return _lastGenderTick == int.MinValue
+                ? $"Last adjacent OnSetGender mutation: {genderText}."
+                : $"Last adjacent OnSetGender mutation: {genderText} at tick {_lastGenderTick}.";
+        }
+    }
+}

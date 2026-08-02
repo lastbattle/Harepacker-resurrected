@@ -1,0 +1,973 @@
+using MapleLib.WzLib;
+using MapleLib.WzLib.WzProperties;
+using MapleLib.WzLib.WzStructure;
+using MapleLib.WzLib.WzStructure.Data;
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+
+namespace HaCreator.MapSimulator.Fields
+{
+    /// <summary>
+    /// Client-owned wrapper metadata for maps that bind through CField_DynamicFoothold.
+    /// The client-side Init body is effectively a stub, so the parity seam here focuses on
+    /// explicit ownership, map rebinding, and WZ foothold-root diagnostics instead of
+    /// inventing deeper behavior that has not been recovered yet.
+    /// </summary>
+    public sealed class DynamicFootholdField
+    {
+        public const int ClientFieldFactoryAddress = 0x53F220;
+        public const string ClientOwnerName = "CField_DynamicFoothold";
+        public const int ClientGetFieldTypeAddress = 0x551020;
+        public const int ClientInitStubAddress = 0x551050;
+
+        private bool _isActive;
+        private int _mapId;
+        private WzImage _contractImage;
+        private int _footholdLayerCount;
+        private int _footholdGroupCount;
+        private int _footholdSegmentCount;
+        private bool _hasWzFootholdRoot;
+        private int _contractMapId;
+        private int _linkedContractMapId;
+        private bool _usesLinkedContract;
+        private bool _linkedContractMissing;
+        private int _dynamicObjectLayerCount;
+        private int _dynamicObjectCount;
+        private int _dynamicEnabledObjectCount;
+        private readonly List<string> _authoredDynamicObjectNames = new();
+        private readonly List<string> _packetOwnedSnapshotDynamicObjectNames = new();
+        private readonly Dictionary<string, int> _authoredDynamicObjectPlatformByName = new(StringComparer.OrdinalIgnoreCase);
+
+        public bool IsActive => _isActive;
+        public int MapId => _mapId;
+        public WzImage ContractImage => _contractImage;
+        public int ContractMapId => _contractMapId;
+        public int LinkedContractMapId => _linkedContractMapId;
+        public bool UsesLinkedContract => _usesLinkedContract;
+        public bool LinkedContractMissing => _linkedContractMissing;
+        public int FootholdLayerCount => _footholdLayerCount;
+        public int FootholdGroupCount => _footholdGroupCount;
+        public int FootholdSegmentCount => _footholdSegmentCount;
+        public bool HasWzFootholdRoot => _hasWzFootholdRoot;
+        public int DynamicObjectLayerCount => _dynamicObjectLayerCount;
+        public int DynamicObjectCount => _dynamicObjectCount;
+        public int DynamicEnabledObjectCount => _dynamicEnabledObjectCount;
+
+        public void Configure(MapInfo mapInfo, DynamicFootholdSystem dynamicFootholds, Func<int, WzImage> linkedMapResolver = null)
+        {
+            dynamicFootholds?.ResetForClientOwnedWrapper();
+            Reset();
+
+            if (mapInfo?.fieldType != FieldType.FIELDTYPE_DYNAMICFOOTHOLD)
+            {
+                return;
+            }
+
+            _isActive = true;
+            _mapId = mapInfo.id;
+            _contractMapId = mapInfo.id;
+            LoadMapContractSummary(mapInfo, linkedMapResolver);
+        }
+
+        public string DescribeStatus(DynamicFootholdSystem dynamicFootholds)
+        {
+            if (!_isActive)
+            {
+                return "Dynamic foothold wrapper is inactive on this map.";
+            }
+
+            string wzSummary = _hasWzFootholdRoot
+                ? $"WZ foothold root present ({_footholdLayerCount} layers, {_footholdGroupCount} groups, {_footholdSegmentCount} segments)"
+                : "WZ foothold root unavailable";
+            string dynamicObjectSummary = _dynamicObjectCount > 0
+                ? $"map contract has {_dynamicObjectCount} dynamic-tagged object nodes across {_dynamicObjectLayerCount} layers ({_dynamicEnabledObjectCount} enabled)"
+                : "map contract has no dynamic-tagged object nodes";
+            string runtimeSummary = dynamicFootholds?.DescribeClientOwnedWrapperState() ?? "platforms=0, active=0, visible=0, moving=0";
+            string contractSummary = _usesLinkedContract
+                ? $"contractMap={_contractMapId} via info/link from map {_mapId}"
+                : _linkedContractMissing
+                    ? $"contractMap unresolved (info/link={_linkedContractMapId}), using local shell map {_mapId}"
+                    : $"contractMap={_contractMapId}";
+
+            return $"Dynamic foothold: active | factory=0x{ClientFieldFactoryAddress:X} | owner={ClientOwnerName} | getFieldType=0x{ClientGetFieldTypeAddress:X} | init=0x{ClientInitStubAddress:X} | map={_mapId} | fieldType={(int)FieldType.FIELDTYPE_DYNAMICFOOTHOLD} | {contractSummary} | {wzSummary} | {dynamicObjectSummary} | runtime {runtimeSummary}";
+        }
+
+        public void Reset()
+        {
+            _isActive = false;
+            _mapId = 0;
+            _contractImage = null;
+            _contractMapId = 0;
+            _linkedContractMapId = 0;
+            _usesLinkedContract = false;
+            _linkedContractMissing = false;
+            _footholdLayerCount = 0;
+            _footholdGroupCount = 0;
+            _footholdSegmentCount = 0;
+            _hasWzFootholdRoot = false;
+            _dynamicObjectLayerCount = 0;
+            _dynamicObjectCount = 0;
+            _dynamicEnabledObjectCount = 0;
+            _authoredDynamicObjectNames.Clear();
+            _packetOwnedSnapshotDynamicObjectNames.Clear();
+            _authoredDynamicObjectPlatformByName.Clear();
+        }
+
+        public bool TryResolveAuthoredDynamicObjectName(int platformId, out string name)
+        {
+            name = null;
+            if (platformId < 0 || platformId >= _authoredDynamicObjectNames.Count)
+            {
+                return false;
+            }
+
+            name = _authoredDynamicObjectNames[platformId];
+            return !string.IsNullOrWhiteSpace(name);
+        }
+
+        public bool TryResolvePacketOwnedSnapshotDynamicObjectName(int platformId, out string name)
+        {
+            name = null;
+            if (platformId < 0 || platformId >= _packetOwnedSnapshotDynamicObjectNames.Count)
+            {
+                return false;
+            }
+
+            name = _packetOwnedSnapshotDynamicObjectNames[platformId];
+            return !string.IsNullOrWhiteSpace(name);
+        }
+
+        public bool TryResolveAuthoredDynamicObjectPlatformId(string name, out int platformId)
+        {
+            platformId = -1;
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                return false;
+            }
+
+            string normalized = NormalizeDynamicObjectKey(name);
+            if (normalized.Length == 0)
+            {
+                return false;
+            }
+
+            return _authoredDynamicObjectPlatformByName.TryGetValue(normalized, out platformId);
+        }
+
+        private void LoadMapContractSummary(MapInfo mapInfo, Func<int, WzImage> linkedMapResolver)
+        {
+            WzImage mapImage = mapInfo?.Image;
+            if (mapImage == null)
+            {
+                return;
+            }
+
+            WzImage contractImage = ResolveContractImage(mapInfo, mapImage, linkedMapResolver);
+            _contractImage = contractImage;
+            EnsureImageParsed(contractImage);
+
+            if (!TryGetChildProperty(contractImage, "foothold", out WzImageProperty footholdRoot))
+            {
+                LoadDynamicObjectSummary(contractImage);
+                return;
+            }
+
+            _hasWzFootholdRoot = true;
+            if (footholdRoot.WzProperties == null)
+            {
+                LoadDynamicObjectSummary(contractImage);
+                return;
+            }
+
+            foreach (WzImageProperty layer in footholdRoot.WzProperties)
+            {
+                _footholdLayerCount++;
+                if (layer?.WzProperties == null)
+                {
+                    continue;
+                }
+
+                foreach (WzImageProperty group in layer.WzProperties)
+                {
+                    _footholdGroupCount++;
+                    _footholdSegmentCount += group?.WzProperties?.Count ?? 0;
+                }
+            }
+
+            LoadDynamicObjectSummary(contractImage);
+        }
+
+        private WzImage ResolveContractImage(MapInfo mapInfo, WzImage mapImage, Func<int, WzImage> linkedMapResolver)
+        {
+            EnsureImageParsed(mapImage);
+
+            if (!TryGetLinkedMapId(mapImage, out int linkedMapId))
+            {
+                return mapImage;
+            }
+
+            _linkedContractMapId = linkedMapId;
+            WzImage linkedImage = linkedMapResolver?.Invoke(linkedMapId);
+            if (linkedImage == null)
+            {
+                _linkedContractMissing = true;
+                return mapImage;
+            }
+
+            EnsureImageParsed(linkedImage);
+            _usesLinkedContract = true;
+            _contractMapId = linkedMapId;
+            return linkedImage;
+        }
+
+        private void LoadDynamicObjectSummary(WzImage mapImage)
+        {
+            if (mapImage?.WzProperties == null)
+            {
+                return;
+            }
+
+            foreach (WzImageProperty rootChild in mapImage.WzProperties)
+            {
+                if (rootChild?.Name == null
+                    || rootChild.Name.Equals("info", StringComparison.OrdinalIgnoreCase)
+                    || rootChild.WzProperties == null)
+                {
+                    continue;
+                }
+
+                if (!TryGetChildProperty(rootChild, "obj", out WzImageProperty objRoot)
+                    || objRoot.WzProperties == null)
+                {
+                    continue;
+                }
+
+                bool layerHasDynamicObject = false;
+                foreach (WzImageProperty mapObject in objRoot.WzProperties)
+                {
+                    if (!TryGetChildProperty(mapObject, "dynamic", out WzImageProperty dynamicProperty))
+                    {
+                        continue;
+                    }
+
+                    layerHasDynamicObject = true;
+                    _dynamicObjectCount++;
+                    int platformId = _authoredDynamicObjectNames.Count;
+                    string resolvedName = ResolveDynamicObjectName(rootChild, mapObject, platformId);
+                    string packetOwnedSnapshotName = ResolvePacketOwnedSnapshotDynamicObjectName(rootChild, mapObject, resolvedName);
+                    _authoredDynamicObjectNames.Add(resolvedName);
+                    _packetOwnedSnapshotDynamicObjectNames.Add(packetOwnedSnapshotName);
+                    RegisterDynamicObjectAliases(rootChild, mapObject, resolvedName, platformId);
+
+                    if (TryReadDynamicFlag(dynamicProperty, out int dynamicFlag) && dynamicFlag != 0)
+                    {
+                        _dynamicEnabledObjectCount++;
+                    }
+                }
+
+                if (layerHasDynamicObject)
+                {
+                    _dynamicObjectLayerCount++;
+                }
+            }
+        }
+
+        private static void EnsureImageParsed(WzImage image)
+        {
+            if (image != null && !image.Parsed)
+            {
+                image.ParseImage();
+            }
+        }
+
+        private static bool TryGetLinkedMapId(WzImage mapImage, out int linkedMapId)
+        {
+            linkedMapId = 0;
+            if (!TryGetChildProperty(mapImage, "info", out WzImageProperty infoProperty)
+                || !TryGetChildProperty(infoProperty, "link", out WzImageProperty linkProperty))
+            {
+                return false;
+            }
+
+            return TryReadLinkedMapId(linkProperty, out linkedMapId) && linkedMapId > 0;
+        }
+
+        private static bool TryReadDynamicFlag(WzImageProperty dynamicProperty, out int dynamicFlag)
+        {
+            dynamicFlag = 0;
+            switch (dynamicProperty)
+            {
+                case WzIntProperty intProperty:
+                    dynamicFlag = intProperty.Value;
+                    return true;
+                case WzShortProperty shortProperty:
+                    dynamicFlag = shortProperty.Value;
+                    return true;
+                case WzLongProperty longProperty when longProperty.Value >= int.MinValue && longProperty.Value <= int.MaxValue:
+                    dynamicFlag = (int)longProperty.Value;
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        private static bool TryReadLinkedMapId(WzImageProperty linkProperty, out int linkedMapId)
+        {
+            linkedMapId = 0;
+            switch (linkProperty)
+            {
+                case WzStringProperty stringProperty when !string.IsNullOrWhiteSpace(stringProperty.Value):
+                    return int.TryParse(stringProperty.Value, out linkedMapId);
+                case WzIntProperty intProperty:
+                    linkedMapId = intProperty.Value;
+                    return true;
+                case WzShortProperty shortProperty:
+                    linkedMapId = shortProperty.Value;
+                    return true;
+                case WzLongProperty longProperty when longProperty.Value >= int.MinValue && longProperty.Value <= int.MaxValue:
+                    linkedMapId = (int)longProperty.Value;
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        private void RegisterAuthoredDynamicObjectName(string name, int platformId)
+        {
+            if (platformId < 0 || string.IsNullOrWhiteSpace(name))
+            {
+                return;
+            }
+
+            string normalized = NormalizeDynamicObjectKey(name);
+            if (normalized.Length == 0 || _authoredDynamicObjectPlatformByName.ContainsKey(normalized))
+            {
+                return;
+            }
+
+            _authoredDynamicObjectPlatformByName[normalized] = platformId;
+        }
+
+        private void RegisterDynamicObjectAliases(WzImageProperty layer, WzImageProperty mapObject, string resolvedName, int platformId)
+        {
+            if (platformId < 0)
+            {
+                return;
+            }
+
+            HashSet<string> aliases = new(StringComparer.OrdinalIgnoreCase);
+            string authoredObjName = TryReadStringProperty(mapObject, "objName", out string candidateObjName)
+                ? candidateObjName
+                : null;
+            string authoredTag = TryReadStringProperty(mapObject, "tag", out string candidateTag)
+                ? candidateTag
+                : null;
+            string objectKeyName = TryResolveObjectKeyName(mapObject, out string candidateObjectKeyName)
+                ? candidateObjectKeyName
+                : null;
+            int? piece = TryReadIntProperty(mapObject, "piece", out int pieceValue)
+                ? pieceValue
+                : null;
+            int? x = TryReadIntProperty(mapObject, "x", out int xValue)
+                ? xValue
+                : null;
+            int? y = TryReadIntProperty(mapObject, "y", out int yValue)
+                ? yValue
+                : null;
+
+            foreach (string alias in BuildDynamicObjectAliasCandidates(
+                resolvedName,
+                objectKeyName,
+                layer?.Name,
+                mapObject?.Name,
+                piece,
+                x,
+                y,
+                authoredObjName,
+                authoredTag))
+            {
+                aliases.Add(alias);
+            }
+
+            if (TryReadStringProperty(mapObject, "tags", out string tagsValue))
+            {
+                foreach (string tagAlias in BuildDynamicObjectTagAliasCandidates(tagsValue, piece, x, y))
+                {
+                    aliases.Add(tagAlias);
+                }
+            }
+
+            foreach (string alias in aliases)
+            {
+                RegisterAuthoredDynamicObjectName(alias, platformId);
+            }
+        }
+
+        private static string NormalizeDynamicObjectKey(string name)
+        {
+            return string.IsNullOrWhiteSpace(name)
+                ? string.Empty
+                : name.Trim().Replace('\\', '/');
+        }
+
+        private static IReadOnlyList<string> BuildDynamicObjectAliasCandidates(
+            string resolvedName,
+            string objectKeyName,
+            string layerName,
+            string objectName,
+            int? piece,
+            int? x,
+            int? y,
+            string authoredObjName = null,
+            string authoredTag = null)
+        {
+            HashSet<string> aliases = new(StringComparer.OrdinalIgnoreCase);
+            AddPieceAndCoordinateAliases(aliases, resolvedName, piece, x, y);
+            AddPieceAndCoordinateAliases(aliases, objectKeyName, piece, x, y);
+            AddPieceAndCoordinateAliases(aliases, authoredObjName, piece, x, y);
+            AddPieceAndCoordinateAliases(aliases, authoredTag, piece, x, y);
+            if (!string.IsNullOrWhiteSpace(authoredTag))
+            {
+                foreach (string tagAlias in BuildDynamicObjectTagAliasCandidates(authoredTag, piece, x, y))
+                {
+                    aliases.Add(tagAlias);
+                }
+            }
+
+            string layerObjectAlias = BuildLayerObjectAlias(layerName, objectName);
+            AddPieceAndCoordinateAliases(aliases, layerObjectAlias, piece, x, y);
+
+            List<string> aliasList = new(aliases.Count);
+            foreach (string alias in aliases)
+            {
+                aliasList.Add(alias);
+            }
+
+            return aliasList;
+        }
+
+        internal static IReadOnlyList<string> BuildDynamicObjectAliasCandidatesForPacketParity(
+            string resolvedName,
+            string objectKeyName,
+            string layerName,
+            string objectName,
+            int? piece,
+            int? x,
+            int? y,
+            string authoredObjName = null,
+            string authoredTag = null)
+        {
+            return BuildDynamicObjectAliasCandidates(
+                resolvedName,
+                objectKeyName,
+                layerName,
+                objectName,
+                piece,
+                x,
+                y,
+                authoredObjName,
+                authoredTag);
+        }
+
+        private static void AddPieceAndCoordinateAliases(
+            ISet<string> aliases,
+            string baseAlias,
+            int? piece,
+            int? x,
+            int? y)
+        {
+            if (string.IsNullOrWhiteSpace(baseAlias))
+            {
+                return;
+            }
+
+            AddDynamicObjectAlias(aliases, baseAlias);
+            AddCoordinateAliases(aliases, baseAlias, x, y);
+            if (piece is not int pieceValue)
+            {
+                return;
+            }
+
+            string pieceSuffix = pieceValue.ToString(CultureInfo.InvariantCulture);
+            string pieceAlias = $"{baseAlias}/{pieceSuffix}";
+            string pieceSegmentAlias = $"{baseAlias}/piece/{pieceSuffix}";
+            AddDynamicObjectAlias(aliases, pieceAlias);
+            AddDynamicObjectAlias(aliases, pieceSegmentAlias);
+            AddCoordinateAliases(aliases, pieceAlias, x, y);
+            AddCoordinateAliases(aliases, pieceSegmentAlias, x, y);
+        }
+
+        private static void AddDynamicObjectAlias(ISet<string> aliases, string candidate)
+        {
+            string normalized = NormalizeDynamicObjectKey(candidate);
+            if (normalized.Length > 0)
+            {
+                aliases.Add(normalized);
+            }
+        }
+
+        private static void AddCoordinateAliases(ISet<string> aliases, string baseAlias, int? x, int? y)
+        {
+            if (string.IsNullOrWhiteSpace(baseAlias) || x is not int xValue || y is not int yValue)
+            {
+                return;
+            }
+
+            string xToken = xValue.ToString(CultureInfo.InvariantCulture);
+            string yToken = yValue.ToString(CultureInfo.InvariantCulture);
+            AddDynamicObjectAlias(aliases, $"{baseAlias}/{xToken}/{yToken}");
+            AddDynamicObjectAlias(aliases, $"{baseAlias}/{xToken},{yToken}");
+        }
+
+        private static IReadOnlyList<string> BuildDynamicObjectTagAliasCandidates(string tagsValue, int? piece, int? x, int? y)
+        {
+            HashSet<string> aliases = new(StringComparer.OrdinalIgnoreCase);
+            foreach (string tagAlias in SplitDynamicObjectTags(tagsValue))
+            {
+                AddDynamicObjectAlias(aliases, tagAlias);
+                AddCoordinateAliases(aliases, tagAlias, x, y);
+                if (piece is int pieceValue)
+                {
+                    string pieceSuffix = pieceValue.ToString(CultureInfo.InvariantCulture);
+                    AddDynamicObjectAlias(aliases, $"{tagAlias}/{pieceSuffix}");
+                    AddDynamicObjectAlias(aliases, $"{tagAlias}/piece/{pieceSuffix}");
+                    AddCoordinateAliases(aliases, $"{tagAlias}/{pieceSuffix}", x, y);
+                    AddCoordinateAliases(aliases, $"{tagAlias}/piece/{pieceSuffix}", x, y);
+                }
+            }
+
+            List<string> aliasList = new(aliases.Count);
+            foreach (string alias in aliases)
+            {
+                aliasList.Add(alias);
+            }
+
+            return aliasList;
+        }
+
+        internal static IReadOnlyList<string> BuildDynamicObjectTagAliasCandidatesForPacketParity(string tagsValue, int? piece, int? x, int? y)
+        {
+            return BuildDynamicObjectTagAliasCandidates(tagsValue, piece, x, y);
+        }
+
+        private static IEnumerable<string> SplitDynamicObjectTags(string tagsValue)
+        {
+            if (string.IsNullOrWhiteSpace(tagsValue))
+            {
+                yield break;
+            }
+
+            int tokenStart = -1;
+            for (int i = 0; i < tagsValue.Length; i++)
+            {
+                if (IsDynamicObjectTagSeparator(tagsValue, i))
+                {
+                    if (tokenStart >= 0)
+                    {
+                        string normalized = NormalizeDynamicObjectKey(tagsValue[tokenStart..i]);
+                        if (normalized.Length > 0)
+                        {
+                            yield return normalized;
+                        }
+
+                        tokenStart = -1;
+                    }
+
+                    continue;
+                }
+
+                if (tokenStart < 0)
+                {
+                    tokenStart = i;
+                }
+            }
+
+            if (tokenStart >= 0)
+            {
+                string normalized = NormalizeDynamicObjectKey(tagsValue[tokenStart..]);
+                if (normalized.Length > 0)
+                {
+                    yield return normalized;
+                }
+            }
+        }
+
+        private static bool IsDynamicObjectTagSeparator(string value, int index)
+        {
+            char current = value[index];
+            return (current == ',' && !IsDynamicObjectCoordinateComma(value, index))
+                || current == ';'
+                || current == '|'
+                || char.IsWhiteSpace(current);
+        }
+
+        private static bool IsDynamicObjectCoordinateComma(string value, int commaIndex)
+        {
+            if (string.IsNullOrEmpty(value)
+                || commaIndex <= 0
+                || commaIndex >= value.Length - 1)
+            {
+                return false;
+            }
+
+            int leftIndex = commaIndex - 1;
+            while (leftIndex >= 0 && char.IsDigit(value[leftIndex]))
+            {
+                leftIndex--;
+            }
+
+            bool hasLeftNumber = leftIndex < commaIndex - 1;
+            if (leftIndex >= 0 && value[leftIndex] == '-')
+            {
+                leftIndex--;
+            }
+
+            if (!hasLeftNumber || (leftIndex >= 0 && value[leftIndex] != '/'))
+            {
+                return false;
+            }
+
+            int rightIndex = commaIndex + 1;
+            if (rightIndex < value.Length && value[rightIndex] == '-')
+            {
+                rightIndex++;
+            }
+
+            int rightStart = rightIndex;
+            while (rightIndex < value.Length && char.IsDigit(value[rightIndex]))
+            {
+                rightIndex++;
+            }
+
+            return rightIndex > rightStart
+                && (rightIndex >= value.Length
+                    || value[rightIndex] == ','
+                    || value[rightIndex] == ';'
+                    || value[rightIndex] == '|'
+                    || char.IsWhiteSpace(value[rightIndex]));
+        }
+
+        private static string BuildLayerObjectAlias(string layerName, string objectName)
+        {
+            if (string.IsNullOrWhiteSpace(layerName) || string.IsNullOrWhiteSpace(objectName))
+            {
+                return null;
+            }
+
+            return $"{layerName.Trim()}/{objectName.Trim()}";
+        }
+
+        private static string ResolveDynamicObjectName(WzImageProperty layer, WzImageProperty mapObject, int fallbackIndex)
+        {
+            string authoredName = TryReadStringProperty(mapObject, "name", out string name)
+                ? name
+                : null;
+            string authoredObjName = TryReadStringProperty(mapObject, "objName", out string objName)
+                ? objName
+                : null;
+            string authoredTag = TryReadStringProperty(mapObject, "tag", out string tag)
+                ? tag
+                : null;
+            string authoredTags = TryReadStringProperty(mapObject, "tags", out string tags)
+                ? tags
+                : null;
+            string objectKeyName = TryResolveObjectKeyName(mapObject, out string resolvedObjectKeyName)
+                ? resolvedObjectKeyName
+                : null;
+            int? piece = TryReadIntProperty(mapObject, "piece", out int pieceValue)
+                ? pieceValue
+                : null;
+            int? x = TryReadIntProperty(mapObject, "x", out int xValue)
+                ? xValue
+                : null;
+            int? y = TryReadIntProperty(mapObject, "y", out int yValue)
+                ? yValue
+                : null;
+
+            return ResolveAuthoredDynamicObjectNameForPacketParity(
+                authoredName,
+                authoredObjName,
+                authoredTag,
+                authoredTags,
+                objectKeyName,
+                piece,
+                x,
+                y,
+                layer?.Name,
+                mapObject?.Name,
+                fallbackIndex);
+        }
+
+        internal static string ResolveAuthoredDynamicObjectNameForPacketParity(
+            string name,
+            string objName,
+            string tag,
+            string tags,
+            string objectKeyName,
+            int? piece,
+            int? x,
+            int? y,
+            string layerName,
+            string objectName,
+            int fallbackIndex)
+        {
+            if (!string.IsNullOrWhiteSpace(name))
+            {
+                return name.Trim();
+            }
+
+            if (!string.IsNullOrWhiteSpace(objName))
+            {
+                return objName.Trim();
+            }
+
+            if (!string.IsNullOrWhiteSpace(tag))
+            {
+                return tag.Trim();
+            }
+
+            if (!string.IsNullOrWhiteSpace(objectKeyName))
+            {
+                return BuildCanonicalObjectKeyName(objectKeyName, piece, x, y);
+            }
+
+            if (TryResolveFirstTagToken(tags, out string resolvedTagToken))
+            {
+                return resolvedTagToken;
+            }
+
+            string fallbackLayerName = string.IsNullOrWhiteSpace(layerName) ? "layer" : layerName.Trim();
+            string fallbackObjectName = string.IsNullOrWhiteSpace(objectName)
+                ? fallbackIndex.ToString(CultureInfo.InvariantCulture)
+                : objectName.Trim();
+            return $"dynamic-{fallbackLayerName}-{fallbackObjectName}";
+        }
+
+        private static bool TryResolveFirstTagToken(string tagsValue, out string token)
+        {
+            token = null;
+            foreach (string candidate in SplitDynamicObjectTags(tagsValue))
+            {
+                token = candidate;
+                return true;
+            }
+
+            return false;
+        }
+
+        private static string ResolvePacketOwnedSnapshotDynamicObjectName(WzImageProperty layer, WzImageProperty mapObject, string fallbackName)
+        {
+            if (TryResolveObjectKeyName(mapObject, out string objectKeyName))
+            {
+                int? piece = TryReadIntProperty(mapObject, "piece", out int pieceValue)
+                    ? pieceValue
+                    : null;
+                int? x = TryReadIntProperty(mapObject, "x", out int xValue)
+                    ? xValue
+                    : null;
+                int? y = TryReadIntProperty(mapObject, "y", out int yValue)
+                    ? yValue
+                    : null;
+                string packetOwnedName = BuildPacketOwnedSnapshotObjectKeyName(objectKeyName, piece, x, y);
+                if (!string.IsNullOrWhiteSpace(packetOwnedName))
+                {
+                    return packetOwnedName;
+                }
+            }
+
+            return string.IsNullOrWhiteSpace(fallbackName)
+                ? ResolveDynamicObjectName(layer, mapObject, fallbackIndex: 0)
+                : fallbackName;
+        }
+
+        private static string BuildCanonicalObjectKeyName(string objectKeyName, int? piece, int? x, int? y)
+        {
+            string canonicalName = NormalizeDynamicObjectKey(objectKeyName);
+            if (canonicalName.Length == 0)
+            {
+                return canonicalName;
+            }
+
+            if (piece is int pieceValue)
+            {
+                canonicalName = $"{canonicalName}/piece/{pieceValue.ToString(CultureInfo.InvariantCulture)}";
+            }
+
+            if (x is int xValue && y is int yValue)
+            {
+                canonicalName = $"{canonicalName}/{xValue.ToString(CultureInfo.InvariantCulture)},{yValue.ToString(CultureInfo.InvariantCulture)}";
+            }
+
+            return canonicalName;
+        }
+
+        internal static string BuildPacketOwnedSnapshotObjectKeyName(string objectKeyName, int? piece, int? x, int? y)
+        {
+            string packetOwnedName = NormalizeDynamicObjectKey(objectKeyName);
+            if (packetOwnedName.Length == 0)
+            {
+                return packetOwnedName;
+            }
+
+            if (piece is int pieceValue && pieceValue != 0)
+            {
+                packetOwnedName = $"{packetOwnedName}/{pieceValue.ToString(CultureInfo.InvariantCulture)}";
+            }
+
+            if (x is int xValue && y is int yValue)
+            {
+                packetOwnedName = $"{packetOwnedName}/{xValue.ToString(CultureInfo.InvariantCulture)},{yValue.ToString(CultureInfo.InvariantCulture)}";
+            }
+
+            return packetOwnedName;
+        }
+
+        private static bool TryResolveObjectKeyName(WzImageProperty mapObject, out string name)
+        {
+            name = null;
+            if (!TryReadTokenProperty(mapObject, "oS", out string objectSet)
+                || !TryReadTokenProperty(mapObject, "l0", out string layer0)
+                || !TryReadTokenProperty(mapObject, "l1", out string layer1)
+                || !TryReadTokenProperty(mapObject, "l2", out string layer2))
+            {
+                return false;
+            }
+
+            name = $"{objectSet}/{layer0}/{layer1}/{layer2}";
+            return true;
+        }
+
+        private static bool TryReadStringProperty(WzImageProperty parent, string propertyName, out string value)
+        {
+            value = null;
+            if (!TryReadTokenProperty(parent, propertyName, out string tokenValue))
+            {
+                return false;
+            }
+
+            value = tokenValue.Trim();
+            return true;
+        }
+
+        private static bool TryReadIntProperty(WzImageProperty parent, string propertyName, out int value)
+        {
+            value = 0;
+            if (!TryGetChildProperty(parent, propertyName, out WzImageProperty property))
+            {
+                return false;
+            }
+
+            switch (property)
+            {
+                case WzIntProperty intProperty:
+                    value = intProperty.Value;
+                    return true;
+                case WzShortProperty shortProperty:
+                    value = shortProperty.Value;
+                    return true;
+                case WzLongProperty longProperty when longProperty.Value >= int.MinValue && longProperty.Value <= int.MaxValue:
+                    value = (int)longProperty.Value;
+                    return true;
+                case WzStringProperty stringProperty when !string.IsNullOrWhiteSpace(stringProperty.Value):
+                    return int.TryParse(
+                        stringProperty.Value.Trim(),
+                        NumberStyles.Integer,
+                        CultureInfo.InvariantCulture,
+                        out value);
+                default:
+                    return false;
+            }
+        }
+
+        private static bool TryReadTokenProperty(WzImageProperty parent, string propertyName, out string value)
+        {
+            value = null;
+            if (!TryGetChildProperty(parent, propertyName, out WzImageProperty property))
+            {
+                return false;
+            }
+
+            switch (property)
+            {
+                case WzStringProperty stringProperty when !string.IsNullOrWhiteSpace(stringProperty.Value):
+                    value = stringProperty.Value.Trim();
+                    break;
+                case WzIntProperty intProperty:
+                    value = intProperty.Value.ToString(CultureInfo.InvariantCulture);
+                    break;
+                case WzShortProperty shortProperty:
+                    value = shortProperty.Value.ToString(CultureInfo.InvariantCulture);
+                    break;
+                case WzLongProperty longProperty:
+                    value = longProperty.Value.ToString(CultureInfo.InvariantCulture);
+                    break;
+                default:
+                    return false;
+            }
+
+            return value.Length > 0;
+        }
+
+        private static bool TryGetChildProperty(WzImage image, string propertyName, out WzImageProperty property)
+        {
+            property = null;
+            if (image == null || string.IsNullOrWhiteSpace(propertyName))
+            {
+                return false;
+            }
+
+            property = image[propertyName] as WzImageProperty;
+            if (property != null)
+            {
+                return true;
+            }
+
+            return TryFindChildPropertyCaseInsensitive(image.WzProperties, propertyName, out property);
+        }
+
+        private static bool TryGetChildProperty(WzImageProperty parent, string propertyName, out WzImageProperty property)
+        {
+            property = null;
+            if (parent == null || string.IsNullOrWhiteSpace(propertyName))
+            {
+                return false;
+            }
+
+            property = parent[propertyName];
+            if (property != null)
+            {
+                return true;
+            }
+
+            return TryFindChildPropertyCaseInsensitive(parent.WzProperties, propertyName, out property);
+        }
+
+        private static bool TryFindChildPropertyCaseInsensitive(
+            IReadOnlyList<WzImageProperty> properties,
+            string propertyName,
+            out WzImageProperty property)
+        {
+            property = null;
+            if (properties == null || string.IsNullOrWhiteSpace(propertyName))
+            {
+                return false;
+            }
+
+            for (int i = 0; i < properties.Count; i++)
+            {
+                WzImageProperty candidate = properties[i];
+                if (candidate?.Name == null
+                    || !candidate.Name.Equals(propertyName, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                property = candidate;
+                return true;
+            }
+
+            return false;
+        }
+    }
+}

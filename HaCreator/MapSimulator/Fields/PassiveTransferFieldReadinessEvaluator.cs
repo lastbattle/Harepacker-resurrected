@@ -1,0 +1,739 @@
+using System;
+using MapleLib.WzLib.WzStructure.Data;
+
+namespace HaCreator.MapSimulator.Fields
+{
+    public readonly record struct PassiveTransferFieldInterfaceState(
+        bool HasLiveFieldInterface,
+        bool HasCollidingTransferPortal,
+        bool HasActiveVectorControl,
+        bool HasPendingMapChange,
+        bool HasPlayerInputControl,
+        bool HasStandAloneControlOwner,
+        bool AllowsTransferField,
+        bool HasPendingSpecialTransfer,
+        bool HasPendingPacketOwnedTransfer,
+        bool HasPacketOwnedTeleportRegistrationCoolingDown,
+        bool HasPendingExclusiveTransferRequest,
+        bool HasAttachedPacketOwnedDriver,
+        bool HasPendingSameMapTransfer,
+        bool HasBlockingScriptedSequence);
+
+    public readonly record struct PassiveTransferFieldQueuedRetryState(
+        bool HasLiveFieldInterface,
+        bool HasPendingMapChange,
+        bool HasBoundPlayer,
+        bool IsPlayerActive,
+        bool HasReadyFieldInterface);
+
+    public readonly record struct PassiveTransferFieldInterfaceGateState(
+        bool HasLiveFieldInterface,
+        bool HasPendingMapChange,
+        bool HasPlayerInputControl,
+        bool HasStandAloneControlOwner,
+        bool AllowsTransferField,
+        bool HasPendingSpecialTransfer,
+        bool HasPendingPacketOwnedTransfer,
+        bool HasPacketOwnedTeleportRegistrationCoolingDown,
+        bool HasPendingExclusiveTransferRequest,
+        bool HasAttachedPacketOwnedDriver,
+        bool HasPendingSameMapTransfer,
+        bool HasBlockingScriptedSequence);
+
+    public readonly record struct PassiveTransferFieldQueuedRetryDecisionState(
+        bool HasPendingRequest,
+        bool HasOneTimeActionCompleted,
+        bool HasReadyFieldInterface,
+        bool HasCollidingTransferPortal,
+        bool HasLiveFieldInterface,
+        bool HasPendingMapChange,
+        bool HasBoundPlayer,
+        bool IsPlayerActive);
+
+    public readonly record struct PassiveTransferFieldReplayState(
+        bool HasOneTimeActionCompleted,
+        bool IsImmovable,
+        bool IsAttractLocked,
+        bool IsOnFoothold);
+
+    public readonly record struct PassiveTransferFieldHorizontalOnKeyDownDecision(
+        bool ShouldStopSkillMacro,
+        bool ShouldClearQueuedRetry,
+        PassiveTransferFieldReadinessEvaluator.QueuedRetryLifecycleClearOwner ClearOwner);
+
+    public readonly record struct PassiveTransferFieldFollowCharacterReleaseInputDecision(
+        bool ShouldStopSkillMacro,
+        bool ShouldClearQueuedRetry,
+        PassiveTransferFieldReadinessEvaluator.QueuedRetryLifecycleClearOwner ClearOwner);
+
+    public readonly record struct PassiveTransferFieldQueuedReplayDecision(
+        bool ShouldStopSkillMacro,
+        bool ShouldReplayHandleUpKeyDown,
+        bool ShouldClearQueuedRetry,
+        PassiveTransferFieldReadinessEvaluator.QueuedRetryLifecycleClearOwner ClearOwner);
+
+    public readonly record struct PassiveTransferFieldHandleUpKeyDownDispatchDecision(
+        bool ShouldStopSkillMacro,
+        bool ShouldDispatchHandleUpKeyDown);
+
+    public readonly record struct PassiveTransferFieldPortalRoutingDecision(
+        bool IsPassiveTransferFieldPortal,
+        bool ShouldSendTransferFieldRequest,
+        bool ShouldPlayTransferFieldPortalSound);
+
+    public static class PassiveTransferFieldReadinessEvaluator
+    {
+        public enum QueuedRetryDecision
+        {
+            Clear = 0,
+            KeepPending = 1,
+            ReplayHandleUpKeyDown = 2
+        }
+
+        public enum QueuedRetryLifecycleClearOwner
+        {
+            None = 0,
+            MapTransferAdmission = 1,
+            TransferResponseLifecycle = 2,
+            FieldInterfaceTeardown = 3,
+            HorizontalOnKeyDown = 4,
+            ChairGetUp = 6,
+            FollowCharacterFailure = 7,
+            SameMapTeleport = 8,
+            MapLoad = 9,
+            StageTransition = 10,
+            FieldFeedbackTransferFailure = 11,
+            PacketTeleportResult = 12,
+            PacketChairSitResult = 13,
+            PacketQuestResult = 14,
+            InterfaceGateAdmission = 15,
+            FollowCharacterReleaseInput = 16,
+            HorizontalOnJoystickButton = 17
+        }
+
+        public enum QueuedRetryWriterOwner
+        {
+            None = 0,
+            HandleUpKeyDownOneTimeAction = 1,
+            FollowCharacterTransferDetach = 2,
+            JoystickButtonUpOneTimeAction = 3
+        }
+
+        public enum HandleUpKeyDownInputOwner
+        {
+            None = 0,
+            OnKey = 1,
+            OnJoystickButton = 2
+        }
+
+        public enum HorizontalInputOwner
+        {
+            None = 0,
+            OnKey = 1,
+            OnJoystickButton = 2
+        }
+
+        public static bool CanRetryFromLiveFieldInterface(PassiveTransferFieldInterfaceState state)
+        {
+            return state.HasCollidingTransferPortal
+                   && state.HasActiveVectorControl
+                   && CanAdmitQueuedRetryInterfaceGate(
+                       new PassiveTransferFieldInterfaceGateState(
+                           state.HasLiveFieldInterface,
+                           state.HasPendingMapChange,
+                           state.HasPlayerInputControl,
+                           state.HasStandAloneControlOwner,
+                           state.AllowsTransferField,
+                           state.HasPendingSpecialTransfer,
+                           state.HasPendingPacketOwnedTransfer,
+                           state.HasPacketOwnedTeleportRegistrationCoolingDown,
+                           state.HasPendingExclusiveTransferRequest,
+                           state.HasAttachedPacketOwnedDriver,
+                           state.HasPendingSameMapTransfer,
+                           state.HasBlockingScriptedSequence));
+        }
+
+        public static bool CanAdmitQueuedRetryInterfaceGate(PassiveTransferFieldInterfaceGateState state)
+        {
+            return state.HasLiveFieldInterface
+                   && !state.HasPendingMapChange
+                   && state.HasPlayerInputControl
+                   && !state.HasStandAloneControlOwner
+                   && state.AllowsTransferField
+                   && !state.HasPendingSpecialTransfer
+                   && !state.HasPendingPacketOwnedTransfer
+                   && !state.HasPacketOwnedTeleportRegistrationCoolingDown
+                   && !state.HasPendingExclusiveTransferRequest
+                   && !state.HasAttachedPacketOwnedDriver
+                   && !state.HasPendingSameMapTransfer
+                   && !state.HasBlockingScriptedSequence;
+        }
+
+        public static bool ShouldKeepQueuedRetryPending(PassiveTransferFieldQueuedRetryState state)
+        {
+            // `TryPassiveTransferField` clears pending ownership only after it can admit the
+            // interface gate again. Keep pending while readiness is unresolved, even if map
+            // transitions or local owner bindings (player bound/active) are transiently
+            // unavailable in that window.
+            return !state.HasReadyFieldInterface
+                   || state.HasPendingMapChange
+                   || !state.HasBoundPlayer
+                   || !state.IsPlayerActive
+                   || !state.HasLiveFieldInterface;
+        }
+
+        public static QueuedRetryDecision EvaluateQueuedRetryDecision(PassiveTransferFieldQueuedRetryDecisionState state)
+        {
+            if (!state.HasPendingRequest)
+            {
+                return QueuedRetryDecision.Clear;
+            }
+
+            if (!state.HasOneTimeActionCompleted)
+            {
+                // `TryPassiveTransferField` keeps the pending owner armed while one-time actions
+                // are still active. Admission/clear only occurs after one-time completion.
+                return QueuedRetryDecision.KeepPending;
+            }
+
+            bool shouldKeepPending = ShouldKeepQueuedRetryPending(
+                new PassiveTransferFieldQueuedRetryState(
+                    state.HasLiveFieldInterface,
+                    state.HasPendingMapChange,
+                    state.HasBoundPlayer,
+                    state.IsPlayerActive,
+                    state.HasReadyFieldInterface));
+
+            if (shouldKeepPending)
+            {
+                return QueuedRetryDecision.KeepPending;
+            }
+
+            // Once one-time ownership is complete and interface admission is recovered,
+            // the queued path must replay through HandleUpKeyDown so the pending owner is
+            // consumed by the same admission seam used by TryPassiveTransferField.
+            return QueuedRetryDecision.ReplayHandleUpKeyDown;
+        }
+
+        public static bool ShouldClearQueuedRetryAfterInterfaceGateAdmission(
+            bool hasPendingRequest,
+            QueuedRetryDecision decision)
+        {
+            return ShouldClearQueuedRetryFromLifecycleOwner(
+                hasPendingRequest,
+                ResolveQueuedRetryLifecycleClearOwnerFromInterfaceGateAdmission(decision));
+        }
+
+        public static QueuedRetryLifecycleClearOwner ResolveQueuedRetryLifecycleClearOwnerFromInterfaceGateAdmission(
+            QueuedRetryDecision decision)
+        {
+            return decision == QueuedRetryDecision.ReplayHandleUpKeyDown
+                ? QueuedRetryLifecycleClearOwner.InterfaceGateAdmission
+                : QueuedRetryLifecycleClearOwner.None;
+        }
+
+        public static bool ShouldReplayQueuedRetryBeforeFreshUpKeyDown(QueuedRetryDecision decision)
+        {
+            return decision == QueuedRetryDecision.ReplayHandleUpKeyDown;
+        }
+
+        public static PassiveTransferFieldQueuedReplayDecision EvaluateQueuedReplayDecision(
+            bool hasPendingRequest,
+            QueuedRetryDecision decision,
+            PassiveTransferFieldReplayState replayState)
+        {
+            if (!hasPendingRequest
+                || decision != QueuedRetryDecision.ReplayHandleUpKeyDown)
+            {
+                return new PassiveTransferFieldQueuedReplayDecision(
+                    ShouldStopSkillMacro: false,
+                    ShouldReplayHandleUpKeyDown: false,
+                    ShouldClearQueuedRetry: false,
+                    ClearOwner: QueuedRetryLifecycleClearOwner.None);
+            }
+
+            bool canAttemptHandleUpKeyDownReplay = CanAttemptHandleUpKeyDownReplay(replayState);
+            QueuedRetryLifecycleClearOwner clearOwner =
+                ResolveQueuedRetryLifecycleClearOwnerFromInterfaceGateAdmission(decision);
+
+            return new PassiveTransferFieldQueuedReplayDecision(
+                ShouldStopSkillMacro: ShouldStopSkillMacroForQueuedReplay(canAttemptHandleUpKeyDownReplay),
+                ShouldReplayHandleUpKeyDown: CanReplayHandleUpKeyDown(replayState),
+                ShouldClearQueuedRetry: ShouldClearQueuedRetryFromLifecycleOwner(
+                    hasPendingRequest,
+                    clearOwner),
+                ClearOwner: clearOwner);
+        }
+
+        public static bool ShouldClearQueuedRetryFromTransferLifecycle(bool hasPendingRequest)
+        {
+            return ShouldClearQueuedRetryFromLifecycleOwner(
+                hasPendingRequest,
+                QueuedRetryLifecycleClearOwner.TransferResponseLifecycle);
+        }
+
+        public static bool ShouldClearQueuedRetryFromMapLoadLifecycle(bool hasPendingRequest)
+        {
+            return ShouldClearQueuedRetryFromLifecycleOwner(
+                hasPendingRequest,
+                QueuedRetryLifecycleClearOwner.MapLoad);
+        }
+
+        public static bool ShouldClearQueuedRetryFromStageTransitionLifecycle(bool hasPendingRequest)
+        {
+            return ShouldClearQueuedRetryFromLifecycleOwner(
+                hasPendingRequest,
+                QueuedRetryLifecycleClearOwner.StageTransition);
+        }
+
+        public static bool ShouldClearQueuedRetryFromFieldFeedbackTransferFailure(bool hasPendingRequest)
+        {
+            return ShouldClearQueuedRetryFromLifecycleOwner(
+                hasPendingRequest,
+                QueuedRetryLifecycleClearOwner.FieldFeedbackTransferFailure);
+        }
+
+        public static bool ShouldClearQueuedRetryFromPacketTeleportResult(bool hasPendingRequest)
+        {
+            return ShouldClearQueuedRetryFromLifecycleOwner(
+                hasPendingRequest,
+                QueuedRetryLifecycleClearOwner.PacketTeleportResult);
+        }
+
+        public static bool ShouldClearQueuedRetryFromPacketChairSitResult(bool hasPendingRequest)
+        {
+            return ShouldClearQueuedRetryFromLifecycleOwner(
+                hasPendingRequest,
+                QueuedRetryLifecycleClearOwner.PacketChairSitResult);
+        }
+
+        public static bool ShouldClearQueuedRetryFromPacketQuestResult(bool hasPendingRequest)
+        {
+            return ShouldClearQueuedRetryFromLifecycleOwner(
+                hasPendingRequest,
+                QueuedRetryLifecycleClearOwner.PacketQuestResult);
+        }
+
+        public static bool ShouldClearQueuedRetryFromSameMapTeleport(bool hasPendingRequest)
+        {
+            return ShouldClearQueuedRetryFromLifecycleOwner(
+                hasPendingRequest,
+                QueuedRetryLifecycleClearOwner.SameMapTeleport);
+        }
+
+        public static bool ShouldConsumeQueuedRetryOnMapTransferAdmission(bool hasPendingRequest)
+        {
+            return ShouldClearQueuedRetryFromLifecycleOwner(
+                hasPendingRequest,
+                ResolveQueuedRetryLifecycleClearOwnerFromMapTransferAdmission(admittedMapTransfer: true));
+        }
+
+        public static QueuedRetryLifecycleClearOwner ResolveQueuedRetryLifecycleClearOwnerFromMapTransferAdmission(
+            bool admittedMapTransfer)
+        {
+            return admittedMapTransfer
+                ? QueuedRetryLifecycleClearOwner.MapTransferAdmission
+                : QueuedRetryLifecycleClearOwner.None;
+        }
+
+        public static bool ShouldClearQueuedRetryFromFieldInterfaceTeardown(bool hasPendingRequest)
+        {
+            return ShouldClearQueuedRetryFromLifecycleOwner(
+                hasPendingRequest,
+                QueuedRetryLifecycleClearOwner.FieldInterfaceTeardown);
+        }
+
+        public static bool ShouldClearQueuedRetryFromLifecycleOwner(
+            bool hasPendingRequest,
+            QueuedRetryLifecycleClearOwner owner)
+        {
+            return hasPendingRequest
+                   && owner != QueuedRetryLifecycleClearOwner.None;
+        }
+
+        public static bool ShouldClearQueuedRetryAfterFreshHandleUpKeyDown(
+            bool hasPendingRequest,
+            bool handledPortalInteraction)
+        {
+            return ShouldClearQueuedRetryFromLifecycleOwner(
+                hasPendingRequest,
+                ResolveQueuedRetryLifecycleClearOwnerFromFreshHandleUpKeyDown(handledPortalInteraction));
+        }
+
+        public static bool ShouldCancelQueuedRetryOnHorizontalKeyDown(
+            bool hasPendingRequest,
+            bool leftKeyPressed,
+            bool rightKeyPressed)
+        {
+            return hasPendingRequest && (leftKeyPressed || rightKeyPressed);
+        }
+
+        public static PassiveTransferFieldHorizontalOnKeyDownDecision EvaluateHorizontalOnKeyDown(
+            bool hasPendingRequest,
+            bool leftKeyPressed,
+            bool rightKeyPressed,
+            HorizontalInputOwner inputOwner = HorizontalInputOwner.OnKey,
+            bool deferKeyboardFollowReleaseClear = false)
+        {
+            bool horizontalKeyPressed = leftKeyPressed || rightKeyPressed;
+            if (deferKeyboardFollowReleaseClear
+                && horizontalKeyPressed
+                && inputOwner == HorizontalInputOwner.OnKey)
+            {
+                return new PassiveTransferFieldHorizontalOnKeyDownDecision(
+                    ShouldStopSkillMacro: ShouldStopSkillMacroForHorizontalOnKeyDown(leftKeyPressed, rightKeyPressed),
+                    ShouldClearQueuedRetry: false,
+                    ClearOwner: QueuedRetryLifecycleClearOwner.FollowCharacterReleaseInput);
+            }
+
+            QueuedRetryLifecycleClearOwner clearOwner =
+                ResolveQueuedRetryLifecycleClearOwnerFromHorizontalOnKeyDown(
+                    leftKeyPressed,
+                    rightKeyPressed,
+                    inputOwner);
+
+            return new PassiveTransferFieldHorizontalOnKeyDownDecision(
+                ShouldStopSkillMacro: ShouldStopSkillMacroForHorizontalOnKeyDown(leftKeyPressed, rightKeyPressed),
+                ShouldClearQueuedRetry: ShouldCancelQueuedRetryOnHorizontalKeyDown(
+                    hasPendingRequest,
+                    leftKeyPressed,
+                    rightKeyPressed),
+                ClearOwner: clearOwner);
+        }
+
+        public static bool ShouldDeferHorizontalQueuedClearToFollowRelease(
+            bool isLocalUser,
+            bool horizontalKeyPressed,
+            bool hasAttachedDriver,
+            HorizontalInputOwner inputOwner = HorizontalInputOwner.OnKey)
+        {
+            return isLocalUser
+                   && horizontalKeyPressed
+                   && hasAttachedDriver
+                   && inputOwner == HorizontalInputOwner.OnKey;
+        }
+
+        public static QueuedRetryLifecycleClearOwner ResolveQueuedRetryLifecycleClearOwnerFromHorizontalOnKeyDown(
+            bool leftKeyPressed,
+            bool rightKeyPressed,
+            HorizontalInputOwner inputOwner = HorizontalInputOwner.OnKey)
+        {
+            if (!leftKeyPressed && !rightKeyPressed)
+            {
+                return QueuedRetryLifecycleClearOwner.None;
+            }
+
+            return inputOwner == HorizontalInputOwner.OnJoystickButton
+                ? QueuedRetryLifecycleClearOwner.HorizontalOnJoystickButton
+                : QueuedRetryLifecycleClearOwner.HorizontalOnKeyDown;
+        }
+
+        public static QueuedRetryLifecycleClearOwner ResolveQueuedRetryLifecycleClearOwnerFromFreshHandleUpKeyDown(
+            bool handledPortalInteraction)
+        {
+            // Native HandleUpKeyDown does not directly clear m_bTryPassiveTransferField.
+            // Portal admission and same-map completion clear through their own lifecycle owners.
+            return QueuedRetryLifecycleClearOwner.None;
+        }
+
+        public static bool ShouldStopSkillMacroForHorizontalQueuedCancel(bool shouldCancelQueuedRetry)
+        {
+            return shouldCancelQueuedRetry;
+        }
+
+        public static bool ShouldStopSkillMacroForHorizontalOnKeyDown(
+            bool leftKeyPressed,
+            bool rightKeyPressed)
+        {
+            return leftKeyPressed || rightKeyPressed;
+        }
+
+        public static bool IsExclusiveTransferRequestInFlight(
+            bool requestSent,
+            int requestSentTick,
+            int currentTick,
+            int cooldownMs)
+        {
+            if (!requestSent)
+            {
+                return false;
+            }
+
+            if (requestSentTick == int.MinValue)
+            {
+                return true;
+            }
+
+            return unchecked(currentTick - requestSentTick) < Math.Max(0, cooldownMs);
+        }
+
+        public static bool CanHandleFreshUpKeyDown(
+            bool hasAttachedPacketOwnedDriver,
+            HandleUpKeyDownInputOwner inputOwner = HandleUpKeyDownInputOwner.OnKey)
+        {
+            return !hasAttachedPacketOwnedDriver
+                   || inputOwner == HandleUpKeyDownInputOwner.OnJoystickButton;
+        }
+
+        public static PassiveTransferFieldHandleUpKeyDownDispatchDecision EvaluateFreshHandleUpKeyDownDispatch(
+            bool isFreshUpKeyDown,
+            bool hasAttachedPacketOwnedDriver,
+            HandleUpKeyDownInputOwner inputOwner = HandleUpKeyDownInputOwner.OnKey)
+        {
+            return new PassiveTransferFieldHandleUpKeyDownDispatchDecision(
+                ShouldStopSkillMacro: ShouldStopSkillMacroForFreshUpKeyDown(isFreshUpKeyDown),
+                ShouldDispatchHandleUpKeyDown: isFreshUpKeyDown
+                                             && CanHandleFreshUpKeyDown(
+                                                 hasAttachedPacketOwnedDriver,
+                                                 inputOwner));
+        }
+
+        public static bool ShouldStopSkillMacroForFreshUpKeyDown(bool isFreshUpKeyDown)
+        {
+            return isFreshUpKeyDown;
+        }
+
+        public static bool CanQueuePassiveTransferFieldRequest(
+            bool hasClientOwnedOneTimeAction,
+            bool hasPassiveTransferFieldPortalCollision,
+            bool allowsTransferField)
+        {
+            return hasClientOwnedOneTimeAction
+                   && hasPassiveTransferFieldPortalCollision
+                   && allowsTransferField;
+        }
+
+        public static PassiveTransferFieldPortalRoutingDecision EvaluatePortalRouting(
+            int targetMapId,
+            int currentMapId,
+            PortalType portalType)
+        {
+            bool isPassiveTransferFieldPortal =
+                IsPassiveTransferFieldPortalType(portalType)
+                && IsPassiveTransferFieldPortalCandidate(targetMapId);
+
+            return new PassiveTransferFieldPortalRoutingDecision(
+                IsPassiveTransferFieldPortal: isPassiveTransferFieldPortal,
+                ShouldSendTransferFieldRequest: ShouldSendTransferFieldRequestForPortal(
+                    targetMapId,
+                    currentMapId,
+                    portalType),
+                ShouldPlayTransferFieldPortalSound: ShouldPlayTransferFieldPortalSound(portalType));
+        }
+
+        public static bool ShouldProbeAuthoredPortalBeforeTemporaryPortal(bool hasAuthoredPortalCollision)
+        {
+            return hasAuthoredPortalCollision;
+        }
+
+        public static bool IsPassiveTransferFieldPortalType(PortalType portalType)
+        {
+            return portalType != PortalType.CollisionScript
+                   && portalType != PortalType.CollisionVerticalJump
+                   && portalType != PortalType.CollisionCustomImpact
+                   && portalType != PortalType.CollisionCustomImpact2;
+        }
+
+        public static bool IsPassiveTransferFieldPortalCandidate(int targetMapId)
+        {
+            return targetMapId > 0
+                   && targetMapId != MapConstants.MaxMap;
+        }
+
+        public static bool ShouldSendTransferFieldRequestForPortal(
+            int targetMapId,
+            int currentMapId,
+            PortalType portalType)
+        {
+            return IsPassiveTransferFieldPortalCandidate(targetMapId)
+                   && (targetMapId != currentMapId || IsChangeablePortalType(portalType));
+        }
+
+        public static bool ShouldPlayTransferFieldPortalSound(PortalType portalType)
+        {
+            return !IsChangeablePortalType(portalType);
+        }
+
+        private static bool IsChangeablePortalType(PortalType portalType)
+        {
+            return portalType == PortalType.Changeable
+                   || portalType == PortalType.ChangeableInvisible;
+        }
+
+        public static bool ShouldArmQueuedRetryFromHandleUpKeyDown(
+            bool hasPendingRequest,
+            bool hasClientOwnedOneTimeAction,
+            bool hasPassiveTransferFieldPortalCollision,
+            bool allowsTransferField)
+        {
+            return !hasPendingRequest
+                   && CanQueuePassiveTransferFieldRequest(
+                       hasClientOwnedOneTimeAction,
+                       hasPassiveTransferFieldPortalCollision,
+                       allowsTransferField);
+        }
+
+        public static bool HasRecognizedQueuedRetryWriter(
+            bool hasPendingRequest,
+            QueuedRetryWriterOwner writerOwner)
+        {
+            return hasPendingRequest
+                   && IsRecognizedQueuedRetryWriterOwner(writerOwner);
+        }
+
+        public static bool ShouldRejectAnonymousQueuedRetryOwnership(
+            bool hasPendingRequest,
+            QueuedRetryWriterOwner writerOwner)
+        {
+            return hasPendingRequest
+                   && !IsRecognizedQueuedRetryWriterOwner(writerOwner);
+        }
+
+        public static bool IsRecognizedQueuedRetryWriterOwner(QueuedRetryWriterOwner writerOwner)
+        {
+            return writerOwner != QueuedRetryWriterOwner.None;
+        }
+
+        public static QueuedRetryWriterOwner ResolveQueuedRetryWriterFromHandleUpKeyDown(
+            bool hasPendingRequest,
+            bool hasClientOwnedOneTimeAction,
+            bool hasPassiveTransferFieldPortalCollision,
+            bool allowsTransferField,
+            HandleUpKeyDownInputOwner inputOwner = HandleUpKeyDownInputOwner.OnKey)
+        {
+            if (!ShouldArmQueuedRetryFromHandleUpKeyDown(
+                hasPendingRequest,
+                hasClientOwnedOneTimeAction,
+                hasPassiveTransferFieldPortalCollision,
+                allowsTransferField))
+            {
+                return QueuedRetryWriterOwner.None;
+            }
+
+            return inputOwner == HandleUpKeyDownInputOwner.OnJoystickButton
+                ? QueuedRetryWriterOwner.JoystickButtonUpOneTimeAction
+                : QueuedRetryWriterOwner.HandleUpKeyDownOneTimeAction;
+        }
+
+        public static bool ShouldArmQueuedRetryFromFollowCharacterTransferDetach(
+            bool isLocalUser,
+            bool transferField)
+        {
+            return isLocalUser && transferField;
+        }
+
+        public static QueuedRetryWriterOwner ResolveQueuedRetryWriterFromFollowCharacterTransferDetach(
+            bool isLocalUser,
+            bool transferField)
+        {
+            return ShouldArmQueuedRetryFromFollowCharacterTransferDetach(isLocalUser, transferField)
+                ? QueuedRetryWriterOwner.FollowCharacterTransferDetach
+                : QueuedRetryWriterOwner.None;
+        }
+
+        public static bool ShouldClearQueuedRetryFromFollowCharacterFailure(
+            bool hasPendingRequest,
+            bool clearsPendingFollowRequest)
+        {
+            return ShouldClearQueuedRetryFromLifecycleOwner(
+                hasPendingRequest,
+                ResolveQueuedRetryLifecycleClearOwnerFromFollowCharacterFailure(clearsPendingFollowRequest));
+        }
+
+        public static QueuedRetryLifecycleClearOwner ResolveQueuedRetryLifecycleClearOwnerFromFollowCharacterFailure(
+            bool clearsPendingFollowRequest)
+        {
+            return clearsPendingFollowRequest
+                ? QueuedRetryLifecycleClearOwner.FollowCharacterFailure
+                : QueuedRetryLifecycleClearOwner.None;
+        }
+
+        public static bool ShouldClearQueuedRetryFromFollowCharacterReleaseInput(
+            bool hasPendingRequest,
+            bool isLocalUser,
+            bool releaseKeyPressed,
+            bool hasAttachedDriver)
+        {
+            return ShouldClearQueuedRetryFromLifecycleOwner(
+                hasPendingRequest,
+                ResolveQueuedRetryLifecycleClearOwnerFromFollowCharacterReleaseInput(
+                    isLocalUser,
+                    releaseKeyPressed,
+                    hasAttachedDriver));
+        }
+
+        public static QueuedRetryLifecycleClearOwner ResolveQueuedRetryLifecycleClearOwnerFromFollowCharacterReleaseInput(
+            bool isLocalUser,
+            bool releaseKeyPressed,
+            bool hasAttachedDriver)
+        {
+            return isLocalUser && releaseKeyPressed && hasAttachedDriver
+                ? QueuedRetryLifecycleClearOwner.FollowCharacterReleaseInput
+                : QueuedRetryLifecycleClearOwner.None;
+        }
+
+        public static PassiveTransferFieldFollowCharacterReleaseInputDecision EvaluateFollowCharacterReleaseInput(
+            bool hasPendingRequest,
+            bool isLocalUser,
+            bool releaseKeyPressed,
+            bool hasAttachedDriver)
+        {
+            QueuedRetryLifecycleClearOwner clearOwner =
+                ResolveQueuedRetryLifecycleClearOwnerFromFollowCharacterReleaseInput(
+                    isLocalUser,
+                    releaseKeyPressed,
+                    hasAttachedDriver);
+
+            return new PassiveTransferFieldFollowCharacterReleaseInputDecision(
+                ShouldStopSkillMacro: ShouldStopSkillMacroForHorizontalOnKeyDown(
+                    leftKeyPressed: releaseKeyPressed,
+                    rightKeyPressed: false),
+                ShouldClearQueuedRetry: ShouldClearQueuedRetryFromLifecycleOwner(
+                    hasPendingRequest,
+                    clearOwner),
+                ClearOwner: clearOwner);
+        }
+
+        public static bool ShouldClearQueuedRetryOnChairGetUp(
+            bool hasPendingRequest,
+            bool consumedChairGetUpBranch)
+        {
+            return ShouldClearQueuedRetryFromLifecycleOwner(
+                hasPendingRequest,
+                ResolveQueuedRetryLifecycleClearOwnerFromChairGetUp(consumedChairGetUpBranch));
+        }
+
+        public static QueuedRetryLifecycleClearOwner ResolveQueuedRetryLifecycleClearOwnerFromChairGetUp(
+            bool consumedChairGetUpBranch)
+        {
+            return consumedChairGetUpBranch
+                ? QueuedRetryLifecycleClearOwner.ChairGetUp
+                : QueuedRetryLifecycleClearOwner.None;
+        }
+
+        public static bool CanReplayHandleUpKeyDown(PassiveTransferFieldReplayState state)
+        {
+            return CanAttemptHandleUpKeyDownReplay(state)
+                   && state.IsOnFoothold;
+        }
+
+        public static bool CanHandleFreshHandleUpKeyDown(PassiveTransferFieldReplayState state)
+        {
+            return state.HasOneTimeActionCompleted
+                   && !state.IsImmovable
+                   && state.IsOnFoothold;
+        }
+
+        public static bool CanAttemptHandleUpKeyDownReplay(PassiveTransferFieldReplayState state)
+        {
+            return state.HasOneTimeActionCompleted
+                   && !state.IsImmovable
+                   && !state.IsAttractLocked;
+        }
+
+        public static bool ShouldStopSkillMacroForQueuedReplay(bool canAttemptHandleUpKeyDownReplay)
+        {
+            return canAttemptHandleUpKeyDownReplay;
+        }
+    }
+}

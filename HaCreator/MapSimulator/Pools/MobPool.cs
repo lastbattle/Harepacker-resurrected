@@ -8,6 +8,7 @@ using HaCreator.MapEditor.Instance;
 using Microsoft.Xna.Framework;
 using HaCreator.MapSimulator.AI;
 using HaCreator.MapSimulator.Core;
+using MapleLib.WzLib.WzStructure.Data;
 
 namespace HaCreator.MapSimulator.Pools
 {
@@ -22,7 +23,12 @@ namespace HaCreator.MapSimulator.Pools
         public float Y { get; set; }
         public int Rx0Shift { get; set; }
         public int Rx1Shift { get; set; }
+        public int YShift { get; set; }
         public bool Flip { get; set; }
+        public string LimitedName { get; set; }
+        public bool Hide { get; set; }
+        public int? Info { get; set; }
+        public int? Team { get; set; }
         public int RespawnTimeMs { get; set; }
         public bool IsBoss { get; set; }
 
@@ -40,10 +46,16 @@ namespace HaCreator.MapSimulator.Pools
     public class MobPool
     {
         #region Constants
-        private const int DEFAULT_RESPAWN_TIME = 7000;      // 7 seconds default respawn
         private const int BOSS_RESPAWN_TIME = 0;            // Bosses don't respawn by default
+        private const int DEFAULT_CREATE_MOB_INTERVAL = 9000;
         private const int DEATH_ANIMATION_TIME = 2000;      // 2 seconds for death animation
-        private const int BOSS_ANNOUNCE_DELAY = 500;        // Delay before boss announcement
+        private const int INITIAL_RESPAWN_DELAY = 1000;
+        private const double MAP_UNIT_SIZE_FACTOR = 0.0000078125d;
+        private const int MIN_MONSTER_CAPACITY = 1;
+        private const int MAX_MONSTER_CAPACITY = 40;
+        private const int SPAWN_HEIGHT_REDUCTION = 450;
+        private const int MIN_SPAWN_WIDTH = 1024;
+        private const int MIN_SPAWN_HEIGHT = 768;
         #endregion
 
         #region Collections
@@ -52,7 +64,9 @@ namespace HaCreator.MapSimulator.Pools
         private readonly List<MobItem> _deadMobs = new List<MobItem>();       // Mobs ready for cleanup/respawn
         private readonly Dictionary<int, MobItem> _mobById = new Dictionary<int, MobItem>();
         private readonly List<MobSpawnPoint> _spawnPoints = new List<MobSpawnPoint>();
+        private readonly Dictionary<MobItem, MobSpawnPoint> _spawnPointByMob = new Dictionary<MobItem, MobSpawnPoint>();
         private readonly Queue<string> _bossAnnouncements = new Queue<string>();
+        private readonly List<MobSpawnPoint> _respawnCandidates = new List<MobSpawnPoint>();
         #endregion
 
         #region State
@@ -60,6 +74,12 @@ namespace HaCreator.MapSimulator.Pools
         private bool _respawnEnabled = true;
         private bool _bossSpawnEnabled = true;
         private int _lastUpdateTick = 0;
+        private int _globalRespawnIntervalMs = DEFAULT_CREATE_MOB_INTERVAL;
+        private int _nextRespawnTime = -1;
+        private int _minRegularSpawnAtOnce = MIN_MONSTER_CAPACITY;
+        private int _maxRegularSpawnAtOnce = MIN_MONSTER_CAPACITY * 2;
+        private int _simulatedCharacterCount = 1;
+        private bool _noMonsterCapacityLimit = false;
         private Action<MobItem> _onMobSpawned;
         private Action<MobItem> _onMobDied;
         private Action<MobItem> _onMobRemoved;
@@ -73,6 +93,10 @@ namespace HaCreator.MapSimulator.Pools
         public int SpawnPointCount => _spawnPoints.Count;
         public bool RespawnEnabled { get => _respawnEnabled; set => _respawnEnabled = value; }
         public bool BossSpawnEnabled { get => _bossSpawnEnabled; set => _bossSpawnEnabled = value; }
+        public int MinRegularSpawnAtOnce => _minRegularSpawnAtOnce;
+        public int MaxRegularSpawnAtOnce => _maxRegularSpawnAtOnce;
+        public int CurrentSpawnTarget => CalculateTargetMobCount();
+        public int GlobalRespawnIntervalMs => _globalRespawnIntervalMs;
         public IReadOnlyList<MobItem> ActiveMobs => _activeMobs;
         public IReadOnlyList<MobItem> DyingMobs => _dyingMobs;
         #endregion
@@ -108,8 +132,7 @@ namespace HaCreator.MapSimulator.Pools
                 // Create spawn point for respawning
                 var spawnPoint = CreateSpawnPointFromMob(mob, mobId);
                 _spawnPoints.Add(spawnPoint);
-                spawnPoint.CurrentMob = mob;
-                spawnPoint.IsActive = true;
+                AssignMobToSpawnPoint(spawnPoint, mob);
             }
         }
 
@@ -126,11 +149,33 @@ namespace HaCreator.MapSimulator.Pools
                 Y = mob.MovementInfo?.SpawnY ?? instance?.Y ?? 0,
                 Rx0Shift = instance?.rx0Shift ?? 0,
                 Rx1Shift = instance?.rx1Shift ?? 0,
+                YShift = instance?.yShift ?? 0,
                 Flip = instance?.Flip == true,
-                RespawnTimeMs = instance?.MobTime ?? DEFAULT_RESPAWN_TIME,
+                LimitedName = instance?.LimitedName,
+                Hide = instance?.Hide == true,
+                Info = instance?.Info,
+                Team = instance?.Team,
+                RespawnTimeMs = SpecialMobInteractionRules.ShouldDisableAutoRespawn(mobData)
+                    ? -1
+                    : NormalizeRespawnTime(instance?.MobTime, mobData?.IsBoss ?? false),
                 IsBoss = mobData?.IsBoss ?? false,
                 IsActive = true
             };
+        }
+
+        private static int NormalizeRespawnTime(int? mobTime, bool isBoss)
+        {
+            if (!mobTime.HasValue)
+            {
+                return isBoss ? BOSS_RESPAWN_TIME : 0;
+            }
+
+            if (mobTime.Value <= 0)
+            {
+                return mobTime.Value;
+            }
+
+            return checked(mobTime.Value * 1000);
         }
 
         public void Clear()
@@ -140,8 +185,107 @@ namespace HaCreator.MapSimulator.Pools
             _deadMobs.Clear();
             _mobById.Clear();
             _spawnPoints.Clear();
+            _spawnPointByMob.Clear();
             _bossAnnouncements.Clear();
+            _respawnCandidates.Clear();
             _nextMobId = 1;
+            _nextRespawnTime = -1;
+            _globalRespawnIntervalMs = DEFAULT_CREATE_MOB_INTERVAL;
+            _minRegularSpawnAtOnce = MIN_MONSTER_CAPACITY;
+            _maxRegularSpawnAtOnce = MIN_MONSTER_CAPACITY * 2;
+            _simulatedCharacterCount = 1;
+            _noMonsterCapacityLimit = false;
+        }
+
+        public void ConfigureSpawnModel(
+            int mapWidth,
+            int mapHeight,
+            float mobRate,
+            int? createMobIntervalMs,
+            long fieldLimit,
+            int simulatedCharacterCount = 1,
+            bool noRegenMap = false)
+        {
+            int spawnWidth = Math.Max(MIN_SPAWN_WIDTH, mapWidth);
+            int spawnHeight = Math.Max(MIN_SPAWN_HEIGHT, mapHeight - SPAWN_HEIGHT_REDUCTION);
+            int capacity = CalculateMonsterCapacity(spawnWidth, spawnHeight, mobRate);
+
+            _minRegularSpawnAtOnce = capacity;
+            _maxRegularSpawnAtOnce = capacity * 2;
+            _globalRespawnIntervalMs = createMobIntervalMs.GetValueOrDefault(DEFAULT_CREATE_MOB_INTERVAL);
+            _simulatedCharacterCount = Math.Max(1, simulatedCharacterCount);
+            _noMonsterCapacityLimit = FieldLimitType.No_Monster_Capacity_Limit.Check(fieldLimit);
+            _respawnEnabled = !noRegenMap;
+            _nextRespawnTime = -1;
+        }
+
+        public void TrimInitialPopulation()
+        {
+            int remainingBudget = Math.Max(0, CalculateTargetMobCount());
+
+            foreach (var spawnPoint in _spawnPoints.Where(sp => sp.IsBoss))
+            {
+                if (spawnPoint.CurrentMob == null)
+                {
+                    continue;
+                }
+
+                if (remainingBudget > 0)
+                {
+                    remainingBudget--;
+                    continue;
+                }
+
+                DeactivateSpawnPoint(spawnPoint, scheduleImmediateRespawn: true);
+            }
+
+            foreach (var spawnPoint in _spawnPoints.Where(sp => !sp.IsBoss))
+            {
+                if (spawnPoint.CurrentMob == null)
+                {
+                    continue;
+                }
+
+                if (remainingBudget > 0)
+                {
+                    remainingBudget--;
+                    continue;
+                }
+
+                DeactivateSpawnPoint(spawnPoint, scheduleImmediateRespawn: true);
+            }
+        }
+
+        private static int CalculateMonsterCapacity(int spawnWidth, int spawnHeight, float mobRate)
+        {
+            double rawCapacity = spawnWidth * (double)spawnHeight * mobRate * MAP_UNIT_SIZE_FACTOR;
+            int capacity = (int)rawCapacity;
+            capacity = Math.Max(MIN_MONSTER_CAPACITY, capacity);
+            capacity = Math.Min(MAX_MONSTER_CAPACITY, capacity);
+            return capacity;
+        }
+
+        private int CalculateTargetMobCount()
+        {
+            if (_noMonsterCapacityLimit)
+            {
+                return _spawnPoints.Count(sp => !sp.IsBoss);
+            }
+
+            int target = _minRegularSpawnAtOnce;
+            if (_minRegularSpawnAtOnce <= 0)
+            {
+                return 0;
+            }
+
+            if (_simulatedCharacterCount > _maxRegularSpawnAtOnce / 2)
+            {
+                target += (_maxRegularSpawnAtOnce - _minRegularSpawnAtOnce)
+                    * (2 * _simulatedCharacterCount - _minRegularSpawnAtOnce)
+                    / (3 * _minRegularSpawnAtOnce);
+            }
+
+            return Math.Min(target, _maxRegularSpawnAtOnce);
         }
         #endregion
 
@@ -239,13 +383,9 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             // Find spawn point and mark death time
-            var spawnPoint = _spawnPoints.FirstOrDefault(sp => sp.CurrentMob == mob);
-            if (spawnPoint != null)
+            if (_spawnPointByMob.TryGetValue(mob, out MobSpawnPoint spawnPoint))
             {
-                spawnPoint.IsActive = false;
-                spawnPoint.DeathTime = _lastUpdateTick;
-                spawnPoint.NextSpawnTime = _lastUpdateTick + DEATH_ANIMATION_TIME + spawnPoint.RespawnTimeMs;
-                spawnPoint.CurrentMob = null;
+                MarkSpawnPointInactive(spawnPoint, _lastUpdateTick);
             }
 
             _onMobDied?.Invoke(mob);
@@ -271,8 +411,31 @@ namespace HaCreator.MapSimulator.Pools
             _dyingMobs.Remove(mob);
             _deadMobs.Remove(mob);
             _mobById.Remove(mob.PoolId);
+            _spawnPointByMob.Remove(mob);
 
             // Notify listeners so they can clean up references (e.g., MapSimulator nulls array entry)
+            _onMobRemoved?.Invoke(mob);
+        }
+
+        private void DeactivateSpawnPoint(MobSpawnPoint spawnPoint, bool scheduleImmediateRespawn)
+        {
+            var mob = spawnPoint?.CurrentMob;
+            if (spawnPoint == null || mob == null)
+            {
+                return;
+            }
+
+            _activeMobs.Remove(mob);
+            _dyingMobs.Remove(mob);
+            _deadMobs.Remove(mob);
+            _mobById.Remove(mob.PoolId);
+            _spawnPointByMob.Remove(mob);
+
+            spawnPoint.CurrentMob = null;
+            spawnPoint.IsActive = false;
+            spawnPoint.DeathTime = 0;
+            spawnPoint.NextSpawnTime = scheduleImmediateRespawn ? 0 : int.MaxValue;
+
             _onMobRemoved?.Invoke(mob);
         }
 
@@ -294,8 +457,8 @@ namespace HaCreator.MapSimulator.Pools
             _mobById[mobId] = newMob;
             _activeMobs.Add(newMob);
 
-            spawnPoint.CurrentMob = newMob;
-            spawnPoint.IsActive = true;
+            AssignMobToSpawnPoint(spawnPoint, newMob);
+            newMob.StartSpawnFadeIn(_lastUpdateTick);
 
             // Boss announcement
             if (spawnPoint.IsBoss)
@@ -306,6 +469,25 @@ namespace HaCreator.MapSimulator.Pools
 
             _onMobSpawned?.Invoke(newMob);
             return newMob;
+        }
+
+        public MobItem AddTemporaryMob(MobItem mob, int currentTick)
+        {
+            if (mob == null)
+            {
+                return null;
+            }
+
+            _lastUpdateTick = currentTick;
+
+            int mobId = _nextMobId++;
+            mob.PoolId = mobId;
+            _mobById[mobId] = mob;
+            _activeMobs.Add(mob);
+            mob.StartSpawnFadeIn(currentTick);
+
+            _onMobSpawned?.Invoke(mob);
+            return mob;
         }
         #endregion
 
@@ -330,13 +512,9 @@ namespace HaCreator.MapSimulator.Pools
                     _dyingMobs.Add(mob);
 
                     // Update spawn point
-                    var spawnPoint = _spawnPoints.FirstOrDefault(sp => sp.CurrentMob == mob);
-                    if (spawnPoint != null)
+                    if (_spawnPointByMob.TryGetValue(mob, out MobSpawnPoint spawnPoint))
                     {
-                        spawnPoint.IsActive = false;
-                        spawnPoint.DeathTime = currentTick;
-                        spawnPoint.NextSpawnTime = currentTick + DEATH_ANIMATION_TIME + spawnPoint.RespawnTimeMs;
-                        spawnPoint.CurrentMob = null;
+                        MarkSpawnPointInactive(spawnPoint, currentTick);
                     }
 
                     _onMobDied?.Invoke(mob);
@@ -353,8 +531,13 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
                 }
 
-                // Check if death animation has finished playing
-                if (mob.IsDeathAnimationComplete)
+                bool deathAnimationFinished = mob.IsDeathAnimationComplete;
+                bool aiMarkedRemoved = mob.AI.State == MobAIState.Removed;
+                bool deathTimedOut = mob.AI.State == MobAIState.Death &&
+                                     mob.AI.StateElapsed(currentTick) >= DEATH_ANIMATION_TIME;
+
+                // Death cleanup must not depend solely on render-driven animation completion.
+                if (deathAnimationFinished || aiMarkedRemoved || deathTimedOut)
                 {
                     System.Diagnostics.Debug.WriteLine($"[MobPool] Mob death animation complete, removing");
                     // Mark AI as removed so it's properly cleaned up
@@ -366,27 +549,18 @@ namespace HaCreator.MapSimulator.Pools
                 }
             }
 
-            // Process respawns
+            // Process respawns using the field-level spawn cadence and population cap.
             if (_respawnEnabled && mobFactory != null)
             {
-                foreach (var spawnPoint in _spawnPoints)
+                if (_nextRespawnTime < 0)
                 {
-                    if (spawnPoint.IsActive)
-                        continue;
+                    _nextRespawnTime = currentTick + INITIAL_RESPAWN_DELAY;
+                }
 
-                    // Skip boss respawn if disabled
-                    if (spawnPoint.IsBoss && !_bossSpawnEnabled)
-                        continue;
-
-                    // Skip if respawn time is 0 (no respawn)
-                    if (spawnPoint.RespawnTimeMs <= 0)
-                        continue;
-
-                    // Check if ready to respawn
-                    if (currentTick >= spawnPoint.NextSpawnTime)
-                    {
-                        SpawnMobAtPoint(spawnPoint, mobFactory);
-                    }
+                if (currentTick >= _nextRespawnTime)
+                {
+                    RespawnToTargetPopulation(currentTick, mobFactory);
+                    _nextRespawnTime = currentTick + _globalRespawnIntervalMs;
                 }
             }
 
@@ -421,7 +595,7 @@ namespace HaCreator.MapSimulator.Pools
 
             foreach (var spawnPoint in _spawnPoints)
             {
-                if (!spawnPoint.IsActive && spawnPoint.RespawnTimeMs > 0)
+                if (!spawnPoint.IsActive && spawnPoint.RespawnTimeMs >= 0)
                 {
                     SpawnMobAtPoint(spawnPoint, mobFactory);
                 }
@@ -454,8 +628,139 @@ namespace HaCreator.MapSimulator.Pools
                 TotalSpawnPoints = _spawnPoints.Count,
                 ActiveSpawnPoints = _spawnPoints.Count(sp => sp.IsActive),
                 BossSpawnPoints = _spawnPoints.Count(sp => sp.IsBoss),
-                ActiveBosses = _activeMobs.Count(m => m.AI?.IsBoss == true)
+                ActiveBosses = _activeMobs.Count(m => m.AI?.IsBoss == true),
+                MinRegularSpawnAtOnce = _minRegularSpawnAtOnce,
+                MaxRegularSpawnAtOnce = _maxRegularSpawnAtOnce,
+                CurrentSpawnTarget = CalculateTargetMobCount(),
+                GlobalRespawnIntervalMs = _globalRespawnIntervalMs
             };
+        }
+
+        private void RespawnToTargetPopulation(int currentTick, Func<MobSpawnPoint, MobItem> mobFactory)
+        {
+            int numShouldSpawn = CalculateTargetMobCount() - _activeMobs.Count;
+            if (numShouldSpawn <= 0)
+            {
+                return;
+            }
+
+            foreach (var spawnPoint in _spawnPoints.Where(sp => sp.IsBoss))
+            {
+                if (numShouldSpawn <= 0)
+                {
+                    return;
+                }
+
+                if (!IsSpawnPointReady(spawnPoint, currentTick))
+                {
+                    continue;
+                }
+
+                if (SpawnMobAtPoint(spawnPoint, mobFactory) != null)
+                {
+                    numShouldSpawn--;
+                }
+            }
+
+            _respawnCandidates.Clear();
+            for (int i = 0; i < _spawnPoints.Count; i++)
+            {
+                MobSpawnPoint spawnPoint = _spawnPoints[i];
+                if (!spawnPoint.IsBoss && IsSpawnPointReady(spawnPoint, currentTick))
+                {
+                    _respawnCandidates.Add(spawnPoint);
+                }
+            }
+
+            ShuffleSpawnPoints(_respawnCandidates);
+
+            for (int i = 0; i < _respawnCandidates.Count; i++)
+            {
+                if (numShouldSpawn <= 0)
+                {
+                    break;
+                }
+
+                MobSpawnPoint spawnPoint = _respawnCandidates[i];
+                if (SpawnMobAtPoint(spawnPoint, mobFactory) != null)
+                {
+                    numShouldSpawn--;
+                }
+            }
+        }
+
+        private bool IsSpawnPointReady(MobSpawnPoint spawnPoint, int currentTick)
+        {
+            if (spawnPoint == null || spawnPoint.IsActive)
+            {
+                return false;
+            }
+
+            if (spawnPoint.IsBoss && !_bossSpawnEnabled)
+            {
+                return false;
+            }
+
+            if (spawnPoint.RespawnTimeMs < 0)
+            {
+                return false;
+            }
+
+            return currentTick >= spawnPoint.NextSpawnTime;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void AssignMobToSpawnPoint(MobSpawnPoint spawnPoint, MobItem mob)
+        {
+            if (spawnPoint == null)
+            {
+                return;
+            }
+
+            MobItem previousMob = spawnPoint.CurrentMob;
+            if (previousMob != null)
+            {
+                _spawnPointByMob.Remove(previousMob);
+            }
+
+            spawnPoint.CurrentMob = mob;
+            spawnPoint.IsActive = mob != null;
+            spawnPoint.DeathTime = 0;
+            if (mob != null)
+            {
+                _spawnPointByMob[mob] = spawnPoint;
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void MarkSpawnPointInactive(MobSpawnPoint spawnPoint, int currentTick)
+        {
+            if (spawnPoint == null)
+            {
+                return;
+            }
+
+            MobItem currentMob = spawnPoint.CurrentMob;
+            if (currentMob != null)
+            {
+                _spawnPointByMob.Remove(currentMob);
+            }
+
+            spawnPoint.IsActive = false;
+            spawnPoint.DeathTime = currentTick;
+            spawnPoint.NextSpawnTime = spawnPoint.RespawnTimeMs < 0
+                ? int.MaxValue
+                : currentTick + DEATH_ANIMATION_TIME + spawnPoint.RespawnTimeMs;
+            spawnPoint.CurrentMob = null;
+        }
+
+        private static void ShuffleSpawnPoints(List<MobSpawnPoint> spawnPoints)
+        {
+            for (int i = spawnPoints.Count - 1; i > 0; i--)
+            {
+                int j = Random.Shared.Next(i + 1);
+                (spawnPoints[i], spawnPoints[j]) = (spawnPoints[j], spawnPoints[i]);
+            }
         }
         #endregion
 
@@ -504,7 +809,6 @@ namespace HaCreator.MapSimulator.Pools
         public int LetMobChasePuppet(float puppetX, float puppetY, float aggroRange, int puppetId)
         {
             int count = 0;
-            float aggroRangeSq = aggroRange * aggroRange;
 
             foreach (var mob in _activeMobs)
             {
@@ -514,16 +818,17 @@ namespace HaCreator.MapSimulator.Pools
                 if (mob.MovementInfo == null)
                     continue;
 
-                // Calculate distance to puppet
-                float dx = mob.MovementInfo.X - puppetX;
-                float dy = mob.MovementInfo.Y - puppetY;
-                float distSq = dx * dx + dy * dy;
-
-                if (distSq <= aggroRangeSq)
+                PuppetInfo preferredPuppet = ResolvePreferredPuppetForMob(mob, _lastUpdateTick, puppetId, puppetX, puppetY, aggroRange);
+                if (preferredPuppet != null && preferredPuppet.ObjectId == puppetId)
                 {
-                    // Update mob's target to puppet position
-                    // The AI will now chase the puppet instead of the player
-                    mob.AI.SetAggroRange((int)aggroRange);
+                    mob.AI.ForceAggro(
+                        preferredPuppet.X,
+                        preferredPuppet.Y,
+                        _lastUpdateTick,
+                        preferredPuppet.ObjectId,
+                        MobTargetType.Summoned,
+                        MobExternalTargetSource.Summoned);
+                    mob.AI.SetAggroRange((int)MathF.Round(Math.Max(1f, preferredPuppet.AggroRange)));
                     count++;
                 }
             }
@@ -537,6 +842,453 @@ namespace HaCreator.MapSimulator.Pools
         public void UpdatePuppets(int currentTick)
         {
             _activePuppets.RemoveAll(p => !p.IsActive || (p.ExpirationTime > 0 && currentTick >= p.ExpirationTime));
+        }
+
+        public void SyncPuppetTargets(int currentTick)
+        {
+            if (_activeMobs.Count == 0 || _activePuppets.Count == 0)
+            {
+                return;
+            }
+
+            foreach (MobItem mob in _activeMobs)
+            {
+                if (mob?.AI == null || !mob.AI.IsTargetingSummoned)
+                {
+                    continue;
+                }
+
+                PuppetInfo preferredPuppet = ResolvePreferredPuppetForMob(mob, currentTick);
+                if (preferredPuppet == null)
+                {
+                    mob.AI.ClearExternalTarget(currentTick, MobExternalTargetSource.Summoned);
+                    continue;
+                }
+
+                if (mob.AI.Target.TargetId != preferredPuppet.ObjectId)
+                {
+                    mob.AI.ForceAggro(
+                        preferredPuppet.X,
+                        preferredPuppet.Y,
+                        currentTick,
+                        preferredPuppet.ObjectId,
+                        MobTargetType.Summoned,
+                        MobExternalTargetSource.Summoned);
+                    mob.AI.SetAggroRange((int)MathF.Round(Math.Max(1f, preferredPuppet.AggroRange)));
+                    continue;
+                }
+
+                mob.AI.UpdateExternalTargetPosition(
+                    preferredPuppet.ObjectId,
+                    MobTargetType.Summoned,
+                    preferredPuppet.X,
+                    preferredPuppet.Y,
+                    currentTick,
+                    MobExternalTargetSource.Summoned);
+            }
+        }
+
+        private PuppetInfo ResolvePreferredPuppetForMob(
+            MobItem mob,
+            int currentTick,
+            int preferredPuppetId = 0,
+            float fallbackPuppetX = 0f,
+            float fallbackPuppetY = 0f,
+            float fallbackAggroRange = 0f)
+        {
+            if (mob?.AI == null || mob.MovementInfo == null)
+            {
+                return null;
+            }
+
+            PuppetInfo bestPuppet = null;
+            float bestDistanceSq = float.MaxValue;
+            int bestAggroValue = int.MinValue;
+            int currentTargetId = mob.AI.IsTargetingSummoned ? mob.AI.Target.TargetId : 0;
+
+            foreach (PuppetInfo puppet in EnumerateActivePuppets(currentTick, preferredPuppetId, fallbackPuppetX, fallbackPuppetY, fallbackAggroRange))
+            {
+                float range = Math.Max(0f, puppet.AggroRange);
+                if (range <= 0f)
+                {
+                    continue;
+                }
+
+                float dx = mob.MovementInfo.X - puppet.X;
+                float dy = mob.MovementInfo.Y - puppet.Y;
+                float distanceSq = dx * dx + dy * dy;
+                if (distanceSq > range * range)
+                {
+                    continue;
+                }
+
+                if (IsPreferredPuppetCandidate(
+                        puppet,
+                        distanceSq,
+                        bestPuppet,
+                        bestDistanceSq,
+                        bestAggroValue,
+                        currentTargetId))
+                {
+                    bestPuppet = puppet;
+                    bestDistanceSq = distanceSq;
+                    bestAggroValue = puppet.AggroValue;
+                }
+            }
+
+            return bestPuppet;
+        }
+
+        private IEnumerable<PuppetInfo> EnumerateActivePuppets(
+            int currentTick,
+            int fallbackPuppetId,
+            float fallbackPuppetX,
+            float fallbackPuppetY,
+            float fallbackAggroRange)
+        {
+            foreach (PuppetInfo puppet in _activePuppets)
+            {
+                if (IsPuppetActive(puppet, currentTick))
+                {
+                    yield return puppet;
+                }
+            }
+
+            if (fallbackPuppetId > 0
+                && _activePuppets.All(puppet => puppet.ObjectId != fallbackPuppetId)
+                && fallbackAggroRange > 0f)
+            {
+                yield return new PuppetInfo
+                {
+                    ObjectId = fallbackPuppetId,
+                    X = fallbackPuppetX,
+                    Y = fallbackPuppetY,
+                    AggroValue = 1,
+                    AggroRange = fallbackAggroRange,
+                    IsActive = true
+                };
+            }
+        }
+
+        private static bool IsPuppetActive(PuppetInfo puppet, int currentTick)
+        {
+            return puppet != null
+                && puppet.IsActive
+                && (puppet.ExpirationTime <= 0 || currentTick < puppet.ExpirationTime);
+        }
+
+        private static bool IsPreferredPuppetCandidate(
+            PuppetInfo candidate,
+            float candidateDistanceSq,
+            PuppetInfo currentBest,
+            float currentBestDistanceSq,
+            int currentBestAggroValue,
+            int currentTargetId)
+        {
+            if (candidate == null)
+            {
+                return false;
+            }
+
+            if (currentBest == null)
+            {
+                return true;
+            }
+
+            if (candidate.AggroValue != currentBestAggroValue)
+            {
+                return candidate.AggroValue > currentBestAggroValue;
+            }
+
+            bool candidateIsCurrentTarget = candidate.ObjectId == currentTargetId;
+            bool currentBestIsCurrentTarget = currentBest.ObjectId == currentTargetId;
+            if (candidateIsCurrentTarget != currentBestIsCurrentTarget)
+            {
+                return candidateIsCurrentTarget;
+            }
+
+            if (MathF.Abs(candidateDistanceSq - currentBestDistanceSq) > 0.5f)
+            {
+                return candidateDistanceSq < currentBestDistanceSq;
+            }
+
+            if (candidate.OwnerId != currentBest.OwnerId)
+            {
+                return candidate.OwnerId < currentBest.OwnerId;
+            }
+
+            if (candidate.SummonSlotIndex != currentBest.SummonSlotIndex)
+            {
+                if (candidate.SummonSlotIndex < 0)
+                {
+                    return false;
+                }
+
+                if (currentBest.SummonSlotIndex < 0)
+                {
+                    return true;
+                }
+
+                return candidate.SummonSlotIndex < currentBest.SummonSlotIndex;
+            }
+
+            return candidate.ObjectId < currentBest.ObjectId;
+        }
+
+        public void SyncHypnotizedTargets(int currentTick, Func<int, int?> packetOwnedHypnotizeTargetResolver = null)
+        {
+            if (_activeMobs.Count < 2)
+            {
+                foreach (MobItem mob in _activeMobs)
+                {
+                    mob?.AI?.ClearExternalTarget(currentTick, MobExternalTargetSource.Hypnotize);
+                }
+
+                return;
+            }
+
+            foreach (MobItem mob in _activeMobs)
+            {
+                if (mob?.AI == null || mob.AI.IsDead)
+                {
+                    continue;
+                }
+
+                if (!mob.AI.IsHypnotized)
+                {
+                    mob.AI.ClearExternalTarget(currentTick, MobExternalTargetSource.Hypnotize);
+                    continue;
+                }
+
+                int preferredTargetId = packetOwnedHypnotizeTargetResolver?.Invoke(mob.PoolId) ?? 0;
+                MobItem target = HypnotizeTargetResolver.ResolveTarget(mob, _activeMobs, preferredTargetId);
+                if (target == null)
+                {
+                    mob.AI.ClearExternalTarget(currentTick, MobExternalTargetSource.Hypnotize);
+                    continue;
+                }
+
+                if (mob.AI.IsTargetingMob &&
+                    mob.AI.ExternalTargetSource == MobExternalTargetSource.Hypnotize &&
+                    mob.AI.Target.TargetId == target.PoolId)
+                {
+                    mob.AI.UpdateExternalTargetPosition(
+                        target.PoolId,
+                        MobTargetType.Mob,
+                        target.CurrentX,
+                        target.CurrentY,
+                        currentTick,
+                        MobExternalTargetSource.Hypnotize);
+                    continue;
+                }
+
+                mob.AI.ForceAggro(
+                    target.CurrentX,
+                    target.CurrentY,
+                    currentTick,
+                    target.PoolId,
+                    MobTargetType.Mob,
+                    MobExternalTargetSource.Hypnotize);
+            }
+        }
+
+        public void SyncEncounterTargets(int currentTick)
+        {
+            if (_activeMobs.Count < 2)
+            {
+                ClearStaleEncounterTargets(currentTick);
+                return;
+            }
+
+            bool hasEncounterObjectives = _activeMobs.Any(IsEncounterObjective);
+            if (!hasEncounterObjectives)
+            {
+                ClearStaleEncounterTargets(currentTick);
+                return;
+            }
+
+            foreach (MobItem mob in _activeMobs)
+            {
+                if (mob?.AI == null || mob.AI.IsDead)
+                {
+                    continue;
+                }
+
+                MobItem target = ResolveEncounterTarget(mob);
+                if (target == null)
+                {
+                    if (mob.AI.IsTargetingMob)
+                    {
+                        mob.AI.ClearExternalTarget(currentTick, MobExternalTargetSource.Encounter);
+                    }
+
+                    continue;
+                }
+
+                if (mob.AI.IsTargetingMob && mob.AI.Target.TargetId == target.PoolId)
+                {
+                    mob.AI.UpdateExternalTargetPosition(
+                        target.PoolId,
+                        MobTargetType.Mob,
+                        target.CurrentX,
+                        target.CurrentY,
+                        currentTick,
+                        MobExternalTargetSource.Encounter);
+                    continue;
+                }
+
+                mob.AI.ForceAggro(
+                    target.CurrentX,
+                    target.CurrentY,
+                    currentTick,
+                    target.PoolId,
+                    MobTargetType.Mob,
+                    MobExternalTargetSource.Encounter);
+            }
+        }
+
+        private MobItem FindNearestMobTarget(MobItem source)
+        {
+            return FindNearestMobTarget(source, _ => true, float.MaxValue);
+        }
+
+        private MobItem ResolveEncounterTarget(MobItem source)
+        {
+            if (source?.AI == null || source.AI.IsDead)
+            {
+                return null;
+            }
+
+            if (source.IsProtectedFromPlayerDamage)
+            {
+                return FindNearestEncounterTarget(
+                    source,
+                    candidate => !candidate.UsesMobCombatLane,
+                    Math.Max(320f, source.AI.AggroRange));
+            }
+
+            if ((source.MobData?.Escort ?? 0) > 0)
+            {
+                return null;
+            }
+
+            return FindNearestEncounterTarget(
+                source,
+                candidate => candidate.UsesMobCombatLane,
+                Math.Max(320f, source.AI.AggroRange));
+        }
+
+        private MobItem FindNearestEncounterTarget(MobItem source, System.Predicate<MobItem> predicate, float maxDistance)
+        {
+            if (source == null)
+            {
+                return null;
+            }
+
+            float maxDistanceSq = maxDistance * maxDistance;
+            MobItem nearest = null;
+            float nearestDistanceSq = maxDistanceSq;
+            int bestPriority = int.MaxValue;
+            int? sourceTeam = source.MobInstance?.Team;
+
+            for (int i = 0; i < _activeMobs.Count; i++)
+            {
+                MobItem candidate = _activeMobs[i];
+                if (candidate == null ||
+                    candidate == source ||
+                    candidate.AI == null ||
+                    candidate.AI.IsDead)
+                {
+                    continue;
+                }
+
+                if (predicate != null && !predicate(candidate))
+                {
+                    continue;
+                }
+
+                // Encounter mobs should not retarget explicit same-team actors when map life publishes teams.
+                int teamPriority = SpecialMobInteractionRules.ResolveEncounterTargetPriority(sourceTeam, candidate.MobInstance?.Team);
+                if (teamPriority == SpecialMobInteractionRules.InvalidEncounterTargetPriority ||
+                    teamPriority > bestPriority)
+                {
+                    continue;
+                }
+
+                float dx = candidate.CurrentX - source.CurrentX;
+                float dy = candidate.CurrentY - source.CurrentY;
+                float distanceSq = (dx * dx) + (dy * dy);
+                if (distanceSq > maxDistanceSq)
+                {
+                    continue;
+                }
+
+                if (teamPriority < bestPriority || distanceSq < nearestDistanceSq)
+                {
+                    nearest = candidate;
+                    nearestDistanceSq = distanceSq;
+                    bestPriority = teamPriority;
+                }
+            }
+
+            return nearest;
+        }
+
+        private MobItem FindNearestMobTarget(MobItem source, System.Predicate<MobItem> predicate, float maxDistance)
+        {
+            if (source == null)
+            {
+                return null;
+            }
+
+            MobItem nearest = null;
+            float nearestDistanceSq = maxDistance * maxDistance;
+
+            for (int i = 0; i < _activeMobs.Count; i++)
+            {
+                MobItem candidate = _activeMobs[i];
+                if (candidate == null ||
+                    candidate == source ||
+                    candidate.AI == null ||
+                    candidate.AI.IsDead)
+                {
+                    continue;
+                }
+
+                if (predicate != null && !predicate(candidate))
+                {
+                    continue;
+                }
+
+                float dx = candidate.CurrentX - source.CurrentX;
+                float dy = candidate.CurrentY - source.CurrentY;
+                float distanceSq = dx * dx + dy * dy;
+                if (distanceSq >= nearestDistanceSq)
+                {
+                    continue;
+                }
+
+                nearestDistanceSq = distanceSq;
+                nearest = candidate;
+            }
+
+            return nearest;
+        }
+
+        private void ClearStaleEncounterTargets(int currentTick)
+        {
+            foreach (MobItem mob in _activeMobs)
+            {
+                if (mob?.AI?.IsTargetingMob == true)
+                {
+                    mob.AI.ClearExternalTarget(currentTick, MobExternalTargetSource.Encounter);
+                }
+            }
+        }
+
+        private static bool IsEncounterObjective(MobItem mob)
+        {
+            return mob?.UsesMobCombatLane == true;
         }
 
         /// <summary>
@@ -806,16 +1558,7 @@ namespace HaCreator.MapSimulator.Pools
                 if (mob.MovementInfo == null)
                     continue;
 
-                // Get mob hitbox (estimate based on current frame)
-                var mobFrame = mob.GetCurrentFrame();
-                int mobWidth = mobFrame?.Width ?? 40;
-                int mobHeight = mobFrame?.Height ?? 40;
-
-                var mobRect = new Rectangle(
-                    (int)(mob.MovementInfo.X - mobWidth / 2),
-                    (int)(mob.MovementInfo.Y - mobHeight),
-                    mobWidth,
-                    mobHeight);
+                var mobRect = mob.GetBodyHitbox();
 
                 // Check intersection
                 if (playerRect.Intersects(mobRect))
@@ -856,15 +1599,7 @@ namespace HaCreator.MapSimulator.Pools
                 if (mob.MovementInfo == null)
                     continue;
 
-                var mobFrame = mob.GetCurrentFrame();
-                int mobWidth = mobFrame?.Width ?? 40;
-                int mobHeight = mobFrame?.Height ?? 40;
-
-                var mobRect = new Rectangle(
-                    (int)(mob.MovementInfo.X - mobWidth / 2),
-                    (int)(mob.MovementInfo.Y - mobHeight),
-                    mobWidth,
-                    mobHeight);
+                var mobRect = mob.GetBodyHitbox();
 
                 if (playerRect.Intersects(mobRect))
                 {
@@ -1133,5 +1868,9 @@ namespace HaCreator.MapSimulator.Pools
         public int ActiveSpawnPoints;
         public int BossSpawnPoints;
         public int ActiveBosses;
+        public int MinRegularSpawnAtOnce;
+        public int MaxRegularSpawnAtOnce;
+        public int CurrentSpawnTarget;
+        public int GlobalRespawnIntervalMs;
     }
 }

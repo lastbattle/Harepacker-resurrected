@@ -1,11 +1,17 @@
 using HaCreator.MapSimulator.UI;
 using HaSharedLibrary.Util;
+using HaCreator.MapSimulator.Character.Skills;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
+using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Diagnostics;
+using System.Linq;
+using System.Text;
+using System.Text.RegularExpressions;
 
 namespace HaCreator.MapSimulator.Loaders
 {
@@ -14,6 +20,23 @@ namespace HaCreator.MapSimulator.Loaders
     /// </summary>
     public static class SkillDataLoader
     {
+        private static readonly object SkillDisplayCacheLock = new();
+        private static readonly Dictionary<int, List<SkillDisplayData>> SkillDisplayCacheByJob = new();
+        private static readonly HashSet<int> MissingSkillBooks = new();
+        private const int GuildSkillPeriodDaysToMinutes = 24 * 60;
+
+        public readonly struct RecommendedSkillEntry
+        {
+            public RecommendedSkillEntry(int spentSpThreshold, int skillId)
+            {
+                SpentSpThreshold = spentSpThreshold;
+                SkillId = skillId;
+            }
+
+            public int SpentSpThreshold { get; }
+            public int SkillId { get; }
+        }
+
         /// <summary>
         /// Job ID to skill book image mapping
         /// Beginner: 000.img, Warriors: 100.img, etc.
@@ -49,6 +72,19 @@ namespace HaCreator.MapSimulator.Loaders
         /// <returns>List of skill display data</returns>
         public static List<SkillDisplayData> LoadSkillsForJob(int jobId, GraphicsDevice device)
         {
+            lock (SkillDisplayCacheLock)
+            {
+                if (MissingSkillBooks.Contains(jobId))
+                {
+                    return new List<SkillDisplayData>();
+                }
+
+                if (SkillDisplayCacheByJob.TryGetValue(jobId, out List<SkillDisplayData> cachedSkills))
+                {
+                    return new List<SkillDisplayData>(cachedSkills);
+                }
+            }
+
             List<SkillDisplayData> skills = new List<SkillDisplayData>();
 
             // Get skill image name for this job
@@ -64,6 +100,10 @@ namespace HaCreator.MapSimulator.Loaders
             if (skillImage == null)
             {
                 Debug.WriteLine($"[SkillDataLoader] Failed to load Skill/{skillImageName}");
+                lock (SkillDisplayCacheLock)
+                {
+                    MissingSkillBooks.Add(jobId);
+                }
                 return skills;
             }
 
@@ -104,7 +144,101 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             Debug.WriteLine($"[SkillDataLoader] Total skills loaded for job {jobId}: {skills.Count}");
-            return skills;
+            lock (SkillDisplayCacheLock)
+            {
+                SkillDisplayCacheByJob[jobId] = new List<SkillDisplayData>(skills);
+            }
+
+            return new List<SkillDisplayData>(skills);
+        }
+
+        public static List<SkillDisplayData> LoadGuildSkills(GraphicsDevice device)
+        {
+            return LoadSkillsFromImageName("9100.img", device);
+        }
+
+        public static IReadOnlyList<RecommendedSkillEntry> LoadRecommendedSkillEntries(
+            int jobId,
+            IEnumerable<int> validSkillIds = null)
+        {
+            WzImage recommendSkillImage = Program.FindImage("Etc", "RecommendSkill.img");
+            if (recommendSkillImage == null)
+                return Array.Empty<RecommendedSkillEntry>();
+
+            if (recommendSkillImage[jobId.ToString(CultureInfo.InvariantCulture)] is not WzSubProperty recommendProperty)
+                return Array.Empty<RecommendedSkillEntry>();
+
+            HashSet<int> validSkillIdSet = validSkillIds != null
+                ? new HashSet<int>(validSkillIds)
+                : null;
+
+            if (!TryBuildRecommendedSkillEntries(recommendProperty, validSkillIdSet, out List<RecommendedSkillEntry> entries))
+                return Array.Empty<RecommendedSkillEntry>();
+
+            return entries;
+        }
+
+        /// <summary>
+        /// Enumerate every numeric skill book image available in Skill.wz.
+        /// </summary>
+        public static IReadOnlyList<int> GetAvailableSkillBookJobIds(WzFile skillWzFile)
+        {
+            var fromFile = SkillLoader.EnumerateSkillBookJobIds(skillWzFile);
+            if (fromFile.Count > 0)
+                return fromFile;
+
+            var result = new SortedSet<int>();
+
+            if (Program.FindWzObject("Skill", string.Empty) is WzDirectory rootDirectory)
+            {
+                CollectSkillBookJobIds(rootDirectory, result);
+            }
+
+            if (result.Count == 0)
+            {
+                foreach (var directory in Program.GetDirectories("Skill"))
+                {
+                    CollectSkillBookJobIds(directory, result);
+                }
+            }
+
+            return new List<int>(result);
+        }
+
+        public static bool SkillRootContainsSkill(int skillRootId, int skillId)
+        {
+            if (skillRootId < 0 || skillId <= 0)
+                return false;
+
+            WzImage skillImage = Program.FindImage("Skill", GetSkillImageName(skillRootId));
+            if (skillImage == null)
+                return false;
+
+            return skillImage["skill"] is WzSubProperty skillProperty &&
+                   skillProperty[skillId.ToString(CultureInfo.InvariantCulture)] != null;
+        }
+
+        private static void CollectSkillBookJobIds(WzDirectory directory, ISet<int> result)
+        {
+            if (directory == null)
+                return;
+
+            foreach (var image in directory.WzImages)
+            {
+                if (image == null)
+                    continue;
+
+                string name = System.IO.Path.GetFileNameWithoutExtension(image.Name);
+                if (int.TryParse(name, out int jobId))
+                {
+                    result.Add(jobId);
+                }
+            }
+
+            foreach (var subDirectory in directory.WzDirectories)
+            {
+                CollectSkillBookJobIds(subDirectory, result);
+            }
         }
 
         /// <summary>
@@ -174,6 +308,20 @@ namespace HaCreator.MapSimulator.Loaders
             return skills;
         }
 
+        private static List<SkillDisplayData> LoadSkillsFromImageName(string skillImageName, GraphicsDevice device)
+        {
+            List<SkillDisplayData> skills = new List<SkillDisplayData>();
+            if (string.IsNullOrWhiteSpace(skillImageName))
+                return skills;
+
+            WzImage skillImage = Program.FindImage("Skill", skillImageName);
+            if (skillImage == null)
+                return skills;
+
+            WzImage stringImage = Program.FindImage("String", "Skill.img");
+            return LoadSkillsFromImage(skillImage, stringImage, device);
+        }
+
         /// <summary>
         /// Load a single skill from WZ data
         /// </summary>
@@ -190,7 +338,7 @@ namespace HaCreator.MapSimulator.Loaders
                 return null;
 
             System.Drawing.Bitmap iconBitmap = iconProp.GetLinkedWzCanvasBitmap();
-            Texture2D iconTexture = iconBitmap?.ToTexture2D(device);
+            Texture2D iconTexture = iconBitmap?.ToTexture2DAndDispose(device);
             if (iconTexture == null)
                 return null;
 
@@ -200,7 +348,7 @@ namespace HaCreator.MapSimulator.Loaders
             if (disabledIconProp != null)
             {
                 System.Drawing.Bitmap disabledBitmap = disabledIconProp.GetLinkedWzCanvasBitmap();
-                disabledIconTexture = disabledBitmap?.ToTexture2D(device);
+                disabledIconTexture = disabledBitmap?.ToTexture2DAndDispose(device);
             }
 
             // Get mouse over icon if available
@@ -209,13 +357,14 @@ namespace HaCreator.MapSimulator.Loaders
             if (mouseOverIconProp != null)
             {
                 System.Drawing.Bitmap mouseOverBitmap = mouseOverIconProp.GetLinkedWzCanvasBitmap();
-                mouseOverIconTexture = mouseOverBitmap?.ToTexture2D(device);
+                mouseOverIconTexture = mouseOverBitmap?.ToTexture2DAndDispose(device);
             }
 
             // Get skill info
             WzSubProperty infoProperty = (WzSubProperty)skillEntry["info"];
             int maxLevel = 0;
             bool invisible = false;
+            bool timeLimited = false;
 
             if (infoProperty != null)
             {
@@ -223,25 +372,25 @@ namespace HaCreator.MapSimulator.Loaders
                 if (maxLevelProp != null)
                     maxLevel = maxLevelProp.Value;
 
-                WzIntProperty invisibleProp = (WzIntProperty)infoProperty["invisible"];
-                if (invisibleProp != null)
-                    invisible = invisibleProp.Value == 1;
+                invisible = ResolveBooleanProperty(infoProperty, "invisible");
+                timeLimited = ResolveBooleanProperty(infoProperty, "timeLimited");
             }
 
-            // Get level info for max level determination
+            invisible |= ResolveBooleanProperty(skillEntry, "invisible");
+            timeLimited |= ResolveBooleanProperty(skillEntry, "timeLimited");
+
+            // Guild skills such as `Skill/9100.img` publish their cap in `common/maxLevel`
+            // instead of `info/maxLevel` or a `level/*` branch, so keep the loader on that
+            // same WZ-backed seam before building descriptions and formulas.
             WzSubProperty levelProperty = (WzSubProperty)skillEntry["level"];
-            if (levelProperty != null && maxLevel == 0)
-            {
-                maxLevel = levelProperty.WzProperties.Count;
-            }
-
-            // Skip invisible skills
-            if (invisible)
-                return null;
+            maxLevel = ResolveDisplayMaxLevel(skillEntry, infoProperty, levelProperty, maxLevel);
 
             // Get skill name and description from String.wz
             string skillName = $"Skill {skillId}";
             string description = "";
+            string formattedDescription = string.Empty;
+            Dictionary<int, string> levelDescriptions = null;
+            Dictionary<int, string> formattedLevelDescriptions = null;
 
             if (stringImage != null)
             {
@@ -255,10 +404,23 @@ namespace HaCreator.MapSimulator.Loaders
                     WzStringProperty descProp = (WzStringProperty)stringEntry["desc"];
                     if (descProp != null)
                         description = descProp.Value;
+
+                    if (string.IsNullOrWhiteSpace(description) && stringEntry["pdesc"] is WzStringProperty passiveDescProp)
+                        description = passiveDescProp.Value;
+
+                    levelDescriptions = BuildLevelDescriptions(skillEntry, stringEntry, Math.Max(1, maxLevel), preserveFormatting: false);
+                    formattedLevelDescriptions = BuildLevelDescriptions(skillEntry, stringEntry, Math.Max(1, maxLevel), preserveFormatting: true);
                 }
             }
 
-            return new SkillDisplayData
+            int requiredCharacterLevel = ResolveRequiredCharacterLevel(skillEntry);
+            List<SkillRequirementDisplayData> requiredSkills = BuildRequiredSkills(skillEntry, stringImage, device);
+            ResolveRequiredSkill(requiredSkills, out int requiredSkillId, out int requiredSkillLevel);
+            bool hasExplicitRequirements = requiredSkills.Count > 0;
+            formattedDescription = NormalizeSkillDescriptionForTooltip(description, hasExplicitRequirements, preserveFormatting: true);
+            description = NormalizeSkillDescriptionForTooltip(description, hasExplicitRequirements);
+
+            var displayData = new SkillDisplayData
             {
                 SkillId = skillId,
                 IconTexture = iconTexture,
@@ -266,9 +428,2416 @@ namespace HaCreator.MapSimulator.Loaders
                 IconMouseOverTexture = mouseOverIconTexture,
                 SkillName = skillName,
                 Description = description,
-                CurrentLevel = 1, // Default to level 1 for display purposes
-                MaxLevel = Math.Max(1, maxLevel)
+                FormattedDescription = formattedDescription,
+                IsInvisible = invisible,
+                IsTimeLimited = timeLimited,
+                CurrentLevel = 0,
+                MaxLevel = Math.Max(1, maxLevel),
+                RequiredCharacterLevel = requiredCharacterLevel,
+                RequiredSkillId = requiredSkillId,
+                RequiredSkillLevel = requiredSkillLevel
             };
+
+            for (int i = 0; i < requiredSkills.Count; i++)
+                displayData.Requirements.Add(requiredSkills[i]);
+
+            string requiredGuildLevelFormula = GetStringValue(skillEntry["common"], "reqGuildLevel");
+            if (!string.IsNullOrWhiteSpace(requiredGuildLevelFormula))
+            {
+                PopulateEvaluatedGuildValues(displayData.RequiredGuildLevels, requiredGuildLevelFormula, displayData.MaxLevel);
+            }
+
+            displayData.GuildPriceUnit = ResolveGuildPriceUnit(skillEntry["common"]);
+            PopulateEvaluatedGuildValues(displayData.GuildActivationCosts, GetStringValue(skillEntry["common"], "price"), displayData.MaxLevel, displayData.GuildPriceUnit);
+            PopulateEvaluatedGuildValues(displayData.GuildRenewalCosts, GetStringValue(skillEntry["common"], "extendPrice"), displayData.MaxLevel, displayData.GuildPriceUnit);
+            PopulateEvaluatedGuildValues(
+                displayData.GuildDurationsMinutes,
+                GetStringValue(skillEntry["common"], "period"),
+                displayData.MaxLevel,
+                GuildSkillPeriodDaysToMinutes);
+
+            if (levelDescriptions != null)
+            {
+                foreach (var entry in levelDescriptions)
+                    displayData.LevelDescriptions[entry.Key] = entry.Value;
+            }
+
+            if (formattedLevelDescriptions != null)
+            {
+                foreach (var entry in formattedLevelDescriptions)
+                    displayData.FormattedLevelDescriptions[entry.Key] = entry.Value;
+            }
+
+            return displayData;
+        }
+
+        internal static int ResolveDisplayMaxLevel(
+            WzSubProperty skillEntry,
+            WzSubProperty infoProperty,
+            WzSubProperty levelProperty,
+            int currentMaxLevel = 0)
+        {
+            int maxLevel = currentMaxLevel;
+
+            if (infoProperty != null)
+            {
+                WzIntProperty maxLevelProp = (WzIntProperty)infoProperty["maxLevel"];
+                if (maxLevelProp != null)
+                    maxLevel = Math.Max(maxLevel, maxLevelProp.Value);
+            }
+
+            if (levelProperty != null)
+            {
+                maxLevel = Math.Max(maxLevel, levelProperty.WzProperties.Count);
+            }
+
+            if (skillEntry?["common"] is WzImageProperty commonProperty &&
+                TryGetNumericPropertyValue(commonProperty, "maxLevel", 1, out int commonMaxLevel))
+            {
+                maxLevel = Math.Max(maxLevel, commonMaxLevel);
+            }
+
+            return maxLevel;
+        }
+
+        private static int ResolveGuildPriceUnit(WzImageProperty commonNode)
+        {
+            if (TryGetNumericPropertyValue(commonNode, "priceUnit", 1, out int priceUnit))
+                return Math.Max(1, priceUnit);
+
+            string unitString = GetStringValue(commonNode, "priceUnit");
+            return int.TryParse(unitString, NumberStyles.Integer, CultureInfo.InvariantCulture, out priceUnit)
+                ? Math.Max(1, priceUnit)
+                : 1;
+        }
+
+        private static void PopulateEvaluatedGuildValues(
+            IDictionary<int, int> target,
+            string formula,
+            int maxLevel,
+            int multiplier = 1)
+        {
+            if (target == null || string.IsNullOrWhiteSpace(formula) || maxLevel <= 0)
+                return;
+
+            int resolvedMultiplier = Math.Max(1, multiplier);
+            for (int level = 1; level <= maxLevel; level++)
+            {
+                if (!TryEvaluateFormula(formula, level, out int value))
+                    continue;
+
+                long scaled = (long)value * resolvedMultiplier;
+                target[level] = scaled > int.MaxValue
+                    ? int.MaxValue
+                    : Math.Max(0, (int)scaled);
+            }
+        }
+
+        private static int ResolveRequiredCharacterLevel(WzSubProperty skillEntry)
+        {
+            if (skillEntry == null)
+                return 0;
+
+            if (TryGetNumericPropertyValue(skillEntry["common"], "reqLevel", 1, out int requiredLevel) ||
+                TryGetNumericPropertyValue(skillEntry["level"]?["1"], "reqLevel", 1, out requiredLevel) ||
+                TryGetNumericPropertyValue(skillEntry["info"], "reqLevel", 1, out requiredLevel))
+            {
+                return Math.Max(0, requiredLevel);
+            }
+
+            return 0;
+        }
+
+        private static void ResolveRequiredSkill(
+            IReadOnlyList<SkillRequirementDisplayData> requirements,
+            out int requiredSkillId,
+            out int requiredSkillLevel)
+        {
+            requiredSkillId = 0;
+            requiredSkillLevel = 0;
+            if (requirements == null || requirements.Count == 0)
+                return;
+
+            requiredSkillId = requirements[0].SkillId;
+            requiredSkillLevel = Math.Max(0, requirements[0].RequiredLevel);
+        }
+
+        private static List<SkillRequirementDisplayData> BuildRequiredSkills(
+            WzSubProperty skillEntry,
+            WzImage stringImage,
+            GraphicsDevice device)
+        {
+            var requirements = new List<SkillRequirementDisplayData>();
+            if (skillEntry?["req"] is not WzSubProperty requirementNode)
+                return requirements;
+
+            foreach (WzImageProperty requirementEntry in requirementNode.WzProperties)
+            {
+                if (!int.TryParse(requirementEntry?.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int skillId) ||
+                    !TryGetNumericValue(requirementEntry, out int skillLevel) ||
+                    skillLevel <= 0)
+                {
+                    continue;
+                }
+
+                requirements.Add(new SkillRequirementDisplayData
+                {
+                    SkillId = skillId,
+                    SkillName = ResolveSkillName(skillId, stringImage),
+                    RequiredLevel = skillLevel,
+                    IconTexture = LoadSkillIcon(skillId, device, out Point iconOrigin),
+                    IconOrigin = iconOrigin
+                });
+            }
+
+            return requirements;
+        }
+
+        private static string ResolveSkillName(int skillId, WzImage stringImage)
+        {
+            if (stringImage?[skillId.ToString(CultureInfo.InvariantCulture)] is WzSubProperty stringEntry &&
+                stringEntry["name"] is WzStringProperty nameProp &&
+                !string.IsNullOrWhiteSpace(nameProp.Value))
+            {
+                return nameProp.Value;
+            }
+
+            return $"Skill {skillId}";
+        }
+
+        private static Texture2D LoadSkillIcon(int skillId, GraphicsDevice device, out Point iconOrigin)
+        {
+            iconOrigin = Point.Zero;
+            if (skillId <= 0 || device == null)
+                return null;
+
+            string skillImageName = GetSkillImageName(skillId / 10000);
+            if (string.IsNullOrWhiteSpace(skillImageName))
+                return null;
+
+            WzImage skillImage = Program.FindImage("Skill", skillImageName);
+            if (skillImage?["skill"]?[skillId.ToString(CultureInfo.InvariantCulture)]?["icon"] is not WzCanvasProperty iconProp)
+                return null;
+
+            iconOrigin = ResolveCanvasOrigin(iconProp);
+            System.Drawing.Bitmap iconBitmap = iconProp.GetLinkedWzCanvasBitmap();
+            return iconBitmap?.ToTexture2DAndDispose(device);
+        }
+
+        private static Point ResolveCanvasOrigin(WzCanvasProperty canvasProperty)
+        {
+            if (canvasProperty?[WzCanvasProperty.OriginPropertyName] is WzVectorProperty originProperty)
+                return new Point(originProperty.X?.Value ?? 0, originProperty.Y?.Value ?? 0);
+
+            return Point.Zero;
+        }
+
+        private static Dictionary<int, string> BuildLevelDescriptions(
+            WzSubProperty skillEntry,
+            WzSubProperty stringEntry,
+            int maxLevel,
+            bool preserveFormatting)
+        {
+            if (skillEntry == null || stringEntry == null || maxLevel <= 0)
+                return null;
+
+            var result = new Dictionary<int, string>();
+            string sharedTemplate = GetStringValue(stringEntry, "h");
+            if (string.IsNullOrWhiteSpace(sharedTemplate))
+                sharedTemplate = GetStringValue(stringEntry, "ph");
+
+            for (int level = 1; level <= maxLevel; level++)
+            {
+                WzImageProperty levelNode = skillEntry["level"]?[level.ToString(CultureInfo.InvariantCulture)];
+                string explicitLevelText = GetStringValue(stringEntry, $"h{level}");
+                if (string.IsNullOrWhiteSpace(explicitLevelText))
+                {
+                    string authoredLevelAlias = GetStringValue(levelNode, "hs");
+                    if (!string.IsNullOrWhiteSpace(authoredLevelAlias))
+                        explicitLevelText = GetStringValue(stringEntry, authoredLevelAlias);
+                }
+
+                string resolved = explicitLevelText;
+
+                if (string.IsNullOrWhiteSpace(resolved) && !string.IsNullOrWhiteSpace(sharedTemplate))
+                    resolved = ResolveSkillTemplate(sharedTemplate, skillEntry, level, maxLevel);
+
+                string fallbackStats = BuildFallbackLevelDescription(skillEntry, stringEntry, level);
+                if (string.IsNullOrWhiteSpace(resolved) || ContainsUnresolvedSkillToken(resolved))
+                    resolved = fallbackStats;
+
+                resolved = NormalizeSkillText(resolved, preserveFormatting);
+                if (!string.IsNullOrWhiteSpace(resolved))
+                    result[level] = resolved;
+            }
+
+            return result.Count > 0 ? result : null;
+        }
+
+        private static string ResolveSkillTemplate(string template, WzSubProperty skillEntry, int level, int maxLevel)
+        {
+            if (string.IsNullOrWhiteSpace(template) || skillEntry == null)
+                return string.Empty;
+
+            return Regex.Replace(template, "#([A-Za-z0-9_]+)", match =>
+            {
+                string token = match.Groups[1].Value;
+                return TryResolveSkillToken(skillEntry, token, level, maxLevel, out string value)
+                    ? value
+                    : match.Value;
+            });
+        }
+
+        private static bool TryResolveSkillToken(WzSubProperty skillEntry, string token, int level, int maxLevel, out string value)
+        {
+            value = null;
+            if (skillEntry == null || string.IsNullOrWhiteSpace(token))
+                return false;
+
+            if (string.Equals(token, "level", StringComparison.OrdinalIgnoreCase))
+            {
+                value = level.ToString(CultureInfo.InvariantCulture);
+                return true;
+            }
+
+            if (string.Equals(token, "maxLevel", StringComparison.OrdinalIgnoreCase))
+            {
+                value = maxLevel.ToString(CultureInfo.InvariantCulture);
+                return true;
+            }
+
+            WzImageProperty levelNode = skillEntry["level"]?[level.ToString(CultureInfo.InvariantCulture)];
+            if (TryGetNumericPropertyValue(levelNode, token, level, out int numericValue) ||
+                TryGetNumericPropertyValue(skillEntry["common"], token, level, out numericValue) ||
+                TryGetNumericPropertyValue(skillEntry["info"], token, level, out numericValue))
+            {
+                value = numericValue.ToString(CultureInfo.InvariantCulture);
+                return true;
+            }
+
+            string stringValue = GetStringValue(levelNode, token)
+                                 ?? GetStringValue(skillEntry["common"], token)
+                                 ?? GetStringValue(skillEntry["info"], token);
+            if (!string.IsNullOrWhiteSpace(stringValue))
+            {
+                value = NormalizeSkillText(stringValue);
+                return true;
+            }
+
+            return false;
+        }
+
+        private static string BuildFallbackLevelDescription(
+            WzSubProperty skillEntry,
+            WzSubProperty stringEntry,
+            int level)
+        {
+            if (skillEntry == null || level <= 0)
+                return string.Empty;
+
+            WzImageProperty levelNode = skillEntry["level"]?[level.ToString(CultureInfo.InvariantCulture)];
+            WzImageProperty commonNode = skillEntry["common"];
+            WzImageProperty infoNode = skillEntry["info"];
+            var builder = new StringBuilder();
+            var appendedKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            AppendFallbackStatsFromNode(builder, skillEntry, stringEntry, levelNode, commonNode, infoNode, level, levelNode, appendedKeys);
+            AppendFallbackStatsFromNode(builder, skillEntry, stringEntry, levelNode, commonNode, infoNode, level, commonNode, appendedKeys);
+            AppendFallbackStatsFromNode(builder, skillEntry, stringEntry, levelNode, commonNode, infoNode, level, infoNode, appendedKeys);
+            AppendFallbackStatsInDefaultOrder(builder, skillEntry, stringEntry, levelNode, commonNode, infoNode, level, appendedKeys);
+
+            return builder.ToString().Trim();
+        }
+
+        internal static string BuildFallbackLevelDescriptionForTests(
+            WzSubProperty skillEntry,
+            WzSubProperty stringEntry,
+            int level)
+        {
+            return BuildFallbackLevelDescription(skillEntry, stringEntry, level);
+        }
+
+        private static void AppendFallbackStatsFromNode(
+            StringBuilder builder,
+            WzSubProperty skillEntry,
+            WzSubProperty stringEntry,
+            WzImageProperty levelNode,
+            WzImageProperty commonNode,
+            WzImageProperty infoNode,
+            int level,
+            WzImageProperty sourceNode,
+            ISet<string> appendedKeys)
+        {
+            if (sourceNode == null || appendedKeys == null)
+                return;
+
+            foreach (WzImageProperty property in sourceNode.WzProperties)
+            {
+                if (property == null)
+                    continue;
+
+                string propertyName = property.Name;
+                if (string.IsNullOrWhiteSpace(propertyName))
+                    continue;
+
+                string statKey = ResolveFallbackStatKey(propertyName);
+                bool useGenericFallback = false;
+                if (string.IsNullOrWhiteSpace(statKey))
+                {
+                    if (ReferenceEquals(sourceNode, infoNode) || !ShouldUseGenericFallbackStat(propertyName))
+                        continue;
+
+                    statKey = propertyName;
+                    useGenericFallback = true;
+                }
+
+                if (appendedKeys.Contains(statKey))
+                    continue;
+
+                if (!TryAppendFallbackStat(builder, skillEntry, stringEntry, levelNode, commonNode, infoNode, level, statKey, useGenericFallback))
+                    continue;
+
+                appendedKeys.Add(statKey);
+            }
+        }
+
+        private static void AppendFallbackStatsInDefaultOrder(
+            StringBuilder builder,
+            WzSubProperty skillEntry,
+            WzSubProperty stringEntry,
+            WzImageProperty levelNode,
+            WzImageProperty commonNode,
+            WzImageProperty infoNode,
+            int level,
+            ISet<string> appendedKeys)
+        {
+            foreach (string statKey in FallbackSkillStatOrder)
+            {
+                if (appendedKeys.Contains(statKey))
+                    continue;
+
+                if (!TryAppendFallbackStat(builder, skillEntry, stringEntry, levelNode, commonNode, infoNode, level, statKey))
+                    continue;
+
+                appendedKeys.Add(statKey);
+            }
+        }
+
+        private static string ResolveFallbackStatKey(string propertyName)
+        {
+            if (string.IsNullOrWhiteSpace(propertyName))
+                return null;
+
+            if (string.Equals(propertyName, "ignoreTargetPDP", StringComparison.OrdinalIgnoreCase))
+                return "ignoreMobpdpR";
+
+            if (string.Equals(propertyName, "itemCon", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(propertyName, "itemConNo", StringComparison.OrdinalIgnoreCase))
+            {
+                return "itemCon";
+            }
+
+            if (string.Equals(propertyName, "itemConsume", StringComparison.OrdinalIgnoreCase))
+                return "itemConsume";
+
+            if (string.Equals(propertyName, "lt", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(propertyName, "rb", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(propertyName, "range", StringComparison.OrdinalIgnoreCase))
+            {
+                return "range";
+            }
+
+            return FallbackSkillStatDefinitions.ContainsKey(propertyName)
+                ? propertyName
+                : null;
+        }
+
+        private static bool TryAppendFallbackStat(
+            StringBuilder builder,
+            WzSubProperty skillEntry,
+            WzSubProperty stringEntry,
+            WzImageProperty levelNode,
+            WzImageProperty commonNode,
+            WzImageProperty infoNode,
+            int level,
+            string statKey,
+            bool allowGenericFallback = true)
+        {
+            if (string.Equals(statKey, "itemCon", StringComparison.OrdinalIgnoreCase))
+            {
+                int originalLength = builder.Length;
+                AppendItemConsumptionStat(builder, skillEntry, levelNode, commonNode, infoNode, level, "itemCon", "itemConNo", "Consumes");
+                return builder.Length != originalLength;
+            }
+
+            if (string.Equals(statKey, "itemConsume", StringComparison.OrdinalIgnoreCase))
+            {
+                int originalLength = builder.Length;
+                AppendItemConsumptionStat(builder, skillEntry, levelNode, commonNode, infoNode, level, "itemConsume", null, "Consumes");
+                return builder.Length != originalLength;
+            }
+
+            if (string.Equals(statKey, "range", StringComparison.OrdinalIgnoreCase))
+            {
+                int originalLength = builder.Length;
+                AppendRangeStat(builder, levelNode, commonNode, infoNode, level);
+                return builder.Length != originalLength;
+            }
+
+            if (string.Equals(statKey, "elemAttr", StringComparison.OrdinalIgnoreCase))
+            {
+                int originalLength = builder.Length;
+                AppendElementAttributeStat(builder, levelNode, commonNode, infoNode);
+                return builder.Length != originalLength;
+            }
+
+            if (string.Equals(statKey, "dotType", StringComparison.OrdinalIgnoreCase))
+            {
+                int originalLength = builder.Length;
+                AppendDamageOverTimeTypeStat(builder, levelNode, commonNode, infoNode);
+                return builder.Length != originalLength;
+            }
+
+            if (TryAppendContextualSingleLetterFallbackStat(
+                    builder,
+                    skillEntry,
+                    stringEntry,
+                    levelNode,
+                    commonNode,
+                    infoNode,
+                    level,
+                    statKey))
+            {
+                return true;
+            }
+
+            if (!FallbackSkillStatDefinitions.TryGetValue(statKey, out FallbackSkillStatDefinition definition))
+                return allowGenericFallback &&
+                       TryAppendGenericFallbackStat(builder, skillEntry, stringEntry, levelNode, commonNode, infoNode, level, statKey);
+
+            string resolvedLabel = definition.Label;
+            Func<int, string> resolvedFormatter = definition.Formatter;
+            TryResolveDescriptionBackedFallbackPresentation(
+                stringEntry,
+                statKey,
+                definition.Label,
+                out resolvedLabel,
+                out resolvedFormatter);
+
+            int originalBuilderLength = builder.Length;
+            if (definition.IsPercent)
+            {
+                AppendPercentStat(builder, resolvedLabel, skillEntry, levelNode, commonNode, infoNode, level, definition.PropertyName);
+            }
+            else
+            {
+                AppendIntStat(
+                    builder,
+                    resolvedLabel,
+                    skillEntry,
+                    levelNode,
+                    commonNode,
+                    infoNode,
+                    level,
+                    definition.PropertyName,
+                    resolvedFormatter);
+            }
+
+            return builder.Length != originalBuilderLength;
+        }
+
+        private static bool TryAppendContextualSingleLetterFallbackStat(
+            StringBuilder builder,
+            WzSubProperty skillEntry,
+            WzSubProperty stringEntry,
+            WzImageProperty levelNode,
+            WzImageProperty commonNode,
+            WzImageProperty infoNode,
+            int level,
+            string statKey)
+        {
+            string label = statKey switch
+            {
+                "x" => "Weapon ATT",
+                "y" => "Magic ATT",
+                "z" => "Weapon DEF",
+                "u" => "Magic DEF",
+                "v" => "Accuracy",
+                "w" => "Avoidability",
+                _ => null
+            };
+
+            Func<int, string> formatter = FormatSignedValue;
+            if (label == null || !HasAdvancedBlessingFallbackShape(levelNode, commonNode, infoNode))
+            {
+                if (!TryResolveDescriptionBackedSingleLetterFallbackPresentation(
+                        stringEntry,
+                        statKey,
+                        out label,
+                        out formatter))
+                {
+                    return false;
+                }
+            }
+
+            int originalLength = builder.Length;
+            AppendIntStat(
+                builder,
+                label,
+                skillEntry,
+                levelNode,
+                commonNode,
+                infoNode,
+                level,
+                statKey,
+                formatter);
+            return builder.Length != originalLength;
+        }
+
+        private static bool TryResolveDescriptionBackedSingleLetterFallbackPresentation(
+            WzSubProperty stringEntry,
+            string statKey,
+            out string label,
+            out Func<int, string> formatter)
+        {
+            label = null;
+            formatter = null;
+            if (stringEntry == null || string.IsNullOrWhiteSpace(statKey))
+            {
+                return false;
+            }
+
+            string placeholderToken = $"#{statKey.Trim()}";
+            foreach (string clause in EnumeratePlaceholderContextClauses(stringEntry, placeholderToken))
+            {
+                if (!TryResolveSingleLetterContextPresentation(clause, placeholderToken, out label, out formatter))
+                {
+                    continue;
+                }
+
+                if (TryExtractAuthoredPlaceholderLabel(clause, placeholderToken, out string authoredLabel) &&
+                    ShouldPreferAuthoredPlaceholderLabel(authoredLabel, label))
+                {
+                    label = authoredLabel;
+                    formatter = ResolveDescriptionBackedContextFormatter(
+                        label,
+                        label,
+                        clause,
+                        placeholderToken);
+                }
+
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryResolveDescriptionBackedFallbackPresentation(
+            WzSubProperty stringEntry,
+            string statKey,
+            string defaultLabel,
+            out string label,
+            out Func<int, string> formatter)
+        {
+            label = defaultLabel;
+            formatter = null;
+            if (stringEntry == null || string.IsNullOrWhiteSpace(statKey))
+            {
+                return false;
+            }
+
+            string placeholderToken = $"#{statKey.Trim()}";
+            foreach (string clause in EnumeratePlaceholderContextClauses(stringEntry, placeholderToken))
+            {
+                if (!TryResolveDescriptionBackedFallbackPresentation(
+                        clause,
+                        placeholderToken,
+                        defaultLabel,
+                        out label,
+                        out formatter))
+                {
+                    continue;
+                }
+
+                return true;
+            }
+
+            label = defaultLabel;
+            formatter = null;
+            return false;
+        }
+
+        private static bool TryResolveDescriptionBackedFallbackPresentation(
+            string clause,
+            string placeholderToken,
+            string defaultLabel,
+            out string label,
+            out Func<int, string> formatter)
+        {
+            label = defaultLabel;
+            formatter = null;
+            if (string.IsNullOrWhiteSpace(clause) || string.IsNullOrWhiteSpace(placeholderToken))
+            {
+                return false;
+            }
+
+            TryResolveSingleLetterContextLabel(clause, placeholderToken, out string semanticLabel);
+            string preferredLabel = semanticLabel ?? defaultLabel;
+            if (TryExtractAuthoredPlaceholderLabel(clause, placeholderToken, out string authoredLabel) &&
+                ShouldPreferAuthoredPlaceholderLabel(authoredLabel, preferredLabel))
+            {
+                label = authoredLabel;
+            }
+            else if (!string.IsNullOrWhiteSpace(semanticLabel))
+            {
+                label = semanticLabel;
+            }
+
+            formatter = ResolveDescriptionBackedContextFormatter(
+                label,
+                semanticLabel ?? defaultLabel,
+                clause,
+                placeholderToken);
+            return !string.IsNullOrWhiteSpace(label);
+        }
+
+        private static bool TryResolveDescriptionBackedGenericFallbackPresentation(
+            WzSubProperty stringEntry,
+            string statKey,
+            string defaultLabel,
+            out string label,
+            out Func<int, string> formatter)
+        {
+            label = defaultLabel;
+            formatter = null;
+            if (stringEntry == null || string.IsNullOrWhiteSpace(statKey))
+            {
+                return false;
+            }
+
+            string placeholderToken = $"#{statKey.Trim()}";
+            foreach (string clause in EnumeratePlaceholderContextClauses(stringEntry, placeholderToken))
+            {
+                if (TryResolveDescriptionBackedFallbackPresentation(
+                        clause,
+                        placeholderToken,
+                        defaultLabel,
+                        out string resolvedLabel,
+                        out Func<int, string> resolvedFormatter))
+                {
+                    label = resolvedLabel;
+                    formatter = resolvedFormatter;
+                }
+
+                if (TryExtractAuthoredPlaceholderLabel(clause, placeholderToken, out string authoredLabel) &&
+                    !string.Equals(authoredLabel, defaultLabel, StringComparison.OrdinalIgnoreCase))
+                {
+                    label = authoredLabel;
+                    formatter = ResolveDescriptionBackedContextFormatter(
+                        label,
+                        label,
+                        clause,
+                        placeholderToken);
+                }
+
+                return !string.IsNullOrWhiteSpace(label);
+            }
+
+            return false;
+        }
+
+        internal static bool TryResolveSingleLetterContextPresentation(
+            string clause,
+            string placeholderToken,
+            int sampleValue,
+            out string label,
+            out string formattedValue)
+        {
+            formattedValue = null;
+            if (!TryResolveSingleLetterContextPresentation(clause, placeholderToken, out label, out Func<int, string> formatter))
+            {
+                return false;
+            }
+
+            formattedValue = formatter != null
+                ? formatter(sampleValue)
+                : sampleValue.ToString(CultureInfo.InvariantCulture);
+            return true;
+        }
+
+        private static bool TryResolveSingleLetterContextPresentation(
+            string clause,
+            string placeholderToken,
+            out string label,
+            out Func<int, string> formatter)
+        {
+            formatter = null;
+            if (!TryResolveSingleLetterContextLabel(clause, placeholderToken, out label))
+            {
+                return false;
+            }
+
+            formatter = ResolveSingleLetterContextFormatter(label, clause, placeholderToken);
+            return true;
+        }
+
+        private static IEnumerable<string> EnumeratePlaceholderContextClauses(
+            WzSubProperty stringEntry,
+            string placeholderToken)
+        {
+            if (stringEntry == null || string.IsNullOrWhiteSpace(placeholderToken))
+            {
+                yield break;
+            }
+
+            foreach (WzStringProperty stringProperty in stringEntry.WzProperties.OfType<WzStringProperty>())
+            {
+                string value = stringProperty.Value;
+                if (string.IsNullOrWhiteSpace(value)
+                    || value.IndexOf(placeholderToken, StringComparison.OrdinalIgnoreCase) < 0)
+                {
+                    continue;
+                }
+
+                string normalizedValue = value
+                    .Replace("\\r\\n", "\n", StringComparison.Ordinal)
+                    .Replace("\\n", "\n", StringComparison.Ordinal)
+                    .Replace("\\r", "\n", StringComparison.Ordinal);
+
+                int searchIndex = 0;
+                while (searchIndex < normalizedValue.Length)
+                {
+                    int tokenIndex = normalizedValue.IndexOf(
+                        placeholderToken,
+                        searchIndex,
+                        StringComparison.OrdinalIgnoreCase);
+                    if (tokenIndex < 0)
+                    {
+                        break;
+                    }
+
+                    int start = tokenIndex;
+                    while (start > 0 && !IsPlaceholderClauseBoundary(normalizedValue[start - 1]))
+                    {
+                        start--;
+                    }
+
+                    int end = tokenIndex + placeholderToken.Length;
+                    while (end < normalizedValue.Length && !IsPlaceholderClauseBoundary(normalizedValue[end]))
+                    {
+                        end++;
+                    }
+
+                    string clause = normalizedValue[start..end].Trim();
+                    if (!string.IsNullOrWhiteSpace(clause))
+                    {
+                        yield return clause;
+                    }
+
+                    searchIndex = tokenIndex + placeholderToken.Length;
+                }
+            }
+        }
+
+        private static bool IsPlaceholderClauseBoundary(char value)
+        {
+            return value == ',' || value == '\n' || value == '\r' || value == ';' || value == '|';
+        }
+
+        private static bool TryExtractAuthoredPlaceholderLabel(
+            string clause,
+            string placeholderToken,
+            out string label)
+        {
+            label = null;
+            if (string.IsNullOrWhiteSpace(clause) || string.IsNullOrWhiteSpace(placeholderToken))
+            {
+                return false;
+            }
+
+            int tokenIndex = clause.IndexOf(placeholderToken, StringComparison.OrdinalIgnoreCase);
+            if (tokenIndex <= 0)
+            {
+                return false;
+            }
+
+            string prefix = clause[..tokenIndex];
+            int boundaryIndex = prefix.LastIndexOfAny(new[] { ',', '\n', '\r', ';', '|' });
+            if (boundaryIndex >= 0 && boundaryIndex < prefix.Length - 1)
+            {
+                prefix = prefix[(boundaryIndex + 1)..];
+            }
+
+            int colonIndex = prefix.LastIndexOf(':');
+            if (colonIndex > 0)
+            {
+                prefix = prefix[..colonIndex];
+            }
+            else if (TryExtractAuthoredOperatorPrefixLabel(prefix, out string operatorPrefixLabel))
+            {
+                prefix = operatorPrefixLabel;
+            }
+            else
+            {
+                return false;
+            }
+
+            prefix = Regex.Replace(prefix, "#[A-Za-z0-9_]+", " ");
+            prefix = prefix.Replace('[', ' ').Replace(']', ' ');
+            prefix = Regex.Replace(prefix, @"\s+", " ").Trim();
+            if (string.IsNullOrWhiteSpace(prefix) || prefix.Length > 48)
+            {
+                return false;
+            }
+
+            label = prefix;
+            return true;
+        }
+
+        private static bool TryExtractAuthoredOperatorPrefixLabel(string prefix, out string label)
+        {
+            label = null;
+            if (string.IsNullOrWhiteSpace(prefix))
+            {
+                return false;
+            }
+
+            string candidate = Regex.Replace(
+                    prefix,
+                    @"(?:[+\-:]|\bby\b|\bto\b)\s*$",
+                    string.Empty,
+                    RegexOptions.IgnoreCase)
+                .Trim();
+            if (string.IsNullOrWhiteSpace(candidate))
+            {
+                return false;
+            }
+
+            if (!candidate.Contains("chance", StringComparison.OrdinalIgnoreCase)
+                && !candidate.Contains("rate", StringComparison.OrdinalIgnoreCase)
+                && !candidate.Contains("damage", StringComparison.OrdinalIgnoreCase)
+                && !candidate.Contains("duration", StringComparison.OrdinalIgnoreCase)
+                && !candidate.Contains("distance", StringComparison.OrdinalIgnoreCase)
+                && !candidate.Contains("speed", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            label = candidate;
+            return true;
+        }
+
+        private static bool ShouldPreferAuthoredPlaceholderLabel(string authoredLabel, string currentLabel)
+        {
+            if (string.IsNullOrWhiteSpace(authoredLabel))
+            {
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(currentLabel))
+            {
+                return true;
+            }
+
+            if (authoredLabel.IndexOf("drp", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return false;
+            }
+
+            return currentLabel switch
+            {
+                "Attack Count" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
+                "Mob Count" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
+                "Chance" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
+                "Duration" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
+                "Interval" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
+                "Damage" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
+                "Damage Reduction" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
+                "MP Cost" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
+                "HP Cost" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
+                "Mastery" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
+                "Critical Damage (Min)" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
+                "Critical Damage (Max)" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
+                "Bullet Count" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
+                "Speed" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
+                "Boss Damage" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
+                "Ignore Enemy DEF" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
+                "Bonus EXP" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
+                "Meso Rate" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
+                "Elemental Resistance" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
+                "Secondary Effect Chance" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
+                "HP Recovery" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
+                "MP Recovery" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
+                "Self-Destruction Damage" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
+                _ => false
+            };
+        }
+
+        internal static bool TryResolveSingleLetterContextLabel(
+            string clause,
+            string placeholderToken,
+            out string label)
+        {
+            label = null;
+            if (string.IsNullOrWhiteSpace(clause) || string.IsNullOrWhiteSpace(placeholderToken))
+            {
+                return false;
+            }
+
+            string normalizedClause = NormalizeSingleLetterContextClause(clause, placeholderToken);
+            if (string.IsNullOrWhiteSpace(normalizedClause))
+            {
+                return false;
+            }
+
+            if (TryResolveTokenLocalSingleLetterContextLabel(
+                    clause,
+                    placeholderToken,
+                    normalizedClause,
+                    out label))
+            {
+                return true;
+            }
+
+            if (normalizedClause.Contains("max movement speed", StringComparison.Ordinal)
+                || normalizedClause.Contains("movement speed limit", StringComparison.Ordinal))
+            {
+                label = "Max Movement Speed";
+            }
+            else if (normalizedClause.Contains("robot factory duration", StringComparison.Ordinal))
+            {
+                label = "Robot Factory Duration";
+            }
+            else if (normalizedClause.Contains("summon interval", StringComparison.Ordinal))
+            {
+                label = "Summon Interval";
+            }
+            else if (normalizedClause.Contains("dash speed", StringComparison.Ordinal))
+            {
+                label = "Dash Speed";
+            }
+            else if (normalizedClause.Contains("movement speed", StringComparison.Ordinal))
+            {
+                label = "Movement Speed";
+            }
+            else if (normalizedClause.Contains("attack speed", StringComparison.Ordinal)
+                     || normalizedClause.Contains("weapon speed", StringComparison.Ordinal))
+            {
+                label = "Attack Speed";
+            }
+            else if (normalizedClause.Contains("mp consumed", StringComparison.Ordinal)
+                     || normalizedClause.Contains("mp consumption", StringComparison.Ordinal))
+            {
+                label = "MP Consumed";
+            }
+            else if (normalizedClause.Contains("energy per attack", StringComparison.Ordinal))
+            {
+                label = "Energy per Attack";
+            }
+            else if (normalizedClause.Contains("puppet hp", StringComparison.Ordinal))
+            {
+                label = "Puppet HP";
+            }
+            else if (normalizedClause.Contains("throwing stars", StringComparison.Ordinal))
+            {
+                label = "Throwing Stars";
+            }
+            else if (normalizedClause.Contains("damage displaced", StringComparison.Ordinal))
+            {
+                label = "Damage Displaced";
+            }
+            else if (normalizedClause.Contains("recovery rate", StringComparison.Ordinal))
+            {
+                label = "Recovery Rate";
+            }
+            else if (normalizedClause.Contains("damage to hp", StringComparison.Ordinal)
+                     || normalizedClause.Contains("damage as hp", StringComparison.Ordinal))
+            {
+                label = "Damage Converted to HP";
+            }
+            else if (normalizedClause.Contains("max hp and max mp", StringComparison.Ordinal)
+                     || normalizedClause.Contains("max hp and mp", StringComparison.Ordinal))
+            {
+                label = "Max HP / Max MP";
+            }
+            else if ((normalizedClause.Contains("weapon defense", StringComparison.Ordinal)
+                      || normalizedClause.Contains("weapon def", StringComparison.Ordinal))
+                     && (normalizedClause.Contains("magic defense", StringComparison.Ordinal)
+                         || normalizedClause.Contains("magic def", StringComparison.Ordinal)))
+            {
+                label = "Weapon DEF / Magic DEF";
+            }
+            else if (normalizedClause.Contains("weapon att", StringComparison.Ordinal)
+                     || normalizedClause.Contains("weapon attack", StringComparison.Ordinal))
+            {
+                label = "Weapon ATT";
+            }
+            else if (normalizedClause.Contains("magic att", StringComparison.Ordinal)
+                     || normalizedClause.Contains("magic attack", StringComparison.Ordinal))
+            {
+                label = "Magic ATT";
+            }
+            else if (normalizedClause.Equals("att", StringComparison.Ordinal)
+                     || normalizedClause.StartsWith("att ", StringComparison.Ordinal)
+                     || normalizedClause.Contains(" att ", StringComparison.Ordinal))
+            {
+                label = "Weapon ATT";
+            }
+            else if (normalizedClause.Contains("weapon def", StringComparison.Ordinal)
+                     || normalizedClause.Contains("weapon defense", StringComparison.Ordinal))
+            {
+                label = "Weapon DEF";
+            }
+            else if (normalizedClause.Contains("magic def", StringComparison.Ordinal)
+                     || normalizedClause.Contains("magic defense", StringComparison.Ordinal))
+            {
+                label = "Magic DEF";
+            }
+            else if (normalizedClause.Equals("def", StringComparison.Ordinal)
+                     || normalizedClause.StartsWith("def ", StringComparison.Ordinal)
+                     || normalizedClause.Contains(" def ", StringComparison.Ordinal))
+            {
+                label = "DEF";
+            }
+            else if (normalizedClause.Contains("enemy attack and defense", StringComparison.Ordinal)
+                     || normalizedClause.Contains("enemy defense and attack", StringComparison.Ordinal))
+            {
+                label = "Enemy Attack / DEF";
+            }
+            else if (normalizedClause.Contains("enemy att", StringComparison.Ordinal)
+                     || normalizedClause.Contains("enemy attack", StringComparison.Ordinal))
+            {
+                label = "Enemy ATT";
+            }
+            else if (normalizedClause.Contains("enemy attack avoidance rate", StringComparison.Ordinal)
+                     || normalizedClause.Contains("dodge chance", StringComparison.Ordinal)
+                     || normalizedClause.Contains("evading enemy attack", StringComparison.Ordinal)
+                     || normalizedClause.Contains("evade enemy attack", StringComparison.Ordinal))
+            {
+                label = "Dodge Chance";
+            }
+            else if (normalizedClause.Contains("enemy movement speed", StringComparison.Ordinal)
+                     || normalizedClause.Contains("enemy speed", StringComparison.Ordinal))
+            {
+                label = "Enemy Movement Speed";
+            }
+            else if (normalizedClause.Contains("enemy accuracy", StringComparison.Ordinal))
+            {
+                label = "Enemy Accuracy";
+            }
+            else if (normalizedClause.Contains("enemy defense", StringComparison.Ordinal)
+                     || normalizedClause.Contains("enemy def", StringComparison.Ordinal))
+            {
+                label = "Enemy DEF";
+            }
+            else if (normalizedClause.Contains("abnormal status resistance", StringComparison.Ordinal)
+                     && normalizedClause.Contains("elemental resistance", StringComparison.Ordinal))
+            {
+                label = "Abnormal Status Resistance / Elemental Resistance";
+            }
+            else if (normalizedClause.Contains("elemental resistance", StringComparison.Ordinal))
+            {
+                label = "Elemental Resistance";
+            }
+            else if (normalizedClause.Contains("elemental attributes", StringComparison.Ordinal))
+            {
+                label = "Elemental Attributes";
+            }
+            else if (normalizedClause.Contains("accuracy", StringComparison.Ordinal))
+            {
+                label = "Accuracy";
+            }
+            else if (normalizedClause.Contains("avoidability", StringComparison.Ordinal)
+                     || normalizedClause.Contains("avoidance", StringComparison.Ordinal))
+            {
+                label = "Avoidability";
+            }
+            else if (normalizedClause.Contains("critical rate", StringComparison.Ordinal)
+                     || normalizedClause.Contains("critical hit rate", StringComparison.Ordinal)
+                     || normalizedClause.Contains("crit rate", StringComparison.Ordinal))
+            {
+                label = "Critical Rate";
+            }
+            else if (normalizedClause.Contains("mesos dropped", StringComparison.Ordinal)
+                     || normalizedClause.Contains("meso drop rate", StringComparison.Ordinal))
+            {
+                label = "Meso Drop Rate";
+            }
+            else if ((normalizedClause.Contains("exp", StringComparison.Ordinal)
+                      || normalizedClause.Contains("experience", StringComparison.Ordinal))
+                     && (normalizedClause.Contains("item drop", StringComparison.Ordinal)
+                         || normalizedClause.Contains("item drp", StringComparison.Ordinal)))
+            {
+                label = "EXP / Item Drop Rate";
+            }
+            else if (normalizedClause.Contains("item drop rate", StringComparison.Ordinal)
+                     || normalizedClause.Contains("item drp rate", StringComparison.Ordinal))
+            {
+                label = "Item Drop Rate";
+            }
+            else if (normalizedClause.Contains("damage guard rate", StringComparison.Ordinal))
+            {
+                label = "Damage Guard Rate";
+            }
+            else if (normalizedClause.Contains("meso guard", StringComparison.Ordinal)
+                     && (normalizedClause.Contains("mesos consumed", StringComparison.Ordinal)
+                         || normalizedClause.Contains("meso consumed", StringComparison.Ordinal)
+                         || normalizedClause.Contains("meso consumption", StringComparison.Ordinal)))
+            {
+                label = "Meso Guard Cost";
+            }
+            else if (normalizedClause.Contains("full strength", StringComparison.Ordinal))
+            {
+                label = "Full Strength Chance";
+            }
+            else if (normalizedClause.Contains("combo orbs are used", StringComparison.Ordinal)
+                     || normalizedClause.Contains("combo orb is used", StringComparison.Ordinal)
+                     || normalizedClause.Contains("combo orbs used", StringComparison.Ordinal)
+                     || normalizedClause.Contains("combo orb used", StringComparison.Ordinal))
+            {
+                label = "Combo Orb Cost";
+            }
+            else if (normalizedClause.Contains("chance", StringComparison.Ordinal))
+            {
+                label = "Chance";
+            }
+            else if (normalizedClause.Contains("attacks absorbed", StringComparison.Ordinal)
+                     || normalizedClause.Contains("damage is absorbed", StringComparison.Ordinal))
+            {
+                label = "Attacks Absorbed";
+            }
+            else if (normalizedClause.Contains("toy robot damage", StringComparison.Ordinal))
+            {
+                label = "Toy Robot Damage";
+            }
+            else if (normalizedClause.Contains("spin attack damage", StringComparison.Ordinal))
+            {
+                label = "Spin Attack Damage";
+            }
+            else if (normalizedClause.Contains("time to next shield", StringComparison.Ordinal))
+            {
+                label = "Time to Next Shield Available";
+            }
+            else if (normalizedClause.Contains("toy robots", StringComparison.Ordinal)
+                     && normalizedClause.Contains("summoned", StringComparison.Ordinal))
+            {
+                label = "Toy Robot Count";
+            }
+            else if (normalizedClause.Contains("number of bullets", StringComparison.Ordinal)
+                     || normalizedClause.Contains("bullet count", StringComparison.Ordinal))
+            {
+                label = "Bullet Count";
+            }
+            else if (normalizedClause.Contains("number of attacks", StringComparison.Ordinal)
+                     || normalizedClause.Contains("attack count", StringComparison.Ordinal)
+                     || normalizedClause.Contains(" attacks ", StringComparison.Ordinal) && normalizedClause.Contains(" times", StringComparison.Ordinal)
+                     || normalizedClause.Contains("critical attacks", StringComparison.Ordinal))
+            {
+                label = "Attack Count";
+            }
+            else if (normalizedClause.Contains("damage over time", StringComparison.Ordinal))
+            {
+                label = "Damage Over Time";
+            }
+            else if (normalizedClause.Contains("damage reflected", StringComparison.Ordinal))
+            {
+                label = "Damage Reflected";
+            }
+            else if (normalizedClause.Contains("damage distributed", StringComparison.Ordinal))
+            {
+                label = "Damage Distributed";
+            }
+            else if (normalizedClause.Contains("amount absorbed", StringComparison.Ordinal))
+            {
+                label = "Amount Absorbed";
+            }
+            else if (normalizedClause.Contains("damage absorbed", StringComparison.Ordinal)
+                     && normalizedClause.Contains("hp", StringComparison.Ordinal))
+            {
+                label = "Damage Absorbed as HP";
+            }
+            else if (normalizedClause.Contains("damage", StringComparison.Ordinal))
+            {
+                label = "Damage";
+            }
+            else if (normalizedClause.Contains("mp cost", StringComparison.Ordinal)
+                     || (normalizedClause.Contains("additional", StringComparison.Ordinal)
+                         && normalizedClause.Contains("mp every", StringComparison.Ordinal)))
+            {
+                label = "MP Cost";
+            }
+            else if (normalizedClause.Contains("hp cost", StringComparison.Ordinal))
+            {
+                label = "HP Cost";
+            }
+            else if (normalizedClause.Contains("all stats", StringComparison.Ordinal)
+                     || normalizedClause.Contains("all stat", StringComparison.Ordinal))
+            {
+                label = "All Stats";
+            }
+            else if (normalizedClause.Contains("combo orb", StringComparison.Ordinal))
+            {
+                label = "Max Combo Orbs";
+            }
+            else if (normalizedClause.Contains("max hp", StringComparison.Ordinal))
+            {
+                label = "Max HP";
+            }
+            else if (normalizedClause.Contains("max mp", StringComparison.Ordinal))
+            {
+                label = "Max MP";
+            }
+            else if (normalizedClause.Contains("hp recovery", StringComparison.Ordinal))
+            {
+                label = "HP Recovery";
+            }
+            else if ((normalizedClause.Contains("restores", StringComparison.Ordinal)
+                      || normalizedClause.Contains("restore", StringComparison.Ordinal)
+                      || normalizedClause.Contains("recover", StringComparison.Ordinal))
+                     && normalizedClause.Contains("hp", StringComparison.Ordinal))
+            {
+                label = "HP Recovery";
+            }
+            else if (normalizedClause.Contains("all skill levels", StringComparison.Ordinal)
+                     || normalizedClause.Contains("all skill level", StringComparison.Ordinal))
+            {
+                label = "All Skill Levels";
+            }
+            else if (normalizedClause.Contains("provides", StringComparison.Ordinal)
+                     && normalizedClause.Contains("potion", StringComparison.Ordinal))
+            {
+                label = "Potion Count";
+            }
+            else if (normalizedClause.Contains("max stack", StringComparison.Ordinal))
+            {
+                label = "Max Stacks";
+            }
+            else if ((normalizedClause.Contains("monster", StringComparison.Ordinal)
+                      || normalizedClause.Contains("enemy", StringComparison.Ordinal)
+                      || normalizedClause.Contains("enemies", StringComparison.Ordinal)
+                      || normalizedClause.Contains("mob", StringComparison.Ordinal)
+                      || normalizedClause.Contains("robot", StringComparison.Ordinal))
+                     && (normalizedClause.Contains("up to", StringComparison.Ordinal)
+                         || normalizedClause.Contains("max ", StringComparison.Ordinal)))
+            {
+                label = "Mob Count";
+            }
+            else if (normalizedClause.Contains("range", StringComparison.Ordinal))
+            {
+                label = "Range";
+            }
+            else if (normalizedClause.Contains("teleport distance", StringComparison.Ordinal))
+            {
+                label = "Teleport Distance";
+            }
+            else if (normalizedClause.Equals("distance", StringComparison.Ordinal)
+                     || normalizedClause.StartsWith("distance ", StringComparison.Ordinal)
+                     || normalizedClause.Contains(" distance ", StringComparison.Ordinal))
+            {
+                label = "Distance";
+            }
+            else if (normalizedClause.Contains("every", StringComparison.Ordinal)
+                     && normalizedClause.Contains(" sec", StringComparison.Ordinal))
+            {
+                label = "Interval";
+            }
+            else if (normalizedClause.Contains("duration", StringComparison.Ordinal)
+                     || normalizedClause.Contains(" for ", StringComparison.Ordinal)
+                     && normalizedClause.Contains(" sec", StringComparison.Ordinal))
+            {
+                label = "Duration";
+            }
+            else if (normalizedClause.Contains("jump", StringComparison.Ordinal))
+            {
+                label = "Jump";
+            }
+            else if (normalizedClause.Contains("speed", StringComparison.Ordinal))
+            {
+                label = "Speed";
+            }
+
+            return !string.IsNullOrWhiteSpace(label);
+        }
+
+        private static bool TryResolveTokenLocalSingleLetterContextLabel(
+            string clause,
+            string placeholderToken,
+            string normalizedClause,
+            out string label)
+        {
+            label = null;
+            if (string.IsNullOrWhiteSpace(clause) || string.IsNullOrWhiteSpace(placeholderToken))
+            {
+                return false;
+            }
+
+            string lowerClause = clause.ToLowerInvariant();
+            string lowerToken = placeholderToken.ToLowerInvariant();
+            int tokenIndex = lowerClause.IndexOf(lowerToken, StringComparison.Ordinal);
+            if (tokenIndex < 0)
+            {
+                return false;
+            }
+
+            string beforeToken = lowerClause[..tokenIndex];
+            string afterToken = lowerClause[(tokenIndex + lowerToken.Length)..];
+            string localBefore = beforeToken.Length > 32 ? beforeToken[^32..] : beforeToken;
+            string localAfter = afterToken.Length > 48 ? afterToken[..48] : afterToken;
+
+            if (normalizedClause.Contains("damage over time", StringComparison.Ordinal))
+            {
+                if (StartsWithPercentChance(localAfter))
+                {
+                    label = "Damage Over Time Chance";
+                    return true;
+                }
+
+                if (localBefore.Contains("for", StringComparison.Ordinal)
+                    && StartsWithSeconds(localAfter))
+                {
+                    label = "Damage Over Time Duration";
+                    return true;
+                }
+
+                if (localBefore.Contains("every", StringComparison.Ordinal)
+                    && StartsWithSeconds(localAfter))
+                {
+                    label = "Damage Over Time Interval";
+                    return true;
+                }
+
+                if (StartsWithPercentDamage(localAfter))
+                {
+                    label = "Damage Over Time";
+                    return true;
+                }
+            }
+
+            if (localBefore.Contains("chance for", StringComparison.Ordinal)
+                && StartsWithSeconds(localAfter))
+            {
+                label = "Duration";
+                return true;
+            }
+
+            if (localBefore.Contains("every", StringComparison.Ordinal)
+                && StartsWithSeconds(localAfter))
+            {
+                label = "Interval";
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool StartsWithPercentChance(string value)
+        {
+            return StartsWithAfterOptionalPercent(value, "chance");
+        }
+
+        private static bool StartsWithPercentDamage(string value)
+        {
+            return StartsWithAfterOptionalPercent(value, "damage");
+        }
+
+        private static bool StartsWithAfterOptionalPercent(string value, string token)
+        {
+            if (string.IsNullOrWhiteSpace(value) || string.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+
+            string trimmed = value.TrimStart();
+            if (trimmed.StartsWith("%", StringComparison.Ordinal))
+            {
+                trimmed = trimmed[1..].TrimStart();
+            }
+
+            return trimmed.StartsWith(token, StringComparison.Ordinal);
+        }
+
+        private static bool StartsWithSeconds(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            string trimmed = value.TrimStart();
+            return trimmed.StartsWith("sec", StringComparison.Ordinal);
+        }
+
+        private static string NormalizeSingleLetterContextClause(string clause, string placeholderToken)
+        {
+            if (string.IsNullOrWhiteSpace(clause))
+            {
+                return string.Empty;
+            }
+
+            return Regex.Replace(
+                    clause.Replace(placeholderToken, " ", StringComparison.OrdinalIgnoreCase),
+                    "#[A-Za-z0-9_]+",
+                    " ")
+                .Replace(':', ' ')
+                .Replace('[', ' ')
+                .Replace(']', ' ')
+                .ToLowerInvariant();
+        }
+
+        private static Func<int, string> ResolveSingleLetterContextFormatter(
+            string label,
+            string clause,
+            string placeholderToken)
+        {
+            if (string.Equals(label, "Attack Speed", StringComparison.Ordinal))
+            {
+                return FormatActionSpeedValue;
+            }
+
+            if (clause.IndexOf($"-{placeholderToken}%", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return FormatNegativePercentValue;
+            }
+
+            if (clause.IndexOf($"-{placeholderToken}", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return FormatNegativeValue;
+            }
+
+            if (clause.IndexOf($"{placeholderToken}%", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return static value => $"{value.ToString(CultureInfo.InvariantCulture)}%";
+            }
+
+            return label switch
+            {
+                "Weapon ATT" => FormatSignedValue,
+                "Magic ATT" => FormatSignedValue,
+                "Weapon DEF" => FormatSignedValue,
+                "Magic DEF" => FormatSignedValue,
+                "Enemy Movement Speed" => FormatSignedValue,
+                "Enemy ATT" => FormatSignedValue,
+                "Accuracy" => FormatSignedValue,
+                "Avoidability" => FormatSignedValue,
+                "Movement Speed" => FormatSignedValue,
+                "Dash Speed" => FormatSignedValue,
+                "Speed" => FormatSignedValue,
+                "Jump" => FormatSignedValue,
+                "Throwing Stars" => FormatSignedValue,
+                "Max HP" => FormatSignedValue,
+                "Max MP" => FormatSignedValue,
+                "All Skill Levels" => FormatSignedValue,
+                "Teleport Distance" => FormatSignedValue,
+                "Bullet Count" => FormatSignedValue,
+                "Number of Bullets" => FormatSignedValue,
+                "Robot Factory Duration" => static value => $"{value.ToString(CultureInfo.InvariantCulture)} sec",
+                "Summon Interval" => static value => $"{value.ToString(CultureInfo.InvariantCulture)} sec",
+                "Damage Over Time Chance" => static value => $"{value.ToString(CultureInfo.InvariantCulture)}%",
+                "Damage Over Time" => static value => $"{value.ToString(CultureInfo.InvariantCulture)}%",
+                "Damage Over Time Interval" => static value => $"{value.ToString(CultureInfo.InvariantCulture)} sec",
+                "Damage Over Time Duration" => static value => $"{value.ToString(CultureInfo.InvariantCulture)} sec",
+                "Duration" => static value => $"{value.ToString(CultureInfo.InvariantCulture)} sec",
+                "Interval" => static value => $"{value.ToString(CultureInfo.InvariantCulture)} sec",
+                _ => null
+            };
+        }
+
+        private static Func<int, string> ResolveDescriptionBackedContextFormatter(
+            string label,
+            string semanticLabel,
+            string clause,
+            string placeholderToken)
+        {
+            Func<int, string> formatter = ResolveSingleLetterContextFormatter(
+                semanticLabel ?? label,
+                clause,
+                placeholderToken);
+            if (formatter != null)
+            {
+                return formatter;
+            }
+
+            string fallbackLabel = label ?? semanticLabel;
+            if (string.IsNullOrWhiteSpace(fallbackLabel))
+            {
+                return null;
+            }
+
+            if (fallbackLabel.EndsWith("Duration", StringComparison.Ordinal) ||
+                fallbackLabel.EndsWith("Interval", StringComparison.Ordinal))
+            {
+                return static value => $"{value.ToString(CultureInfo.InvariantCulture)} sec";
+            }
+
+            return null;
+        }
+
+        private static bool HasAdvancedBlessingFallbackShape(
+            WzImageProperty levelNode,
+            WzImageProperty commonNode,
+            WzImageProperty infoNode)
+        {
+            return HasFallbackProperty(levelNode, commonNode, infoNode, "mpConReduce") &&
+                   HasFallbackProperty(levelNode, commonNode, infoNode, "indieMhp") &&
+                   HasFallbackProperty(levelNode, commonNode, infoNode, "indieMmp");
+        }
+
+        private static bool HasFallbackProperty(
+            WzImageProperty levelNode,
+            WzImageProperty commonNode,
+            WzImageProperty infoNode,
+            string propertyName)
+        {
+            return levelNode?[propertyName] != null ||
+                   commonNode?[propertyName] != null ||
+                   infoNode?[propertyName] != null;
+        }
+
+        private static bool TryAppendGenericFallbackStat(
+            StringBuilder builder,
+            WzSubProperty skillEntry,
+            WzSubProperty stringEntry,
+            WzImageProperty levelNode,
+            WzImageProperty commonNode,
+            WzImageProperty infoNode,
+            int level,
+            string propertyName)
+        {
+            if (string.IsNullOrWhiteSpace(propertyName) ||
+                !TryResolveGenericFallbackStatValue(skillEntry, levelNode, commonNode, infoNode, level, propertyName, out string value))
+            {
+                return false;
+            }
+
+            string resolvedLabel = FormatGenericFallbackStatLabel(propertyName);
+            Func<int, string> resolvedFormatter = null;
+            TryResolveDescriptionBackedGenericFallbackPresentation(
+                stringEntry,
+                propertyName,
+                resolvedLabel,
+                out resolvedLabel,
+                out resolvedFormatter);
+
+            if (resolvedFormatter != null &&
+                int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int numericValue))
+            {
+                value = resolvedFormatter(numericValue);
+            }
+
+            AppendStatLine(builder, resolvedLabel, value);
+            return true;
+        }
+
+        private static void AppendItemConsumptionStat(
+            StringBuilder builder,
+            WzSubProperty skillEntry,
+            WzImageProperty levelNode,
+            WzImageProperty commonNode,
+            WzImageProperty infoNode,
+            int level,
+            string itemIdPropertyName,
+            string quantityPropertyName,
+            string label)
+        {
+            if (!TryGetLevelNumericValue(skillEntry, levelNode, commonNode, infoNode, itemIdPropertyName, level, out int itemId)
+                || itemId <= 0)
+            {
+                return;
+            }
+
+            int quantity = 1;
+            if (!string.IsNullOrWhiteSpace(quantityPropertyName)
+                && TryGetLevelNumericValue(skillEntry, levelNode, commonNode, infoNode, quantityPropertyName, level, out int resolvedQuantity)
+                && resolvedQuantity > 0)
+            {
+                quantity = resolvedQuantity;
+            }
+
+            string value = FormatFallbackItemConsumptionValue(itemId, quantity);
+            AppendStatLine(builder, label, value);
+        }
+
+        private static void AppendPercentStat(
+            StringBuilder builder,
+            string label,
+            WzSubProperty skillEntry,
+            WzImageProperty levelNode,
+            WzImageProperty commonNode,
+            WzImageProperty infoNode,
+            int level,
+            string propertyName)
+        {
+            AppendIntStat(builder, label, skillEntry, levelNode, commonNode, infoNode, level, propertyName, value => $"{value}%");
+        }
+
+        private static void AppendIntStat(
+            StringBuilder builder,
+            string label,
+            WzSubProperty skillEntry,
+            WzImageProperty levelNode,
+            WzImageProperty commonNode,
+            WzImageProperty infoNode,
+            int level,
+            string propertyName,
+            Func<int, string> formatter = null)
+        {
+            if (!TryGetLevelNumericValue(skillEntry, levelNode, commonNode, infoNode, propertyName, level, out int value))
+                return;
+
+            if (value == 0)
+                return;
+
+            AppendStatLine(builder, label, formatter != null ? formatter(value) : value.ToString(CultureInfo.InvariantCulture));
+        }
+
+        private static void AppendRangeStat(
+            StringBuilder builder,
+            WzImageProperty levelNode,
+            WzImageProperty commonNode,
+            WzImageProperty infoNode,
+            int level)
+        {
+            int left = 0;
+            int right = 0;
+            int vertical = 0;
+            int range = 0;
+            bool hasBounds = false;
+
+            if (TryGetVectorValue(levelNode, commonNode, infoNode, "lt", out int ltX, out int ltY))
+            {
+                left = Math.Abs(ltX);
+                vertical = Math.Max(vertical, Math.Abs(ltY));
+                hasBounds = true;
+            }
+
+            if (TryGetVectorValue(levelNode, commonNode, infoNode, "rb", out int rbX, out int rbY))
+            {
+                right = Math.Abs(rbX);
+                vertical = Math.Max(vertical, Math.Abs(rbY));
+                hasBounds = true;
+            }
+
+            if (!hasBounds && !TryGetLevelNumericValue(null, levelNode, commonNode, infoNode, "range", level, out range))
+                return;
+
+            if (!hasBounds)
+            {
+                left = range;
+                right = range;
+            }
+
+            string rangeText = vertical > 0
+                ? $"{left} / {right} / {vertical}"
+                : $"{left} / {right}";
+            AppendStatLine(builder, "Range", rangeText);
+        }
+
+        private static void AppendElementAttributeStat(
+            StringBuilder builder,
+            WzImageProperty levelNode,
+            WzImageProperty commonNode,
+            WzImageProperty infoNode)
+        {
+            string elementAttribute = GetStringValue(levelNode, "elemAttr")
+                                      ?? GetStringValue(commonNode, "elemAttr")
+                                      ?? GetStringValue(infoNode, "elemAttr");
+            if (string.IsNullOrWhiteSpace(elementAttribute))
+                return;
+
+            string formatted = FormatElementAttributeValue(elementAttribute);
+            if (!string.IsNullOrWhiteSpace(formatted))
+                AppendStatLine(builder, "Element", formatted);
+        }
+
+        private static void AppendDamageOverTimeTypeStat(
+            StringBuilder builder,
+            WzImageProperty levelNode,
+            WzImageProperty commonNode,
+            WzImageProperty infoNode)
+        {
+            string dotType = GetStringValue(levelNode, "dotType")
+                             ?? GetStringValue(commonNode, "dotType")
+                             ?? GetStringValue(infoNode, "dotType");
+            if (string.IsNullOrWhiteSpace(dotType))
+                return;
+
+            string formatted = FormatDamageOverTimeTypeValue(dotType);
+            if (!string.IsNullOrWhiteSpace(formatted))
+                AppendStatLine(builder, "Damage Over Time Type", formatted);
+        }
+
+        private static bool TryGetVectorValue(
+            WzImageProperty levelNode,
+            WzImageProperty commonNode,
+            WzImageProperty infoNode,
+            string propertyName,
+            out int x,
+            out int y)
+        {
+            x = 0;
+            y = 0;
+
+            if (TryReadVector(levelNode?[propertyName], out x, out y))
+                return true;
+            if (TryReadVector(commonNode?[propertyName], out x, out y))
+                return true;
+            return TryReadVector(infoNode?[propertyName], out x, out y);
+        }
+
+        private static bool TryReadVector(WzImageProperty property, out int x, out int y)
+        {
+            x = 0;
+            y = 0;
+
+            if (property is not WzVectorProperty vector)
+                return false;
+
+            x = vector.X?.Value ?? 0;
+            y = vector.Y?.Value ?? 0;
+            return true;
+        }
+
+        private static bool TryGetLevelNumericValue(
+            WzSubProperty skillEntry,
+            WzImageProperty levelNode,
+            WzImageProperty commonNode,
+            WzImageProperty infoNode,
+            string propertyName,
+            int level,
+            out int value)
+        {
+            if (TryGetNumericPropertyValue(levelNode, propertyName, level, out value) ||
+                TryGetNumericPropertyValue(commonNode, propertyName, level, out value) ||
+                TryGetNumericPropertyValue(infoNode, propertyName, level, out value))
+            {
+                return true;
+            }
+
+            if (skillEntry != null)
+                return TryResolveSkillToken(skillEntry, propertyName, level, Math.Max(level, 1), out string resolved)
+                    && int.TryParse(resolved, NumberStyles.Integer, CultureInfo.InvariantCulture, out value);
+
+            value = 0;
+            return false;
+        }
+
+        private static bool TryResolveGenericFallbackStatValue(
+            WzSubProperty skillEntry,
+            WzImageProperty levelNode,
+            WzImageProperty commonNode,
+            WzImageProperty infoNode,
+            int level,
+            string propertyName,
+            out string value)
+        {
+            value = null;
+            if (string.IsNullOrWhiteSpace(propertyName))
+                return false;
+
+            if (skillEntry != null &&
+                TryResolveSkillToken(skillEntry, propertyName, level, Math.Max(level, 1), out string resolvedTokenValue) &&
+                !string.IsNullOrWhiteSpace(resolvedTokenValue) &&
+                !string.Equals(resolvedTokenValue, "0", StringComparison.Ordinal))
+            {
+                value = resolvedTokenValue;
+                return true;
+            }
+
+            string rawValue = GetStringValue(levelNode, propertyName)
+                              ?? GetStringValue(commonNode, propertyName)
+                              ?? GetStringValue(infoNode, propertyName);
+            if (string.IsNullOrWhiteSpace(rawValue))
+                return false;
+
+            string normalized = NormalizeSkillText(rawValue);
+            if (string.IsNullOrWhiteSpace(normalized) || string.Equals(normalized, "0", StringComparison.Ordinal))
+                return false;
+
+            value = normalized;
+            return true;
+        }
+
+        private static bool ShouldUseGenericFallbackStat(string propertyName)
+        {
+            return !string.IsNullOrWhiteSpace(propertyName) &&
+                   !FallbackSkillHiddenProperties.Contains(propertyName);
+        }
+
+        private static string FormatGenericFallbackStatLabel(string propertyName)
+        {
+            if (string.IsNullOrWhiteSpace(propertyName))
+                return string.Empty;
+
+            if (propertyName.Length == 1)
+                return propertyName.ToUpperInvariant();
+
+            string withWordBoundaries = Regex.Replace(propertyName, "([a-z0-9])([A-Z])", "$1 $2");
+            string withSeparatedSuffixes = Regex.Replace(withWordBoundaries, "([A-Za-z])([0-9])", "$1 $2");
+            return CultureInfo.InvariantCulture.TextInfo.ToTitleCase(withSeparatedSuffixes.Replace('_', ' '));
+        }
+
+        private static bool ContainsUnresolvedSkillToken(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+                return false;
+
+            string normalized = text.Replace("##", string.Empty);
+            normalized = Regex.Replace(normalized, "#[A-Za-z][^#]*#", string.Empty);
+            return Regex.IsMatch(normalized, "#[A-Za-z0-9_]+");
+        }
+
+        private static void AppendStatLine(StringBuilder builder, string label, string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return;
+
+            if (builder.Length > 0)
+                builder.AppendLine();
+
+            builder.Append(label);
+            builder.Append(": ");
+            builder.Append(value);
+        }
+
+        private static string FormatSignedValue(int value)
+        {
+            return value > 0
+                ? $"+{value.ToString(CultureInfo.InvariantCulture)}"
+                : value.ToString(CultureInfo.InvariantCulture);
+        }
+
+        private static string FormatEnabledValue(int value)
+        {
+            return value > 0 ? "Enabled" : "Disabled";
+        }
+
+        private static string FormatNegativePercentValue(int value)
+        {
+            return $"-{Math.Abs(value).ToString(CultureInfo.InvariantCulture)}%";
+        }
+
+        private static string FormatNegativeValue(int value)
+        {
+            return $"-{Math.Abs(value).ToString(CultureInfo.InvariantCulture)}";
+        }
+
+        private static string FormatActionSpeedValue(int value)
+        {
+            if (value == 0)
+                return string.Empty;
+
+            int levelDelta = Math.Abs(value);
+            string levelText = levelDelta == 1 ? "level" : "levels";
+            return $"{levelDelta.ToString(CultureInfo.InvariantCulture)} {levelText}";
+        }
+
+        internal static string FormatFallbackItemConsumptionValue(int itemId, int quantity, string resolvedItemName = null)
+        {
+            if (itemId <= 0)
+                return string.Empty;
+
+            string itemName = resolvedItemName != null
+                ? resolvedItemName.Trim()
+                : TryResolveFallbackItemName(itemId);
+            if (string.IsNullOrWhiteSpace(itemName))
+                itemName = $"Item {itemId.ToString(CultureInfo.InvariantCulture)}";
+
+            int count = Math.Max(1, quantity);
+            return count > 1
+                ? $"{itemName} x{count.ToString(CultureInfo.InvariantCulture)}"
+                : itemName;
+        }
+
+        internal static bool TryResolveFallbackStatPresentation(string statKey, int value, out string label, out string formattedValue)
+        {
+            label = null;
+            formattedValue = null;
+
+            if (string.IsNullOrWhiteSpace(statKey)
+                || value == 0
+                || !FallbackSkillStatDefinitions.TryGetValue(statKey, out FallbackSkillStatDefinition definition))
+            {
+                return false;
+            }
+
+            label = definition.Label;
+            formattedValue = definition.IsPercent
+                ? $"{value.ToString(CultureInfo.InvariantCulture)}%"
+                : definition.Formatter != null
+                    ? definition.Formatter(value)
+                    : value.ToString(CultureInfo.InvariantCulture);
+            return !string.IsNullOrWhiteSpace(label) && !string.IsNullOrWhiteSpace(formattedValue);
+        }
+
+        private static string TryResolveFallbackItemName(int itemId)
+        {
+            return InventoryItemMetadataResolver.TryResolveItemName(itemId, out string resolvedName)
+                && !string.IsNullOrWhiteSpace(resolvedName)
+                ? resolvedName.Trim()
+                : string.Empty;
+        }
+
+        private static string FormatElementAttributeValue(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return string.Empty;
+
+            var labels = new List<string>();
+            foreach (char attribute in value.Trim())
+            {
+                string label = attribute switch
+                {
+                    'f' or 'F' => "Fire",
+                    'i' or 'I' => "Ice",
+                    'l' or 'L' => "Lightning",
+                    's' or 'S' => "Poison",
+                    'h' or 'H' => "Holy",
+                    'd' or 'D' => "Dark",
+                    'p' or 'P' => "Physical",
+                    _ => null
+                };
+
+                if (!string.IsNullOrWhiteSpace(label) && !labels.Contains(label, StringComparer.OrdinalIgnoreCase))
+                    labels.Add(label);
+            }
+
+            return labels.Count > 0
+                ? string.Join(", ", labels)
+                : value.Trim();
+        }
+
+        private static string FormatDamageOverTimeTypeValue(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return string.Empty;
+
+            return value.Trim().ToLowerInvariant() switch
+            {
+                "burn" => "Burn",
+                "frostbite" => "Frostbite",
+                "invenom" => "Venom",
+                "aura" => "Aura",
+                _ => CultureInfo.InvariantCulture.TextInfo.ToTitleCase(value.Trim().ToLowerInvariant())
+            };
+        }
+
+        private sealed class FallbackSkillStatDefinition
+        {
+            public FallbackSkillStatDefinition(
+                string propertyName,
+                string label,
+                bool isPercent = false,
+                Func<int, string> formatter = null)
+            {
+                PropertyName = propertyName;
+                Label = label;
+                IsPercent = isPercent;
+                Formatter = formatter;
+            }
+
+            public string PropertyName { get; }
+            public string Label { get; }
+            public bool IsPercent { get; }
+            public Func<int, string> Formatter { get; }
+        }
+
+        private static readonly string[] FallbackSkillStatOrder =
+        {
+            "damage",
+            "fixdamage",
+            "dot",
+            "attackCount",
+            "mobCount",
+            "mpCon",
+            "hpCon",
+            "moneyCon",
+            "damagebymoneyCon",
+            "iceGageCon",
+            "massSpell",
+            "magicSteal",
+            "itemCon",
+            "itemConsume",
+            "bulletConsume",
+            "cooltime",
+            "time",
+            "dotTime",
+            "dotInterval",
+            "dotType",
+            "subProp",
+            "subTime",
+            "reqGuildLevel",
+            "range",
+            "mastery",
+            "cr",
+            "criticaldamageMin",
+            "criticaldamageMax",
+            "prop",
+            "ar",
+            "er",
+            "damR",
+            "mhpR",
+            "mmpR",
+            "pddR",
+            "mddR",
+            "accR",
+            "evaR",
+            "asrR",
+            "terR",
+            "ignoreMobpdpR",
+            "bdR",
+            "expR",
+            "dropR",
+            "mesoR",
+            "epad",
+            "emad",
+            "epdd",
+            "emdd",
+            "emhp",
+            "emmp",
+            "str",
+            "strX",
+            "dex",
+            "dexX",
+            "int",
+            "intX",
+            "luk",
+            "lukX",
+            "pad",
+            "padX",
+            "mad",
+            "madX",
+            "pdd",
+            "pddX",
+            "mdd",
+            "mddX",
+            "acc",
+            "accX",
+            "eva",
+            "evaX",
+            "speed",
+            "jump",
+            "speedMax",
+            "actionSpeed",
+            "indieAllStat",
+            "indiePad",
+            "indieMad",
+            "indieAcc",
+            "indieEva",
+            "indieDamR",
+            "indieMhp",
+            "indieMmp",
+            "indieMhpR",
+            "indieMmpR",
+            "indieSpeed",
+            "indieJump",
+            "mhpX",
+            "mmpX",
+            "hp",
+            "mp",
+            "mpConReduce",
+            "bulletCount",
+            "bulletSpeed",
+            "morph",
+            "selfDestruction",
+            "elemAttr",
+            "ignoreMobDamR",
+            "psdSpeed",
+            "psdJump",
+            "x",
+            "y",
+            "z"
+        };
+
+        private static readonly IReadOnlyDictionary<string, FallbackSkillStatDefinition> FallbackSkillStatDefinitions =
+            new Dictionary<string, FallbackSkillStatDefinition>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["damage"] = new("damage", "Damage", isPercent: true),
+                ["fixdamage"] = new("fixdamage", "Fixed Damage"),
+                ["dot"] = new("dot", "Damage Over Time"),
+                ["attackCount"] = new("attackCount", "Attack Count"),
+                ["mobCount"] = new("mobCount", "Mob Count"),
+                ["mpCon"] = new("mpCon", "MP Cost"),
+                ["hpCon"] = new("hpCon", "HP Cost"),
+                ["moneyCon"] = new("moneyCon", "Meso Cost"),
+                ["damagebymoneyCon"] = new("damagebymoneyCon", "Damage by Meso Cost", formatter: FormatEnabledValue),
+                ["iceGageCon"] = new("iceGageCon", "Ice Gauge Cost"),
+                ["massSpell"] = new("massSpell", "Mass Spell", formatter: FormatEnabledValue),
+                ["magicSteal"] = new("magicSteal", "Magic Steal", formatter: FormatEnabledValue),
+                ["bulletConsume"] = new("bulletConsume", "Ammo Cost"),
+                ["cooltime"] = new("cooltime", "Cooldown", formatter: value => $"{value} sec"),
+                ["time"] = new("time", "Duration", formatter: value => $"{value} sec"),
+                ["dotTime"] = new("dotTime", "Damage Over Time Duration", formatter: value => $"{value} sec"),
+                ["dotInterval"] = new("dotInterval", "Damage Over Time Interval", formatter: value => $"{value} sec"),
+                ["subProp"] = new("subProp", "Secondary Effect Chance", isPercent: true),
+                ["subTime"] = new("subTime", "Secondary Effect Duration", formatter: value => $"{value} sec"),
+                ["reqGuildLevel"] = new("reqGuildLevel", "Required Guild Level"),
+                ["mastery"] = new("mastery", "Mastery", isPercent: true),
+                ["cr"] = new("cr", "Critical Rate", isPercent: true),
+                ["criticaldamageMin"] = new("criticaldamageMin", "Critical Damage (Min)", isPercent: true),
+                ["criticaldamageMax"] = new("criticaldamageMax", "Critical Damage (Max)", isPercent: true),
+                ["prop"] = new("prop", "Chance", isPercent: true),
+                ["ar"] = new("ar", "Accuracy", isPercent: true),
+                ["er"] = new("er", "Avoidability", isPercent: true),
+                ["damR"] = new("damR", "Damage Reduction", isPercent: true),
+                ["mhpR"] = new("mhpR", "Max HP", isPercent: true),
+                ["mmpR"] = new("mmpR", "Max MP", isPercent: true),
+                ["pddR"] = new("pddR", "DEF", isPercent: true),
+                ["mddR"] = new("mddR", "Magic DEF", isPercent: true),
+                ["accR"] = new("accR", "Accuracy", isPercent: true),
+                ["evaR"] = new("evaR", "Avoidability", isPercent: true),
+                ["asrR"] = new("asrR", "Abnormal Status Resistance", isPercent: true),
+                ["terR"] = new("terR", "Elemental Resistance", isPercent: true),
+                ["ignoreMobpdpR"] = new("ignoreMobpdpR", "Ignore Enemy DEF", isPercent: true),
+                ["bdR"] = new("bdR", "Boss Damage", isPercent: true),
+                ["expR"] = new("expR", "Bonus EXP", isPercent: true),
+                ["dropR"] = new("dropR", "Drop Rate", isPercent: true),
+                ["mesoR"] = new("mesoR", "Meso Rate", isPercent: true),
+                ["epad"] = new("epad", "Weapon ATT", formatter: FormatSignedValue),
+                ["emad"] = new("emad", "Magic ATT", formatter: FormatSignedValue),
+                ["epdd"] = new("epdd", "Weapon DEF", formatter: FormatSignedValue),
+                ["emdd"] = new("emdd", "Magic DEF", formatter: FormatSignedValue),
+                ["emhp"] = new("emhp", "HP", formatter: FormatSignedValue),
+                ["emmp"] = new("emmp", "MP", formatter: FormatSignedValue),
+                ["str"] = new("str", "STR", formatter: FormatSignedValue),
+                ["strX"] = new("strX", "STR", formatter: FormatSignedValue),
+                ["dex"] = new("dex", "DEX", formatter: FormatSignedValue),
+                ["dexX"] = new("dexX", "DEX", formatter: FormatSignedValue),
+                ["int"] = new("int", "INT", formatter: FormatSignedValue),
+                ["intX"] = new("intX", "INT", formatter: FormatSignedValue),
+                ["luk"] = new("luk", "LUK", formatter: FormatSignedValue),
+                ["lukX"] = new("lukX", "LUK", formatter: FormatSignedValue),
+                ["pad"] = new("pad", "Weapon ATT", formatter: FormatSignedValue),
+                ["padX"] = new("padX", "Weapon ATT", formatter: FormatSignedValue),
+                ["mad"] = new("mad", "Magic ATT", formatter: FormatSignedValue),
+                ["madX"] = new("madX", "Magic ATT", formatter: FormatSignedValue),
+                ["pdd"] = new("pdd", "Weapon DEF", formatter: FormatSignedValue),
+                ["pddX"] = new("pddX", "Weapon DEF", formatter: FormatSignedValue),
+                ["mdd"] = new("mdd", "Magic DEF", formatter: FormatSignedValue),
+                ["mddX"] = new("mddX", "Magic DEF", formatter: FormatSignedValue),
+                ["acc"] = new("acc", "Accuracy", formatter: FormatSignedValue),
+                ["accX"] = new("accX", "Accuracy", formatter: FormatSignedValue),
+                ["eva"] = new("eva", "Avoidability", formatter: FormatSignedValue),
+                ["evaX"] = new("evaX", "Avoidability", formatter: FormatSignedValue),
+                ["speed"] = new("speed", "Speed", formatter: FormatSignedValue),
+                ["jump"] = new("jump", "Jump", formatter: FormatSignedValue),
+                ["speedMax"] = new("speedMax", "Max Movement Speed"),
+                ["actionSpeed"] = new("actionSpeed", "Attack Speed", formatter: FormatActionSpeedValue),
+                ["indieAllStat"] = new("indieAllStat", "All Stats", formatter: FormatSignedValue),
+                ["indiePad"] = new("indiePad", "Weapon ATT", formatter: FormatSignedValue),
+                ["indieMad"] = new("indieMad", "Magic ATT", formatter: FormatSignedValue),
+                ["indieAcc"] = new("indieAcc", "Accuracy", formatter: FormatSignedValue),
+                ["indieEva"] = new("indieEva", "Avoidability", formatter: FormatSignedValue),
+                ["indieDamR"] = new("indieDamR", "Damage", isPercent: true),
+                ["indieMhp"] = new("indieMhp", "Max HP", formatter: FormatSignedValue),
+                ["indieMmp"] = new("indieMmp", "Max MP", formatter: FormatSignedValue),
+                ["indieMhpR"] = new("indieMhpR", "Max HP", isPercent: true),
+                ["indieMmpR"] = new("indieMmpR", "Max MP", isPercent: true),
+                ["indieSpeed"] = new("indieSpeed", "Speed", formatter: FormatSignedValue),
+                ["indieJump"] = new("indieJump", "Jump", formatter: FormatSignedValue),
+                ["mhpX"] = new("mhpX", "Max HP", formatter: FormatSignedValue),
+                ["mmpX"] = new("mmpX", "Max MP", formatter: FormatSignedValue),
+                ["hp"] = new("hp", "HP Recovery"),
+                ["mp"] = new("mp", "MP Recovery"),
+                ["mpConReduce"] = new("mpConReduce", "MP Consumption", formatter: FormatNegativePercentValue),
+                ["bulletCount"] = new("bulletCount", "Bullet Count"),
+                ["bulletSpeed"] = new("bulletSpeed", "Bullet Speed"),
+                ["morph"] = new("morph", "Morph"),
+                ["selfDestruction"] = new("selfDestruction", "Self-Destruction Damage", isPercent: true),
+                ["ignoreMobDamR"] = new("ignoreMobDamR", "Ignore Enemy Damage Reduction", isPercent: true),
+                ["psdSpeed"] = new("psdSpeed", "Movement Speed", formatter: FormatSignedValue),
+                ["psdJump"] = new("psdJump", "Jump", formatter: FormatSignedValue),
+                ["x"] = new("x", "X"),
+                ["y"] = new("y", "Y"),
+                ["z"] = new("z", "Z")
+            };
+
+        private static readonly ISet<string> FallbackSkillHiddenProperties =
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "maxLevel",
+                "masterLevel",
+                "priceUnit",
+                "invisible",
+                "hs",
+                "type"
+            };
+
+        private static bool TryGetNumericPropertyValue(WzImageProperty node, string name, int formulaX, out int value)
+        {
+            value = 0;
+            if (node == null || string.IsNullOrWhiteSpace(name))
+                return false;
+
+            WzImageProperty child = node[name];
+            switch (child)
+            {
+                case WzIntProperty intProp:
+                    value = intProp.Value;
+                    return true;
+                case WzShortProperty shortProp:
+                    value = shortProp.Value;
+                    return true;
+                case WzLongProperty longProp:
+                    value = (int)longProp.Value;
+                    return true;
+                case WzFloatProperty floatProp:
+                    value = (int)Math.Round(floatProp.Value, MidpointRounding.AwayFromZero);
+                    return true;
+                case WzDoubleProperty doubleProp:
+                    value = (int)Math.Round(doubleProp.Value, MidpointRounding.AwayFromZero);
+                    return true;
+                case WzStringProperty stringProp:
+                    return TryEvaluateFormula(stringProp.Value, formulaX, out value);
+                default:
+                    return false;
+            }
+        }
+
+        private static bool TryGetNumericValue(WzImageProperty property, out int value)
+        {
+            value = 0;
+            switch (property)
+            {
+                case WzIntProperty intProp:
+                    value = intProp.Value;
+                    return true;
+                case WzShortProperty shortProp:
+                    value = shortProp.Value;
+                    return true;
+                case WzLongProperty longProp:
+                    value = (int)longProp.Value;
+                    return true;
+                case WzFloatProperty floatProp:
+                    value = (int)Math.Round(floatProp.Value, MidpointRounding.AwayFromZero);
+                    return true;
+                case WzDoubleProperty doubleProp:
+                    value = (int)Math.Round(doubleProp.Value, MidpointRounding.AwayFromZero);
+                    return true;
+                case WzStringProperty stringProp:
+                    return TryEvaluateFormula(stringProp.Value, 1, out value);
+                default:
+                    return false;
+            }
+        }
+
+        private static string GetStringValue(WzImageProperty node, string name)
+        {
+            if (node == null || string.IsNullOrWhiteSpace(name))
+                return null;
+
+            return node[name] is WzStringProperty stringProp
+                ? stringProp.Value
+                : null;
+        }
+
+        internal static string NormalizeSkillDescriptionForTooltip(
+            string text,
+            bool hasExplicitRequirements,
+            bool preserveFormatting = false)
+        {
+            string normalized = NormalizeSkillLineBreaks(text);
+            if (hasExplicitRequirements)
+                normalized = RemoveEmbeddedRequirementLines(normalized);
+
+            return FinalizeNormalizedSkillText(normalized, preserveFormatting);
+        }
+
+        private static string NormalizeSkillText(string text, bool preserveFormatting = false)
+        {
+            return FinalizeNormalizedSkillText(NormalizeSkillLineBreaks(text), preserveFormatting);
+        }
+
+        private static string NormalizeSkillLineBreaks(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+                return string.Empty;
+
+            string normalized = text
+                .Replace("\\r\\n", "\n")
+                .Replace("\\n", "\n")
+                .Replace("\\r", "\n")
+                .Replace("\r\n", "\n")
+                .Replace('\r', '\n')
+                .Replace('\u00A0', ' ');
+
+            normalized = Regex.Replace(
+                normalized,
+                @"\\+(?=\s*Required\s+Skill\s*:)",
+                "\n",
+                RegexOptions.IgnoreCase);
+
+            return normalized;
+        }
+
+        private static string RemoveEmbeddedRequirementLines(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+                return string.Empty;
+
+            string[] lines = text.Split('\n');
+            var keptLines = new List<string>(lines.Length);
+
+            for (int index = 0; index < lines.Length; index++)
+            {
+                string line = lines[index];
+                string trimmed = line.TrimStart();
+                string trimmedWithoutSlash = trimmed.TrimStart('\\').TrimStart();
+                int colonIndex = trimmedWithoutSlash.IndexOf(':');
+                bool isRequirementHeader = colonIndex >= 0 &&
+                                           trimmedWithoutSlash.StartsWith("Required Skill", StringComparison.OrdinalIgnoreCase);
+                if (!isRequirementHeader)
+                {
+                    keptLines.Add(line);
+                    continue;
+                }
+
+                string trailingValue = trimmedWithoutSlash[(colonIndex + 1)..].Trim();
+                if (trailingValue.Length > 0)
+                    continue;
+
+                while (index + 1 < lines.Length && string.IsNullOrWhiteSpace(lines[index + 1]))
+                    index++;
+
+                if (index + 1 < lines.Length)
+                    index++;
+            }
+
+            return string.Join("\n", keptLines);
+        }
+
+        private static string FinalizeNormalizedSkillText(string text, bool preserveFormatting)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+                return string.Empty;
+
+            string normalized = text;
+            if (!preserveFormatting)
+                normalized = Regex.Replace(normalized, "#([a-zA-Z])([^#]+)#", "$2");
+            normalized = normalized.Replace("##", "#");
+            normalized = Regex.Replace(normalized, "[ \t]+\n", "\n");
+            normalized = Regex.Replace(normalized, "\n{3,}", "\n\n");
+            normalized = Regex.Replace(normalized, "[ \t]{2,}", " ");
+
+            return normalized.Trim();
+        }
+
+        private static bool TryEvaluateFormula(string expression, int xValue, out int value)
+        {
+            value = 0;
+            if (string.IsNullOrWhiteSpace(expression))
+                return false;
+
+            try
+            {
+                var parser = new FormulaParser(expression, xValue);
+                double result = parser.Parse();
+                value = (int)Math.Round(result, MidpointRounding.AwayFromZero);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         /// <summary>
@@ -289,6 +2858,10 @@ namespace HaCreator.MapSimulator.Loaders
         public static int GetJobAdvancementLevel(int jobId)
         {
             if (jobId == 0) return 0; // Beginner
+
+            // GM/SuperGM books still live on the first job tab in the client UI.
+            if (jobId >= 800 && jobId < 1000)
+                return 1;
 
             int baseJob = jobId / 100;
             int advancement = jobId % 100;
@@ -333,7 +2906,7 @@ namespace HaCreator.MapSimulator.Loaders
                 return null;
 
             System.Drawing.Bitmap iconBitmap = iconProp.GetLinkedWzCanvasBitmap();
-            return iconBitmap?.ToTexture2D(device);
+            return iconBitmap?.ToTexture2DAndDispose(device);
         }
 
         /// <summary>
@@ -367,6 +2940,234 @@ namespace HaCreator.MapSimulator.Loaders
                 return name;
 
             return $"Job {jobId}";
+        }
+
+        private static bool TryBuildRecommendedSkillEntries(
+            WzImageProperty property,
+            ISet<int> validSkillIds,
+            out List<RecommendedSkillEntry> entries)
+        {
+            entries = null;
+            if (property?.WzProperties == null || property.WzProperties.Count == 0)
+                return false;
+
+            entries = new List<RecommendedSkillEntry>();
+            foreach (WzImageProperty child in property.WzProperties)
+            {
+                if (child == null)
+                    continue;
+
+                if (!int.TryParse(child.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int spentSpThreshold) ||
+                    spentSpThreshold < 0 ||
+                    !TryGetIntValue(child, out int skillId) ||
+                    skillId <= 0 ||
+                    (validSkillIds != null && validSkillIds.Count > 0 && !validSkillIds.Contains(skillId)))
+                {
+                    continue;
+                }
+
+                entries.Add(new RecommendedSkillEntry(spentSpThreshold, skillId));
+            }
+
+            if (entries.Count == 0)
+                return false;
+
+            entries.Sort((left, right) =>
+            {
+                int thresholdCompare = left.SpentSpThreshold.CompareTo(right.SpentSpThreshold);
+                return thresholdCompare != 0 ? thresholdCompare : left.SkillId.CompareTo(right.SkillId);
+            });
+            return true;
+        }
+
+        private static bool TryGetIntValue(WzObject node, out int value)
+        {
+            value = 0;
+
+            switch (node)
+            {
+                case WzIntProperty intProperty:
+                    value = intProperty.Value;
+                    return true;
+                case WzShortProperty shortProperty:
+                    value = shortProperty.Value;
+                    return true;
+                case WzLongProperty longProperty:
+                    value = (int)longProperty.Value;
+                    return true;
+                case WzFloatProperty floatProperty:
+                    value = (int)Math.Round(floatProperty.Value, MidpointRounding.AwayFromZero);
+                    return true;
+            }
+
+            if (node is WzImageProperty imageProperty && imageProperty.WzProperties != null && imageProperty.WzProperties.Count == 1)
+            {
+                return TryGetIntValue(imageProperty.WzProperties[0], out value);
+            }
+
+            return false;
+        }
+
+        private static bool ResolveBooleanProperty(WzImageProperty node, string name)
+        {
+            if (node == null || string.IsNullOrWhiteSpace(name))
+                return false;
+
+            return TryGetNumericPropertyValue(node, name, 1, out int value) && value != 0;
+        }
+
+        private sealed class FormulaParser
+        {
+            private readonly string _expression;
+            private readonly int _xValue;
+            private int _index;
+
+            public FormulaParser(string expression, int xValue)
+            {
+                _expression = expression ?? string.Empty;
+                _xValue = xValue;
+            }
+
+            public double Parse()
+            {
+                double value = ParseExpression();
+                SkipWhitespace();
+                if (_index < _expression.Length)
+                    throw new FormatException($"Unexpected token '{_expression[_index]}' in '{_expression}'.");
+
+                return value;
+            }
+
+            private double ParseExpression()
+            {
+                double value = ParseTerm();
+                while (true)
+                {
+                    SkipWhitespace();
+                    if (Match('+'))
+                        value += ParseTerm();
+                    else if (Match('-'))
+                        value -= ParseTerm();
+                    else
+                        return value;
+                }
+            }
+
+            private double ParseTerm()
+            {
+                double value = ParseFactor();
+                while (true)
+                {
+                    SkipWhitespace();
+                    if (Match('*'))
+                        value *= ParseFactor();
+                    else if (Match('/'))
+                        value /= ParseFactor();
+                    else
+                        return value;
+                }
+            }
+
+            private double ParseFactor()
+            {
+                SkipWhitespace();
+
+                if (Match('+'))
+                    return ParseFactor();
+                if (Match('-'))
+                    return -ParseFactor();
+
+                if (Match('('))
+                {
+                    double value = ParseExpression();
+                    Expect(')');
+                    return value;
+                }
+
+                if (TryParseIdentifier(out string identifier))
+                {
+                    if (string.Equals(identifier, "x", StringComparison.OrdinalIgnoreCase))
+                        return _xValue;
+
+                    if (identifier.Equals("u", StringComparison.OrdinalIgnoreCase) ||
+                        identifier.Equals("d", StringComparison.OrdinalIgnoreCase))
+                    {
+                        Expect('(');
+                        double inner = ParseExpression();
+                        Expect(')');
+                        return identifier.Equals("u", StringComparison.OrdinalIgnoreCase)
+                            ? Math.Ceiling(inner)
+                            : Math.Floor(inner);
+                    }
+
+                    throw new FormatException($"Unsupported identifier '{identifier}' in '{_expression}'.");
+                }
+
+                return ParseNumber();
+            }
+
+            private double ParseNumber()
+            {
+                SkipWhitespace();
+                int start = _index;
+
+                while (_index < _expression.Length &&
+                       (char.IsDigit(_expression[_index]) || _expression[_index] == '.'))
+                {
+                    _index++;
+                }
+
+                if (start == _index)
+                    throw new FormatException($"Expected number at position {_index} in '{_expression}'.");
+
+                string token = _expression[start.._index];
+                if (!double.TryParse(token, NumberStyles.Float, CultureInfo.InvariantCulture, out double value))
+                    throw new FormatException($"Invalid number '{token}' in '{_expression}'.");
+
+                return value;
+            }
+
+            private bool TryParseIdentifier(out string identifier)
+            {
+                SkipWhitespace();
+                int start = _index;
+
+                while (_index < _expression.Length && char.IsLetter(_expression[_index]))
+                {
+                    _index++;
+                }
+
+                if (start == _index)
+                {
+                    identifier = null;
+                    return false;
+                }
+
+                identifier = _expression[start.._index];
+                return true;
+            }
+
+            private bool Match(char ch)
+            {
+                SkipWhitespace();
+                if (_index >= _expression.Length || _expression[_index] != ch)
+                    return false;
+
+                _index++;
+                return true;
+            }
+
+            private void Expect(char ch)
+            {
+                if (!Match(ch))
+                    throw new FormatException($"Expected '{ch}' in '{_expression}'.");
+            }
+
+            private void SkipWhitespace()
+            {
+                while (_index < _expression.Length && char.IsWhiteSpace(_expression[_index]))
+                    _index++;
+            }
         }
     }
 }

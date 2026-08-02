@@ -1,0 +1,2345 @@
+using HaSharedLibrary.Wz;
+using HaSharedLibrary.Util;
+using MapleLib.Converters;
+using MapleLib.Helpers;
+using MapleLib.WzLib;
+using MapleLib.WzLib.WzProperties;
+using MapleLib.WzLib.WzStructure;
+using MapleLib.WzLib.WzStructure.Data;
+using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
+using Spine;
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Text;
+using HaCreator.MapSimulator.Interaction;
+
+using BinaryReader = MapleLib.PacketLib.PacketReader;
+namespace HaCreator.MapSimulator.Fields
+{
+    public enum PartyRaidFieldMode { None, Field, Boss, Result }
+    public enum PartyRaidResultOutcome { Unknown, Win, Lose, Clear }
+    public enum PartyRaidTeamColor { Red, Blue }
+
+    public sealed class PartyRaidField
+    {
+        public const int ClientFieldFactoryAddress = 0x53F220;
+        public const int ClientFieldType = 25;
+        public const int ClientBossFieldType = 26;
+        public const int ClientResultFieldType = 27;
+        public const int ClientSessionValuePacketType = 93;
+        public const int ClientPartyValuePacketType = 94;
+        public const int ClientFieldSetVariablePacketType = 95;
+        public const int ClientInitAddress = 0x55C3D0;
+        public const int ClientBossInitAddress = 0x55C5D0;
+        public const int ClientResultInitAddress = 0x55C7B0;
+        public const string ClientOwnerName = "CField_PartyRaid";
+        public const string ClientBossOwnerName = "CField_PartyRaidBoss";
+        public const string ClientResultOwnerName = "CField_PartyRaidResult";
+        public const int ClientHuntingAdballoonFieldSetVariableAddress = 0x552050;
+        public const string ClientHuntingAdballoonOwnerName = "CField_HuntingAdballoon";
+
+        private readonly record struct ClientStringPoolEvidence(
+            int Id,
+            byte Seed,
+            string RawHex,
+            string DecodedValue,
+            string ClientSource);
+
+        private readonly struct CanvasSprite
+        {
+            public CanvasSprite(Texture2D texture, Point origin) { Texture = texture; Origin = origin; }
+            public Texture2D Texture { get; }
+            public Point Origin { get; }
+            public bool IsLoaded => Texture != null;
+            public int Width => Texture?.Width ?? 0;
+            public int Height => Texture?.Height ?? 0;
+        }
+
+        private readonly struct AnimationFrame
+        {
+            public AnimationFrame(CanvasSprite sprite, int delayMs) { Sprite = sprite; DelayMs = delayMs; }
+            public CanvasSprite Sprite { get; }
+            public int DelayMs { get; }
+            public bool IsLoaded => Sprite.IsLoaded;
+        }
+
+        private struct AnimationState
+        {
+            public bool Active;
+            public int FrameIndex;
+            public int FrameStartedAt;
+        }
+
+        private const int DefaultGaugeCapacity = 100000;
+        private const int FieldBoardOffsetX = -119;
+        private const int FieldBoardY = 70;
+        private const int StateMineY = 88;
+        private const int StateOtherY = 110;
+        private const int StateMineStageBaseX = -48;
+        private const int StateOtherStageBaseX = -44;
+        private const int StateStageStepX = 23;
+        private const int FieldStageDrawX = 99;
+        private const int FieldStageDrawY = 20;
+        private const int FieldPointDrawX = 99;
+        private const int FieldPointDrawY = 2;
+        private const int BossPointDrawX = 69;
+        private const int BossPointDrawY = 2;
+        private const int BatteryOffsetX = 44;
+        private const int BatteryOffsetY = 84;
+        private const int BatteryFillOffsetX = 15;
+        private const int BatteryFillOffsetY = 8;
+        private const int BatteryFillLength = 22;
+        private const int DefaultBatteryCapacity = 100;
+        private const int BossHudX = 0;
+        private const int BossGaugeLayerLeft = -400;
+        private const int BossGaugeLayerWidth = 800;
+        private const int BossGaugeLayerHeight = 100;
+        private const int BossPointHudY = 40;
+        private const int BossGaugeHudY = 62;
+        private const int BossGaugeBackgrdX = 54;
+        private const int BossGaugeTextY = 7;
+        private const int BossGaugeIconX = 382;
+        private const int BossGaugeIconY = 9;
+        private const int BossGaugeFillX = 54;
+        private const int BossGaugeFillY = 16;
+        private const int BossGaugeLength = 322;
+        private const int ResultWinX = 80;
+        private const int ResultWinY = 56;
+        private const int ResultLoseX = 67;
+        private const int ResultLoseY = 56;
+        private const int ResultPointX = 135;
+        private const int ResultPointY = 133;
+        private const int ResultBonusX = 135;
+        private const int ResultBonusY = 157;
+        private const int ResultTotalX = 137;
+        private const int ResultTotalY = 194;
+        private const int ResultEffectHoldMs = 1200;
+        private const int TimerBoardTop = 10;
+        private const int TimerBoardDigitsY = 7;
+        private const int TimerBoardMinuteTensX = 46;
+        private const int TimerBoardMinuteOnesX = 72;
+        private const int TimerBoardSeparatorX = 98;
+        private const int TimerBoardSecondTensX = 131;
+        private const int TimerBoardSecondOnesX = 157;
+        private const int PartyRaidPointStringId = 0x1A58;
+        private const int PartyRaidBonusStringId = 0x156D;
+        private const int PartyRaidTotalStringId = 0x156E;
+        private const int PartyRaidBossRedDamageStringId = 0x1ACE;
+        private const int PartyRaidBossBlueDamageStringId = 0x1AA3;
+        private const int HuntingAdballoonRedChargeStringId = 0x174D;
+        private const int HuntingAdballoonBlueChargeStringId = 0x174E;
+        private const int HuntingAdballoonChargeSegments = 10;
+        private const int BossChargeOriginX = 54;
+        private const int BossChargeRedY = 29;
+        private const int BossChargeBlueY = 37;
+        private const int BossChargeSegmentWidth = 8;
+        private const int BossChargeSegmentHeight = 5;
+        private const int BossChargeSegmentSpacing = 2;
+        private const int PartyRaidBossMobId = 9700037;
+        private const int PartyRaidBossGaugeIconMobId = 9700036;
+        private const string PartyRaidPointClientStringPoolSource = "StringPool::ms_aString[0x1A58]";
+        private const string PartyRaidBonusClientStringPoolSource = "StringPool::ms_aString[0x156D]";
+        private const string PartyRaidTotalClientStringPoolSource = "StringPool::ms_aString[0x156E]";
+        private const string PartyRaidBossRedDamageClientStringPoolSource = "StringPool::ms_aString[0x1ACE]";
+        private const string PartyRaidBossBlueDamageClientStringPoolSource = "StringPool::ms_aString[0x1AA3]";
+        private const string PartyRaidBossRedChargeClientStringPoolSource = "StringPool::ms_aString[0x174D]";
+        private const string PartyRaidBossBlueChargeClientStringPoolSource = "StringPool::ms_aString[0x174E]";
+        private const string PartyRaidBossGaugeBackgroundClientAsset = "UI/UIWindow.img/DualMobGauge/backgrd";
+        private const string PartyRaidBossGaugeTextClientAsset = "UI/UIWindow.img/DualMobGauge/text";
+        private const string PartyRaidBossGaugeFillClientAsset = "UI/UIWindow.img/DualMobGauge/gauge";
+        private const string PartyRaidBossGaugeIconClientAsset = "UI/UIWindow.img/DualMobGauge/Mob/9700036";
+        private const string PartyRaidBossPointBoardClientAsset = "UI/UIWindow.img/PartyRace/Stage/backgrd";
+        private const string PartyRaidElapsedTimeAtBossLiteral = "PRaid_ElapssedTimeAtBoss";
+        private const string PartyRaidTeamLiteral = "PRaid_Team";
+        private const string PartyRaidRedStageLiteral = "Red_Stage";
+        private const string PartyRaidBlueStageLiteral = "Blue_Stage";
+        private const string PartyRaidRedTeamLiteral = "Red Team";
+        private const string PartyRaidBlueTeamLiteral = "Blue Team";
+        private static readonly ClientStringPoolEvidence PartyRaidPointStringPoolEvidence = new(
+            PartyRaidPointStringId,
+            0x8E,
+            "8E CD 33 F0 F0 4C 83 2A 56 F7 9A B8",
+            "PRaid_Point",
+            "CField_PartyRaidBoss::OnPartyValue / CField_PartyRaidResult::OnSessionValue");
+        private static readonly ClientStringPoolEvidence PartyRaidBonusStringPoolEvidence = new(
+            PartyRaidBonusStringId,
+            0xA4,
+            "A4 36 18 56 77 EA 38 FF 5C 5D 7B 01",
+            "PRaid_Bonus",
+            "CField_PartyRaidResult::OnSessionValue");
+        private static readonly ClientStringPoolEvidence PartyRaidTotalStringPoolEvidence = new(
+            PartyRaidTotalStringId,
+            0xA5,
+            "A5 9C C6 0F 54 78 90 2E 09 12 7D 89",
+            "PRaid_Total",
+            "CField_PartyRaidResult::OnSessionValue");
+        private static readonly ClientStringPoolEvidence PartyRaidBossRedDamageStringPoolEvidence = new(
+            PartyRaidBossRedDamageStringId,
+            0x04,
+            "04 1F 82 3C 30 03 2B 5A 5A EF 0A DC 54 56",
+            "redTeamDamage",
+            "CField_PartyRaidBoss::OnFieldSetVariable");
+        private static readonly ClientStringPoolEvidence PartyRaidBossBlueDamageStringPoolEvidence = new(
+            PartyRaidBossBlueDamageStringId,
+            0xD9,
+            "D9 C4 0A 14 AB 09 C8 DD 86 48 ED A4 27 84 B4",
+            "blueTeamDamage",
+            "CField_PartyRaidBoss::OnFieldSetVariable");
+        private static readonly ClientStringPoolEvidence PartyRaidBossRedChargeStringPoolEvidence = new(
+            HuntingAdballoonRedChargeStringId,
+            0x84,
+            "84 1F 82 3C 3B 25 22 56 6C E9 02",
+            "red_Charge",
+            "CField_HuntingAdballoon::OnFieldSetVariable");
+        private static readonly ClientStringPoolEvidence PartyRaidBossBlueChargeStringPoolEvidence = new(
+            HuntingAdballoonBlueChargeStringId,
+            0x85,
+            "85 B9 A2 C5 AD 93 D7 06 5C 6E A8 1F",
+            "blue_Charge",
+            "CField_HuntingAdballoon::OnFieldSetVariable");
+
+        private bool _isActive;
+        private bool _assetsLoaded;
+        private bool _pendingResultPresentation;
+        private bool _timerExpiredTriggered;
+        private int _mapId;
+        private int _lastUpdateTick;
+        private int _timerDurationSec;
+        private int _timeOverTick;
+        private PartyRaidFieldMode _mode;
+        private PartyRaidTeamColor _teamColor;
+        private int _mineStage;
+        private int _otherStage;
+        private int _point;
+        private int _batteryCharge;
+        private int _batteryCapacity;
+        private int _redDamage;
+        private int _blueDamage;
+        private int _redCharge;
+        private int _blueCharge;
+        private int _gaugeCapacity;
+        private int _resultPoint;
+        private int _resultBonus;
+        private int _resultTotal;
+        private int _resultSideBorder;
+        private int _resultTopBorder;
+        private int _resultBottomBorder;
+        private PartyRaidResultOutcome _resultOutcome;
+        private string _clientOwnedBossOverlayLabel;
+        private bool _usesExternalBossOverlayOwner;
+        private GraphicsDevice _graphicsDevice;
+        private SpriteBatch _bossGaugeSpriteBatch;
+        private RenderTarget2D _bossGaugeRenderTarget;
+        private bool _bossGaugeDirty;
+        private CanvasSprite _fieldBoard;
+        private CanvasSprite _redStateBackground;
+        private CanvasSprite _blueStateBackground;
+        private CanvasSprite _batteryEnd;
+        private CanvasSprite _batteryMiddle;
+        private CanvasSprite _batteryTop;
+        private CanvasSprite _batteryChargeFill;
+        private CanvasSprite _bossGaugeBackground;
+        private CanvasSprite _bossGaugeText;
+        private CanvasSprite _bossGaugeFillPixel;
+        private CanvasSprite _bossGaugeMobIcon;
+        private CanvasSprite _bossPointBoard;
+        private CanvasSprite _timerBoardBackground;
+        private CanvasSprite _timerSeparator;
+        private CanvasSprite _resultBackground;
+        private CanvasSprite _resultWinBadge;
+        private CanvasSprite _resultLoseBadge;
+        private readonly CanvasSprite[] _fieldStageDigits = new CanvasSprite[6];
+        private readonly CanvasSprite[] _fieldPointDigits = new CanvasSprite[10];
+        private readonly CanvasSprite[] _timerDigits = new CanvasSprite[10];
+        private readonly CanvasSprite[] _resultDigits = new CanvasSprite[10];
+        private readonly CanvasSprite[] _resultBigDigits = new CanvasSprite[10];
+        private readonly List<AnimationFrame> _redMineFrames = new();
+        private readonly List<AnimationFrame> _redOtherFrames = new();
+        private readonly List<AnimationFrame> _blueMineFrames = new();
+        private readonly List<AnimationFrame> _blueOtherFrames = new();
+        private readonly List<AnimationFrame> _clearResultFrames = new();
+        private readonly List<AnimationFrame> _timeoutResultFrames = new();
+        private AnimationState _mineAnimation;
+        private AnimationState _otherAnimation;
+        private AnimationState _resultEffectAnimation;
+        private int _resultEffectVisibleUntil;
+        private List<AnimationFrame> _activeResultEffectFrames;
+
+        public bool IsActive => _isActive;
+        public int MapId => _mapId;
+        public PartyRaidFieldMode Mode => _mode;
+        public PartyRaidTeamColor TeamColor => _teamColor;
+        public int Stage => _mineStage;
+        public int MineStage => _mineStage;
+        public int OtherStage => _otherStage;
+        public int Point => _point;
+        public int BatteryCharge => _batteryCharge;
+        public int BatteryCapacity => _batteryCapacity;
+        public int RedDamage => _redDamage;
+        public int BlueDamage => _blueDamage;
+        public int RedCharge => _redCharge;
+        public int BlueCharge => _blueCharge;
+        public int GaugeCapacity => _gaugeCapacity;
+        public int ResultPoint => _resultPoint;
+        public int ResultBonus => _resultBonus;
+        public int ResultTotal => _resultTotal;
+        public PartyRaidResultOutcome ResultOutcome => _resultOutcome;
+        public bool HasNativePartyRaidWrapperOwner => _isActive && !_usesExternalBossOverlayOwner && GetClientWrapperFieldType(_mode).HasValue;
+        public string ClientWrapperOwnerName => GetClientWrapperOwnerName(_mode);
+        public string ActiveRuntimeOwnerName => GetActiveRuntimeOwnerName();
+        internal bool BossGaugeCacheDirty => _bossGaugeDirty;
+        internal void ClearBossGaugeCacheDirtyForTesting() => _bossGaugeDirty = false;
+        public bool HasRunningClock => _timeOverTick != int.MinValue;
+        public int RemainingSeconds
+        {
+            get
+            {
+                if (_timeOverTick == int.MinValue)
+                {
+                    return 0;
+                }
+
+                int remainingMs = _timeOverTick - Environment.TickCount;
+                return remainingMs <= 0 ? 0 : (remainingMs + 999) / 1000;
+            }
+        }
+
+        public void Initialize(GraphicsDevice device)
+        {
+            _graphicsDevice = device;
+            EnsureAssetsLoaded(device);
+        }
+
+        public void BindMap(MapInfo mapInfo)
+        {
+            ResetState();
+            if (mapInfo == null)
+            {
+                return;
+            }
+
+            PartyRaidFieldMode mode = DetectMode(mapInfo);
+            if (mode == PartyRaidFieldMode.None)
+            {
+                return;
+            }
+
+            _isActive = true;
+            _mapId = mapInfo.id;
+            _mode = mode;
+            _mineStage = 1;
+            _otherStage = 1;
+            _batteryCharge = 0;
+            _batteryCapacity = DefaultBatteryCapacity;
+            _gaugeCapacity = DefaultGaugeCapacity;
+            _teamColor = InferTeamColor(mapInfo);
+            _resultSideBorder = Math.Max(0, mapInfo.LBSide ?? 0);
+            _resultTopBorder = Math.Max(0, mapInfo.LBTop ?? 0);
+            _resultBottomBorder = Math.Max(0, mapInfo.LBBottom ?? 0);
+            _resultPoint = -1;
+            _resultBonus = -1;
+            _resultTotal = -1;
+            _resultOutcome = InferOutcomeFromMap(mapInfo);
+            _usesExternalBossOverlayOwner = false;
+            MarkBossGaugeDirty();
+
+            if (_mode == PartyRaidFieldMode.Boss && TryResolveBossGaugeCapacity(_mapId, out int gaugeCapacity))
+            {
+                _gaugeCapacity = gaugeCapacity;
+            }
+        }
+
+        public void BindClientOwnedBossOverlay(MapInfo mapInfo, string runtimeLabel)
+        {
+            ResetState();
+            if (mapInfo == null)
+            {
+                return;
+            }
+
+            _isActive = true;
+            _mapId = mapInfo.id;
+            _mode = PartyRaidFieldMode.Boss;
+            _mineStage = 1;
+            _otherStage = 1;
+            _batteryCharge = 0;
+            _batteryCapacity = DefaultBatteryCapacity;
+            _gaugeCapacity = DefaultGaugeCapacity;
+            _teamColor = InferTeamColor(mapInfo);
+            _clientOwnedBossOverlayLabel = string.IsNullOrWhiteSpace(runtimeLabel) ? null : runtimeLabel;
+            _usesExternalBossOverlayOwner = true;
+            MarkBossGaugeDirty();
+
+            if (TryResolveBossGaugeCapacity(_mapId, out int gaugeCapacity))
+            {
+                _gaugeCapacity = gaugeCapacity;
+            }
+        }
+
+        public void Update(int currentTimeMs)
+        {
+            if (!_isActive)
+            {
+                return;
+            }
+
+            EnsureAssetsLoaded(_graphicsDevice);
+            if (_lastUpdateTick == 0)
+            {
+                _lastUpdateTick = currentTimeMs;
+            }
+
+            if (_pendingResultPresentation)
+            {
+                _pendingResultPresentation = false;
+                StartResultEffect(GetResultEffectFrames(_resultOutcome), currentTimeMs);
+            }
+
+            AdvanceAnimation(_mineAnimation.Active ? GetMineFrames() : null, ref _mineAnimation, currentTimeMs, true);
+            AdvanceAnimation(_otherAnimation.Active ? GetOtherFrames() : null, ref _otherAnimation, currentTimeMs, true);
+            AdvanceAnimation(_activeResultEffectFrames, ref _resultEffectAnimation, currentTimeMs, false);
+
+            if (_resultEffectAnimation.Active && currentTimeMs >= _resultEffectVisibleUntil)
+            {
+                _resultEffectAnimation.Active = false;
+                _activeResultEffectFrames = null;
+            }
+
+            if (_timeOverTick != int.MinValue && !_timerExpiredTriggered && currentTimeMs >= _timeOverTick)
+            {
+                _timerExpiredTriggered = true;
+                if (_mode != PartyRaidFieldMode.Result)
+                {
+                    StartResultEffect(_timeoutResultFrames, currentTimeMs);
+                }
+            }
+
+            _lastUpdateTick = currentTimeMs;
+        }
+
+        public void Draw(SpriteBatch spriteBatch, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime, int mapShiftX, int mapShiftY, int centerX, int centerY, int tickCount, Texture2D pixelTexture, SpriteFont font = null)
+        {
+            if (!_isActive || spriteBatch == null)
+            {
+                return;
+            }
+
+            EnsureAssetsLoaded(spriteBatch.GraphicsDevice);
+            switch (_mode)
+            {
+                case PartyRaidFieldMode.Field:
+                    DrawFieldHud(spriteBatch, centerX, pixelTexture, font);
+                    break;
+                case PartyRaidFieldMode.Boss:
+                    DrawBossHud(spriteBatch, pixelTexture, font);
+                    break;
+                case PartyRaidFieldMode.Result:
+                    DrawResultHud(spriteBatch, pixelTexture, font);
+                    break;
+            }
+
+            DrawResultEffect(spriteBatch);
+            DrawTimer(spriteBatch, font);
+        }
+
+        public void SetStage(int stage)
+        {
+            int clampedStage = ClampStage(stage);
+            _mineStage = clampedStage;
+            _otherStage = clampedStage;
+        }
+
+        public void SetMineStage(int stage) => _mineStage = ClampStage(stage);
+        public void SetOtherStage(int stage) => _otherStage = ClampStage(stage);
+        public void SetPoint(int point) => _point = Math.Max(0, point);
+        public void SetGaugeCapacity(int gaugeCapacity)
+        {
+            int nextGaugeCapacity = Math.Max(1, gaugeCapacity);
+            if (_gaugeCapacity == nextGaugeCapacity)
+            {
+                return;
+            }
+
+            _gaugeCapacity = nextGaugeCapacity;
+            MarkBossGaugeDirty();
+        }
+
+        public void SetBossDamage(int redDamage, int blueDamage)
+        {
+            int nextRedDamage = Math.Max(0, redDamage);
+            int nextBlueDamage = Math.Max(0, blueDamage);
+            if (_redDamage == nextRedDamage && _blueDamage == nextBlueDamage)
+            {
+                return;
+            }
+
+            _redDamage = nextRedDamage;
+            _blueDamage = nextBlueDamage;
+            MarkBossGaugeDirty();
+        }
+
+        public void SetTeamColor(PartyRaidTeamColor teamColor)
+        {
+            if (_teamColor == teamColor)
+            {
+                return;
+            }
+
+            _teamColor = teamColor;
+            _mineAnimation = CreateLoopingAnimation();
+            _otherAnimation = CreateLoopingAnimation();
+            MarkBossGaugeDirty();
+        }
+
+        public void SetResultValues(int point, int bonus, int total)
+        {
+            _resultPoint = Math.Max(0, point);
+            _resultBonus = Math.Max(0, bonus);
+            _resultTotal = Math.Max(0, total);
+            if (_mode == PartyRaidFieldMode.Result)
+            {
+                _pendingResultPresentation = true;
+            }
+        }
+
+        public void SetResultOutcome(PartyRaidResultOutcome outcome)
+        {
+            _resultOutcome = outcome;
+            if (_mode == PartyRaidFieldMode.Result && HasResultValues())
+            {
+                _pendingResultPresentation = true;
+            }
+        }
+
+        public void OnClock(int clockType, int durationSec, int currentTimeMs)
+        {
+            if (!_isActive || clockType != 2)
+            {
+                return;
+            }
+
+            _timerDurationSec = Math.Max(0, durationSec);
+            _timeOverTick = _timerDurationSec > 0 ? currentTimeMs + (_timerDurationSec * 1000) : int.MinValue;
+            _timerExpiredTriggered = false;
+            if (_timeOverTick == int.MinValue)
+            {
+                _timerDurationSec = 0;
+            }
+        }
+
+        public void ClearClock()
+        {
+            _timerDurationSec = 0;
+            _timeOverTick = int.MinValue;
+            _timerExpiredTriggered = false;
+        }
+        public bool OnFieldSetVariable(string key, string value)
+        {
+            if (MatchesAlias(key, "team", "color", "state", "balloon_Team"))
+            {
+                if (TryParseTeamColor(value, out PartyRaidTeamColor teamColor))
+                {
+                    SetTeamColor(teamColor);
+                    return true;
+                }
+
+                return false;
+            }
+
+            if (MatchesAlias(key, PartyRaidTeamLiteral, "balloon_Team"))
+            {
+                if (TryParseTeamColor(value, out PartyRaidTeamColor teamColor))
+                {
+                    SetTeamColor(teamColor);
+                    return true;
+                }
+
+                return false;
+            }
+
+            if (MatchesAlias(key, "outcome", "result"))
+            {
+                if (TryParseOutcome(value, out PartyRaidResultOutcome outcome))
+                {
+                    SetResultOutcome(outcome);
+                    return true;
+                }
+
+                return false;
+            }
+
+            if (!TryParseNonNegative(value, out int parsedValue))
+            {
+                return false;
+            }
+
+            if (MatchesAlias(key, PartyRaidElapsedTimeAtBossLiteral))
+            {
+                OnClock(2, parsedValue, Environment.TickCount);
+                return true;
+            }
+
+            if (MatchesAlias(key, PartyRaidRedStageLiteral))
+            {
+                SetAbsoluteStage(PartyRaidTeamColor.Red, parsedValue);
+                return true;
+            }
+
+            if (MatchesAlias(key, PartyRaidBlueStageLiteral))
+            {
+                SetAbsoluteStage(PartyRaidTeamColor.Blue, parsedValue);
+                return true;
+            }
+
+            if (MatchesAlias(key, "redDamage", "red", "damage_r", "partyraid_red")
+                || MatchesClientLiteral(key, PartyRaidBossRedDamageStringPoolEvidence)
+                || MatchesStringPoolKey(key, PartyRaidBossRedDamageStringId))
+            {
+                if (_redDamage == parsedValue)
+                {
+                    return true;
+                }
+
+                _redDamage = parsedValue;
+                MarkBossGaugeDirty();
+                return true;
+            }
+
+            if (MatchesAlias(key, "blueDamage", "blue", "damage_b", "partyraid_blue")
+                || MatchesClientLiteral(key, PartyRaidBossBlueDamageStringPoolEvidence)
+                || MatchesStringPoolKey(key, PartyRaidBossBlueDamageStringId))
+            {
+                if (_blueDamage == parsedValue)
+                {
+                    return true;
+                }
+
+                _blueDamage = parsedValue;
+                MarkBossGaugeDirty();
+                return true;
+            }
+
+            if (MatchesAlias(key, "redCharge", "chargeRed", "charge0", "adballoonChargeRed")
+                || MatchesClientLiteral(key, PartyRaidBossRedChargeStringPoolEvidence)
+                || MatchesStringPoolKey(key, HuntingAdballoonRedChargeStringId))
+            {
+                int nextCharge = ClampBossCharge(parsedValue);
+                if (_redCharge == nextCharge)
+                {
+                    return true;
+                }
+
+                _redCharge = nextCharge;
+                MarkBossGaugeDirty();
+                return true;
+            }
+
+            if (MatchesAlias(key, "blueCharge", "chargeBlue", "charge1", "adballoonChargeBlue")
+                || MatchesClientLiteral(key, PartyRaidBossBlueChargeStringPoolEvidence)
+                || MatchesStringPoolKey(key, HuntingAdballoonBlueChargeStringId))
+            {
+                int nextCharge = ClampBossCharge(parsedValue);
+                if (_blueCharge == nextCharge)
+                {
+                    return true;
+                }
+
+                _blueCharge = nextCharge;
+                MarkBossGaugeDirty();
+                return true;
+            }
+
+            if (MatchesAlias(key, "stageMine", "mineStage", "myStage", "ourStage"))
+            {
+                _mineStage = ClampStage(parsedValue);
+                return true;
+            }
+
+            if (MatchesAlias(key, "stageOther", "otherStage", "enemyStage", "rivalStage"))
+            {
+                _otherStage = ClampStage(parsedValue);
+                return true;
+            }
+
+            if (MatchesAlias(key, "stage"))
+            {
+                SetStage(parsedValue);
+                return true;
+            }
+
+            if (MatchesAlias(key, "battery", "charge", "batteryCharge", "batteryPoint"))
+            {
+                _batteryCharge = Math.Clamp(parsedValue, 0, Math.Max(1, _batteryCapacity));
+                return true;
+            }
+
+            if (MatchesAlias(key, "batteryMax", "batteryCapacity", "chargeMax", "chargeCapacity"))
+            {
+                _batteryCapacity = Math.Max(1, parsedValue);
+                _batteryCharge = Math.Clamp(_batteryCharge, 0, _batteryCapacity);
+                return true;
+            }
+
+            if (MatchesAlias(key, "gaugeCap", "maxhp", "gauge_capacity"))
+            {
+                int nextGaugeCapacity = Math.Max(1, parsedValue);
+                if (_gaugeCapacity == nextGaugeCapacity)
+                {
+                    return true;
+                }
+
+                _gaugeCapacity = nextGaugeCapacity;
+                MarkBossGaugeDirty();
+                return true;
+            }
+
+            return false;
+        }
+
+        public bool OnPartyValue(string key, string value)
+        {
+            if (!TryParseNonNegative(value, out int parsedValue))
+            {
+                return false;
+            }
+
+            if (MatchesAlias(key, "point", "partyPoint", "pt")
+                || MatchesClientLiteral(key, PartyRaidPointStringPoolEvidence)
+                || MatchesStringPoolKey(key, PartyRaidPointStringId))
+            {
+                _point = parsedValue;
+                return true;
+            }
+
+            if (MatchesAlias(key, "battery", "charge", "batteryCharge", "batteryPoint"))
+            {
+                _batteryCharge = Math.Clamp(parsedValue, 0, Math.Max(1, _batteryCapacity));
+                return true;
+            }
+
+            return false;
+        }
+
+        public bool OnSessionValue(string key, string value)
+        {
+            if (MatchesAlias(key, PartyRaidTeamLiteral))
+            {
+                if (TryParseTeamColor(value, out PartyRaidTeamColor teamColor))
+                {
+                    SetTeamColor(teamColor);
+                    return true;
+                }
+
+                return false;
+            }
+
+            if (MatchesAlias(key, "outcome", "result"))
+            {
+                if (TryParseOutcome(value, out PartyRaidResultOutcome outcome))
+                {
+                    SetResultOutcome(outcome);
+                    return true;
+                }
+
+                return false;
+            }
+
+            if (!TryParseNonNegative(value, out int parsedValue))
+            {
+                return false;
+            }
+
+            if (MatchesAlias(key, "point", "partyPoint", "pt")
+                || MatchesClientLiteral(key, PartyRaidPointStringPoolEvidence)
+                || MatchesStringPoolKey(key, PartyRaidPointStringId))
+            {
+                _resultPoint = parsedValue;
+            }
+            else if (MatchesAlias(key, "bonus", "rewardBonus")
+                || MatchesClientLiteral(key, PartyRaidBonusStringPoolEvidence)
+                || MatchesStringPoolKey(key, PartyRaidBonusStringId))
+            {
+                _resultBonus = parsedValue;
+            }
+            else if (MatchesAlias(key, "total", "sum")
+                || MatchesClientLiteral(key, PartyRaidTotalStringPoolEvidence)
+                || MatchesStringPoolKey(key, PartyRaidTotalStringId))
+            {
+                _resultTotal = parsedValue;
+            }
+            else
+            {
+                return false;
+            }
+
+            if (_mode == PartyRaidFieldMode.Result && HasResultValues())
+            {
+                _pendingResultPresentation = true;
+            }
+
+            return true;
+        }
+
+        public bool TryApplyRawPacket(int packetType, byte[] payload, int currentTimeMs, out string errorMessage)
+        {
+            errorMessage = null;
+            payload ??= Array.Empty<byte>();
+
+            if (!SupportsRawPacketTypeForCurrentMode(packetType))
+            {
+                errorMessage = DescribeUnsupportedRawPacket(packetType);
+                return false;
+            }
+
+            switch (packetType)
+            {
+                case ClientSessionValuePacketType:
+                case ClientPartyValuePacketType:
+                case ClientFieldSetVariablePacketType:
+                    if (!TryDecodeMapleStringPairPayload(payload, out string key, out string value, out errorMessage))
+                    {
+                        return false;
+                    }
+
+                    bool applied = packetType switch
+                    {
+                        ClientSessionValuePacketType => OnSessionValue(key, value),
+                        ClientPartyValuePacketType => OnPartyValue(key, value),
+                        ClientFieldSetVariablePacketType => OnFieldSetVariable(key, value),
+                        _ => false
+                    };
+                    if (!applied)
+                    {
+                        string owner = packetType switch
+                        {
+                            ClientSessionValuePacketType => "session",
+                            ClientPartyValuePacketType => "party",
+                            ClientFieldSetVariablePacketType => "field",
+                            _ => "partyraid"
+                        };
+                        errorMessage = $"Party Raid {owner} packet key was not accepted: {key}={value}";
+                    }
+
+                    return applied;
+
+                case 149:
+                    if (!PacketFieldSpecificDataCodec.TryDecodeStringPairs(payload, out IReadOnlyList<KeyValuePair<string, string>> pairs, out int headerSize))
+                    {
+                        errorMessage = "Party Raid field-specific packet payload did not decode into Maple string pairs.";
+                        return false;
+                    }
+
+                    List<string> appliedPairs = new();
+                    foreach (KeyValuePair<string, string> pair in pairs)
+                    {
+                        string pairKey = pair.Key;
+                        PacketFieldSpecificDataOwnerHint ownerHint = PacketFieldSpecificDataCodec.ResolveOwnerHint(ref pairKey);
+                        if (TryApplyFieldSpecificPair(pairKey, pair.Value, ownerHint, currentTimeMs, out string appliedOwner))
+                        {
+                            string ownerPrefix = string.IsNullOrWhiteSpace(appliedOwner) ? string.Empty : $"{appliedOwner}:";
+                            appliedPairs.Add($"{ownerPrefix}{pairKey}={pair.Value}");
+                        }
+                    }
+
+                    if (appliedPairs.Count == 0)
+                    {
+                        errorMessage = $"Party Raid field-specific packet decoded {pairs.Count} pair(s) with header size {headerSize}, but none were accepted.";
+                        return false;
+                    }
+
+                    errorMessage = $"Party Raid field-specific packet applied {appliedPairs.Count}/{pairs.Count} pair(s) with header size {headerSize}: {string.Join(", ", appliedPairs)}";
+                    return true;
+
+                default:
+                    errorMessage = $"Unsupported Party Raid packet type {packetType}. Expected {ClientSessionValuePacketType}, {ClientPartyValuePacketType}, {ClientFieldSetVariablePacketType}, or 149.";
+                    return false;
+            }
+        }
+
+        internal bool TryApplyFieldSpecificPair(string key, string value, PacketFieldSpecificDataOwnerHint ownerHint, int currentTimeMs, out string appliedOwner)
+        {
+            appliedOwner = null;
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                return false;
+            }
+
+            if (SupportsOwnerHintForCurrentMode(PacketFieldSpecificDataOwnerHint.Field)
+                && ownerHint is PacketFieldSpecificDataOwnerHint.None or PacketFieldSpecificDataOwnerHint.Field
+                && TryApplyRecoveredFieldLiteral(key, value, currentTimeMs))
+            {
+                appliedOwner = "field";
+                return true;
+            }
+
+            bool applied = ownerHint switch
+            {
+                PacketFieldSpecificDataOwnerHint.Field => SupportsOwnerHintForCurrentMode(PacketFieldSpecificDataOwnerHint.Field) && TryApplyFieldOwnedPair(key, value),
+                PacketFieldSpecificDataOwnerHint.Party => SupportsOwnerHintForCurrentMode(PacketFieldSpecificDataOwnerHint.Party) && TryApplyPartyOwnedPair(key, value),
+                PacketFieldSpecificDataOwnerHint.Session => SupportsOwnerHintForCurrentMode(PacketFieldSpecificDataOwnerHint.Session) && TryApplySessionOwnedPair(key, value),
+                _ => TryApplyUnknownOwnedPair(key, value, out appliedOwner)
+            };
+
+            if (!applied)
+            {
+                return false;
+            }
+
+            appliedOwner ??= ownerHint switch
+            {
+                PacketFieldSpecificDataOwnerHint.Field => "field",
+                PacketFieldSpecificDataOwnerHint.Party => "party",
+                PacketFieldSpecificDataOwnerHint.Session => "session",
+                _ => null
+            };
+            return true;
+        }
+
+        public string DescribeClientWrapperContract()
+        {
+            if (!HasNativePartyRaidWrapperOwner)
+            {
+                return null;
+            }
+
+            int? fieldType = GetClientWrapperFieldType(_mode);
+            int? initAddress = GetClientWrapperInitAddress(_mode);
+            if (!fieldType.HasValue || !initAddress.HasValue)
+            {
+                return null;
+            }
+
+            string updateEvidence = _mode switch
+            {
+                PartyRaidFieldMode.Field => $"{ClientOwnerName}::Update, ctxRelay=field:vf[8]@CWvsContext::OnFieldSetVariable party:vf[10]@CWvsContext::OnPartyValue",
+                PartyRaidFieldMode.Boss => $"{ClientBossOwnerName}::OnFieldSetVariable / {ClientBossOwnerName}::OnPartyValue, ctxRelay=field:vf[8] party:vf[10], auxiliaryChargeOwner={DescribeBossChargeOwnership()}",
+                PartyRaidFieldMode.Result => $"{ClientResultOwnerName}::OnSessionValue, ctxRelay=session:vf[9]@CWvsContext::OnSessionValue",
+                _ => null
+            };
+            string wzEvidence = GetClientWrapperWzEvidence(_mode);
+            string wzText = string.IsNullOrWhiteSpace(wzEvidence) ? string.Empty : $", wz={wzEvidence}";
+            string packetText = $"ctxPackets=session:{ClientSessionValuePacketType},party:{ClientPartyValuePacketType},field:{ClientFieldSetVariablePacketType}";
+            return $"factory=0x{ClientFieldFactoryAddress:X}, owner={GetClientWrapperOwnerName(_mode)}, fieldType={fieldType.Value}, init=0x{initAddress.Value:X}, evidence={updateEvidence}, {packetText}{wzText}";
+        }
+
+        public string DescribeStructuredFieldSpecificTarget(string appliedOwner)
+        {
+            if (!HasNativePartyRaidWrapperOwner)
+            {
+                return string.IsNullOrWhiteSpace(appliedOwner)
+                    ? "PartyRaidField"
+                    : $"PartyRaidField ({appliedOwner})";
+            }
+
+            string ownerName = GetClientWrapperOwnerName(_mode);
+            return string.IsNullOrWhiteSpace(appliedOwner)
+                ? ownerName
+                : $"{ownerName} ({appliedOwner})";
+        }
+
+        public string DescribeStatus()
+        {
+            if (!_isActive)
+            {
+                return "Party Raid runtime inactive.";
+            }
+
+            string timerText = HasRunningClock ? $", timer={FormatTimer(RemainingSeconds)}" : string.Empty;
+            string wrapperText = DescribeClientWrapperContract();
+            string wrapperPrefix = string.IsNullOrWhiteSpace(wrapperText) ? string.Empty : $"[{wrapperText}] ";
+            return _mode switch
+            {
+                PartyRaidFieldMode.Field => $"{wrapperPrefix}{GetActiveRuntimeOwnerName()} map {_mapId}: team {GetTeamLabel(_teamColor)}, stage {_mineStage}{DescribeOtherStageStatus()}, point {_point}{DescribeBatteryStatus()}{timerText}, client point key {FormatClientStringPoolLiteral(PartyRaidPointStringPoolEvidence, PartyRaidPointClientStringPoolSource)}.",
+                PartyRaidFieldMode.Boss => $"{wrapperPrefix}{GetActiveRuntimeOwnerName()} map {_mapId}: point {_point}, red damage {_redDamage}, blue damage {_blueDamage}, charge {_redCharge}/{_blueCharge}, gauge cap {_gaugeCapacity}, layout={DescribeBossLayoutOwnership()}, chargeOwner={DescribeBossChargeOwnership()}, assets=[{PartyRaidBossGaugeBackgroundClientAsset}, {PartyRaidBossGaugeTextClientAsset}, {PartyRaidBossGaugeFillClientAsset}, {PartyRaidBossGaugeIconClientAsset}, {PartyRaidBossPointBoardClientAsset}], keys=[{FormatClientStringPoolLiteral(PartyRaidBossRedDamageStringPoolEvidence, PartyRaidBossRedDamageClientStringPoolSource)}, {FormatClientStringPoolLiteral(PartyRaidBossBlueDamageStringPoolEvidence, PartyRaidBossBlueDamageClientStringPoolSource)}, {FormatClientStringPoolLiteral(PartyRaidBossRedChargeStringPoolEvidence, PartyRaidBossRedChargeClientStringPoolSource)}, {FormatClientStringPoolLiteral(PartyRaidBossBlueChargeStringPoolEvidence, PartyRaidBossBlueChargeClientStringPoolSource)}]{timerText}.",
+                PartyRaidFieldMode.Result => $"{wrapperPrefix}{GetActiveRuntimeOwnerName()} map {_mapId}: point {_resultPoint}, bonus {_resultBonus}, total {_resultTotal}, outcome {GetOutcomeLabel(_resultOutcome)}, keys=[{FormatClientStringPoolLiteral(PartyRaidPointStringPoolEvidence, PartyRaidPointClientStringPoolSource)}, {FormatClientStringPoolLiteral(PartyRaidBonusStringPoolEvidence, PartyRaidBonusClientStringPoolSource)}, {FormatClientStringPoolLiteral(PartyRaidTotalStringPoolEvidence, PartyRaidTotalClientStringPoolSource)}]{timerText}.",
+                _ => "Party Raid runtime inactive."
+            };
+        }
+
+        public void Reset()
+        {
+            _isActive = false;
+            ResetState();
+        }
+
+        internal static PartyRaidFieldMode DetectMode(MapInfo mapInfo)
+        {
+            if (mapInfo?.fieldType is FieldType fieldType)
+            {
+                return GetMode(fieldType);
+            }
+
+            if (mapInfo == null)
+            {
+                return PartyRaidFieldMode.None;
+            }
+
+            if (TryInferModeFromScripts(mapInfo.onUserEnter, mapInfo.onFirstUserEnter, out PartyRaidFieldMode scriptMode))
+            {
+                return scriptMode;
+            }
+
+            if (TryResolveMapScripts(mapInfo.id, out string onUserEnter, out string onFirstUserEnter)
+                && TryInferModeFromScripts(onUserEnter, onFirstUserEnter, out PartyRaidFieldMode resolvedScriptMode))
+            {
+                return resolvedScriptMode;
+            }
+
+            return InferModeFromMapId(mapInfo.id);
+        }
+
+        internal static bool IsPartyRaidMap(MapInfo mapInfo) => DetectMode(mapInfo) != PartyRaidFieldMode.None;
+
+        private void ResetState()
+        {
+            _mapId = 0;
+            _mode = PartyRaidFieldMode.None;
+            _teamColor = PartyRaidTeamColor.Red;
+            _mineStage = 0;
+            _otherStage = 0;
+            _point = 0;
+            _batteryCharge = 0;
+            _batteryCapacity = DefaultBatteryCapacity;
+            _redDamage = 0;
+            _blueDamage = 0;
+            _redCharge = 0;
+            _blueCharge = 0;
+            _gaugeCapacity = DefaultGaugeCapacity;
+            _resultPoint = -1;
+            _resultBonus = -1;
+            _resultTotal = -1;
+            _resultSideBorder = 0;
+            _resultTopBorder = 0;
+            _resultBottomBorder = 0;
+            _resultOutcome = PartyRaidResultOutcome.Unknown;
+            _clientOwnedBossOverlayLabel = null;
+            _usesExternalBossOverlayOwner = false;
+            _lastUpdateTick = 0;
+            _timerDurationSec = 0;
+            _timeOverTick = int.MinValue;
+            _timerExpiredTriggered = false;
+            _pendingResultPresentation = false;
+            _mineAnimation = CreateLoopingAnimation();
+            _otherAnimation = CreateLoopingAnimation();
+            _resultEffectAnimation = default;
+            _activeResultEffectFrames = null;
+            _resultEffectVisibleUntil = 0;
+            _bossGaugeDirty = true;
+        }
+
+        private void EnsureAssetsLoaded(GraphicsDevice graphicsDevice)
+        {
+            if (_assetsLoaded || graphicsDevice == null)
+            {
+                return;
+            }
+
+            _graphicsDevice = graphicsDevice;
+            WzImage uiWindow = global::HaCreator.Program.FindImage("UI", "UIWindow.img") ?? global::HaCreator.Program.FindImage("UI", "UIWindow2.img");
+            WzImage effectImage = global::HaCreator.Program.FindImage("Map", "Effect.img");
+            WzImage mapEtcImage = global::HaCreator.Program.FindImage("Map", "Obj/etc.img")
+                ?? global::HaCreator.Program.FindImage("Map", "etc.img");
+            uiWindow?.ParseImage();
+            effectImage?.ParseImage();
+            mapEtcImage?.ParseImage();
+
+            WzImageProperty partyRace = uiWindow?["PartyRace"];
+            WzImageProperty stage = partyRace?["Stage"];
+            WzImageProperty state = partyRace?["State"];
+            WzImageProperty result = partyRace?["Result"];
+            WzImageProperty battery = partyRace?["battery"];
+            WzImageProperty dualMobGauge = uiWindow?["DualMobGauge"];
+            WzImageProperty partyRaceTimer = mapEtcImage?["partyRace"];
+
+            _fieldBoard = LoadCanvas(stage?["backgrd"]);
+            _bossPointBoard = LoadCanvas(stage?["backgrd"]);
+            LoadDigits(stage?["number"], _fieldStageDigits, 1, 5);
+            LoadDigits(stage?["number2"], _fieldPointDigits, 0, 9);
+
+            _redStateBackground = LoadCanvas(state?["Red"]?["backgrd"]);
+            _blueStateBackground = LoadCanvas(state?["Blue"]?["backgrd"]);
+            LoadAnimation(state?["Red"]?["effMine"], _redMineFrames);
+            LoadAnimation(state?["Red"]?["effOther"], _redOtherFrames);
+            LoadAnimation(state?["Blue"]?["effMine"], _blueMineFrames);
+            LoadAnimation(state?["Blue"]?["effOther"], _blueOtherFrames);
+            _batteryEnd = LoadCanvas(battery?["backgrd_End"]);
+            _batteryMiddle = LoadCanvas(battery?["backgrd_Middle"]);
+            _batteryTop = LoadCanvas(battery?["backgrd_Top"]);
+            _batteryChargeFill = LoadCanvas(battery?["charge"]);
+
+            _bossGaugeBackground = LoadCanvas(dualMobGauge?["backgrd"]);
+            _bossGaugeText = LoadCanvas(dualMobGauge?["text"]);
+            _bossGaugeFillPixel = LoadCanvas(dualMobGauge?["gauge"]);
+            _bossGaugeMobIcon = LoadCanvas(dualMobGauge?["Mob"]?[PartyRaidBossGaugeIconMobId.ToString(CultureInfo.InvariantCulture)]);
+            _timerBoardBackground = LoadCanvas(partyRaceTimer?["backgrnd"]);
+            _timerSeparator = LoadCanvas(partyRaceTimer?["fontTime"]?["comma"]);
+            LoadDigits(partyRaceTimer?["fontTime"], _timerDigits, 0, 9);
+
+            _resultBackground = LoadCanvas(result?["backgrd"]);
+            _resultWinBadge = LoadCanvas(result?["win"]);
+            _resultLoseBadge = LoadCanvas(result?["lose"]);
+            LoadDigits(result?["number"], _resultDigits, 0, 9);
+            LoadDigits(result?["number2"], _resultBigDigits, 0, 9);
+
+            LoadAnimation(effectImage?["praid"]?["clear"], _clearResultFrames);
+            LoadAnimation(effectImage?["praid"]?["timeout"], _timeoutResultFrames);
+            _assetsLoaded = true;
+        }
+
+        private CanvasSprite LoadCanvas(WzImageProperty source)
+        {
+            if (_graphicsDevice == null || source == null)
+            {
+                return default;
+            }
+
+            if (WzInfoTools.GetRealProperty(source) is not WzCanvasProperty canvas)
+            {
+                return default;
+            }
+
+            var bitmap = canvas.GetLinkedWzCanvasBitmap();
+            if (bitmap == null)
+            {
+                return default;
+            }
+
+            Texture2D texture = bitmap.ToTexture2DAndDispose(_graphicsDevice);
+            System.Drawing.PointF origin = canvas.GetCanvasOriginPosition();
+            return new CanvasSprite(texture, new Point((int)origin.X, (int)origin.Y));
+        }
+
+        private void LoadDigits(WzImageProperty source, CanvasSprite[] target, int minDigit, int maxDigit)
+        {
+            Array.Clear(target, 0, target.Length);
+            if (source == null)
+            {
+                return;
+            }
+
+            for (int digit = minDigit; digit <= maxDigit && digit < target.Length; digit++)
+            {
+                target[digit] = LoadCanvas(source[digit.ToString(CultureInfo.InvariantCulture)]);
+            }
+        }
+
+        private void LoadAnimation(WzImageProperty source, List<AnimationFrame> target)
+        {
+            target.Clear();
+            if (source is not WzSubProperty subProperty)
+            {
+                return;
+            }
+
+            List<(int Index, WzImageProperty Property)> ordered = new();
+            foreach (WzImageProperty child in subProperty.WzProperties)
+            {
+                if (int.TryParse(child.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int index))
+                {
+                    ordered.Add((index, child));
+                }
+            }
+
+            ordered.Sort(static (left, right) => left.Index.CompareTo(right.Index));
+            for (int i = 0; i < ordered.Count; i++)
+            {
+                if (WzInfoTools.GetRealProperty(ordered[i].Property) is not WzCanvasProperty canvas)
+                {
+                    continue;
+                }
+
+                CanvasSprite sprite = LoadCanvas(canvas);
+                if (!sprite.IsLoaded)
+                {
+                    continue;
+                }
+
+                target.Add(new AnimationFrame(sprite, GetCanvasDelay(canvas)));
+            }
+        }
+
+        private static int GetCanvasDelay(WzCanvasProperty canvas)
+        {
+            if (canvas?["delay"] is WzIntProperty delayProperty)
+            {
+                return Math.Max(1, delayProperty.Value);
+            }
+
+            return 100;
+        }
+
+        private void MarkBossGaugeDirty()
+        {
+            _bossGaugeDirty = true;
+        }
+
+        private bool CanUseBossGaugeCache()
+        {
+            return _graphicsDevice != null
+                && _bossGaugeBackground.IsLoaded
+                && _bossGaugeText.IsLoaded
+                && _bossGaugeFillPixel.IsLoaded
+                && _bossGaugeMobIcon.IsLoaded;
+        }
+
+        private void EnsureBossGaugeRenderTarget()
+        {
+            if (_graphicsDevice == null)
+            {
+                return;
+            }
+
+            if (_bossGaugeSpriteBatch == null || _bossGaugeSpriteBatch.GraphicsDevice != _graphicsDevice)
+            {
+                _bossGaugeSpriteBatch?.Dispose();
+                _bossGaugeSpriteBatch = new SpriteBatch(_graphicsDevice);
+            }
+
+            if (_bossGaugeRenderTarget == null
+                || _bossGaugeRenderTarget.IsDisposed
+                || _bossGaugeRenderTarget.GraphicsDevice != _graphicsDevice
+                || _bossGaugeRenderTarget.Width != BossGaugeLayerWidth
+                || _bossGaugeRenderTarget.Height != BossGaugeLayerHeight)
+            {
+                _bossGaugeRenderTarget?.Dispose();
+                _bossGaugeRenderTarget = new RenderTarget2D(_graphicsDevice, BossGaugeLayerWidth, BossGaugeLayerHeight, false, SurfaceFormat.Color, DepthFormat.None);
+                _bossGaugeDirty = true;
+            }
+        }
+
+        private void RedrawBossGaugeLayer(Texture2D pixelTexture)
+        {
+            if (!CanUseBossGaugeCache())
+            {
+                return;
+            }
+
+            EnsureBossGaugeRenderTarget();
+            if (_bossGaugeRenderTarget == null || _bossGaugeSpriteBatch == null || !_bossGaugeDirty)
+            {
+                return;
+            }
+
+            RenderTargetBinding[] previousTargets = _graphicsDevice.GetRenderTargets();
+            _graphicsDevice.SetRenderTarget(_bossGaugeRenderTarget);
+            _graphicsDevice.Clear(Color.Transparent);
+
+            _bossGaugeSpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone);
+            DrawSpriteCopy(_bossGaugeSpriteBatch, _bossGaugeBackground, BossGaugeBackgrdX, 0);
+
+            int redRemaining = GetRemainingGaugeWidth(_redDamage);
+            int blueRemaining = GetRemainingGaugeWidth(_blueDamage);
+            for (int x = 0; x < redRemaining; x++)
+            {
+                DrawSpriteCopy(_bossGaugeSpriteBatch, _bossGaugeFillPixel, BossGaugeFillX + x, BossGaugeFillY);
+            }
+
+            for (int x = 0; x < blueRemaining; x++)
+            {
+                DrawSpriteCopy(_bossGaugeSpriteBatch, _bossGaugeFillPixel, BossGaugeFillX + BossGaugeLength - 1 - x, BossGaugeFillY);
+            }
+
+            DrawSpriteCopy(_bossGaugeSpriteBatch, _bossGaugeText, 0, BossGaugeTextY);
+            DrawBossChargeMeter(_bossGaugeSpriteBatch, pixelTexture, BossChargeOriginX, BossChargeRedY, _redCharge, new Color(217, 88, 82), alignRight: false);
+            DrawBossChargeMeter(_bossGaugeSpriteBatch, pixelTexture, BossChargeOriginX, BossChargeBlueY, _blueCharge, new Color(94, 169, 255), alignRight: true);
+            DrawSpriteCopy(_bossGaugeSpriteBatch, _bossGaugeMobIcon, BossGaugeIconX, BossGaugeIconY);
+            _bossGaugeSpriteBatch.End();
+
+            _graphicsDevice.SetRenderTargets(previousTargets);
+            _bossGaugeDirty = false;
+        }
+
+        private void DrawFieldHud(SpriteBatch spriteBatch, int centerX, Texture2D pixelTexture, SpriteFont font)
+        {
+            CanvasSprite stateBackground = GetStateBackground();
+            if (stateBackground.IsLoaded)
+            {
+                DrawSprite(spriteBatch, stateBackground, centerX + FieldBoardOffsetX, FieldBoardY);
+            }
+
+            DrawAnimationFrame(spriteBatch, GetMineFrames(), _mineAnimation, centerX + GetMineStateX(), GetMineStateY());
+            DrawAnimationFrame(spriteBatch, GetOtherFrames(), _otherAnimation, centerX + GetOtherStateX(), GetOtherStateY());
+            DrawBatteryHud(spriteBatch, centerX);
+
+            if (_fieldBoard.IsLoaded)
+            {
+                DrawSpriteCopy(spriteBatch, _fieldBoard, centerX + FieldBoardOffsetX, FieldBoardY);
+                DrawNumberCopy(spriteBatch, _fieldPointDigits, _point, centerX + FieldBoardOffsetX + FieldPointDrawX, FieldBoardY + FieldPointDrawY);
+                DrawSingleDigitCopy(spriteBatch, _fieldStageDigits, ClampStage(_mineStage), centerX + FieldBoardOffsetX + FieldStageDrawX, FieldBoardY + FieldStageDrawY);
+                return;
+            }
+
+            if (pixelTexture != null)
+            {
+                spriteBatch.Draw(pixelTexture, new Rectangle(centerX + FieldBoardOffsetX, FieldBoardY, 238, 58), new Color(26, 27, 35, 220));
+            }
+
+            if (font != null)
+            {
+                DrawOutlinedString(spriteBatch, font, $"STAGE {_mineStage}", new Vector2(centerX - 40, FieldBoardY + 8), Color.Gold);
+                DrawOutlinedString(spriteBatch, font, $"POINT {_point}", new Vector2(centerX - 40, FieldBoardY + 30), Color.White);
+            }
+        }
+
+        private void DrawBossHud(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font)
+        {
+            int bossGaugeBaseX = GetBossGaugeBaseX(spriteBatch.GraphicsDevice.Viewport.Width);
+            if (CanUseBossGaugeCache())
+            {
+                RedrawBossGaugeLayer(pixelTexture);
+                if (_bossGaugeRenderTarget != null)
+                {
+                    spriteBatch.Draw(_bossGaugeRenderTarget, new Vector2(bossGaugeBaseX, BossGaugeHudY), Color.White);
+                }
+            }
+            else
+            {
+                if (_bossGaugeBackground.IsLoaded)
+                {
+                    DrawSpriteCopy(spriteBatch, _bossGaugeBackground, bossGaugeBaseX + BossGaugeBackgrdX, BossGaugeHudY);
+                }
+
+                if (_bossGaugeFillPixel.IsLoaded)
+                {
+                    int redRemaining = GetRemainingGaugeWidth(_redDamage);
+                    int blueRemaining = GetRemainingGaugeWidth(_blueDamage);
+                    for (int x = 0; x < redRemaining; x++)
+                    {
+                        DrawSpriteCopy(spriteBatch, _bossGaugeFillPixel, bossGaugeBaseX + BossGaugeFillX + x, BossGaugeHudY + BossGaugeFillY);
+                    }
+
+                    for (int x = 0; x < blueRemaining; x++)
+                    {
+                        DrawSpriteCopy(spriteBatch, _bossGaugeFillPixel, bossGaugeBaseX + BossGaugeFillX + BossGaugeLength - 1 - x, BossGaugeHudY + BossGaugeFillY);
+                    }
+                }
+
+                if (_bossGaugeText.IsLoaded)
+                {
+                    DrawSpriteCopy(spriteBatch, _bossGaugeText, bossGaugeBaseX, BossGaugeHudY + BossGaugeTextY);
+                }
+
+                DrawBossChargeMeter(spriteBatch, pixelTexture, bossGaugeBaseX + BossChargeOriginX, BossGaugeHudY + BossChargeRedY, _redCharge, new Color(217, 88, 82), alignRight: false);
+                DrawBossChargeMeter(spriteBatch, pixelTexture, bossGaugeBaseX + BossChargeOriginX, BossGaugeHudY + BossChargeBlueY, _blueCharge, new Color(94, 169, 255), alignRight: true);
+
+                if (_bossGaugeMobIcon.IsLoaded)
+                {
+                    DrawSpriteCopy(spriteBatch, _bossGaugeMobIcon, bossGaugeBaseX + BossGaugeIconX, BossGaugeHudY + BossGaugeIconY);
+                }
+            }
+
+            if (_bossPointBoard.IsLoaded)
+            {
+                DrawSpriteCopy(spriteBatch, _bossPointBoard, BossHudX, BossPointHudY);
+                DrawNumberCopy(spriteBatch, _fieldPointDigits, _point, BossHudX + BossPointDrawX, BossPointHudY + BossPointDrawY);
+            }
+
+            if (!_bossGaugeBackground.IsLoaded && pixelTexture != null)
+            {
+                spriteBatch.Draw(pixelTexture, new Rectangle(bossGaugeBaseX, BossGaugeHudY, 436, 48), new Color(14, 16, 20, 220));
+            }
+
+            if (font != null && !_bossGaugeText.IsLoaded)
+            {
+                DrawOutlinedString(spriteBatch, font, $"RED {_redDamage}", new Vector2(bossGaugeBaseX + 8, BossGaugeHudY + 10), Color.IndianRed);
+                DrawOutlinedString(spriteBatch, font, $"BLUE {_blueDamage}", new Vector2(bossGaugeBaseX + 270, BossGaugeHudY + 10), Color.LightSkyBlue);
+            }
+        }
+
+        private void DrawBossChargeMeter(SpriteBatch spriteBatch, Texture2D pixelTexture, int x, int y, int charge, Color fillColor, bool alignRight)
+        {
+            Texture2D fillTexture = _batteryChargeFill.IsLoaded ? _batteryChargeFill.Texture : pixelTexture;
+            if (fillTexture == null)
+            {
+                return;
+            }
+
+            int clampedCharge = ClampBossCharge(charge);
+            for (int i = 0; i < HuntingAdballoonChargeSegments; i++)
+            {
+                int segmentX = alignRight
+                    ? x + ((HuntingAdballoonChargeSegments - 1 - i) * (BossChargeSegmentWidth + BossChargeSegmentSpacing))
+                    : x + (i * (BossChargeSegmentWidth + BossChargeSegmentSpacing));
+                Rectangle bounds = new(segmentX, y, BossChargeSegmentWidth, BossChargeSegmentHeight);
+                Color color = i < clampedCharge ? fillColor : new Color(34, 42, 56, 220);
+                spriteBatch.Draw(fillTexture, bounds, color);
+            }
+        }
+
+        private void DrawBatteryHud(SpriteBatch spriteBatch, int centerX)
+        {
+            if (!_batteryTop.IsLoaded || !_batteryMiddle.IsLoaded || !_batteryEnd.IsLoaded || !_batteryChargeFill.IsLoaded)
+            {
+                return;
+            }
+
+            int batteryX = centerX + BatteryOffsetX;
+            int batteryY = BatteryOffsetY;
+            DrawSpriteCopy(spriteBatch, _batteryTop, batteryX, batteryY);
+
+            int middleStartX = batteryX + _batteryTop.Width;
+            int middleCount = Math.Max(0, (BatteryFillLength - _batteryTop.Width - _batteryEnd.Width + _batteryMiddle.Width - 1) / _batteryMiddle.Width);
+            for (int i = 0; i < middleCount; i++)
+            {
+                DrawSpriteCopy(spriteBatch, _batteryMiddle, middleStartX + (i * _batteryMiddle.Width), batteryY);
+            }
+
+            int batteryEndX = batteryX + BatteryFillLength - _batteryEnd.Width;
+            DrawSpriteCopy(spriteBatch, _batteryEnd, batteryEndX, batteryY);
+
+            int chargeWidth = GetBatteryFillWidth();
+            for (int x = 0; x < chargeWidth; x++)
+            {
+                DrawSpriteCopy(spriteBatch, _batteryChargeFill, batteryX + BatteryFillOffsetX + x, batteryY + BatteryFillOffsetY);
+            }
+        }
+
+        private void DrawResultHud(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font)
+        {
+            Viewport viewport = spriteBatch.GraphicsDevice.Viewport;
+            int backgroundHeight = _resultBackground.IsLoaded ? _resultBackground.Height : 259;
+            int backgroundWidth = Math.Max(_resultBackground.Width, 260);
+            int safeLeft = Math.Clamp(_resultSideBorder, 0, viewport.Width);
+            int safeTop = Math.Clamp(_resultTopBorder, 0, viewport.Height);
+            int safeWidth = Math.Max(0, viewport.Width - (safeLeft * 2));
+            int safeHeight = Math.Max(0, viewport.Height - safeTop - Math.Clamp(_resultBottomBorder, 0, viewport.Height));
+            int left = safeLeft + Math.Max(0, (safeWidth - backgroundWidth) / 2);
+            int top = safeTop + Math.Max(0, (safeHeight - Math.Max(backgroundHeight, 259)) / 2);
+
+            if (_resultBackground.IsLoaded)
+            {
+                DrawSpriteCopy(spriteBatch, _resultBackground, left, top);
+            }
+            else if (pixelTexture != null)
+            {
+                spriteBatch.Draw(pixelTexture, new Rectangle(left, top, 260, 259), new Color(10, 12, 18, 230));
+            }
+
+            CanvasSprite badge = UsesWinBadge(_resultOutcome) ? _resultWinBadge : _resultLoseBadge;
+            if (badge.IsLoaded)
+            {
+                int badgeX = UsesWinBadge(_resultOutcome) ? ResultWinX : ResultLoseX;
+                int badgeY = UsesWinBadge(_resultOutcome) ? ResultWinY : ResultLoseY;
+                DrawSpriteCopy(spriteBatch, badge, left + badgeX, top + badgeY);
+            }
+
+            DrawNumberCopy(spriteBatch, _resultDigits, Math.Max(0, _resultPoint), left + ResultPointX, top + ResultPointY);
+            DrawNumberCopy(spriteBatch, _resultDigits, Math.Max(0, _resultBonus), left + ResultBonusX, top + ResultBonusY);
+            DrawNumberCopy(spriteBatch, _resultBigDigits, Math.Max(0, _resultTotal), left + ResultTotalX, top + ResultTotalY);
+
+            if (!_resultBackground.IsLoaded && font != null)
+            {
+                DrawOutlinedString(spriteBatch, font, GetOutcomeLabel(_resultOutcome), new Vector2(left + 86, top + 60), Color.White);
+            }
+        }
+
+        private void DrawResultEffect(SpriteBatch spriteBatch)
+        {
+            if (!_resultEffectAnimation.Active || _activeResultEffectFrames == null || _activeResultEffectFrames.Count == 0)
+            {
+                return;
+            }
+
+            AnimationFrame frame = _activeResultEffectFrames[Math.Clamp(_resultEffectAnimation.FrameIndex, 0, _activeResultEffectFrames.Count - 1)];
+            if (!frame.IsLoaded)
+            {
+                return;
+            }
+
+            Viewport viewport = spriteBatch.GraphicsDevice.Viewport;
+            DrawSprite(spriteBatch, frame.Sprite, (viewport.Width / 2) - frame.Sprite.Origin.X, (viewport.Height / 2) - frame.Sprite.Origin.Y);
+        }
+
+        private void DrawTimer(SpriteBatch spriteBatch, SpriteFont font)
+        {
+            if (!HasRunningClock)
+            {
+                return;
+            }
+
+            Viewport viewport = spriteBatch.GraphicsDevice.Viewport;
+            string timerText = FormatTimer(RemainingSeconds);
+            if (_timerBoardBackground.IsLoaded && HasTimerDigits())
+            {
+                int boardLeft = (viewport.Width - _timerBoardBackground.Width) / 2;
+                DrawSpriteCopy(spriteBatch, _timerBoardBackground, boardLeft, TimerBoardTop);
+                DrawTimerDigitCopy(spriteBatch, timerText[0], boardLeft + TimerBoardMinuteTensX, TimerBoardTop + TimerBoardDigitsY);
+                DrawTimerDigitCopy(spriteBatch, timerText[1], boardLeft + TimerBoardMinuteOnesX, TimerBoardTop + TimerBoardDigitsY);
+                DrawSpriteCopy(spriteBatch, _timerSeparator, boardLeft + TimerBoardSeparatorX, TimerBoardTop + TimerBoardDigitsY + 7);
+                DrawTimerDigitCopy(spriteBatch, timerText[3], boardLeft + TimerBoardSecondTensX, TimerBoardTop + TimerBoardDigitsY);
+                DrawTimerDigitCopy(spriteBatch, timerText[4], boardLeft + TimerBoardSecondOnesX, TimerBoardTop + TimerBoardDigitsY);
+                return;
+            }
+
+            if (font == null)
+            {
+                return;
+            }
+
+            Vector2 size = font.MeasureString(timerText);
+            DrawOutlinedString(spriteBatch, font, timerText, new Vector2((viewport.Width - size.X) / 2f, TimerBoardTop + 8), Color.White);
+        }
+
+        private void DrawSprite(SpriteBatch spriteBatch, CanvasSprite sprite, int x, int y)
+        {
+            if (!sprite.IsLoaded)
+            {
+                return;
+            }
+
+            spriteBatch.Draw(sprite.Texture, new Vector2(x - sprite.Origin.X, y - sprite.Origin.Y), Color.White);
+        }
+
+        private static void DrawSpriteCopy(SpriteBatch spriteBatch, CanvasSprite sprite, int x, int y)
+        {
+            if (!sprite.IsLoaded)
+            {
+                return;
+            }
+
+            spriteBatch.Draw(sprite.Texture, new Vector2(x, y), Color.White);
+        }
+
+        private void DrawAnimationFrame(SpriteBatch spriteBatch, List<AnimationFrame> frames, AnimationState state, int x, int y)
+        {
+            if (frames == null || frames.Count == 0 || !state.Active)
+            {
+                return;
+            }
+
+            DrawSprite(spriteBatch, frames[Math.Clamp(state.FrameIndex, 0, frames.Count - 1)].Sprite, x, y);
+        }
+
+        private void DrawSingleDigit(SpriteBatch spriteBatch, CanvasSprite[] digits, int digit, int x, int y)
+        {
+            if (digit < 0 || digit >= digits.Length || !digits[digit].IsLoaded)
+            {
+                return;
+            }
+
+            DrawSprite(spriteBatch, digits[digit], x, y);
+        }
+
+        private static void DrawSingleDigitCopy(SpriteBatch spriteBatch, CanvasSprite[] digits, int digit, int x, int y)
+        {
+            if (digit < 0 || digit >= digits.Length || !digits[digit].IsLoaded)
+            {
+                return;
+            }
+
+            DrawSpriteCopy(spriteBatch, digits[digit], x, y);
+        }
+
+        private void DrawNumber(SpriteBatch spriteBatch, CanvasSprite[] digits, int number, int x, int y)
+        {
+            string text = Math.Max(0, number).ToString(CultureInfo.InvariantCulture);
+            int drawX = x;
+            for (int i = 0; i < text.Length; i++)
+            {
+                int digit = text[i] - '0';
+                if (digit < 0 || digit >= digits.Length || !digits[digit].IsLoaded)
+                {
+                    continue;
+                }
+
+                DrawSprite(spriteBatch, digits[digit], drawX, y);
+                drawX += digits[digit].Width;
+            }
+        }
+
+        private static void DrawNumberCopy(SpriteBatch spriteBatch, CanvasSprite[] digits, int number, int x, int y)
+        {
+            string text = Math.Max(0, number).ToString(CultureInfo.InvariantCulture);
+            int drawX = x;
+            for (int i = 0; i < text.Length; i++)
+            {
+                int digit = text[i] - '0';
+                if (digit < 0 || digit >= digits.Length || !digits[digit].IsLoaded)
+                {
+                    continue;
+                }
+
+                DrawSpriteCopy(spriteBatch, digits[digit], drawX, y);
+                drawX += digits[digit].Width;
+            }
+        }
+
+        private void DrawTimerDigit(SpriteBatch spriteBatch, char digitChar, int x, int y)
+        {
+            int digit = digitChar - '0';
+            if (digit < 0 || digit >= _timerDigits.Length)
+            {
+                return;
+            }
+
+            DrawSprite(spriteBatch, _timerDigits[digit], x, y);
+        }
+
+        private void DrawTimerDigitCopy(SpriteBatch spriteBatch, char digitChar, int x, int y)
+        {
+            int digit = digitChar - '0';
+            if (digit < 0 || digit >= _timerDigits.Length)
+            {
+                return;
+            }
+
+            DrawSpriteCopy(spriteBatch, _timerDigits[digit], x, y);
+        }
+
+        private void StartResultEffect(List<AnimationFrame> frames, int currentTimeMs)
+        {
+            if (frames == null || frames.Count == 0)
+            {
+                return;
+            }
+
+            _activeResultEffectFrames = frames;
+            _resultEffectAnimation.Active = true;
+            _resultEffectAnimation.FrameIndex = 0;
+            _resultEffectAnimation.FrameStartedAt = currentTimeMs;
+            _resultEffectVisibleUntil = currentTimeMs + GetAnimationDuration(frames) + ResultEffectHoldMs;
+        }
+
+        private static int GetAnimationDuration(List<AnimationFrame> frames)
+        {
+            int total = 0;
+            for (int i = 0; i < frames.Count; i++)
+            {
+                total += Math.Max(1, frames[i].DelayMs);
+            }
+
+            return total;
+        }
+        private void AdvanceAnimation(List<AnimationFrame> frames, ref AnimationState state, int currentTimeMs, bool loop)
+        {
+            if (!state.Active || frames == null || frames.Count == 0)
+            {
+                return;
+            }
+
+            if (state.FrameStartedAt == 0)
+            {
+                state.FrameStartedAt = currentTimeMs;
+            }
+
+            while (true)
+            {
+                int delay = Math.Max(1, frames[Math.Clamp(state.FrameIndex, 0, frames.Count - 1)].DelayMs);
+                if (currentTimeMs - state.FrameStartedAt < delay)
+                {
+                    break;
+                }
+
+                state.FrameStartedAt += delay;
+                state.FrameIndex++;
+                if (state.FrameIndex < frames.Count)
+                {
+                    continue;
+                }
+
+                if (loop)
+                {
+                    state.FrameIndex = 0;
+                    continue;
+                }
+
+                state.FrameIndex = frames.Count - 1;
+                state.Active = false;
+                break;
+            }
+        }
+
+        private static AnimationState CreateLoopingAnimation() => new() { Active = true, FrameIndex = 0, FrameStartedAt = 0 };
+        private CanvasSprite GetStateBackground() => _teamColor == PartyRaidTeamColor.Blue ? _blueStateBackground : _redStateBackground;
+        private List<AnimationFrame> GetMineFrames() => _teamColor == PartyRaidTeamColor.Blue ? _blueMineFrames : _redMineFrames;
+        private List<AnimationFrame> GetOtherFrames() => _teamColor == PartyRaidTeamColor.Blue ? _blueOtherFrames : _redOtherFrames;
+        private List<AnimationFrame> GetResultEffectFrames(PartyRaidResultOutcome outcome) => outcome switch { PartyRaidResultOutcome.Lose => _timeoutResultFrames, PartyRaidResultOutcome.Win => _clearResultFrames, PartyRaidResultOutcome.Clear => _clearResultFrames, _ => null };
+        private bool HasTimerDigits() => _timerSeparator.IsLoaded && AreDigitsLoaded(_timerDigits, 0, 9);
+        private bool HasResultValues() => _resultPoint >= 0 && _resultBonus >= 0 && _resultTotal >= 0;
+        private int GetBatteryFillWidth()
+        {
+            int capacity = Math.Max(1, _batteryCapacity);
+            int clampedCharge = Math.Clamp(_batteryCharge, 0, capacity);
+            int width = (BatteryFillLength * clampedCharge) / capacity;
+            return clampedCharge > 0 && width == 0 ? 1 : Math.Clamp(width, 0, BatteryFillLength);
+        }
+
+        private int GetRemainingGaugeWidth(int damage)
+        {
+            int halfGaugeCapacity = Math.Max(1, _gaugeCapacity / 2);
+            int clampedDamage = Math.Clamp(damage, 0, halfGaugeCapacity);
+            int remainingHp = Math.Max(0, halfGaugeCapacity - clampedDamage);
+            int width = (BossGaugeLength * remainingHp) / halfGaugeCapacity;
+            return remainingHp > 0 && width == 0 ? 1 : Math.Clamp(width, 0, BossGaugeLength);
+        }
+
+        private static int ClampBossCharge(int charge) => Math.Clamp(charge, 0, HuntingAdballoonChargeSegments);
+
+        private static PartyRaidFieldMode GetMode(FieldType fieldType) => fieldType switch
+        {
+            FieldType.FIELDTYPE_PARTYRAID => PartyRaidFieldMode.Field,
+            FieldType.FIELDTYPE_PARTYRAID_BOSS => PartyRaidFieldMode.Boss,
+            FieldType.FIELDTYPE_PARTYRAID_RESULT => PartyRaidFieldMode.Result,
+            _ => PartyRaidFieldMode.None
+        };
+
+        private static PartyRaidFieldMode InferModeFromMapId(int mapId)
+        {
+            if (mapId <= 0 || mapId < 923020010 || mapId > 923020599)
+            {
+                return PartyRaidFieldMode.None;
+            }
+
+            int suffix = mapId % 1000;
+            if (suffix is 10 or 20)
+            {
+                return PartyRaidFieldMode.Result;
+            }
+
+            if (suffix is 189 or 190 or 289 or 290 or 389 or 390 or 489 or 490 or 589 or 590)
+            {
+                return PartyRaidFieldMode.Boss;
+            }
+
+            return mapId >= 923020100 ? PartyRaidFieldMode.Field : PartyRaidFieldMode.None;
+        }
+
+        private static PartyRaidResultOutcome InferOutcomeFromMap(MapInfo mapInfo)
+        {
+            string onUserEnter = mapInfo?.onUserEnter;
+            if (string.IsNullOrWhiteSpace(onUserEnter) && TryResolveMapScripts(mapInfo?.id ?? 0, out string resolvedOnUserEnter, out _))
+            {
+                onUserEnter = resolvedOnUserEnter;
+            }
+
+            if (!string.IsNullOrWhiteSpace(onUserEnter))
+            {
+                if (onUserEnter.StartsWith("PRaid_Win", StringComparison.OrdinalIgnoreCase))
+                {
+                    return PartyRaidResultOutcome.Win;
+                }
+
+                if (onUserEnter.StartsWith("PRaid_Fail", StringComparison.OrdinalIgnoreCase))
+                {
+                    return PartyRaidResultOutcome.Lose;
+                }
+            }
+
+            return InferOutcomeFromMapId(mapInfo?.id ?? 0);
+        }
+
+        private static PartyRaidResultOutcome InferOutcomeFromMapId(int mapId) => mapId switch
+        {
+            923020010 => PartyRaidResultOutcome.Win,
+            923020020 => PartyRaidResultOutcome.Lose,
+            _ => PartyRaidResultOutcome.Unknown
+        };
+
+        private static PartyRaidTeamColor InferTeamColor(MapInfo mapInfo)
+        {
+            PartyRaidTeamColor? scriptTeamColor = InferTeamColorFromScripts(mapInfo?.onUserEnter, mapInfo?.onFirstUserEnter);
+            if (scriptTeamColor.HasValue)
+            {
+                return scriptTeamColor.Value;
+            }
+
+            if (TryResolveMapScripts(mapInfo?.id ?? 0, out string onUserEnter, out string onFirstUserEnter))
+            {
+                scriptTeamColor = InferTeamColorFromScripts(onUserEnter, onFirstUserEnter);
+                if (scriptTeamColor.HasValue)
+                {
+                    return scriptTeamColor.Value;
+                }
+            }
+
+            return InferTeamColorFromMapId(mapInfo?.id ?? 0);
+        }
+
+        private static PartyRaidTeamColor InferTeamColorFromMapId(int mapId)
+        {
+            int stageSuffix = Math.Abs(mapId % 100);
+            return stageSuffix is >= 10 and <= 24
+                ? PartyRaidTeamColor.Blue
+                : PartyRaidTeamColor.Red;
+        }
+
+        private static bool TryDecodeMapleStringPairPayload(byte[] payload, out string key, out string value, out string error)
+        {
+            key = null;
+            value = null;
+            error = null;
+            payload ??= Array.Empty<byte>();
+
+            try
+            {
+                using MemoryStream stream = new(payload, writable: false);
+                using BinaryReader reader = new(stream, Encoding.Default, leaveOpen: false);
+                key = ReadMapleString(reader);
+                value = ReadMapleString(reader);
+                if (stream.Position != stream.Length)
+                {
+                    error = "Party Raid packet payload contained trailing bytes after the key/value pair.";
+                    return false;
+                }
+
+                if (string.IsNullOrWhiteSpace(key))
+                {
+                    error = "Party Raid packet payload contained an empty key.";
+                    return false;
+                }
+
+                return true;
+            }
+            catch (Exception ex) when (ex is IOException || ex is EndOfStreamException || ex is ArgumentException)
+            {
+                error = "Party Raid packet payload did not match the client's two-Maple-string key/value layout.";
+                return false;
+            }
+        }
+
+        private static string ReadMapleString(BinaryReader reader)
+        {
+            ushort length = reader.ReadUInt16();
+            byte[] bytes = reader.ReadBytes(length);
+            if (bytes.Length != length)
+            {
+                throw new EndOfStreamException("Party Raid Maple string ended before its declared length.");
+            }
+
+            return Encoding.Default.GetString(bytes);
+        }
+
+        private static bool UsesWinBadge(PartyRaidResultOutcome outcome) => outcome == PartyRaidResultOutcome.Win || outcome == PartyRaidResultOutcome.Clear;
+        private static string GetOutcomeLabel(PartyRaidResultOutcome outcome) => outcome switch { PartyRaidResultOutcome.Win => "WIN", PartyRaidResultOutcome.Lose => "LOSE", PartyRaidResultOutcome.Clear => "CLEAR", _ => "RESULT" };
+        private static string GetTeamLabel(PartyRaidTeamColor teamColor) => teamColor == PartyRaidTeamColor.Blue ? "blue" : "red";
+        private string DescribeOtherStageStatus() => _otherStage != _mineStage ? $" (other {_otherStage})" : string.Empty;
+        private string DescribeBatteryStatus() => _batteryCharge > 0 ? $", battery {_batteryCharge}/{Math.Max(1, _batteryCapacity)}" : string.Empty;
+        private static string FormatTimer(int remainingSeconds) { int clamped = Math.Max(0, remainingSeconds); return string.Format(CultureInfo.InvariantCulture, "{0:D2}:{1:D2}", clamped / 60, clamped % 60); }
+        private void SetAbsoluteStage(PartyRaidTeamColor stageOwner, int stage)
+        {
+            int clampedStage = ClampStage(stage);
+            if (_teamColor == stageOwner)
+            {
+                _mineStage = clampedStage;
+                return;
+            }
+
+            _otherStage = clampedStage;
+        }
+
+        internal int GetMineStateX() => StateMineStageBaseX + ((ClampStage(_mineStage) - 1) * StateStageStepX);
+        internal int GetOtherStateX() => StateOtherStageBaseX + ((ClampStage(_otherStage) - 1) * StateStageStepX);
+        internal int GetMineStateY() => StateMineY;
+        internal int GetOtherStateY() => StateOtherY;
+        internal int GetBossPointDrawX() => BossPointDrawX;
+        internal int GetBossPointDrawY() => BossPointDrawY;
+        internal int GetBossPointHudY() => BossPointHudY;
+        internal int GetBossGaugeHudY() => BossGaugeHudY;
+        internal static int GetBossGaugeBaseX(int viewportWidth) => (viewportWidth / 2) + BossGaugeLayerLeft;
+        internal static int GetBossGaugeLayerWidth() => BossGaugeLayerWidth;
+        internal static int GetBossGaugeLayerHeight() => BossGaugeLayerHeight;
+        internal static int GetBossGaugeIconMobId() => PartyRaidBossGaugeIconMobId;
+        private static int ClampStage(int stage) => Math.Clamp(stage, 1, 5);
+        private static string DescribeBossLayoutOwnership() => $"point:LT({BossHudX},{BossPointHudY}), gauge:CT({BossGaugeLayerLeft},{BossGaugeHudY},{BossGaugeLayerWidth}x{BossGaugeLayerHeight})";
+        private string GetActiveRuntimeOwnerName()
+        {
+            if (HasNativePartyRaidWrapperOwner)
+            {
+                return GetClientWrapperOwnerName(_mode);
+            }
+
+            return string.IsNullOrWhiteSpace(_clientOwnedBossOverlayLabel)
+                ? "Party Raid runtime"
+                : _clientOwnedBossOverlayLabel;
+        }
+
+        private static string GetClientWrapperOwnerName(PartyRaidFieldMode mode) => mode switch
+        {
+            PartyRaidFieldMode.Field => ClientOwnerName,
+            PartyRaidFieldMode.Boss => ClientBossOwnerName,
+            PartyRaidFieldMode.Result => ClientResultOwnerName,
+            _ => null
+        };
+        private static int? GetClientWrapperFieldType(PartyRaidFieldMode mode) => mode switch
+        {
+            PartyRaidFieldMode.Field => ClientFieldType,
+            PartyRaidFieldMode.Boss => ClientBossFieldType,
+            PartyRaidFieldMode.Result => ClientResultFieldType,
+            _ => null
+        };
+        private static int? GetClientWrapperInitAddress(PartyRaidFieldMode mode) => mode switch
+        {
+            PartyRaidFieldMode.Field => ClientInitAddress,
+            PartyRaidFieldMode.Boss => ClientBossInitAddress,
+            PartyRaidFieldMode.Result => ClientResultInitAddress,
+            _ => null
+        };
+        private static string GetClientWrapperWzEvidence(PartyRaidFieldMode mode) => mode switch
+        {
+            PartyRaidFieldMode.Field => "923020100:onUserEnter=PRaid_W_Enter",
+            PartyRaidFieldMode.Boss => "923020200:link=923020100->PRaid_W_Enter",
+            PartyRaidFieldMode.Result => "923020010/923020020:fieldType=27,onUserEnter=PRaid_WinEnter/PRaid_FailEnter",
+            _ => null
+        };
+
+        private bool TryApplyFieldOwnedPair(string key, string value) => OnFieldSetVariable(key, value);
+        private bool TryApplyPartyOwnedPair(string key, string value) => OnPartyValue(key, value);
+        private bool TryApplySessionOwnedPair(string key, string value) => OnSessionValue(key, value);
+        private bool TryApplyRecoveredFieldLiteral(string key, string value, int currentTimeMs)
+        {
+            if (MatchesAlias(key, PartyRaidTeamLiteral))
+            {
+                if (!TryParseTeamColor(value, out PartyRaidTeamColor teamColor))
+                {
+                    return false;
+                }
+
+                SetTeamColor(teamColor);
+                return true;
+            }
+
+            if (!TryParseNonNegative(value, out int parsedValue))
+            {
+                return false;
+            }
+
+            if (MatchesAlias(key, PartyRaidElapsedTimeAtBossLiteral))
+            {
+                OnClock(2, parsedValue, currentTimeMs);
+                return true;
+            }
+
+            if (MatchesAlias(key, PartyRaidRedStageLiteral))
+            {
+                SetAbsoluteStage(PartyRaidTeamColor.Red, parsedValue);
+                return true;
+            }
+
+            if (MatchesAlias(key, PartyRaidBlueStageLiteral))
+            {
+                SetAbsoluteStage(PartyRaidTeamColor.Blue, parsedValue);
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool TryApplyUnknownOwnedPair(string key, string value, out string appliedOwner)
+        {
+            appliedOwner = null;
+            if (SupportsOwnerHintForCurrentMode(PacketFieldSpecificDataOwnerHint.Field)
+                && TryApplyFieldOwnedPair(key, value))
+            {
+                appliedOwner = "field";
+                return true;
+            }
+
+            if (SupportsOwnerHintForCurrentMode(PacketFieldSpecificDataOwnerHint.Party)
+                && TryApplyPartyOwnedPair(key, value))
+            {
+                appliedOwner = "party";
+                return true;
+            }
+
+            if (SupportsOwnerHintForCurrentMode(PacketFieldSpecificDataOwnerHint.Session)
+                && TryApplySessionOwnedPair(key, value))
+            {
+                appliedOwner = "session";
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool SupportsRawPacketTypeForCurrentMode(int packetType) => _mode switch
+        {
+            PartyRaidFieldMode.Field => packetType is ClientPartyValuePacketType or ClientFieldSetVariablePacketType or 149,
+            PartyRaidFieldMode.Boss => packetType is ClientPartyValuePacketType or ClientFieldSetVariablePacketType or 149,
+            PartyRaidFieldMode.Result => packetType is ClientSessionValuePacketType or 149,
+            _ => packetType is ClientSessionValuePacketType or ClientPartyValuePacketType or ClientFieldSetVariablePacketType or 149
+        };
+
+        private bool SupportsOwnerHintForCurrentMode(PacketFieldSpecificDataOwnerHint ownerHint) => _mode switch
+        {
+            PartyRaidFieldMode.Field => ownerHint is PacketFieldSpecificDataOwnerHint.Field or PacketFieldSpecificDataOwnerHint.Party,
+            PartyRaidFieldMode.Boss => ownerHint is PacketFieldSpecificDataOwnerHint.Field or PacketFieldSpecificDataOwnerHint.Party,
+            PartyRaidFieldMode.Result => ownerHint == PacketFieldSpecificDataOwnerHint.Session,
+            _ => ownerHint is PacketFieldSpecificDataOwnerHint.Field or PacketFieldSpecificDataOwnerHint.Party or PacketFieldSpecificDataOwnerHint.Session
+        };
+
+        private string DescribeUnsupportedRawPacket(int packetType)
+        {
+            string ownerName = GetActiveRuntimeOwnerName();
+            string packetOwner = packetType switch
+            {
+                ClientSessionValuePacketType => "session",
+                ClientPartyValuePacketType => "party",
+                ClientFieldSetVariablePacketType => "field",
+                149 => "field-specific",
+                _ => "partyraid"
+            };
+            string relayEvidence = packetType switch
+            {
+                ClientSessionValuePacketType => "CWvsContext::OnSessionValue -> CField virtual slot vf[9]",
+                ClientPartyValuePacketType => "CWvsContext::OnPartyValue -> CField virtual slot vf[10]",
+                ClientFieldSetVariablePacketType => "CWvsContext::OnFieldSetVariable -> CField virtual slot vf[8]",
+                149 => "CField::OnFieldSpecificData -> active wrapper owner",
+                _ => "active wrapper owner"
+            };
+            return $"{ownerName} does not accept Party Raid {packetOwner} packet {packetType} while mode={_mode}. Client evidence: {relayEvidence}.";
+        }
+
+        private static bool TryInferModeFromScripts(string onUserEnter, string onFirstUserEnter, out PartyRaidFieldMode mode)
+        {
+            if (StartsWithPartyRaidScript(onUserEnter, "PRaid_Win")
+                || StartsWithPartyRaidScript(onFirstUserEnter, "PRaid_Win")
+                || StartsWithPartyRaidScript(onUserEnter, "PRaid_Fail")
+                || StartsWithPartyRaidScript(onFirstUserEnter, "PRaid_Fail"))
+            {
+                mode = PartyRaidFieldMode.Result;
+                return true;
+            }
+
+            if (StartsWithPartyRaidScript(onUserEnter, "PRaid_B_")
+                || StartsWithPartyRaidScript(onFirstUserEnter, "PRaid_B_"))
+            {
+                mode = PartyRaidFieldMode.Boss;
+                return true;
+            }
+
+            if (StartsWithPartyRaidScript(onUserEnter, "PRaid_W_")
+                || StartsWithPartyRaidScript(onFirstUserEnter, "PRaid_W_")
+                || StartsWithPartyRaidScript(onUserEnter, "PRaid_D_")
+                || StartsWithPartyRaidScript(onFirstUserEnter, "PRaid_D_")
+                || StartsWithPartyRaidScript(onUserEnter, "PRaid_Revive")
+                || StartsWithPartyRaidScript(onFirstUserEnter, "PRaid_Revive"))
+            {
+                mode = PartyRaidFieldMode.Field;
+                return true;
+            }
+
+            mode = PartyRaidFieldMode.None;
+            return false;
+        }
+
+        private static PartyRaidTeamColor? InferTeamColorFromScripts(string onUserEnter, string onFirstUserEnter)
+        {
+            if (StartsWithPartyRaidScript(onUserEnter, "PRaid_D_")
+                || StartsWithPartyRaidScript(onFirstUserEnter, "PRaid_D_")
+                || StartsWithPartyRaidScript(onUserEnter, "Balloon_D_")
+                || StartsWithPartyRaidScript(onFirstUserEnter, "Balloon_D_"))
+            {
+                return PartyRaidTeamColor.Blue;
+            }
+
+            if (StartsWithPartyRaidScript(onUserEnter, "PRaid_W_")
+                || StartsWithPartyRaidScript(onFirstUserEnter, "PRaid_W_")
+                || StartsWithPartyRaidScript(onUserEnter, "Balloon_W_")
+                || StartsWithPartyRaidScript(onFirstUserEnter, "Balloon_W_"))
+            {
+                return PartyRaidTeamColor.Red;
+            }
+
+            return null;
+        }
+
+        private static bool StartsWithPartyRaidScript(string scriptName, string prefix)
+        {
+            return !string.IsNullOrWhiteSpace(scriptName)
+                && scriptName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool TryResolveMapScripts(int mapId, out string onUserEnter, out string onFirstUserEnter)
+        {
+            onUserEnter = null;
+            onFirstUserEnter = null;
+            WzImage mapImage = FindResolvedMapImage(mapId);
+            if (mapImage?["info"] is not WzImageProperty infoProperty)
+            {
+                return false;
+            }
+
+            onUserEnter = GetStringProperty(infoProperty["onUserEnter"]);
+            onFirstUserEnter = GetStringProperty(infoProperty["onFirstUserEnter"]);
+            return !string.IsNullOrWhiteSpace(onUserEnter) || !string.IsNullOrWhiteSpace(onFirstUserEnter);
+        }
+
+        private static bool TryResolveBossGaugeCapacity(int mapId, out int gaugeCapacity)
+        {
+            gaugeCapacity = DefaultGaugeCapacity;
+            if (TryResolveMobMaxHp(PartyRaidBossMobId.ToString(CultureInfo.InvariantCulture), out gaugeCapacity))
+            {
+                return true;
+            }
+
+            WzImage mapImage = FindResolvedMapImage(mapId);
+            if (mapImage?["life"] is not WzSubProperty lifeProperty)
+            {
+                return false;
+            }
+
+            foreach (WzImageProperty child in lifeProperty.WzProperties)
+            {
+                if (child is not WzSubProperty lifeEntry)
+                {
+                    continue;
+                }
+
+                if (!string.Equals(GetStringProperty(lifeEntry["type"]), "m", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                string mobIdText = GetStringProperty(lifeEntry["id"]);
+                if (TryResolveMobMaxHp(mobIdText, out gaugeCapacity))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryResolveMobMaxHp(string mobIdText, out int maxHp)
+        {
+            maxHp = 0;
+            if (!int.TryParse(mobIdText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int mobId) || mobId <= 0)
+            {
+                return false;
+            }
+
+            WzImage mobImage = FindResolvedMobImage(mobId);
+            int mobMaxHp = GetIntProperty(mobImage?["info"]?["maxHP"]);
+            if (mobMaxHp <= 0)
+            {
+                return false;
+            }
+
+            maxHp = mobMaxHp;
+            return true;
+        }
+
+        private static WzImage FindResolvedMapImage(int mapId)
+        {
+            if (mapId <= 0 || global::HaCreator.Program.WzManager == null)
+            {
+                return null;
+            }
+
+            HashSet<int> visitedMapIds = new();
+            int currentMapId = mapId;
+            while (currentMapId > 0 && visitedMapIds.Add(currentMapId))
+            {
+                WzImage mapImage = WzInfoTools.FindMapImage(currentMapId.ToString(CultureInfo.InvariantCulture), global::HaCreator.Program.WzManager);
+                if (mapImage == null)
+                {
+                    return null;
+                }
+
+                mapImage.ParseImage();
+                string linkedMapText = GetStringProperty(mapImage["info"]?["link"]);
+                if (!int.TryParse(linkedMapText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int linkedMapId) || linkedMapId <= 0)
+                {
+                    return mapImage;
+                }
+
+                currentMapId = linkedMapId;
+            }
+
+            return null;
+        }
+
+        private static WzImage FindResolvedMobImage(int mobId)
+        {
+            if (mobId <= 0)
+            {
+                return null;
+            }
+
+            HashSet<int> visitedMobIds = new();
+            int currentMobId = mobId;
+            while (currentMobId > 0 && visitedMobIds.Add(currentMobId))
+            {
+                WzImage mobImage = global::HaCreator.Program.FindImage("Mob", WzInfoTools.AddLeadingZeros(currentMobId.ToString(CultureInfo.InvariantCulture), 7) + ".img");
+                if (mobImage == null)
+                {
+                    return null;
+                }
+
+                mobImage.ParseImage();
+                string linkedMobText = GetStringProperty(mobImage["info"]?["link"]);
+                if (!int.TryParse(linkedMobText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int linkedMobId) || linkedMobId <= 0)
+                {
+                    return mobImage;
+                }
+
+                currentMobId = linkedMobId;
+            }
+
+            return null;
+        }
+
+        private static string GetStringProperty(WzImageProperty property)
+        {
+            return WzInfoTools.GetRealProperty(property) switch
+            {
+                WzStringProperty stringProperty => stringProperty.Value,
+                WzIntProperty intProperty => intProperty.Value.ToString(CultureInfo.InvariantCulture),
+                _ => null
+            };
+        }
+
+        private static int GetIntProperty(WzImageProperty property)
+        {
+            return WzInfoTools.GetRealProperty(property) switch
+            {
+                WzIntProperty intProperty => intProperty.Value,
+                WzShortProperty shortProperty => shortProperty.Value,
+                WzLongProperty longProperty => longProperty.Value > int.MaxValue ? int.MaxValue : (int)Math.Max(0L, longProperty.Value),
+                WzStringProperty stringProperty when int.TryParse(stringProperty.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedValue) => parsedValue,
+                _ => 0
+            };
+        }
+
+        private static bool TryParseTeamColor(string text, out PartyRaidTeamColor teamColor)
+        {
+            if (StartsWithPartyRaidScript(text, "PRaid_D_") || StartsWithPartyRaidScript(text, "Balloon_D_")) { teamColor = PartyRaidTeamColor.Blue; return true; }
+            if (StartsWithPartyRaidScript(text, "PRaid_W_") || StartsWithPartyRaidScript(text, "Balloon_W_")) { teamColor = PartyRaidTeamColor.Red; return true; }
+            if (string.Equals(text, "blue", StringComparison.OrdinalIgnoreCase)) { teamColor = PartyRaidTeamColor.Blue; return true; }
+            if (string.Equals(text, "red", StringComparison.OrdinalIgnoreCase)) { teamColor = PartyRaidTeamColor.Red; return true; }
+            if (string.Equals(text, "blueTeam", StringComparison.OrdinalIgnoreCase)) { teamColor = PartyRaidTeamColor.Blue; return true; }
+            if (string.Equals(text, "redTeam", StringComparison.OrdinalIgnoreCase)) { teamColor = PartyRaidTeamColor.Red; return true; }
+            if (string.Equals(text, PartyRaidBlueTeamLiteral, StringComparison.OrdinalIgnoreCase)) { teamColor = PartyRaidTeamColor.Blue; return true; }
+            if (string.Equals(text, PartyRaidRedTeamLiteral, StringComparison.OrdinalIgnoreCase)) { teamColor = PartyRaidTeamColor.Red; return true; }
+            if (string.Equals(text, "1", StringComparison.OrdinalIgnoreCase)) { teamColor = PartyRaidTeamColor.Blue; return true; }
+            if (string.Equals(text, "0", StringComparison.OrdinalIgnoreCase)) { teamColor = PartyRaidTeamColor.Red; return true; }
+            teamColor = PartyRaidTeamColor.Red;
+            return false;
+        }
+
+        private static bool TryParseOutcome(string text, out PartyRaidResultOutcome outcome)
+        {
+            if (StartsWithPartyRaidScript(text, "PRaid_Win"))
+            {
+                outcome = PartyRaidResultOutcome.Win;
+                return true;
+            }
+
+            if (StartsWithPartyRaidScript(text, "PRaid_Fail"))
+            {
+                outcome = PartyRaidResultOutcome.Lose;
+                return true;
+            }
+
+            if (string.Equals(text, "win", StringComparison.OrdinalIgnoreCase))
+            {
+                outcome = PartyRaidResultOutcome.Win;
+                return true;
+            }
+
+            if (string.Equals(text, "lose", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(text, "fail", StringComparison.OrdinalIgnoreCase))
+            {
+                outcome = PartyRaidResultOutcome.Lose;
+                return true;
+            }
+
+            if (string.Equals(text, "clear", StringComparison.OrdinalIgnoreCase))
+            {
+                outcome = PartyRaidResultOutcome.Clear;
+                return true;
+            }
+
+            if (int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out int resultMapId))
+            {
+                PartyRaidResultOutcome mapOutcome = InferOutcomeFromMapId(resultMapId);
+                if (mapOutcome != PartyRaidResultOutcome.Unknown)
+                {
+                    outcome = mapOutcome;
+                    return true;
+                }
+            }
+
+            outcome = PartyRaidResultOutcome.Unknown;
+            return false;
+        }
+
+        private static bool MatchesAlias(string key, params string[] aliases)
+        {
+            if (string.IsNullOrWhiteSpace(key)) return false;
+            string normalized = NormalizeKey(key);
+            for (int i = 0; i < aliases.Length; i++)
+            {
+                if (normalized == NormalizeKey(aliases[i])) return true;
+            }
+            return false;
+        }
+
+        private static bool MatchesStringPoolKey(string key, int stringId)
+        {
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                return false;
+            }
+
+            string trimmed = key.Trim();
+            if (trimmed.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            {
+                return int.TryParse(trimmed.AsSpan(2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out int parsedHex)
+                    && parsedHex == stringId;
+            }
+
+            return int.TryParse(trimmed, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedValue)
+                && parsedValue == stringId;
+        }
+
+        private static bool MatchesClientLiteral(string key, ClientStringPoolEvidence evidence)
+        {
+            return !string.IsNullOrWhiteSpace(evidence.DecodedValue)
+                && string.Equals(key?.Trim(), evidence.DecodedValue, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string FormatClientStringPoolLiteral(ClientStringPoolEvidence evidence, string clientStringPoolSource)
+        {
+            return $"0x{evidence.Id:X}={evidence.DecodedValue} (seed=0x{evidence.Seed:X2}, via {clientStringPoolSource})";
+        }
+
+        private static string DescribeBossChargeOwnership() => $"{ClientHuntingAdballoonOwnerName}::OnFieldSetVariable@0x{ClientHuntingAdballoonFieldSetVariableAddress:X}";
+
+        private static string NormalizeKey(string key) => key.Replace("_", string.Empty).Replace("-", string.Empty).Trim().ToLowerInvariant();
+
+        private static bool TryParseNonNegative(string value, out int parsedValue)
+        {
+            if (!int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out parsedValue))
+            {
+                parsedValue = 0;
+                return false;
+            }
+
+            parsedValue = Math.Max(0, parsedValue);
+            return true;
+        }
+
+        private static bool AreDigitsLoaded(CanvasSprite[] digits, int minDigit, int maxDigit)
+        {
+            for (int digit = minDigit; digit <= maxDigit && digit < digits.Length; digit++)
+            {
+                if (!digits[digit].IsLoaded)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static void DrawOutlinedString(SpriteBatch spriteBatch, SpriteFont font, string text, Vector2 position, Color color)
+        {
+            spriteBatch.DrawString(font, text, position + Vector2.One, Color.Black);
+            spriteBatch.DrawString(font, text, position, color);
+        }
+    }
+}

@@ -1,0 +1,572 @@
+using HaCreator.MapSimulator.Entities;
+using HaCreator.MapSimulator.Fields;
+using HaCreator.MapSimulator.Interaction;
+using HaCreator.MapSimulator.Managers;
+using HaCreator.MapSimulator.Companions;
+using HaCreator.MapSimulator.UI;
+using Microsoft.Xna.Framework;
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Net;
+
+namespace HaCreator.MapSimulator
+{
+    public partial class MapSimulator
+    {
+        private const int PacketScriptMessageClientOpcode = 363;
+        private IReadOnlyDictionary<long, PacketScriptMessageRuntime.PacketScriptPetSelectionCandidate> _packetScriptSelectablePetsBySerial =
+            new Dictionary<long, PacketScriptMessageRuntime.PacketScriptPetSelectionCandidate>();
+        private bool _packetScriptOfficialSessionBridgeEnabled;
+        private bool _packetScriptOfficialSessionBridgeUseDiscovery;
+        private int _packetScriptOfficialSessionBridgeConfiguredListenPort = PacketScriptOfficialSessionBridgeManager.DefaultListenPort;
+        private string _packetScriptOfficialSessionBridgeConfiguredRemoteHost = IPAddress.Loopback.ToString();
+        private int _packetScriptOfficialSessionBridgeConfiguredRemotePort;
+        private string _packetScriptOfficialSessionBridgeConfiguredProcessSelector;
+        private int? _packetScriptOfficialSessionBridgeConfiguredLocalPort;
+        private const int PacketScriptOfficialSessionBridgeDiscoveryRefreshIntervalMs = 2000;
+        private int _nextPacketScriptOfficialSessionBridgeDiscoveryRefreshAt;
+
+        private bool TryApplyPacketOwnedScriptMessagePacket(byte[] payload, out string message)
+        {
+            string clientOwnerStatus = null;
+            if (!_packetScriptMessageRuntime.TryDecode(
+                payload,
+                FindNpcById,
+                _activeNpcInteractionNpc,
+                ResolvePacketScriptSelectablePet,
+                sync => clientOwnerStatus = SyncPacketScriptClientOwnerRuntime(sync),
+                out PacketScriptMessageRuntime.PacketScriptMessageOpenRequest request,
+                out message))
+            {
+                return false;
+            }
+
+            if (!string.IsNullOrWhiteSpace(clientOwnerStatus))
+            {
+                message = string.IsNullOrWhiteSpace(message)
+                    ? clientOwnerStatus
+                    : $"{message} {clientOwnerStatus}";
+            }
+
+            string dispatchStatus = OpenPacketOwnedScriptInteraction(request);
+            if (!string.IsNullOrWhiteSpace(dispatchStatus))
+            {
+                message = string.IsNullOrWhiteSpace(message)
+                    ? dispatchStatus
+                    : $"{message} {dispatchStatus}";
+            }
+
+            return true;
+        }
+
+        internal static bool TryDecodePacketScriptMessageClientOpcodePacket(
+            byte[] rawPacket,
+            out byte[] payload,
+            out string message)
+        {
+            payload = Array.Empty<byte>();
+            message = null;
+            if (rawPacket == null || rawPacket.Length < sizeof(ushort))
+            {
+                message = "Packet-script client opcode packet must include a 2-byte opcode.";
+                return false;
+            }
+
+            int opcode = BitConverter.ToUInt16(rawPacket, 0);
+            if (opcode != PacketScriptMessageClientOpcode)
+            {
+                message = $"Unsupported packet-script client opcode {opcode}. Expected {PacketScriptMessageClientOpcode} for CScriptMan::OnPacket -> OnScriptMessage.";
+                return false;
+            }
+
+            payload = rawPacket.Length == sizeof(ushort)
+                ? Array.Empty<byte>()
+                : rawPacket[sizeof(ushort)..];
+            message = $"Decoded CScriptMan::OnPacket opcode {PacketScriptMessageClientOpcode} and stripped the 2-byte client header.";
+            return true;
+        }
+
+        private PacketScriptMessageRuntime.PacketScriptPetSelectionCandidate ResolvePacketScriptSelectablePet(long petSerialNumber, byte packetSlotHint)
+        {
+            _ = packetSlotHint;
+            IReadOnlyList<PetRuntime> activePets = _playerManager?.Pets?.ActivePets;
+            if (petSerialNumber <= 0)
+            {
+                return null;
+            }
+
+            if (activePets != null)
+            {
+                for (int i = 0; i < activePets.Count; i++)
+                {
+                    PetRuntime pet = activePets[i];
+                    if (pet == null)
+                    {
+                        continue;
+                    }
+
+                    if (ResolvePacketScriptPetSerial(pet) != petSerialNumber)
+                    {
+                        continue;
+                    }
+
+                    return new PacketScriptMessageRuntime.PacketScriptPetSelectionCandidate(
+                        petSerialNumber,
+                        pet.SlotIndex,
+                        pet.ItemId,
+                        string.IsNullOrWhiteSpace(pet.Name) ? $"Pet {pet.SlotIndex + 1}" : pet.Name,
+                    PacketScriptPetSelectionSource.ActivePetRuntime);
+                }
+            }
+
+            if (uiWindowManager?.InventoryWindow is IInventoryRuntime inventoryRuntime)
+            {
+                var liveCashSlots = inventoryRuntime.GetSlots(MapleLib.WzLib.WzStructure.Data.ItemStructure.InventoryType.CASH);
+
+                PacketScriptMessageRuntime.PacketScriptPetSelectionCandidate inventoryCandidate =
+                    PacketScriptPetSelectionSnapshotResolver.ResolveLiveInventoryCandidate(
+                        liveCashSlots,
+                        petSerialNumber);
+                if (inventoryCandidate != null)
+                {
+                    return inventoryCandidate;
+                }
+            }
+
+            return _packetScriptSelectablePetsBySerial.TryGetValue(petSerialNumber, out PacketScriptMessageRuntime.PacketScriptPetSelectionCandidate candidate)
+                ? candidate
+                : null;
+        }
+
+        private void SyncPacketOwnedScriptSelectablePetsFromCharacterData(PacketCharacterDataSnapshot snapshot)
+        {
+            _packetScriptSelectablePetsBySerial = PacketScriptPetSelectionSnapshotResolver.BuildCandidates(snapshot);
+            if (uiWindowManager?.InventoryWindow is IInventoryRuntime inventoryRuntime
+                && snapshot?.InventoryItemsByType != null
+                && snapshot.InventoryItemsByType.TryGetValue(
+                    MapleLib.WzLib.WzStructure.Data.ItemStructure.InventoryType.CASH,
+                    out IReadOnlyList<PacketCharacterDataItemSlot> authoritativeCashItems))
+            {
+                PacketScriptPetSelectionSnapshotResolver.ApplyAuthoritativeCashSerialMetadata(
+                    inventoryRuntime.GetSlots(MapleLib.WzLib.WzStructure.Data.ItemStructure.InventoryType.CASH),
+                    authoritativeCashItems);
+            }
+        }
+
+        private void ClearPacketOwnedScriptSelectablePets()
+        {
+            _packetScriptSelectablePetsBySerial = new Dictionary<long, PacketScriptMessageRuntime.PacketScriptPetSelectionCandidate>();
+        }
+
+        private static long ResolvePacketScriptPetSerial(PetRuntime pet)
+        {
+            if (pet == null)
+            {
+                return 0;
+            }
+
+            uint runtimeId = (uint)System.Math.Max(1, pet.RuntimeId);
+            uint itemId = (uint)System.Math.Max(0, pet.ItemId);
+            return (long)(((ulong)itemId << 32) | runtimeId);
+        }
+
+        private string OpenPacketOwnedScriptInteraction(PacketScriptMessageRuntime.PacketScriptMessageOpenRequest request)
+        {
+            if (request == null || _npcInteractionOverlay == null)
+            {
+                return null;
+            }
+
+            if (request.State == null)
+            {
+                if (request.CloseExistingDialog)
+                {
+                    _npcInteractionOverlay.Close();
+                    _packetScriptDedicatedOwnerRuntime.Clear();
+                    ClearPacketScriptDedicatedOwnerVisualState();
+                    ClearAnimationDisplayerLocalQuestDeliveryOwner();
+                    _activeNpcInteractionNpc = null;
+                    _activeNpcInteractionNpcId = 0;
+                }
+
+                return DispatchPacketOwnedScriptAutoResponse(request.AutoResponse);
+            }
+
+            if (request.CloseExistingDialog)
+            {
+                _npcInteractionOverlay.Close();
+                _packetScriptDedicatedOwnerRuntime.Clear();
+                ClearPacketScriptDedicatedOwnerVisualState();
+                ClearAnimationDisplayerLocalQuestDeliveryOwner();
+                _activeNpcInteractionNpc = null;
+                _activeNpcInteractionNpcId = 0;
+            }
+
+            _gameState.EnterDirectionMode();
+            _scriptedDirectionModeOwnerActive = true;
+
+            NpcItem npc = FindNpcById(request.SpeakerNpcId);
+            _activeNpcInteractionNpc = npc;
+            _activeNpcInteractionNpcId = request.SpeakerNpcId;
+
+            int publishedScriptTemplateId = request.State?.SpeakerTemplateId ?? 0;
+            if (publishedScriptTemplateId <= 0)
+            {
+                publishedScriptTemplateId = request.SpeakerNpcId;
+            }
+
+            PublishDynamicObjectTagStatesForNpc(publishedScriptTemplateId, currTickCount, npc);
+
+            if (request.DedicatedOwner != null)
+            {
+                _npcInteractionOverlay.Close();
+                _packetScriptDedicatedOwnerRuntime.Open(request.DedicatedOwner);
+                ClearPacketScriptDedicatedOwnerVisualState();
+                return DispatchPacketOwnedScriptAutoResponse(request.AutoResponse);
+            }
+
+            _packetScriptDedicatedOwnerRuntime.Clear();
+            ClearPacketScriptDedicatedOwnerVisualState();
+            _npcInteractionOverlay.Open(request.State);
+            return DispatchPacketOwnedScriptAutoResponse(request.AutoResponse);
+        }
+
+        private string DispatchPacketOwnedScriptAutoResponse(PacketScriptMessageRuntime.PacketScriptResponsePacket responsePacket)
+        {
+            if (responsePacket == null)
+            {
+                return null;
+            }
+
+            bool dispatched = TryDispatchPacketScriptResponse(responsePacket, out string dispatchStatus);
+            _packetScriptMessageRuntime.RecordResponseDispatch(responsePacket, dispatched, dispatchStatus);
+            return dispatchStatus;
+        }
+
+        private void HandleNpcOverlayInputSubmission(NpcInteractionInputSubmission submission)
+        {
+            if (submission?.PresentationStyle == NpcInteractionPresentationStyle.PacketScriptUtilDialog)
+            {
+                if (_packetScriptMessageRuntime.TryBuildResponsePacket(
+                    submission,
+                    out PacketScriptMessageRuntime.PacketScriptResponsePacket responsePacket,
+                    out string message))
+                {
+                    bool dispatched = TryDispatchPacketScriptResponse(responsePacket, out string dispatchStatus);
+                    _packetScriptMessageRuntime.RecordResponseDispatch(responsePacket, dispatched, dispatchStatus);
+                    ShowUtilityFeedbackMessage($"{message} {dispatchStatus}".Trim());
+                }
+                else if (!string.IsNullOrWhiteSpace(message))
+                {
+                    ShowUtilityFeedbackMessage(message);
+                }
+
+                return;
+            }
+
+            ShowUtilityFeedbackMessage($"Submitted {submission?.EntryTitle ?? "NPC"} input: {submission?.Value ?? string.Empty}");
+        }
+
+        private bool TryDispatchPacketScriptResponse(PacketScriptMessageRuntime.PacketScriptResponsePacket responsePacket, out string status)
+        {
+            status = "Packet-script reply dispatch idle.";
+            List<string> statuses = new();
+            bool dispatched = false;
+
+            if (_packetScriptOfficialSessionBridge.HasConnectedSession)
+            {
+                bool officialSent = _packetScriptOfficialSessionBridge.TrySendResponse(responsePacket, out string officialStatus);
+                if (!string.IsNullOrWhiteSpace(officialStatus))
+                {
+                    statuses.Add(officialStatus);
+                }
+
+                dispatched |= officialSent;
+            }
+            else if (_packetScriptOfficialSessionBridgeEnabled &&
+                     _packetScriptOfficialSessionBridge.TryQueueResponse(responsePacket, out string queuedStatus))
+            {
+                dispatched = true;
+                if (!string.IsNullOrWhiteSpace(queuedStatus))
+                {
+                    statuses.Add(queuedStatus);
+                }
+            }
+
+            if (TryApplyPacketScriptAskMenuMigrateToShopParity(responsePacket, out string localParityStatus))
+            {
+                statuses.Add(localParityStatus);
+            }
+
+            status = statuses.Count == 0 ? status : string.Join(" ", statuses);
+            return dispatched;
+        }
+
+        internal static bool IsPacketScriptAskMenuMigrateToShopSelection(
+            PacketScriptMessageRuntime.PacketScriptResponsePacket responsePacket)
+        {
+            if (responsePacket == null || responsePacket.MessageType != 5)
+            {
+                return false;
+            }
+
+            return int.TryParse(
+                       responsePacket.SubmittedValue,
+                       NumberStyles.Integer,
+                       CultureInfo.InvariantCulture,
+                       out int selectionId)
+                   && selectionId == -2;
+        }
+
+        private bool TryApplyPacketScriptAskMenuMigrateToShopParity(
+            PacketScriptMessageRuntime.PacketScriptResponsePacket responsePacket,
+            out string status)
+        {
+            status = null;
+            if (!IsPacketScriptAskMenuMigrateToShopSelection(responsePacket))
+            {
+                return false;
+            }
+
+            OpenCashServiceOwnerFamily(HaCreator.MapSimulator.UI.CashServiceStageKind.CashShop, resetStageSession: true);
+            status = "Applied CScriptMan::OnAskMenu side effect: accepted selection -2 triggered SendMigrateToShopRequest and opened the Cash Shop owner family.";
+            return true;
+        }
+
+        private string DescribePacketScriptOfficialSessionBridgeStatus()
+        {
+            string enabledText = _packetScriptOfficialSessionBridgeEnabled ? "enabled" : "disabled";
+            string modeText = _packetScriptOfficialSessionBridgeUseDiscovery ? "auto-discovery" : "direct proxy";
+            string configuredTarget = _packetScriptOfficialSessionBridgeUseDiscovery
+                ? _packetScriptOfficialSessionBridgeConfiguredLocalPort.HasValue
+                    ? $"discover remote port {_packetScriptOfficialSessionBridgeConfiguredRemotePort} with local port {_packetScriptOfficialSessionBridgeConfiguredLocalPort.Value}"
+                    : $"discover remote port {_packetScriptOfficialSessionBridgeConfiguredRemotePort}"
+                : $"{_packetScriptOfficialSessionBridgeConfiguredRemoteHost}:{_packetScriptOfficialSessionBridgeConfiguredRemotePort}";
+            string processText = string.IsNullOrWhiteSpace(_packetScriptOfficialSessionBridgeConfiguredProcessSelector)
+                ? string.Empty
+                : $" for {_packetScriptOfficialSessionBridgeConfiguredProcessSelector}";
+            string listeningText = _packetScriptOfficialSessionBridge.IsRunning
+                ? $"listening on 127.0.0.1:{_packetScriptOfficialSessionBridge.ListenPort}"
+                : $"configured for 127.0.0.1:{_packetScriptOfficialSessionBridgeConfiguredListenPort}";
+            return $"Packet-script session bridge {enabledText}, {modeText}, {listeningText}, target {configuredTarget}{processText}. {_packetScriptOfficialSessionBridge.DescribeStatus()}";
+        }
+
+        private string DescribePacketScriptReplyTransportStatus()
+        {
+            string modeText = _packetScriptOfficialSessionBridgeEnabled ? "proxy-primary" : "proxy-required";
+            const string fallbackText = "listener-fallback retired";
+            return $"Packet-script reply transport routing {modeText}, {fallbackText}. Transport manager retired.";
+        }
+
+        private void EnsurePacketScriptOfficialSessionBridgeState(bool shouldRun)
+        {
+            if (!shouldRun || !_packetScriptOfficialSessionBridgeEnabled)
+            {
+                if (_packetScriptOfficialSessionBridge.IsRunning)
+                {
+                    _packetScriptOfficialSessionBridge.Stop();
+                }
+
+                return;
+            }
+
+            if (_packetScriptOfficialSessionBridgeConfiguredListenPort <= 0
+                || _packetScriptOfficialSessionBridgeConfiguredListenPort > ushort.MaxValue)
+            {
+                if (_packetScriptOfficialSessionBridge.IsRunning)
+                {
+                    _packetScriptOfficialSessionBridge.Stop();
+                }
+
+                _packetScriptOfficialSessionBridgeEnabled = false;
+                _packetScriptOfficialSessionBridgeConfiguredListenPort = PacketScriptOfficialSessionBridgeManager.DefaultListenPort;
+                return;
+            }
+
+            if (_packetScriptOfficialSessionBridgeUseDiscovery)
+            {
+                if (_packetScriptOfficialSessionBridgeConfiguredRemotePort <= 0
+                    || _packetScriptOfficialSessionBridgeConfiguredRemotePort > ushort.MaxValue)
+                {
+                    if (_packetScriptOfficialSessionBridge.IsRunning)
+                    {
+                        _packetScriptOfficialSessionBridge.Stop();
+                    }
+
+                    return;
+                }
+
+                _packetScriptOfficialSessionBridge.TryRefreshFromDiscovery(
+                    _packetScriptOfficialSessionBridgeConfiguredListenPort,
+                    _packetScriptOfficialSessionBridgeConfiguredRemotePort,
+                    _packetScriptOfficialSessionBridgeConfiguredProcessSelector,
+                    _packetScriptOfficialSessionBridgeConfiguredLocalPort,
+                    out _);
+                return;
+            }
+
+            if (_packetScriptOfficialSessionBridgeConfiguredRemotePort <= 0
+                || _packetScriptOfficialSessionBridgeConfiguredRemotePort > ushort.MaxValue
+                || string.IsNullOrWhiteSpace(_packetScriptOfficialSessionBridgeConfiguredRemoteHost))
+            {
+                if (_packetScriptOfficialSessionBridge.IsRunning)
+                {
+                    _packetScriptOfficialSessionBridge.Stop();
+                }
+
+                return;
+            }
+
+            if (_packetScriptOfficialSessionBridge.IsRunning
+                && _packetScriptOfficialSessionBridge.ListenPort == _packetScriptOfficialSessionBridgeConfiguredListenPort
+                && string.Equals(_packetScriptOfficialSessionBridge.RemoteHost, _packetScriptOfficialSessionBridgeConfiguredRemoteHost, System.StringComparison.OrdinalIgnoreCase)
+                && _packetScriptOfficialSessionBridge.RemotePort == _packetScriptOfficialSessionBridgeConfiguredRemotePort)
+            {
+                return;
+            }
+
+            if (_packetScriptOfficialSessionBridge.IsRunning)
+            {
+                _packetScriptOfficialSessionBridge.Stop();
+            }
+
+            _packetScriptOfficialSessionBridge.Start(
+                _packetScriptOfficialSessionBridgeConfiguredListenPort,
+                _packetScriptOfficialSessionBridgeConfiguredRemoteHost,
+                _packetScriptOfficialSessionBridgeConfiguredRemotePort);
+        }
+
+        private void RefreshPacketScriptOfficialSessionBridgeDiscovery(int currentTickCount)
+        {
+            if (!_packetScriptOfficialSessionBridgeEnabled
+                || !_packetScriptOfficialSessionBridgeUseDiscovery
+                || _packetScriptOfficialSessionBridgeConfiguredRemotePort <= 0
+                || _packetScriptOfficialSessionBridgeConfiguredRemotePort > ushort.MaxValue
+                || _packetScriptOfficialSessionBridge.HasAttachedClient
+                || currentTickCount < _nextPacketScriptOfficialSessionBridgeDiscoveryRefreshAt)
+            {
+                return;
+            }
+
+            _nextPacketScriptOfficialSessionBridgeDiscoveryRefreshAt =
+                currentTickCount + PacketScriptOfficialSessionBridgeDiscoveryRefreshIntervalMs;
+            _packetScriptOfficialSessionBridge.TryRefreshFromDiscovery(
+                _packetScriptOfficialSessionBridgeConfiguredListenPort,
+                _packetScriptOfficialSessionBridgeConfiguredRemotePort,
+                _packetScriptOfficialSessionBridgeConfiguredProcessSelector,
+                _packetScriptOfficialSessionBridgeConfiguredLocalPort,
+                out _);
+        }
+
+        private ChatCommandHandler.CommandResult HandlePacketOwnedScriptSessionCommand(string[] args)
+        {
+            if (args.Length == 0 || string.Equals(args[0], "status", System.StringComparison.OrdinalIgnoreCase))
+            {
+                return ChatCommandHandler.CommandResult.Info(DescribePacketScriptOfficialSessionBridgeStatus());
+            }
+
+            if (string.Equals(args[0], "discover", System.StringComparison.OrdinalIgnoreCase))
+            {
+                if (args.Length < 2
+                    || !int.TryParse(args[1], out int discoverRemotePort)
+                    || discoverRemotePort <= 0)
+                {
+                    return ChatCommandHandler.CommandResult.Error("Usage: /scriptmsg session discover <remotePort> [processName|pid] [localPort]");
+                }
+
+                string processSelector = args.Length >= 3 ? args[2] : null;
+                int? localPortFilter = null;
+                if (args.Length >= 4)
+                {
+                    if (!int.TryParse(args[3], out int parsedLocalPort) || parsedLocalPort <= 0)
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /scriptmsg session discover <remotePort> [processName|pid] [localPort]");
+                    }
+
+                    localPortFilter = parsedLocalPort;
+                }
+
+                return ChatCommandHandler.CommandResult.Info(
+                    _packetScriptOfficialSessionBridge.DescribeDiscoveredSessions(discoverRemotePort, processSelector, localPortFilter));
+            }
+
+            if (string.Equals(args[0], "start", System.StringComparison.OrdinalIgnoreCase))
+            {
+                if (args.Length < 4
+                    || !int.TryParse(args[1], out int listenPort)
+                    || listenPort <= 0
+                    || !int.TryParse(args[3], out int remotePort)
+                    || remotePort <= 0)
+                {
+                    return ChatCommandHandler.CommandResult.Error("Usage: /scriptmsg session start <listenPort> <serverHost> <serverPort>");
+                }
+
+                _packetScriptOfficialSessionBridgeEnabled = true;
+                _packetScriptOfficialSessionBridgeUseDiscovery = false;
+                _packetScriptOfficialSessionBridgeConfiguredListenPort = listenPort;
+                _packetScriptOfficialSessionBridgeConfiguredRemoteHost = args[2];
+                _packetScriptOfficialSessionBridgeConfiguredRemotePort = remotePort;
+                _packetScriptOfficialSessionBridgeConfiguredProcessSelector = null;
+                _packetScriptOfficialSessionBridgeConfiguredLocalPort = null;
+                EnsurePacketScriptOfficialSessionBridgeState(shouldRun: true);
+                return ChatCommandHandler.CommandResult.Ok(DescribePacketScriptOfficialSessionBridgeStatus());
+            }
+
+            if (string.Equals(args[0], "startauto", System.StringComparison.OrdinalIgnoreCase))
+            {
+                if (args.Length < 3
+                    || !int.TryParse(args[1], out int autoListenPort)
+                    || autoListenPort <= 0
+                    || !int.TryParse(args[2], out int autoRemotePort)
+                    || autoRemotePort <= 0)
+                {
+                    return ChatCommandHandler.CommandResult.Error("Usage: /scriptmsg session startauto <listenPort> <remotePort> [processName|pid] [localPort]");
+                }
+
+                string processSelector = args.Length >= 4 ? args[3] : null;
+                int? localPortFilter = null;
+                if (args.Length >= 5)
+                {
+                    if (!int.TryParse(args[4], out int parsedLocalPort) || parsedLocalPort <= 0)
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /scriptmsg session startauto <listenPort> <remotePort> [processName|pid] [localPort]");
+                    }
+
+                    localPortFilter = parsedLocalPort;
+                }
+
+                _packetScriptOfficialSessionBridgeEnabled = true;
+                _packetScriptOfficialSessionBridgeUseDiscovery = true;
+                _packetScriptOfficialSessionBridgeConfiguredListenPort = autoListenPort;
+                _packetScriptOfficialSessionBridgeConfiguredRemotePort = autoRemotePort;
+                _packetScriptOfficialSessionBridgeConfiguredRemoteHost = IPAddress.Loopback.ToString();
+                _packetScriptOfficialSessionBridgeConfiguredProcessSelector = processSelector;
+                _packetScriptOfficialSessionBridgeConfiguredLocalPort = localPortFilter;
+                _nextPacketScriptOfficialSessionBridgeDiscoveryRefreshAt = 0;
+
+                return _packetScriptOfficialSessionBridge.TryRefreshFromDiscovery(
+                        autoListenPort,
+                        autoRemotePort,
+                        processSelector,
+                        localPortFilter,
+                        out string startStatus)
+                    ? ChatCommandHandler.CommandResult.Ok($"{startStatus} {DescribePacketScriptOfficialSessionBridgeStatus()}")
+                    : ChatCommandHandler.CommandResult.Error(startStatus);
+            }
+
+            if (string.Equals(args[0], "stop", System.StringComparison.OrdinalIgnoreCase))
+            {
+                _packetScriptOfficialSessionBridgeEnabled = false;
+                _packetScriptOfficialSessionBridgeUseDiscovery = false;
+                _packetScriptOfficialSessionBridgeConfiguredRemotePort = 0;
+                _packetScriptOfficialSessionBridgeConfiguredProcessSelector = null;
+                _packetScriptOfficialSessionBridgeConfiguredLocalPort = null;
+                _packetScriptOfficialSessionBridge.Stop();
+                return ChatCommandHandler.CommandResult.Ok(DescribePacketScriptOfficialSessionBridgeStatus());
+            }
+
+            return ChatCommandHandler.CommandResult.Error("Usage: /scriptmsg session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]");
+        }
+    }
+}

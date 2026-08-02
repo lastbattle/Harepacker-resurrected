@@ -1,5 +1,7 @@
 using HaCreator.MapSimulator.Character.Skills;
+using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.UI.Controls;
+using HaCreator.MapSimulator;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
@@ -8,6 +10,9 @@ using Microsoft.Xna.Framework.Input;
 using Spine;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
+using System.Text;
 
 namespace HaCreator.MapSimulator.UI
 {
@@ -25,8 +30,41 @@ namespace HaCreator.MapSimulator.UI
     /// - Macros stored as triplets of skill IDs with associated name
     /// - Maximum 5 macro slots available
     /// </summary>
-    public class SkillMacroUI : UIWindowBase
+    public class SkillMacroUI : UIWindowBase, ISoftKeyboardHost
     {
+        private const uint CandidateWindowStyleRect = 0x0001;
+        private const uint CandidateWindowStylePoint = 0x0002;
+        private const uint CandidateWindowStyleForcePosition = 0x0020;
+        private const uint CandidateWindowStyleCandidatePosition = 0x0040;
+        private const uint CandidateWindowStyleExclude = 0x0080;
+
+        private enum MacroDragMode
+        {
+            None,
+            Skill,
+            MacroBinding
+        }
+
+        private readonly struct ForwardedNonFunctionPhysicalKeyState
+        {
+            internal ForwardedNonFunctionPhysicalKeyState(
+                bool controlHeld,
+                bool shiftHeld,
+                bool imeCompositionActive,
+                bool imeCandidateWindowActive)
+            {
+                ControlHeld = controlHeld;
+                ShiftHeld = shiftHeld;
+                ImeCompositionActive = imeCompositionActive;
+                ImeCandidateWindowActive = imeCandidateWindowActive;
+            }
+
+            internal bool ControlHeld { get; }
+            internal bool ShiftHeld { get; }
+            internal bool ImeCompositionActive { get; }
+            internal bool ImeCandidateWindowActive { get; }
+        }
+
         #region Constants
         // Window dimensions from WZ data (pre-Big Bang style)
         // UI.wz/UIWindow.img/SkillMacro/backgrnd: 207x289
@@ -47,45 +85,49 @@ namespace HaCreator.MapSimulator.UI
         // Maximum number of macro slots
         public const int MAX_MACRO_SLOTS = 5;
 
-        // Macro slot layout constants (from SkillMacro/macroslot2: 168x42)
-        private const int MACRO_SLOT_WIDTH = 168;
-        private const int MACRO_SLOT_HEIGHT = 42;
-        private const int MACRO_SLOT_PADDING = 4;
+        // `CUIMacroSysEx::Draw` highlights rows at (11, 27 + 41*i) and
+        // places the three skill icons at (14 + 34*j, 30 + 41*i).
+        private const int MACRO_SLOT_X = 11;
+        private const int MACRO_SLOT_Y = 27;
+        private const int MACRO_SLOT_WIDTH = 158;
+        private const int MACRO_SLOT_HEIGHT = 38;
+        private const int MACRO_SLOT_SPACING = 41;
+        private const int SKILL_SLOT_START_X = 14;
+        private const int SKILL_SLOT_Y = 30;
+        private const int SKILL_SLOT_SPACING = 34;
+        private const int MACRO_ICON_X = 135;
+        private const int SELECTED_MACRO_ICON_X = 14;
+        private const int SELECTED_MACRO_ICON_Y = 241;
 
-        // Content area offsets (from window edges)
-        private const int CONTENT_OFFSET_X = 20;
-        private const int CONTENT_OFFSET_Y = 50;
+        // `CUIMacroSysEx::OnCreate` builds the owner edit control at (53, 260, 114, 14).
+        private const int NAME_FIELD_WIDTH = 114;
+        private const int NAME_FIELD_HEIGHT = 14;
+        private const int NAME_FIELD_X = 53;
+        private const int NAME_FIELD_Y = 260;
+        private const int NAME_FIELD_TEXT_INSET_X = 4;
+        private const int NAME_FIELD_TEXT_INSET_Y = 0;
+        private const float NAME_FIELD_COUNTER_SCALE = 0.55f;
+        private const int OWNER_TOOLTIP_MARGIN = 4;
+        // `CCtrlEdit::CreateIMECandWnd` formats candidate ordinals through StringPool 0x1A15.
+        private const int CandidateNumberFormatStringPoolId = 0x1A15;
+        private static readonly Color NameFieldCounterColor = new(196, 196, 178);
 
-        // Skill slot positions within each macro row
-        // Three 32x32 icons with small padding between them
-        private const int SKILL_SLOT_START_X = 4;
-        private const int SKILL_SLOT_Y_OFFSET = 5;
-        private const int SKILL_SLOT_SPACING = 36;
-
-        // Macro name text field position (from macroname: 164x57)
-        private const int NAME_FIELD_WIDTH = 164;
-        private const int NAME_FIELD_HEIGHT = 20;
-        private const int NAME_FIELD_X = CONTENT_OFFSET_X;
-        private const int NAME_FIELD_Y = CONTENT_OFFSET_Y - 30;
-
-        // Button positions (relative to window)
-        // BtOK button origin from UIWindow2: (-145, -255) means 145 from left, 255 from top
-        private const int BUTTON_OK_X = 50;
-        private const int BUTTON_OK_Y = 255;
-        private const int BUTTON_CANCEL_X = 110;
-        private const int BUTTON_CANCEL_Y = 255;
-        private const int BUTTON_DELETE_X = 160;
-        private const int BUTTON_DELETE_Y = 255;
-
-        // Checkbox position for "Notify party members" option
-        private const int CHECKBOX_X = 15;
+        // WZ `Skill/macro/check` resolves to (161, 235) inside the owner.
+        private const int CHECKBOX_X = 161;
         private const int CHECKBOX_Y = 235;
+        private const int CHECKBOX_SIZE = 15;
+
+        // `CUIMacroSysEx::OnCreate` loads the owner save-button tooltip from
+        // StringPool 0x1108 and `OnButtonClicked` shows StringPool 0x0D01 after saving.
+        // Keep the unresolved payload path in the dedicated owner-local resolver so the
+        // exact client text can be filled in later without touching the dialog seam again.
         #endregion
 
         #region Fields
         private SkillManager _skillManager;
         private SkillLoader _skillLoader;
         private SpriteFont _font;
+        private readonly GraphicsDevice _graphicsDevice;
 
         // Macro data
         private readonly SkillMacro[] _macros = new SkillMacro[MAX_MACRO_SLOTS];
@@ -97,8 +139,9 @@ namespace HaCreator.MapSimulator.UI
         private int[] _editingSkillIds = new int[SKILLS_PER_MACRO];
 
         // Drag and drop for skill assignment
-        private bool _isDragging = false;
+        private MacroDragMode _dragMode = MacroDragMode.None;
         private int _dragSkillId = 0;
+        private int _dragMacroIndex = -1;
         private int _dragSourceSlot = -1;
         private int _dragSourceMacro = -1;
         private Vector2 _dragPosition;
@@ -112,10 +155,54 @@ namespace HaCreator.MapSimulator.UI
         private Texture2D _slotHighlightTexture;
         private Texture2D _macroSlotTexture;
         private Texture2D _selectedSlotTexture;
+        private Texture2D _textPixelTexture;
         private Texture2D[] _macroSlotIcons;
+        private Texture2D[] _macroSlotDisabledIcons;
+        private Texture2D[] _macroSlotMouseOverIcons;
+        private Texture2D _foregroundTexture;
+        private Point _foregroundOffset;
+        private Texture2D _contentTexture;
+        private Point _contentOffset;
+        private Texture2D _checkboxTexture;
+        private ClientTextRasterizer _candidateTextRasterizer;
+        private ClientTextRasterizer _candidateSelectedTextRasterizer;
 
         // Checkbox state
         private bool _notifyPartyMembers = false;
+        private string _validationMessage = string.Empty;
+        private string _ownerNoticeMessage = string.Empty;
+        private Color _ownerNoticeColor = Color.White;
+        private bool _nameFieldFocused;
+        private int _editingCursorPosition;
+        private int _editingSelectionAnchor = -1;
+        private bool _nameSelectionDragActive;
+        private int _caretBlinkTick;
+        private Keys _lastHeldNameEditKey = Keys.None;
+        private int _nameEditKeyHoldStartTime = int.MinValue;
+        private int _lastNameEditKeyRepeatTime = int.MinValue;
+        private string _compositionText = string.Empty;
+        private int _compositionInsertionIndex = -1;
+        private IReadOnlyList<int> _compositionClauseOffsets = Array.Empty<int>();
+        private int _compositionCursorPosition = -1;
+        private ImeCandidateListState _candidateListState = ImeCandidateListState.Empty;
+        private SkillMacroSoftKeyboardSkin _softKeyboardSkin;
+        private bool _softKeyboardVisible;
+        private bool _softKeyboardActive;
+        private bool _softKeyboardMinimized;
+        private bool _softKeyboardShift;
+        private bool _softKeyboardCapsLock;
+        private int _hoveredSoftKeyboardKeyIndex = -1;
+        private SkillMacroSoftKeyboardFunctionKey _hoveredSoftKeyboardFunctionKey = SkillMacroSoftKeyboardFunctionKey.None;
+        private SkillMacroSoftKeyboardWindowButton _hoveredSoftKeyboardWindowButton = SkillMacroSoftKeyboardWindowButton.None;
+        private int _pressedSoftKeyboardKeyIndex = -1;
+        private SkillMacroSoftKeyboardFunctionKey _pressedSoftKeyboardFunctionKey = SkillMacroSoftKeyboardFunctionKey.None;
+        private SkillMacroSoftKeyboardWindowButton _pressedSoftKeyboardWindowButton = SkillMacroSoftKeyboardWindowButton.None;
+        private int _softKeyboardPressedVisualUntil;
+        private Point? _lastMousePosition;
+        private readonly Dictionary<Keys, int> _forwardedNonFunctionHotkeySlotsByPhysicalKey = new();
+        private readonly Dictionary<Keys, ForwardedNonFunctionPhysicalKeyState> _forwardedNonFunctionPhysicalKeys = new();
+        private readonly HashSet<Keys> _imeSuppressedNonFunctionHotkeyPhysicalKeys = new();
+        private readonly HashSet<int> _forwardedFunctionKeyIndices = new();
 
         // Buttons
         private UIObject _btnOK;
@@ -128,6 +215,16 @@ namespace HaCreator.MapSimulator.UI
 
         #region Properties
         public override string WindowName => "SkillMacro";
+        public override bool CapturesKeyboardInput => IsVisible && _editingMacroIndex >= 0 && _nameFieldFocused;
+        bool ISoftKeyboardHost.WantsSoftKeyboard => IsVisible && _editingMacroIndex >= 0 && _nameFieldFocused && _softKeyboardActive;
+        SoftKeyboardKeyboardType ISoftKeyboardHost.SoftKeyboardKeyboardType => SoftKeyboardKeyboardType.AlphaNumeric;
+        int ISoftKeyboardHost.SoftKeyboardTextLength => GetSoftKeyboardTextLengthBytes(_editingMacroName);
+        int ISoftKeyboardHost.SoftKeyboardMaxLength => SkillMacroNameRules.MaxNameBytes;
+        bool ISoftKeyboardHost.CanSubmitSoftKeyboard => CanSaveCurrentMacro();
+        string ISoftKeyboardHost.GetSoftKeyboardText() => _editingMacroName ?? string.Empty;
+        public bool IsDraggingSkillSlot => _dragMode == MacroDragMode.Skill;
+        public bool IsDraggingMacroBinding => _dragMode == MacroDragMode.MacroBinding;
+        public int DraggedMacroIndex => IsDraggingMacroBinding ? _dragMacroIndex : -1;
 
         /// <summary>
         /// Gets or sets the currently selected macro index (-1 for none)
@@ -144,6 +241,12 @@ namespace HaCreator.MapSimulator.UI
                     {
                         LoadMacroForEditing(value);
                     }
+                    else
+                    {
+                        ResetEditingState();
+                    }
+
+                    UpdateOwnerButtonState();
                 }
             }
         }
@@ -152,6 +255,28 @@ namespace HaCreator.MapSimulator.UI
         /// Gets all macros
         /// </summary>
         public IReadOnlyList<SkillMacro> Macros => _macros;
+
+        public void LoadMacros(IReadOnlyList<SkillMacro> macros)
+        {
+            for (int i = 0; i < MAX_MACRO_SLOTS; i++)
+            {
+                SkillMacro sourceMacro = macros != null && i < macros.Count ? macros[i] : null;
+                _macros[i] = CloneMacro(sourceMacro, i);
+            }
+
+            _selectedMacroIndex = -1;
+            _editingMacroIndex = -1;
+            _editingMacroName = string.Empty;
+            _notifyPartyMembers = false;
+            _validationMessage = string.Empty;
+            _editingCursorPosition = 0;
+            _caretBlinkTick = Environment.TickCount;
+            ClearCompositionText();
+            Array.Clear(_editingSkillIds, 0, _editingSkillIds.Length);
+            CancelDrag();
+            HideSoftKeyboard();
+            UpdateOwnerButtonState();
+        }
 
         /// <summary>
         /// Callback when a macro is saved
@@ -167,20 +292,22 @@ namespace HaCreator.MapSimulator.UI
         /// Callback when macro window is closed
         /// </summary>
         public Action OnMacroWindowClosed;
+        internal Func<int, int, bool> OnImeCandidateSelected;
+        internal Action<int, bool> OnClientForwardedFunctionKeyStateChanged;
+        internal Action<int, bool> OnClientForwardedNonFunctionHotkeyStateChanged;
+        internal Action<Keys, bool, bool, bool, bool, bool> OnClientForwardedNonFunctionPhysicalKeyStateChanged;
+        internal Func<IntPtr> ResolveImeWindowHandle;
         #endregion
 
         #region Constructor
         public SkillMacroUI(IDXObject frame, GraphicsDevice device)
             : base(frame)
         {
+            _graphicsDevice = device;
             // Initialize macro slots
             for (int i = 0; i < MAX_MACRO_SLOTS; i++)
             {
-                _macros[i] = new SkillMacro
-                {
-                    Name = $"Macro {i + 1}",
-                    SkillIds = new int[SKILLS_PER_MACRO]
-                };
+                _macros[i] = CreateDefaultMacro(i);
             }
 
             CreateSlotTextures(device);
@@ -250,6 +377,9 @@ namespace HaCreator.MapSimulator.UI
                 }
             }
             _selectedSlotTexture.SetData(selectedData);
+
+            _textPixelTexture = new Texture2D(device, 1, 1);
+            _textPixelTexture.SetData(new[] { Color.White });
         }
         #endregion
 
@@ -276,6 +406,8 @@ namespace HaCreator.MapSimulator.UI
         public override void SetFont(SpriteFont font)
         {
             _font = font;
+            _candidateTextRasterizer = null;
+            _candidateSelectedTextRasterizer = null;
         }
 
         /// <summary>
@@ -320,12 +452,63 @@ namespace HaCreator.MapSimulator.UI
         /// <summary>
         /// Set the macro slot icon textures (5 icons for the 5 macro slots)
         /// </summary>
-        public void SetMacroSlotIcons(Texture2D[] icons)
+        public void SetMacroSlotIcons(Texture2D[] icons, Texture2D[] disabledIcons = null, Texture2D[] mouseOverIcons = null)
         {
             if (icons != null)
             {
                 _macroSlotIcons = icons;
             }
+
+            _macroSlotDisabledIcons = disabledIcons;
+            _macroSlotMouseOverIcons = mouseOverIcons;
+        }
+
+        internal void SetOwnerChrome(Texture2D foregroundTexture, Point foregroundOffset, Texture2D contentTexture, Point contentOffset, Texture2D checkboxTexture)
+        {
+            _foregroundTexture = foregroundTexture;
+            _foregroundOffset = foregroundOffset;
+            _contentTexture = contentTexture;
+            _contentOffset = contentOffset;
+            _checkboxTexture = checkboxTexture;
+        }
+
+        internal void SetSoftKeyboardSkin(SkillMacroSoftKeyboardSkin skin)
+        {
+            _softKeyboardSkin = skin;
+        }
+
+        private void UpdateOwnerButtonState()
+        {
+            _btnOK?.SetEnabled(_selectedMacroIndex >= 0);
+        }
+
+        private void ResetEditingState()
+        {
+            ReleaseForwardedOwnerKeys();
+            _editingMacroIndex = -1;
+            _editingMacroName = string.Empty;
+            _notifyPartyMembers = false;
+            _validationMessage = string.Empty;
+            _nameFieldFocused = false;
+            ClearOwnerNotice();
+            _editingCursorPosition = 0;
+            ClearNameSelection();
+            _nameSelectionDragActive = false;
+            ResetNameEditKeyRepeatState();
+            _caretBlinkTick = Environment.TickCount;
+            ClearCompositionText();
+            Array.Clear(_editingSkillIds, 0, _editingSkillIds.Length);
+        }
+
+        private void ResetOwnerSession()
+        {
+            _selectedMacroIndex = -1;
+            _hoveredMacroIndex = -1;
+            _hoveredSkillSlot = -1;
+            ResetEditingState();
+            CancelDrag();
+            HideSoftKeyboard();
+            UpdateOwnerButtonState();
         }
         #endregion
 
@@ -338,6 +521,16 @@ namespace HaCreator.MapSimulator.UI
         {
             int windowX = Position.X;
             int windowY = Position.Y;
+
+            if (_foregroundTexture != null)
+            {
+                sprite.Draw(_foregroundTexture, new Vector2(windowX + _foregroundOffset.X, windowY + _foregroundOffset.Y), Color.White);
+            }
+
+            if (_contentTexture != null)
+            {
+                sprite.Draw(_contentTexture, new Vector2(windowX + _contentOffset.X, windowY + _contentOffset.Y), Color.White);
+            }
 
             // Draw macro slots
             for (int i = 0; i < MAX_MACRO_SLOTS; i++)
@@ -355,87 +548,89 @@ namespace HaCreator.MapSimulator.UI
             DrawCheckbox(sprite, windowX, windowY);
 
             // Draw dragged skill icon
-            if (_isDragging && _dragSkillId > 0)
+            if (_dragMode == MacroDragMode.Skill && _dragSkillId > 0)
             {
                 DrawDraggedSkill(sprite);
             }
+            else if (_dragMode == MacroDragMode.MacroBinding && _dragMacroIndex >= 0)
+            {
+                DrawDraggedMacro(sprite);
+            }
+        }
+
+        protected override void DrawOverlay(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
+            int mapShiftX, int mapShiftY, int centerX, int centerY,
+            ReflectionDrawableBoundary drawReflectionInfo,
+            RenderParameters renderParameters,
+            int TickCount)
+        {
+            base.DrawOverlay(sprite, skeletonMeshRenderer, gameTime, mapShiftX, mapShiftY, centerX, centerY, drawReflectionInfo, renderParameters, TickCount);
+
+            DrawOwnerButtonTooltip(sprite);
+            DrawSoftKeyboard(sprite);
+            DrawImeCandidateWindow(sprite);
         }
 
         private void DrawMacroSlot(SpriteBatch sprite, int macroIndex, int windowX, int windowY)
         {
-            var macro = _macros[macroIndex];
+            SkillMacro macro = _macros[macroIndex];
+            int slotX = windowX + MACRO_SLOT_X;
+            int slotY = windowY + MACRO_SLOT_Y + (macroIndex * MACRO_SLOT_SPACING);
+            bool isSelected = macroIndex == _selectedMacroIndex;
+            bool isHovered = macroIndex == _hoveredMacroIndex;
 
-            // Calculate slot position
-            int slotX = windowX + CONTENT_OFFSET_X;
-            int slotY = windowY + CONTENT_OFFSET_Y + macroIndex * (MACRO_SLOT_HEIGHT + MACRO_SLOT_PADDING);
-
-            // Draw slot background
-            bool isSelected = (macroIndex == _selectedMacroIndex);
-            bool isHovered = (macroIndex == _hoveredMacroIndex);
-
-            Texture2D bgTexture = isSelected ? _selectedSlotTexture : _macroSlotTexture;
-            sprite.Draw(bgTexture, new Rectangle(slotX, slotY, MACRO_SLOT_WIDTH, MACRO_SLOT_HEIGHT), Color.White);
-
-            // Draw hover highlight
-            if (isHovered && !isSelected)
+            if (isSelected && _selectedSlotTexture != null)
             {
-                sprite.Draw(_slotHighlightTexture,
-                    new Rectangle(slotX, slotY, MACRO_SLOT_WIDTH, MACRO_SLOT_HEIGHT),
-                    Color.White * 0.3f);
+                sprite.Draw(_selectedSlotTexture, new Vector2(slotX, slotY), Color.White);
+            }
+            else if (isHovered)
+            {
+                sprite.Draw(_slotHighlightTexture, new Rectangle(slotX, slotY, MACRO_SLOT_WIDTH, MACRO_SLOT_HEIGHT), new Color(255, 255, 255, 72));
             }
 
-            // Draw skill slots (3 skills per macro)
             for (int skillSlot = 0; skillSlot < SKILLS_PER_MACRO; skillSlot++)
             {
-                int skillX = slotX + SKILL_SLOT_START_X + skillSlot * SKILL_SLOT_SPACING;
-                int skillY = slotY + SKILL_SLOT_Y_OFFSET;
-
-                // Draw empty slot background
-                sprite.Draw(_emptySlotTexture,
-                    new Rectangle(skillX, skillY, SKILL_ICON_SIZE, SKILL_ICON_SIZE),
-                    Color.White);
-
-                // Draw skill icon if assigned
+                int skillX = windowX + SKILL_SLOT_START_X + (skillSlot * SKILL_SLOT_SPACING);
+                int skillY = windowY + SKILL_SLOT_Y + (macroIndex * MACRO_SLOT_SPACING);
                 int skillId = macro.SkillIds[skillSlot];
                 if (skillId > 0)
                 {
-                    var icon = GetSkillIcon(skillId);
+                    IDXObject icon = GetSkillIcon(skillId);
                     if (icon != null)
                     {
                         icon.DrawBackground(sprite, null, null, skillX, skillY, Color.White, false, null);
                     }
+                    else
+                    {
+                        sprite.Draw(_emptySlotTexture, new Rectangle(skillX, skillY, SKILL_ICON_SIZE, SKILL_ICON_SIZE), new Color(40, 40, 48, 220));
+                    }
                 }
-
-                // Draw highlight on hovered skill slot
-                if (macroIndex == _hoveredMacroIndex && skillSlot == _hoveredSkillSlot)
+                else
                 {
-                    sprite.Draw(_slotHighlightTexture,
-                        new Rectangle(skillX, skillY, SKILL_ICON_SIZE, SKILL_ICON_SIZE),
-                        Color.White);
+                    sprite.Draw(_emptySlotTexture, new Rectangle(skillX, skillY, SKILL_ICON_SIZE, SKILL_ICON_SIZE), new Color(40, 40, 48, 220));
+                }
+
+                if (isHovered && skillSlot == _hoveredSkillSlot)
+                {
+                    sprite.Draw(_slotHighlightTexture, new Rectangle(skillX, skillY, SKILL_ICON_SIZE, SKILL_ICON_SIZE), new Color(255, 255, 255, 96));
                 }
             }
 
-            // Draw macro name
-            if (_font != null && !string.IsNullOrEmpty(macro.Name))
+            DrawMacroIcon(sprite, macroIndex, new Point(windowX + MACRO_ICON_X, slotY), isHovered, macro.IsEnabled, isSelected ? Color.White : new Color(255, 255, 255, 220));
+        }
+
+        private void DrawMacroIcon(SpriteBatch sprite, int macroIndex, Point position, bool hovered, bool enabled, Color color)
+        {
+            Texture2D iconTexture = ResolveMacroIconTexture(macroIndex, hovered, enabled);
+            if (iconTexture != null)
             {
-                int nameX = slotX + SKILL_SLOT_START_X + SKILLS_PER_MACRO * SKILL_SLOT_SPACING + 8;
-                int nameY = slotY + (MACRO_SLOT_HEIGHT - 12) / 2;
-
-                // Truncate name if too long
-                string displayName = macro.Name;
-                if (displayName.Length > 10)
-                    displayName = displayName.Substring(0, 10) + "...";
-
-                sprite.DrawString(_font, displayName, new Vector2(nameX, nameY), Color.White);
+                sprite.Draw(iconTexture, new Vector2(position.X, position.Y), color);
+                return;
             }
 
-            // Draw macro number indicator
             if (_font != null)
             {
-                string numberText = (macroIndex + 1).ToString();
-                sprite.DrawString(_font, numberText,
-                    new Vector2(slotX - 15, slotY + (MACRO_SLOT_HEIGHT - 12) / 2),
-                    isSelected ? Color.Yellow : Color.LightGray);
+                sprite.DrawString(_font, (macroIndex + 1).ToString(CultureInfo.InvariantCulture), new Vector2(position.X + 10, position.Y + 8), color);
             }
         }
 
@@ -446,48 +641,372 @@ namespace HaCreator.MapSimulator.UI
 
             int fieldX = windowX + NAME_FIELD_X;
             int fieldY = windowY + NAME_FIELD_Y;
+            Rectangle fieldRect = new(fieldX, fieldY, NAME_FIELD_WIDTH, NAME_FIELD_HEIGHT);
+            sprite.Draw(_textPixelTexture, fieldRect, new Color(18, 18, 24, 28));
 
-            // Draw label
-            sprite.DrawString(_font, "Macro Name:", new Vector2(fieldX, fieldY - 16), Color.LightGray);
+            string committedText = _editingMacroName ?? string.Empty;
+            int safeCursorPosition = Math.Clamp(_editingCursorPosition, 0, committedText.Length);
+            int selectionStart = GetNameSelectionStart();
+            int selectionLength = GetNameSelectionLength();
+            int selectionEnd = selectionStart >= 0
+                ? Math.Clamp(selectionStart + selectionLength, 0, committedText.Length)
+                : -1;
+            string committedPrefix = safeCursorPosition > 0
+                ? committedText[..safeCursorPosition]
+                : string.Empty;
+            string compositionText = _compositionText ?? string.Empty;
+            Vector2 textPosition = new(fieldX + NAME_FIELD_TEXT_INSET_X, fieldY + NAME_FIELD_TEXT_INSET_Y);
+            DrawCommittedNameText(sprite, committedText, selectionStart, selectionEnd, textPosition);
 
-            // Draw text field background (simple rectangle)
-            var fieldRect = new Rectangle(fieldX, fieldY, NAME_FIELD_WIDTH, NAME_FIELD_HEIGHT);
-            sprite.Draw(_emptySlotTexture, fieldRect, Color.White);
+            float prefixWidth = committedPrefix.Length > 0 ? _font.MeasureString(committedPrefix).X : 0f;
+            Vector2 compositionPosition = new(textPosition.X + prefixWidth, textPosition.Y);
+            if (compositionText.Length > 0)
+            {
+                sprite.DrawString(_font, compositionText, compositionPosition, new Color(255, 235, 160));
 
-            // Draw current name
-            string displayText = _editingMacroName ?? "";
-            if (displayText.Length > 15)
-                displayText = displayText.Substring(0, 15);
+                int compositionWidth = Math.Max(1, (int)Math.Ceiling(_font.MeasureString(compositionText).X));
+                int underlineY = fieldY + NAME_FIELD_HEIGHT - 3;
+                sprite.Draw(_textPixelTexture,
+                    new Rectangle((int)compositionPosition.X, underlineY, compositionWidth, 1),
+                    new Color(255, 235, 160, 220));
+            }
 
-            sprite.DrawString(_font, displayText,
-                new Vector2(fieldX + 4, fieldY + 3),
-                Color.White);
+            if (_nameFieldFocused && ((Environment.TickCount - _caretBlinkTick) / 500) % 2 == 0)
+            {
+                float caretOffset = prefixWidth;
+                if (compositionText.Length > 0)
+                {
+                    string compositionCaretPrefix = ResolveCompositionCaretPrefix();
+                    caretOffset += compositionCaretPrefix.Length > 0
+                        ? _font.MeasureString(compositionCaretPrefix).X
+                        : 0f;
+                }
+
+                int caretX = fieldX + NAME_FIELD_TEXT_INSET_X + (int)Math.Round(caretOffset);
+                int caretY = fieldY + 1;
+                sprite.Draw(_textPixelTexture,
+                    new Rectangle(caretX, caretY, 1, Math.Max(NAME_FIELD_HEIGHT - 2, _font.LineSpacing - 2)),
+                    Color.White);
+            }
+
+            bool selectedMacroEnabled = _editingMacroIndex >= 0
+                && _editingMacroIndex < MAX_MACRO_SLOTS
+                && _macros[_editingMacroIndex].IsEnabled;
+            DrawMacroIcon(sprite, _editingMacroIndex, new Point(windowX + SELECTED_MACRO_ICON_X, windowY + SELECTED_MACRO_ICON_Y), false, selectedMacroEnabled, Color.White);
+
+            if (!string.IsNullOrWhiteSpace(_validationMessage))
+            {
+                sprite.DrawString(_font, _validationMessage,
+                    new Vector2(fieldX, fieldY - _font.LineSpacing - 2),
+                    Color.IndianRed);
+            }
+            else if (!string.IsNullOrWhiteSpace(_ownerNoticeMessage))
+            {
+                sprite.DrawString(_font, _ownerNoticeMessage,
+                    new Vector2(fieldX, fieldY - _font.LineSpacing - 2),
+                    _ownerNoticeColor);
+            }
+
+            DrawNameByteCounter(sprite, fieldRect);
+        }
+
+        private void DrawOwnerButtonTooltip(SpriteBatch sprite)
+        {
+            if (_font == null || !ShouldShowChangeNameTooltip())
+            {
+                return;
+            }
+
+            string tooltipText = SkillMacroOwnerStringPoolText.GetSaveButtonTooltip();
+            if (string.IsNullOrWhiteSpace(tooltipText))
+            {
+                return;
+            }
+
+            Rectangle buttonBounds = GetButtonBounds(_btnOK);
+            Vector2 textSize = _font.MeasureString(tooltipText);
+            int tooltipX = buttonBounds.Right - (int)Math.Ceiling(textSize.X);
+            int tooltipY = buttonBounds.Y - _font.LineSpacing - OWNER_TOOLTIP_MARGIN;
+
+            if (tooltipX < Position.X)
+            {
+                tooltipX = Position.X;
+            }
+
+            if (tooltipY < Position.Y)
+            {
+                tooltipY = buttonBounds.Bottom + OWNER_TOOLTIP_MARGIN;
+            }
+
+            sprite.DrawString(
+                _font,
+                tooltipText,
+                new Vector2(tooltipX, tooltipY),
+                new Color(216, 226, 183));
+        }
+
+        private void DrawNameByteCounter(SpriteBatch sprite, Rectangle fieldRect)
+        {
+            if (_font == null)
+            {
+                return;
+            }
+
+            string counterText = BuildNameByteCounterText();
+            if (string.IsNullOrEmpty(counterText))
+            {
+                return;
+            }
+
+            Vector2 size = _font.MeasureString(counterText) * NAME_FIELD_COUNTER_SCALE;
+            Vector2 position = new(
+                fieldRect.Right - size.X,
+                fieldRect.Bottom + 2);
+            sprite.DrawString(
+                _font,
+                counterText,
+                position,
+                NameFieldCounterColor,
+                0f,
+                Vector2.Zero,
+                NAME_FIELD_COUNTER_SCALE,
+                SpriteEffects.None,
+                0f);
+        }
+
+        private string BuildNameByteCounterText()
+        {
+            string displayedText = BuildDisplayedNameText();
+            int byteCount = SkillMacroNameRules.GetByteCount(displayedText);
+            return $"{byteCount}/{SkillMacroNameRules.MaxNameBytes}";
+        }
+
+        private Texture2D ResolveMacroIconTexture(int macroIndex, bool hovered, bool enabled)
+        {
+            if (macroIndex < 0)
+            {
+                return null;
+            }
+
+            if (!enabled
+                && _macroSlotDisabledIcons != null
+                && macroIndex < _macroSlotDisabledIcons.Length
+                && _macroSlotDisabledIcons[macroIndex] != null)
+            {
+                return _macroSlotDisabledIcons[macroIndex];
+            }
+
+            if (hovered
+                && _macroSlotMouseOverIcons != null
+                && macroIndex < _macroSlotMouseOverIcons.Length
+                && _macroSlotMouseOverIcons[macroIndex] != null)
+            {
+                return _macroSlotMouseOverIcons[macroIndex];
+            }
+
+            if (_macroSlotIcons != null
+                && macroIndex < _macroSlotIcons.Length
+                && _macroSlotIcons[macroIndex] != null)
+            {
+                return _macroSlotIcons[macroIndex];
+            }
+
+            return null;
+        }
+
+        public Texture2D GetMacroIconTexture(int macroIndex, bool enabled = true)
+        {
+            return ResolveMacroIconTexture(macroIndex, hovered: false, enabled);
+        }
+
+        private void DrawSoftKeyboard(SpriteBatch sprite)
+        {
+            if (!_softKeyboardVisible)
+            {
+                return;
+            }
+
+            Point origin = GetSoftKeyboardPosition();
+            Texture2D backgroundTexture = _softKeyboardMinimized
+                ? _softKeyboardSkin?.MinimizedBackground
+                : _softKeyboardSkin?.ExpandedBackground;
+            Texture2D titleTexture = _softKeyboardMinimized
+                ? _softKeyboardSkin?.MinimizedTitle
+                : _softKeyboardSkin?.ExpandedTitle;
+
+            if (backgroundTexture != null)
+            {
+                sprite.Draw(backgroundTexture, new Vector2(origin.X, origin.Y), Color.White);
+            }
+            else
+            {
+                Rectangle fallbackBounds = SkillMacroSoftKeyboardLayout.GetBounds(origin, _softKeyboardMinimized);
+                sprite.Draw(_emptySlotTexture, fallbackBounds, new Color(32, 32, 40, 230));
+            }
+
+            if (titleTexture != null)
+            {
+                sprite.Draw(titleTexture, new Vector2(origin.X + 14, origin.Y + 8), Color.White);
+            }
+
+            DrawSoftKeyboardWindowButton(sprite, origin, SkillMacroSoftKeyboardWindowButton.Maximize);
+            DrawSoftKeyboardWindowButton(sprite, origin, SkillMacroSoftKeyboardWindowButton.Minimize);
+            DrawSoftKeyboardWindowButton(sprite, origin, SkillMacroSoftKeyboardWindowButton.Close);
+
+            if (_softKeyboardMinimized)
+            {
+                return;
+            }
+
+            if (_softKeyboardSkin?.KeyboardBackground != null)
+            {
+                sprite.Draw(_softKeyboardSkin.KeyboardBackground, new Vector2(origin.X + 6, origin.Y + 20), Color.White);
+            }
+
+            foreach (int keyIndex in SkillMacroSoftKeyboardLayout.EnumerateVisibleKeyIndices(false))
+            {
+                DrawSoftKeyboardKey(sprite, origin, keyIndex);
+            }
+
+            DrawSoftKeyboardFunctionKey(sprite, origin, SkillMacroSoftKeyboardFunctionKey.CapsLock);
+            DrawSoftKeyboardFunctionKey(sprite, origin, SkillMacroSoftKeyboardFunctionKey.LeftShift);
+            DrawSoftKeyboardFunctionKey(sprite, origin, SkillMacroSoftKeyboardFunctionKey.RightShift);
+            DrawSoftKeyboardFunctionKey(sprite, origin, SkillMacroSoftKeyboardFunctionKey.Enter);
+            DrawSoftKeyboardFunctionKey(sprite, origin, SkillMacroSoftKeyboardFunctionKey.Backspace);
+        }
+
+        private void DrawSoftKeyboardKey(SpriteBatch sprite, Point origin, int keyIndex)
+        {
+            Rectangle bounds = SkillMacroSoftKeyboardLayout.GetKeyBounds(keyIndex);
+            bounds.Offset(origin);
+
+            bool enabled = IsSoftKeyboardKeyEnabled(keyIndex);
+            SkillMacroSoftKeyboardVisualState visualState = ResolveSoftKeyboardKeyVisualState(
+                enabled,
+                keyIndex == _hoveredSoftKeyboardKeyIndex,
+                keyIndex == _pressedSoftKeyboardKeyIndex);
+
+            DrawSoftKeyboardTexture(sprite, _softKeyboardSkin?.KeyTextures.TryGetValue(keyIndex, out SkillMacroSoftKeyboardKeyTextures textures) == true ? textures : null, bounds, visualState);
+            DrawSoftKeyboardLabel(sprite, bounds, SkillMacroSoftKeyboardLayout.GetKeyText(keyIndex, IsSoftKeyboardUppercase()), enabled ? Color.White : Color.Gray);
+        }
+
+        private void DrawSoftKeyboardFunctionKey(SpriteBatch sprite, Point origin, SkillMacroSoftKeyboardFunctionKey key)
+        {
+            Rectangle bounds = SkillMacroSoftKeyboardLayout.GetFunctionKeyBounds(key);
+            if (bounds.IsEmpty)
+            {
+                return;
+            }
+
+            bounds.Offset(origin);
+            bool enabled = IsSoftKeyboardFunctionKeyEnabled(key);
+            bool active = key switch
+            {
+                SkillMacroSoftKeyboardFunctionKey.CapsLock => _softKeyboardCapsLock,
+                SkillMacroSoftKeyboardFunctionKey.LeftShift or SkillMacroSoftKeyboardFunctionKey.RightShift => _softKeyboardShift,
+                _ => false
+            };
+
+            bool hovered = key == _hoveredSoftKeyboardFunctionKey;
+            bool pressed = key == _pressedSoftKeyboardFunctionKey || active;
+            SkillMacroSoftKeyboardVisualState visualState = ResolveSoftKeyboardKeyVisualState(enabled, hovered, pressed);
+            DrawSoftKeyboardTexture(sprite, _softKeyboardSkin?.FunctionKeyTextures.TryGetValue(key, out SkillMacroSoftKeyboardKeyTextures textures) == true ? textures : null, bounds, visualState);
+
+            string label = key switch
+            {
+                SkillMacroSoftKeyboardFunctionKey.CapsLock => "CAPS",
+                SkillMacroSoftKeyboardFunctionKey.LeftShift => "SHIFT",
+                SkillMacroSoftKeyboardFunctionKey.RightShift => "SHIFT",
+                SkillMacroSoftKeyboardFunctionKey.Enter => "ENTER",
+                SkillMacroSoftKeyboardFunctionKey.Backspace => "BS",
+                _ => string.Empty
+            };
+            DrawSoftKeyboardLabel(sprite, bounds, label, enabled ? Color.White : Color.Gray);
+        }
+
+        private void DrawSoftKeyboardWindowButton(SpriteBatch sprite, Point origin, SkillMacroSoftKeyboardWindowButton button)
+        {
+            Rectangle bounds = SkillMacroSoftKeyboardLayout.GetWindowButtonBounds(button);
+            if (bounds.IsEmpty)
+            {
+                return;
+            }
+
+            bounds.Offset(origin);
+            bool pressed = button == _pressedSoftKeyboardWindowButton;
+            bool hovered = button == _hoveredSoftKeyboardWindowButton;
+            SkillMacroSoftKeyboardVisualState visualState = ResolveSoftKeyboardKeyVisualState(true, hovered, pressed);
+            DrawSoftKeyboardTexture(sprite, _softKeyboardSkin?.WindowButtonTextures.TryGetValue(button, out SkillMacroSoftKeyboardKeyTextures textures) == true ? textures : null, bounds, visualState);
+        }
+
+        private void DrawSoftKeyboardTexture(SpriteBatch sprite, SkillMacroSoftKeyboardKeyTextures textures, Rectangle bounds, SkillMacroSoftKeyboardVisualState visualState)
+        {
+            Texture2D texture = textures?.Resolve(visualState);
+            if (texture != null)
+            {
+                sprite.Draw(texture, new Vector2(bounds.X, bounds.Y), Color.White);
+                return;
+            }
+
+            Color fallbackColor = visualState switch
+            {
+                SkillMacroSoftKeyboardVisualState.Disabled => new Color(55, 55, 60, 220),
+                SkillMacroSoftKeyboardVisualState.Hovered => new Color(90, 90, 110, 230),
+                SkillMacroSoftKeyboardVisualState.Pressed => new Color(120, 120, 145, 230),
+                _ => new Color(70, 70, 84, 220)
+            };
+            sprite.Draw(_emptySlotTexture, bounds, fallbackColor);
+        }
+
+        private void DrawSoftKeyboardLabel(SpriteBatch sprite, Rectangle bounds, string label, Color color)
+        {
+            if (_font == null || string.IsNullOrEmpty(label))
+            {
+                return;
+            }
+
+            Vector2 size = _font.MeasureString(label);
+            Vector2 position = new(
+                bounds.X + Math.Max(0f, (bounds.Width - size.X) / 2f),
+                bounds.Y + Math.Max(0f, (bounds.Height - size.Y) / 2f) - 1f);
+            sprite.DrawString(_font, label, position, color);
+        }
+
+        private static SkillMacroSoftKeyboardVisualState ResolveSoftKeyboardKeyVisualState(bool enabled, bool hovered, bool pressed)
+        {
+            if (!enabled)
+            {
+                return SkillMacroSoftKeyboardVisualState.Disabled;
+            }
+
+            if (pressed)
+            {
+                return SkillMacroSoftKeyboardVisualState.Pressed;
+            }
+
+            return hovered
+                ? SkillMacroSoftKeyboardVisualState.Hovered
+                : SkillMacroSoftKeyboardVisualState.Normal;
         }
 
         private void DrawCheckbox(SpriteBatch sprite, int windowX, int windowY)
         {
-            if (_font == null)
+            if (!_notifyPartyMembers)
+            {
                 return;
+            }
 
             int checkX = windowX + CHECKBOX_X;
             int checkY = windowY + CHECKBOX_Y;
 
-            // Draw checkbox (simple 12x12 box)
-            Rectangle checkRect = new Rectangle(checkX, checkY, 12, 12);
-            sprite.Draw(_emptySlotTexture, checkRect, Color.White);
-
-            // Draw check mark if enabled
-            if (_notifyPartyMembers)
+            if (_checkboxTexture != null)
             {
-                // Simple filled inner square to indicate checked
-                Rectangle innerRect = new Rectangle(checkX + 2, checkY + 2, 8, 8);
-                sprite.Draw(_slotHighlightTexture, innerRect, Color.LimeGreen);
+                sprite.Draw(_checkboxTexture, new Vector2(checkX, checkY), Color.White);
+                return;
             }
 
-            // Draw label
-            sprite.DrawString(_font, "Notify party members",
-                new Vector2(checkX + 18, checkY - 1),
-                Color.LightGray);
+            Rectangle checkRect = new(checkX, checkY, CHECKBOX_SIZE, CHECKBOX_SIZE);
+            sprite.Draw(_textPixelTexture, checkRect, new Color(147, 221, 122, 220));
         }
 
         private void DrawDraggedSkill(SpriteBatch sprite)
@@ -498,6 +1017,31 @@ namespace HaCreator.MapSimulator.UI
                 int dragX = (int)_dragPosition.X - SKILL_ICON_SIZE / 2;
                 int dragY = (int)_dragPosition.Y - SKILL_ICON_SIZE / 2;
                 icon.DrawBackground(sprite, null, null, dragX, dragY, Color.White * 0.7f, false, null);
+            }
+        }
+
+        private void DrawDraggedMacro(SpriteBatch sprite)
+        {
+            SkillMacro macro = GetMacro(_dragMacroIndex);
+            int skillId = macro?.SkillIds?.FirstOrDefault(id => id > 0) ?? 0;
+            int drawX = (int)_dragPosition.X - SKILL_ICON_SIZE / 2;
+            int drawY = (int)_dragPosition.Y - SKILL_ICON_SIZE / 2;
+
+            if (skillId > 0)
+            {
+                IDXObject icon = GetSkillIcon(skillId);
+                icon?.DrawBackground(sprite, null, null, drawX, drawY, Color.White * 0.8f, false, null);
+            }
+            else
+            {
+                sprite.Draw(_emptySlotTexture, new Rectangle(drawX, drawY, SKILL_ICON_SIZE, SKILL_ICON_SIZE), Color.White);
+            }
+
+            if (_font != null)
+            {
+                sprite.DrawString(_font, $"M{_dragMacroIndex + 1}",
+                    new Vector2(drawX - 2, drawY - 14),
+                    Color.Yellow);
             }
         }
 
@@ -528,28 +1072,283 @@ namespace HaCreator.MapSimulator.UI
 
             _editingMacroIndex = index;
             _editingMacroName = _macros[index].Name ?? "";
+            _nameFieldFocused = false;
+            _editingCursorPosition = _editingMacroName.Length;
+            ClearNameSelection();
+            _nameSelectionDragActive = false;
+            _notifyPartyMembers = _macros[index].NotifyParty;
+            _validationMessage = string.Empty;
+            ClearOwnerNotice();
+            _caretBlinkTick = Environment.TickCount;
+            ClearCompositionText();
 
             for (int i = 0; i < SKILLS_PER_MACRO; i++)
             {
                 _editingSkillIds[i] = _macros[index].SkillIds[i];
             }
+            UpdateOwnerButtonState();
         }
 
         /// <summary>
         /// Save the currently editing macro
         /// </summary>
-        public void SaveCurrentMacro()
+        public bool SaveCurrentMacro()
         {
             if (_editingMacroIndex < 0 || _editingMacroIndex >= MAX_MACRO_SLOTS)
-                return;
+                return false;
 
-            _macros[_editingMacroIndex].Name = _editingMacroName;
+            string validatedName = ValidateMacroName(_editingMacroName);
+            if (validatedName == null)
+                return false;
+
+            if (!_editingSkillIds.Any(skillId => skillId > 0))
+            {
+                _validationMessage = "Assign at least one skill.";
+                return false;
+            }
+
+            _macros[_editingMacroIndex].Name = validatedName;
+            _macros[_editingMacroIndex].NotifyParty = _notifyPartyMembers;
             for (int i = 0; i < SKILLS_PER_MACRO; i++)
             {
                 _macros[_editingMacroIndex].SkillIds[i] = _editingSkillIds[i];
             }
 
             OnMacroSaved?.Invoke(_editingMacroIndex, _macros[_editingMacroIndex]);
+            _validationMessage = string.Empty;
+            SetOwnerNotice(
+                SkillMacroOwnerStringPoolText.GetSaveNotice(),
+                new Color(216, 226, 183));
+            UpdateOwnerButtonState();
+            return true;
+        }
+
+        private bool CanSaveCurrentMacro()
+        {
+            return _editingMacroIndex >= 0
+                && _editingMacroIndex < MAX_MACRO_SLOTS
+                && _editingSkillIds.Any(skillId => skillId > 0)
+                && SkillMacroNameRules.TryNormalize(_editingMacroName, out _, out _);
+        }
+
+        private void ShowSoftKeyboard(bool resetDismissedState = false)
+        {
+            SetNameFieldFocus(true);
+            _softKeyboardActive = true;
+            if (resetDismissedState || !_softKeyboardVisible)
+            {
+                _softKeyboardVisible = true;
+                _softKeyboardMinimized = false;
+            }
+
+            ResetSoftKeyboardTransientState();
+        }
+
+        private void HideSoftKeyboard()
+        {
+            _softKeyboardActive = false;
+            _softKeyboardVisible = false;
+            _softKeyboardMinimized = false;
+            ResetSoftKeyboardTransientState();
+        }
+
+        private void ResetSoftKeyboardTransientState()
+        {
+            _hoveredSoftKeyboardKeyIndex = -1;
+            _hoveredSoftKeyboardFunctionKey = SkillMacroSoftKeyboardFunctionKey.None;
+            _hoveredSoftKeyboardWindowButton = SkillMacroSoftKeyboardWindowButton.None;
+            _pressedSoftKeyboardKeyIndex = -1;
+            _pressedSoftKeyboardFunctionKey = SkillMacroSoftKeyboardFunctionKey.None;
+            _pressedSoftKeyboardWindowButton = SkillMacroSoftKeyboardWindowButton.None;
+            _softKeyboardPressedVisualUntil = 0;
+            _softKeyboardShift = false;
+        }
+
+        private bool IsSoftKeyboardVisible => _softKeyboardVisible && _editingMacroIndex >= 0 && _nameFieldFocused;
+
+        private void SetNameFieldFocus(bool focused)
+        {
+            if (_nameFieldFocused == focused)
+            {
+                if (focused)
+                {
+                    _caretBlinkTick = Environment.TickCount;
+                }
+
+                return;
+            }
+
+            _nameFieldFocused = focused;
+            _caretBlinkTick = Environment.TickCount;
+            if (!focused)
+            {
+                _softKeyboardActive = false;
+                _nameSelectionDragActive = false;
+                ResetNameEditKeyRepeatState();
+                ClearNameSelection();
+                ClearCompositionText();
+            }
+        }
+
+        private Point GetSoftKeyboardPosition()
+        {
+            int windowWidth = CurrentFrame?.Width ?? WINDOW_WIDTH_BB;
+            int windowHeight = CurrentFrame?.Height ?? WINDOW_HEIGHT_BB;
+            return new Point(
+                Position.X + Math.Max(0, windowWidth - SkillMacroSoftKeyboardLayout.ExpandedWidth),
+                Position.Y + windowHeight + 6);
+        }
+
+        private bool IsPointInSoftKeyboard(int mouseX, int mouseY)
+        {
+            return IsSoftKeyboardVisible && SkillMacroSoftKeyboardLayout.GetBounds(GetSoftKeyboardPosition(), _softKeyboardMinimized).Contains(mouseX, mouseY);
+        }
+
+        private bool IsSoftKeyboardUppercase()
+        {
+            return _softKeyboardCapsLock ^ _softKeyboardShift;
+        }
+
+        private SkillMacroSoftKeyboardConstraintType GetSoftKeyboardConstraintType()
+        {
+            return SkillMacroSoftKeyboardConstraintType.AlphaNumeric;
+        }
+
+        internal static int GetSoftKeyboardTextLengthBytes(string text, Encoding encoding = null)
+        {
+            return SkillMacroNameRules.GetByteCount(text, encoding);
+        }
+
+        private int GetSoftKeyboardConstraintLength()
+        {
+            return GetSoftKeyboardTextLengthBytes(_editingMacroName);
+        }
+
+        private int GetSoftKeyboardConstraintMaxLength()
+        {
+            return SkillMacroNameRules.MaxNameBytes;
+        }
+
+        private SkillMacroSoftKeyboardConstraintMode GetSoftKeyboardConstraintMode()
+        {
+            return SkillMacroSoftKeyboardLayout.ResolveConstraintMode(
+                GetSoftKeyboardConstraintType(),
+                GetSoftKeyboardConstraintLength(),
+                GetSoftKeyboardConstraintMaxLength());
+        }
+
+        private bool IsSoftKeyboardKeyEnabled(int keyIndex)
+        {
+            SkillMacroSoftKeyboardConstraintMode mode = GetSoftKeyboardConstraintMode();
+            if (!IsSoftKeyboardKeyFamilyEnabled(keyIndex, mode))
+            {
+                return false;
+            }
+
+            string insertedText = SkillMacroSoftKeyboardLayout.GetKeyText(keyIndex, IsSoftKeyboardUppercase());
+            return CanInsertSoftKeyboardText(insertedText);
+        }
+
+        private bool IsSoftKeyboardFunctionKeyEnabled(SkillMacroSoftKeyboardFunctionKey key)
+        {
+            SkillMacroSoftKeyboardConstraintMode mode = GetSoftKeyboardConstraintMode();
+            return key switch
+            {
+                SkillMacroSoftKeyboardFunctionKey.CapsLock => SkillMacroSoftKeyboardLayout.IsAlphabeticFamilyEnabled(mode),
+                SkillMacroSoftKeyboardFunctionKey.LeftShift or SkillMacroSoftKeyboardFunctionKey.RightShift => SkillMacroSoftKeyboardLayout.IsAlphabeticFamilyEnabled(mode),
+                SkillMacroSoftKeyboardFunctionKey.Enter => CanSaveCurrentMacro(),
+                SkillMacroSoftKeyboardFunctionKey.Backspace => !string.IsNullOrEmpty(_editingMacroName) || HasNameSelection,
+                _ => false
+            };
+        }
+
+        private static bool IsSoftKeyboardKeyFamilyEnabled(int keyIndex, SkillMacroSoftKeyboardConstraintMode mode)
+        {
+            if (mode == SkillMacroSoftKeyboardConstraintMode.Disabled)
+            {
+                return false;
+            }
+
+            if (SkillMacroSoftKeyboardLayout.IsNumericKey(keyIndex))
+            {
+                return SkillMacroSoftKeyboardLayout.IsNumericFamilyEnabled(mode);
+            }
+
+            if (SkillMacroSoftKeyboardLayout.IsAlphabeticKey(keyIndex))
+            {
+                return SkillMacroSoftKeyboardLayout.IsAlphabeticFamilyEnabled(mode);
+            }
+
+            return false;
+        }
+
+        private bool CanInsertSoftKeyboardText(string text)
+        {
+            return SkillMacroNameRules.TryInsertBestEffort(
+                _editingMacroName,
+                _editingCursorPosition,
+                text,
+                out _,
+                out int insertedLength,
+                out _)
+                && insertedLength > 0;
+        }
+
+        private bool TryInsertSoftKeyboardText(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return false;
+            }
+
+            ClearCompositionText();
+            DeleteNameSelectionIfAny();
+            if (SkillMacroNameRules.TryInsertBestEffort(_editingMacroName, _editingCursorPosition, text, out string updatedText, out int insertedLength, out string error)
+                && insertedLength > 0)
+            {
+                _editingMacroName = updatedText;
+                _editingCursorPosition = Math.Clamp(_editingCursorPosition + insertedLength, 0, _editingMacroName.Length);
+                _validationMessage = string.Empty;
+                _caretBlinkTick = Environment.TickCount;
+                return true;
+            }
+
+            if (!string.IsNullOrEmpty(error))
+            {
+                _validationMessage = error;
+            }
+
+            return false;
+        }
+
+        private void RemoveCharacterBeforeCursor()
+        {
+            if (!SkillMacroNameRules.TryRemoveTextElementBeforeCaret(_editingMacroName, _editingCursorPosition, out string updatedText, out int updatedCaretIndex))
+            {
+                return;
+            }
+
+            ClearCompositionText();
+            ClearOwnerNotice();
+            _editingMacroName = updatedText;
+            _editingCursorPosition = updatedCaretIndex;
+            _validationMessage = string.Empty;
+            _caretBlinkTick = Environment.TickCount;
+        }
+
+        private void RemoveCharacterAtCursor()
+        {
+            if (!SkillMacroNameRules.TryRemoveTextElementAtCaret(_editingMacroName, _editingCursorPosition, out string updatedText, out int updatedCaretIndex))
+            {
+                return;
+            }
+
+            ClearCompositionText();
+            ClearOwnerNotice();
+            _editingMacroName = updatedText;
+            _editingCursorPosition = updatedCaretIndex;
+            _validationMessage = string.Empty;
+            _caretBlinkTick = Environment.TickCount;
         }
 
         /// <summary>
@@ -560,19 +1359,10 @@ namespace HaCreator.MapSimulator.UI
             if (_selectedMacroIndex < 0 || _selectedMacroIndex >= MAX_MACRO_SLOTS)
                 return;
 
-            // Clear the macro
-            _macros[_selectedMacroIndex].Name = $"Macro {_selectedMacroIndex + 1}";
-            for (int i = 0; i < SKILLS_PER_MACRO; i++)
-            {
-                _macros[_selectedMacroIndex].SkillIds[i] = 0;
-            }
-
+            _macros[_selectedMacroIndex] = CreateDefaultMacro(_selectedMacroIndex);
             OnMacroDeleted?.Invoke(_selectedMacroIndex);
-
-            // Reset editing state
-            _editingMacroIndex = -1;
-            _editingMacroName = "";
-            Array.Clear(_editingSkillIds, 0, SKILLS_PER_MACRO);
+            LoadMacroForEditing(_selectedMacroIndex);
+            ClearOwnerNotice();
         }
 
         /// <summary>
@@ -591,6 +1381,7 @@ namespace HaCreator.MapSimulator.UI
             if (macroIndex == _editingMacroIndex)
             {
                 _editingSkillIds[skillSlot] = skillId;
+                ClearOwnerNotice();
             }
         }
 
@@ -620,17 +1411,49 @@ namespace HaCreator.MapSimulator.UI
             if (macroIndex < 0 || macroIndex >= MAX_MACRO_SLOTS)
                 return;
 
-            var macro = _macros[macroIndex];
-            for (int i = 0; i < SKILLS_PER_MACRO; i++)
+            _skillManager?.TryExecuteMacro(macroIndex, Environment.TickCount);
+        }
+
+        private string ValidateMacroName(string name)
+        {
+            if (SkillMacroNameRules.TryNormalize(name, out string normalized, out string error))
             {
-                int skillId = macro.SkillIds[i];
-                if (skillId > 0 && _skillManager != null)
+                _validationMessage = string.Empty;
+                return normalized;
+            }
+
+            _validationMessage = error;
+            return null;
+        }
+
+        private static SkillMacro CreateDefaultMacro(int slotIndex)
+        {
+            return new SkillMacro
+            {
+                Name = $"Macro {slotIndex + 1}",
+                SkillIds = new int[SKILLS_PER_MACRO]
+            };
+        }
+
+        private static SkillMacro CloneMacro(SkillMacro source, int slotIndex)
+        {
+            SkillMacro clone = CreateDefaultMacro(slotIndex);
+            if (source == null)
+            {
+                return clone;
+            }
+
+            clone.Name = string.IsNullOrWhiteSpace(source.Name) ? clone.Name : source.Name;
+            clone.NotifyParty = source.NotifyParty;
+            if (source.SkillIds != null)
+            {
+                for (int i = 0; i < Math.Min(SKILLS_PER_MACRO, source.SkillIds.Length); i++)
                 {
-                    // Queue the skill for execution
-                    // The actual execution timing would be handled by SkillManager
-                    _skillManager.QueueSkill(skillId);
+                    clone.SkillIds[i] = Math.Max(0, source.SkillIds[i]);
                 }
             }
+
+            return clone;
         }
         #endregion
 
@@ -640,19 +1463,17 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         public int GetMacroIndexAtPosition(int mouseX, int mouseY)
         {
-            int relX = mouseX - Position.X - CONTENT_OFFSET_X;
-            int relY = mouseY - Position.Y - CONTENT_OFFSET_Y;
+            int relX = mouseX - Position.X - MACRO_SLOT_X;
+            int relY = mouseY - Position.Y - MACRO_SLOT_Y;
 
             if (relX < 0 || relX > MACRO_SLOT_WIDTH)
                 return -1;
             if (relY < 0)
                 return -1;
 
-            int slotHeight = MACRO_SLOT_HEIGHT + MACRO_SLOT_PADDING;
-            int index = relY / slotHeight;
+            int index = relY / MACRO_SLOT_SPACING;
 
-            // Check if actually within the slot (not in padding)
-            int slotY = index * slotHeight;
+            int slotY = index * MACRO_SLOT_SPACING;
             if (relY - slotY > MACRO_SLOT_HEIGHT)
                 return -1;
 
@@ -670,11 +1491,10 @@ namespace HaCreator.MapSimulator.UI
             if (macroIndex < 0 || macroIndex >= MAX_MACRO_SLOTS)
                 return -1;
 
-            int slotX = Position.X + CONTENT_OFFSET_X;
-            int slotY = Position.Y + CONTENT_OFFSET_Y + macroIndex * (MACRO_SLOT_HEIGHT + MACRO_SLOT_PADDING);
-
-            int relX = mouseX - slotX - SKILL_SLOT_START_X;
-            int relY = mouseY - slotY - SKILL_SLOT_Y_OFFSET;
+            int skillRowX = Position.X + SKILL_SLOT_START_X;
+            int skillRowY = Position.Y + SKILL_SLOT_Y + (macroIndex * MACRO_SLOT_SPACING);
+            int relX = mouseX - skillRowX;
+            int relY = mouseY - skillRowY;
 
             if (relY < 0 || relY > SKILL_ICON_SIZE)
                 return -1;
@@ -695,9 +1515,55 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         public void OnMouseMove(int mouseX, int mouseY)
         {
-            if (_isDragging)
+            _lastMousePosition = new Point(mouseX, mouseY);
+
+            if (_dragMode != MacroDragMode.None)
             {
                 _dragPosition = new Vector2(mouseX, mouseY);
+            }
+
+            if (_softKeyboardPressedVisualUntil > 0 && Environment.TickCount >= _softKeyboardPressedVisualUntil)
+            {
+                _pressedSoftKeyboardKeyIndex = -1;
+                _pressedSoftKeyboardFunctionKey = SkillMacroSoftKeyboardFunctionKey.None;
+                _pressedSoftKeyboardWindowButton = SkillMacroSoftKeyboardWindowButton.None;
+                _softKeyboardPressedVisualUntil = 0;
+            }
+
+            if (_nameSelectionDragActive)
+            {
+                MouseState mouseState = Mouse.GetState();
+                if (mouseState.LeftButton == ButtonState.Pressed && _editingMacroIndex >= 0)
+                {
+                    _editingCursorPosition = ResolveNameCursorFromMouse(mouseX);
+                    _caretBlinkTick = Environment.TickCount;
+                }
+                else
+                {
+                    _nameSelectionDragActive = false;
+                }
+            }
+
+            if (IsSoftKeyboardVisible)
+            {
+                Point softKeyboardPosition = GetSoftKeyboardPosition();
+                int localX = mouseX - softKeyboardPosition.X;
+                int localY = mouseY - softKeyboardPosition.Y;
+                _hoveredSoftKeyboardWindowButton = SkillMacroSoftKeyboardLayout.GetWindowButtonFromPoint(localX, localY);
+                _hoveredSoftKeyboardFunctionKey = _hoveredSoftKeyboardWindowButton == SkillMacroSoftKeyboardWindowButton.None
+                    ? SkillMacroSoftKeyboardLayout.GetFunctionKeyFromPoint(localX, localY, _softKeyboardMinimized)
+                    : SkillMacroSoftKeyboardFunctionKey.None;
+                _hoveredSoftKeyboardKeyIndex = (!_softKeyboardMinimized
+                                                && _hoveredSoftKeyboardWindowButton == SkillMacroSoftKeyboardWindowButton.None
+                                                && _hoveredSoftKeyboardFunctionKey == SkillMacroSoftKeyboardFunctionKey.None)
+                    ? SkillMacroSoftKeyboardLayout.GetKeyIndexFromPoint(localX, localY)
+                    : -1;
+            }
+            else
+            {
+                _hoveredSoftKeyboardKeyIndex = -1;
+                _hoveredSoftKeyboardFunctionKey = SkillMacroSoftKeyboardFunctionKey.None;
+                _hoveredSoftKeyboardWindowButton = SkillMacroSoftKeyboardWindowButton.None;
             }
 
             _hoveredMacroIndex = GetMacroIndexAtPosition(mouseX, mouseY);
@@ -716,14 +1582,53 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         public void OnMouseDown(int mouseX, int mouseY, bool leftButton, bool rightButton)
         {
+            if (leftButton && IsPointInSoftKeyboard(mouseX, mouseY))
+            {
+                HandleSoftKeyboardMouseDown(mouseX, mouseY);
+                return;
+            }
+
+            if (IsPointInImeCandidateWindow(mouseX, mouseY))
+            {
+                HandleImeCandidateMouseDown(mouseX, mouseY, leftButton);
+                return;
+            }
+
             int macroIndex = GetMacroIndexAtPosition(mouseX, mouseY);
 
             if (macroIndex < 0)
             {
-                // Check checkbox
-                if (IsPointInCheckbox(mouseX, mouseY) && leftButton)
+                if (leftButton && IsPointInNameField(mouseX, mouseY))
                 {
+                    ShowSoftKeyboard(resetDismissedState: true);
+                    ClearOwnerNotice();
+                    int updatedCursorPosition = ResolveNameCursorFromMouse(mouseX);
+                    bool extendSelection = IsShiftHeld();
+                    MoveNameCaret(updatedCursorPosition, extendSelection);
+                    if (!extendSelection)
+                    {
+                        _editingSelectionAnchor = updatedCursorPosition;
+                    }
+
+                    _nameSelectionDragActive = true;
+                    if (_compositionText.Length > 0)
+                    {
+                        _compositionInsertionIndex = updatedCursorPosition;
+                    }
+
+                    _validationMessage = string.Empty;
+                    _caretBlinkTick = Environment.TickCount;
+                    UpdateImePresentationPlacement();
+                }
+                else if (_editingMacroIndex >= 0 && IsPointInCheckbox(mouseX, mouseY) && leftButton)
+                {
+                    SetNameFieldFocus(false);
                     _notifyPartyMembers = !_notifyPartyMembers;
+                    ClearOwnerNotice();
+                }
+                else if (leftButton)
+                {
+                    SetNameFieldFocus(false);
                 }
                 return;
             }
@@ -732,28 +1637,35 @@ namespace HaCreator.MapSimulator.UI
 
             if (rightButton && skillSlot >= 0)
             {
+                SetNameFieldFocus(false);
                 // Right-click to clear skill slot
                 ClearMacroSkill(macroIndex, skillSlot);
             }
             else if (leftButton)
             {
-                // Left-click to select macro or start drag
                 if (skillSlot >= 0)
                 {
+                    SetNameFieldFocus(false);
                     int skillId = _macros[macroIndex].SkillIds[skillSlot];
                     if (skillId > 0)
                     {
-                        // Start drag
-                        _isDragging = true;
+                        _dragMode = MacroDragMode.Skill;
                         _dragSkillId = skillId;
                         _dragSourceMacro = macroIndex;
                         _dragSourceSlot = skillSlot;
                         _dragPosition = new Vector2(mouseX, mouseY);
                     }
                 }
+                else if (_selectedMacroIndex == macroIndex && _macros[macroIndex].IsEnabled)
+                {
+                    SetNameFieldFocus(false);
+                    _dragMode = MacroDragMode.MacroBinding;
+                    _dragMacroIndex = macroIndex;
+                    _dragPosition = new Vector2(mouseX, mouseY);
+                }
                 else
                 {
-                    // Select macro
+                    SetNameFieldFocus(false);
                     SelectedMacroIndex = macroIndex;
                 }
             }
@@ -764,7 +1676,9 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         public void OnMouseUp(int mouseX, int mouseY)
         {
-            if (_isDragging)
+            _nameSelectionDragActive = false;
+
+            if (_dragMode == MacroDragMode.Skill)
             {
                 int targetMacro = GetMacroIndexAtPosition(mouseX, mouseY);
                 int targetSlot = targetMacro >= 0 ? GetSkillSlotAtPosition(mouseX, mouseY, targetMacro) : -1;
@@ -781,12 +1695,9 @@ namespace HaCreator.MapSimulator.UI
                         SetMacroSkill(_dragSourceMacro, _dragSourceSlot, targetSkillId);
                     }
                 }
-
-                _isDragging = false;
-                _dragSkillId = 0;
-                _dragSourceMacro = -1;
-                _dragSourceSlot = -1;
             }
+
+            CancelDrag();
         }
 
         /// <summary>
@@ -823,29 +1734,356 @@ namespace HaCreator.MapSimulator.UI
 
         private bool IsPointInCheckbox(int mouseX, int mouseY)
         {
+            if (_editingMacroIndex < 0)
+            {
+                return false;
+            }
+
             int checkX = Position.X + CHECKBOX_X;
             int checkY = Position.Y + CHECKBOX_Y;
 
-            return mouseX >= checkX && mouseX <= checkX + 12 &&
-                   mouseY >= checkY && mouseY <= checkY + 12;
+            return mouseX >= checkX && mouseX <= checkX + CHECKBOX_SIZE &&
+                   mouseY >= checkY && mouseY <= checkY + CHECKBOX_SIZE;
+        }
+
+        private Rectangle GetNameFieldBounds()
+        {
+            return new Rectangle(Position.X + NAME_FIELD_X, Position.Y + NAME_FIELD_Y, NAME_FIELD_WIDTH, NAME_FIELD_HEIGHT);
+        }
+
+        private bool IsPointInNameField(int mouseX, int mouseY)
+        {
+            return _editingMacroIndex >= 0 && GetNameFieldBounds().Contains(mouseX, mouseY);
+        }
+
+        private bool HasNameSelection => GetNameSelectionLength() > 0;
+
+        private int GetNameSelectionStart()
+        {
+            return ClientEditSelectionHelper.GetSelectionStart(
+                _editingMacroName?.Length ?? 0,
+                _editingSelectionAnchor,
+                _editingCursorPosition);
+        }
+
+        private int GetNameSelectionLength()
+        {
+            return ClientEditSelectionHelper.GetSelectionLength(
+                _editingMacroName?.Length ?? 0,
+                _editingSelectionAnchor,
+                _editingCursorPosition);
+        }
+
+        private void ClearNameSelection()
+        {
+            _editingSelectionAnchor = -1;
+        }
+
+        private void MoveNameCaret(int targetPosition, bool extendSelection)
+        {
+            int textLength = _editingMacroName?.Length ?? 0;
+            int clampedPosition = Math.Clamp(targetPosition, 0, textLength);
+            if (extendSelection)
+            {
+                _editingSelectionAnchor = _editingSelectionAnchor >= 0
+                    ? Math.Clamp(_editingSelectionAnchor, 0, textLength)
+                    : Math.Clamp(_editingCursorPosition, 0, textLength);
+            }
+            else
+            {
+                ClearNameSelection();
+            }
+
+            _editingCursorPosition = clampedPosition;
+        }
+
+        private bool DeleteNameSelectionIfAny()
+        {
+            if (!ClientEditSelectionHelper.TryDeleteSelection(
+                _editingMacroName,
+                _editingSelectionAnchor,
+                _editingCursorPosition,
+                out string updatedText,
+                out int updatedCaretIndex))
+            {
+                return false;
+            }
+
+            _editingMacroName = updatedText;
+            _editingCursorPosition = updatedCaretIndex;
+            ClearNameSelection();
+            return true;
+        }
+
+        private void SelectAllNameText()
+        {
+            if (string.IsNullOrEmpty(_editingMacroName))
+            {
+                ClearNameSelection();
+                _editingCursorPosition = 0;
+                _caretBlinkTick = Environment.TickCount;
+                return;
+            }
+
+            _editingSelectionAnchor = 0;
+            _editingCursorPosition = _editingMacroName.Length;
+            _caretBlinkTick = Environment.TickCount;
+        }
+
+        private void CopySelectedNameText(bool cutSelection)
+        {
+            int selectionStart = GetNameSelectionStart();
+            int selectionLength = GetNameSelectionLength();
+            if (selectionStart < 0 || selectionLength <= 0)
+            {
+                return;
+            }
+
+            try
+            {
+                System.Windows.Forms.Clipboard.SetText(_editingMacroName.Substring(selectionStart, selectionLength));
+            }
+            catch
+            {
+                return;
+            }
+
+            if (!cutSelection)
+            {
+                return;
+            }
+
+            DeleteNameSelectionIfAny();
+            _validationMessage = string.Empty;
+            _caretBlinkTick = Environment.TickCount;
+        }
+
+        private static bool IsShiftHeld()
+        {
+            KeyboardState keyboardState = Keyboard.GetState();
+            return keyboardState.IsKeyDown(Keys.LeftShift) || keyboardState.IsKeyDown(Keys.RightShift);
+        }
+
+        private int ResolveNameCursorFromMouse(int mouseX)
+        {
+            if (_font == null || string.IsNullOrEmpty(_editingMacroName))
+            {
+                return 0;
+            }
+
+            Rectangle bounds = GetNameFieldBounds();
+            float targetX = mouseX - bounds.X - NAME_FIELD_TEXT_INSET_X;
+            if (targetX <= 0f)
+            {
+                return 0;
+            }
+
+            int bestCursor = _editingMacroName.Length;
+            float bestDistance = float.MaxValue;
+            foreach (int caretStop in EnumerateCaretStops(_editingMacroName))
+            {
+                string prefix = caretStop <= 0 ? string.Empty : _editingMacroName[..caretStop];
+                float prefixWidth = prefix.Length > 0 ? _font.MeasureString(prefix).X : 0f;
+                float distance = Math.Abs(prefixWidth - targetX);
+                if (distance < bestDistance)
+                {
+                    bestDistance = distance;
+                    bestCursor = caretStop;
+                }
+            }
+
+            return bestCursor;
+        }
+
+        private void DrawCommittedNameText(SpriteBatch sprite, string committedText, int selectionStart, int selectionEnd, Vector2 textPosition)
+        {
+            if (string.IsNullOrEmpty(committedText))
+            {
+                return;
+            }
+
+            if (selectionStart < 0 || selectionEnd <= selectionStart)
+            {
+                sprite.DrawString(_font, committedText, textPosition, Color.White);
+                return;
+            }
+
+            string prefix = selectionStart > 0 ? committedText[..selectionStart] : string.Empty;
+            string selectedText = committedText.Substring(selectionStart, selectionEnd - selectionStart);
+            string suffix = selectionEnd < committedText.Length ? committedText[selectionEnd..] : string.Empty;
+
+            if (prefix.Length > 0)
+            {
+                sprite.DrawString(_font, prefix, textPosition, Color.White);
+            }
+
+            float prefixWidth = prefix.Length > 0 ? _font.MeasureString(prefix).X : 0f;
+            Vector2 selectionPosition = new(textPosition.X + prefixWidth, textPosition.Y);
+            if (selectedText.Length > 0)
+            {
+                Vector2 selectionSize = _font.MeasureString(selectedText);
+                sprite.Draw(
+                    _textPixelTexture,
+                    new Rectangle(
+                        (int)Math.Floor(selectionPosition.X),
+                        (int)Math.Floor(selectionPosition.Y),
+                        Math.Max(1, (int)Math.Ceiling(selectionSize.X)),
+                        Math.Max(1, Math.Min(NAME_FIELD_HEIGHT, _font.LineSpacing))),
+                    new Color(89, 108, 147, 220));
+                sprite.DrawString(_font, selectedText, selectionPosition, Color.White);
+            }
+
+            if (suffix.Length > 0)
+            {
+                float selectionWidth = selectedText.Length > 0 ? _font.MeasureString(selectedText).X : 0f;
+                sprite.DrawString(_font, suffix, new Vector2(selectionPosition.X + selectionWidth, selectionPosition.Y), Color.White);
+            }
+        }
+
+        private void HandleSoftKeyboardMouseDown(int mouseX, int mouseY)
+        {
+            Point origin = GetSoftKeyboardPosition();
+            int localX = mouseX - origin.X;
+            int localY = mouseY - origin.Y;
+
+            SkillMacroSoftKeyboardWindowButton windowButton = SkillMacroSoftKeyboardLayout.GetWindowButtonFromPoint(localX, localY);
+            if (windowButton != SkillMacroSoftKeyboardWindowButton.None)
+            {
+                _pressedSoftKeyboardWindowButton = windowButton;
+                _softKeyboardPressedVisualUntil = Environment.TickCount + 120;
+                switch (windowButton)
+                {
+                    case SkillMacroSoftKeyboardWindowButton.Close:
+                        HideSoftKeyboard();
+                        break;
+                    case SkillMacroSoftKeyboardWindowButton.Minimize:
+                        _softKeyboardMinimized = true;
+                        ResetSoftKeyboardTransientState();
+                        break;
+                    case SkillMacroSoftKeyboardWindowButton.Maximize:
+                        _softKeyboardVisible = true;
+                        _softKeyboardMinimized = false;
+                        ResetSoftKeyboardTransientState();
+                        break;
+                }
+
+                return;
+            }
+
+            SkillMacroSoftKeyboardFunctionKey functionKey = SkillMacroSoftKeyboardLayout.GetFunctionKeyFromPoint(localX, localY, _softKeyboardMinimized);
+            if (functionKey != SkillMacroSoftKeyboardFunctionKey.None)
+            {
+                if (!IsSoftKeyboardFunctionKeyEnabled(functionKey))
+                {
+                    return;
+                }
+
+                _pressedSoftKeyboardFunctionKey = functionKey;
+                _softKeyboardPressedVisualUntil = Environment.TickCount + 120;
+
+                switch (functionKey)
+                {
+                    case SkillMacroSoftKeyboardFunctionKey.CapsLock:
+                        _softKeyboardCapsLock = !_softKeyboardCapsLock;
+                        break;
+                    case SkillMacroSoftKeyboardFunctionKey.LeftShift:
+                    case SkillMacroSoftKeyboardFunctionKey.RightShift:
+                        _softKeyboardShift = !_softKeyboardShift;
+                        break;
+                    case SkillMacroSoftKeyboardFunctionKey.Enter:
+                        SaveCurrentMacro();
+                        break;
+                    case SkillMacroSoftKeyboardFunctionKey.Backspace:
+                        if (!DeleteNameSelectionIfAny())
+                        {
+                            RemoveCharacterBeforeCursor();
+                        }
+                        break;
+                }
+
+                return;
+            }
+
+            if (_softKeyboardMinimized)
+            {
+                return;
+            }
+
+            int keyIndex = SkillMacroSoftKeyboardLayout.GetKeyIndexFromPoint(localX, localY);
+            if (keyIndex < 0 || !IsSoftKeyboardKeyEnabled(keyIndex))
+            {
+                return;
+            }
+
+            _pressedSoftKeyboardKeyIndex = keyIndex;
+            _softKeyboardPressedVisualUntil = Environment.TickCount + 120;
+            if (TryInsertSoftKeyboardText(SkillMacroSoftKeyboardLayout.GetKeyText(keyIndex, IsSoftKeyboardUppercase())))
+            {
+                _softKeyboardShift = false;
+            }
+        }
+
+        private void HandleImeCandidateMouseDown(int mouseX, int mouseY, bool leftButton)
+        {
+            SetNameFieldFocus(true);
+            ClearOwnerNotice();
+            _caretBlinkTick = Environment.TickCount;
+            _nameSelectionDragActive = false;
+
+            if (!leftButton)
+            {
+                return;
+            }
+
+            int candidateIndex = ResolveImeCandidateIndexFromPoint(mouseX, mouseY);
+            if (candidateIndex < 0)
+            {
+                return;
+            }
+
+            OnImeCandidateSelected?.Invoke(_candidateListState.ListIndex, candidateIndex);
+        }
+
+        public bool HandlesMacroInteractionPoint(int mouseX, int mouseY)
+        {
+            return GetMacroIndexAtPosition(mouseX, mouseY) >= 0
+                || IsPointInCheckbox(mouseX, mouseY)
+                || IsPointInNameField(mouseX, mouseY)
+                || IsPointInImeCandidateWindow(mouseX, mouseY)
+                || IsPointInSoftKeyboard(mouseX, mouseY);
+        }
+
+        protected override IEnumerable<Rectangle> GetAdditionalInteractiveBounds()
+        {
+            foreach (Rectangle bounds in base.GetAdditionalInteractiveBounds())
+            {
+                yield return bounds;
+            }
+
+            if (IsSoftKeyboardVisible)
+            {
+                yield return SkillMacroSoftKeyboardLayout.GetBounds(GetSoftKeyboardPosition(), _softKeyboardMinimized);
+            }
+
+            Rectangle candidateBounds = GetImeCandidateWindowBounds(GetActiveViewport());
+            if (!candidateBounds.IsEmpty)
+            {
+                yield return candidateBounds;
+            }
         }
         #endregion
 
         #region Button Handlers
         private void OnOKClicked(UIObject sender)
         {
+            SetNameFieldFocus(false);
             SaveCurrentMacro();
-            Hide();
-            OnMacroWindowClosed?.Invoke();
         }
 
         private void OnCancelClicked(UIObject sender)
         {
-            // Discard changes
-            _editingMacroIndex = -1;
-            _editingMacroName = "";
-            Array.Clear(_editingSkillIds, 0, SKILLS_PER_MACRO);
-
+            ResetEditingState();
+            HideSoftKeyboard();
             Hide();
             OnMacroWindowClosed?.Invoke();
         }
@@ -854,35 +2092,57 @@ namespace HaCreator.MapSimulator.UI
         {
             DeleteSelectedMacro();
         }
+
+        public override void Show()
+        {
+            ResetOwnerSession();
+            base.Show();
+        }
+
+        public override void Hide()
+        {
+            ReleaseForwardedOwnerKeys();
+            HideSoftKeyboard();
+            CancelDrag();
+            ClearCompositionText();
+            base.Hide();
+        }
         #endregion
 
         #region Update
-        private MouseState _previousMouseState;
+        private KeyboardState _previousKeyboardState;
 
         public override void Update(GameTime gameTime)
         {
             base.Update(gameTime);
 
-            // Update mouse input
-            var mouseState = Mouse.GetState();
-            OnMouseMove(mouseState.X, mouseState.Y);
+            KeyboardState keyboardState = Keyboard.GetState();
 
-            // Handle mouse button state changes
-            if (mouseState.LeftButton == ButtonState.Pressed && _previousMouseState.LeftButton == ButtonState.Released)
+            if (_softKeyboardPressedVisualUntil > 0 && Environment.TickCount >= _softKeyboardPressedVisualUntil)
             {
-                OnMouseDown(mouseState.X, mouseState.Y, true, false);
-            }
-            else if (mouseState.RightButton == ButtonState.Pressed && _previousMouseState.RightButton == ButtonState.Released)
-            {
-                OnMouseDown(mouseState.X, mouseState.Y, false, true);
+                _pressedSoftKeyboardKeyIndex = -1;
+                _pressedSoftKeyboardFunctionKey = SkillMacroSoftKeyboardFunctionKey.None;
+                _pressedSoftKeyboardWindowButton = SkillMacroSoftKeyboardWindowButton.None;
+                _softKeyboardPressedVisualUntil = 0;
             }
 
-            if (mouseState.LeftButton == ButtonState.Released && _previousMouseState.LeftButton == ButtonState.Pressed)
+            if (IsVisible && SkillMacroOwnerKeyHandler.ShouldCloseWindow(keyboardState, _previousKeyboardState))
             {
-                OnMouseUp(mouseState.X, mouseState.Y);
+                OnCancelClicked(null);
+                _previousKeyboardState = keyboardState;
+                return;
             }
 
-            _previousMouseState = mouseState;
+            if (!CapturesKeyboardInput)
+            {
+                ReleaseForwardedOwnerKeys();
+                _previousKeyboardState = keyboardState;
+                return;
+            }
+
+            HandleKeyboardInput(keyboardState);
+            _previousKeyboardState = keyboardState;
+            UpdateImePresentationPlacement();
         }
         #endregion
 
@@ -893,6 +2153,1459 @@ namespace HaCreator.MapSimulator.UI
         public void ClearIconCache()
         {
             _skillIconCache.Clear();
+        }
+
+        public void CancelDrag()
+        {
+            _dragMode = MacroDragMode.None;
+            _dragSkillId = 0;
+            _dragMacroIndex = -1;
+            _dragSourceMacro = -1;
+            _dragSourceSlot = -1;
+        }
+
+        public override void HandleCommittedText(string text)
+        {
+            if (!CapturesKeyboardInput || string.IsNullOrEmpty(text))
+            {
+                return;
+            }
+
+            ClearCompositionText();
+            ClearOwnerNotice();
+            DeleteNameSelectionIfAny();
+            if (SkillMacroNameRules.TryInsertBestEffort(_editingMacroName, _editingCursorPosition, text, out string updatedText, out int insertedLength, out string error))
+            {
+                _editingMacroName = updatedText;
+                _editingCursorPosition = Math.Clamp(_editingCursorPosition + insertedLength, 0, _editingMacroName.Length);
+                _validationMessage = string.Empty;
+                _caretBlinkTick = Environment.TickCount;
+            }
+            else if (!string.IsNullOrEmpty(error))
+            {
+                _validationMessage = error;
+            }
+        }
+
+        public override void HandleCompositionState(ImeCompositionState state)
+        {
+            if (!CapturesKeyboardInput)
+            {
+                ClearCompositionText();
+                return;
+            }
+
+            ImeCompositionState effectiveState = state ?? ImeCompositionState.Empty;
+            string sanitized = SanitizeCompositionText(effectiveState.Text);
+            if (sanitized.Length == 0)
+            {
+                ClearCompositionText();
+                return;
+            }
+
+            if (_compositionText.Length == 0)
+            {
+                DeleteNameSelectionIfAny();
+                _compositionInsertionIndex = _editingCursorPosition;
+            }
+
+            int insertionIndex = Math.Clamp(_compositionInsertionIndex >= 0 ? _compositionInsertionIndex : _editingCursorPosition, 0, _editingMacroName.Length);
+            string preview = SkillMacroNameRules.BuildCompositionPreview(_editingMacroName, insertionIndex, sanitized, out string error);
+            if (preview.Length == 0)
+            {
+                ClearCompositionText();
+                if (!string.IsNullOrEmpty(error))
+                {
+                    _validationMessage = error;
+                }
+
+                return;
+            }
+
+            _compositionInsertionIndex = insertionIndex;
+            _compositionText = preview;
+            _compositionClauseOffsets = ClampClauseOffsets(effectiveState.ClauseOffsets, preview.Length);
+            _compositionCursorPosition = Math.Clamp(effectiveState.CursorPosition, -1, preview.Length);
+            _validationMessage = string.Empty;
+            ClearOwnerNotice();
+            _caretBlinkTick = Environment.TickCount;
+            UpdateImePresentationPlacement();
+        }
+
+        public override void HandleCompositionText(string text)
+        {
+            HandleCompositionState(new ImeCompositionState(text ?? string.Empty, Array.Empty<int>(), -1));
+        }
+
+        public override void ClearCompositionText()
+        {
+            _compositionText = string.Empty;
+            _compositionInsertionIndex = -1;
+            _compositionClauseOffsets = Array.Empty<int>();
+            _compositionCursorPosition = -1;
+            ClearImeCandidateList();
+        }
+
+        public override void HandleImeCandidateList(ImeCandidateListState state)
+        {
+            _candidateListState = CapturesKeyboardInput && state != null && state.HasCandidates
+                ? state
+                : ImeCandidateListState.Empty;
+            UpdateImePresentationPlacement();
+        }
+
+        public override void ClearImeCandidateList()
+        {
+            _candidateListState = ImeCandidateListState.Empty;
+        }
+
+        Rectangle ISoftKeyboardHost.GetSoftKeyboardAnchorBounds() => GetNameFieldBounds();
+
+        bool ISoftKeyboardHost.TryInsertSoftKeyboardCharacter(char character, out string errorMessage)
+        {
+            ClearOwnerNotice();
+            if (!TryInsertSoftKeyboardText(character.ToString()))
+            {
+                errorMessage = string.IsNullOrWhiteSpace(_validationMessage)
+                    ? "The macro name cannot accept that character."
+                    : _validationMessage;
+                return false;
+            }
+
+            errorMessage = string.Empty;
+            return true;
+        }
+
+        bool ISoftKeyboardHost.TryReplaceLastSoftKeyboardCharacter(char character, out string errorMessage)
+        {
+            if (string.IsNullOrEmpty(_editingMacroName) && !HasNameSelection)
+            {
+                return ((ISoftKeyboardHost)this).TryInsertSoftKeyboardCharacter(character, out errorMessage);
+            }
+
+            ClearCompositionText();
+            ClearOwnerNotice();
+            if (!DeleteNameSelectionIfAny())
+            {
+                RemoveCharacterBeforeCursor();
+            }
+            if (!TryInsertSoftKeyboardText(character.ToString()))
+            {
+                errorMessage = string.IsNullOrWhiteSpace(_validationMessage)
+                    ? "The macro name cannot accept that character."
+                    : _validationMessage;
+                return false;
+            }
+
+            errorMessage = string.Empty;
+            return true;
+        }
+
+        bool ISoftKeyboardHost.TryBackspaceSoftKeyboard(out string errorMessage)
+        {
+            if (string.IsNullOrEmpty(_editingMacroName) && !HasNameSelection)
+            {
+                errorMessage = "The macro name is already empty.";
+                return false;
+            }
+
+            ClearCompositionText();
+            ClearOwnerNotice();
+            if (!DeleteNameSelectionIfAny())
+            {
+                RemoveCharacterBeforeCursor();
+            }
+            errorMessage = string.Empty;
+            return true;
+        }
+
+        bool ISoftKeyboardHost.TrySubmitSoftKeyboard(out string errorMessage)
+        {
+            if (!CanSaveCurrentMacro())
+            {
+                errorMessage = "The selected macro is not ready to save.";
+                return false;
+            }
+
+            SaveCurrentMacro();
+            errorMessage = string.Empty;
+            return true;
+        }
+
+        void ISoftKeyboardHost.OnSoftKeyboardClosed()
+        {
+            _softKeyboardActive = false;
+            ResetSoftKeyboardTransientState();
+            UpdateImePresentationPlacement();
+        }
+
+        void ISoftKeyboardHost.SetSoftKeyboardCompositionText(string text)
+        {
+            HandleCompositionText(text);
+        }
+
+        private void HandleKeyboardInput(KeyboardState keyboardState)
+        {
+            bool ctrl = keyboardState.IsKeyDown(Keys.LeftControl) || keyboardState.IsKeyDown(Keys.RightControl);
+            bool shift = keyboardState.IsKeyDown(Keys.LeftShift) || keyboardState.IsKeyDown(Keys.RightShift);
+            int tickCount = Environment.TickCount;
+            ForwardClientOwnedFunctionKeyTransitions(keyboardState);
+            ForwardClientOwnedNonFunctionKeyTransitions(keyboardState, ctrl, shift);
+
+            if (TryHandleDeferredImeDownKey(keyboardState, ctrl, shift))
+            {
+                _caretBlinkTick = Environment.TickCount;
+                return;
+            }
+
+            if (!ctrl && TryHandleImeCandidateKeyboardNavigation(keyboardState))
+            {
+                _caretBlinkTick = Environment.TickCount;
+                return;
+            }
+
+            if (!ctrl && TryHandleImeCandidateKeyboardSelection(keyboardState))
+            {
+                _caretBlinkTick = Environment.TickCount;
+                return;
+            }
+
+            if (!ctrl && shift && keyboardState.IsKeyDown(Keys.Insert) && _previousKeyboardState.IsKeyUp(Keys.Insert))
+            {
+                HandleClipboardPaste();
+                return;
+            }
+
+            if (!ctrl && shift && keyboardState.IsKeyDown(Keys.Delete) && _previousKeyboardState.IsKeyUp(Keys.Delete))
+            {
+                CopySelectedNameText(cutSelection: true);
+                return;
+            }
+
+            if (WasNameEditKeyPressedOrRepeated(keyboardState, Keys.Back, tickCount))
+            {
+                if (_compositionText.Length > 0)
+                {
+                    ClearCompositionText();
+                    _validationMessage = string.Empty;
+                    _caretBlinkTick = Environment.TickCount;
+                }
+                else if (DeleteNameSelectionIfAny())
+                {
+                    _validationMessage = string.Empty;
+                    _caretBlinkTick = Environment.TickCount;
+                }
+                else if (_editingCursorPosition > 0)
+                {
+                    RemoveCharacterBeforeCursor();
+                }
+            }
+
+            if (WasNameEditKeyPressedOrRepeated(keyboardState, Keys.Delete, tickCount))
+            {
+                if (_compositionText.Length > 0)
+                {
+                    ClearCompositionText();
+                    _validationMessage = string.Empty;
+                    _caretBlinkTick = Environment.TickCount;
+                }
+                else if (DeleteNameSelectionIfAny())
+                {
+                    _validationMessage = string.Empty;
+                    _caretBlinkTick = Environment.TickCount;
+                }
+                else if (_editingCursorPosition < _editingMacroName.Length)
+                {
+                    RemoveCharacterAtCursor();
+                }
+            }
+
+            if (WasNameEditKeyPressedOrRepeated(keyboardState, Keys.Left, tickCount))
+            {
+                ClearCompositionText();
+                ClearOwnerNotice();
+                int baseCaret = shift
+                    ? Math.Clamp(_editingCursorPosition, 0, _editingMacroName.Length)
+                    : ClientEditSelectionHelper.ResolveNavigationCaret(
+                    _editingMacroName.Length,
+                    _editingSelectionAnchor,
+                    _editingCursorPosition,
+                    moveRight: false);
+                int targetCaret = !shift && HasNameSelection
+                    ? baseCaret
+                    : SkillMacroNameRules.GetPreviousCaretStop(_editingMacroName, baseCaret);
+                MoveNameCaret(targetCaret, shift);
+                _caretBlinkTick = Environment.TickCount;
+            }
+
+            if (WasNameEditKeyPressedOrRepeated(keyboardState, Keys.Right, tickCount))
+            {
+                ClearCompositionText();
+                ClearOwnerNotice();
+                int baseCaret = shift
+                    ? Math.Clamp(_editingCursorPosition, 0, _editingMacroName.Length)
+                    : ClientEditSelectionHelper.ResolveNavigationCaret(
+                    _editingMacroName.Length,
+                    _editingSelectionAnchor,
+                    _editingCursorPosition,
+                    moveRight: true);
+                int targetCaret = !shift && HasNameSelection
+                    ? baseCaret
+                    : SkillMacroNameRules.GetNextCaretStop(_editingMacroName, baseCaret);
+                MoveNameCaret(targetCaret, shift);
+                _caretBlinkTick = Environment.TickCount;
+            }
+
+            if (keyboardState.IsKeyDown(Keys.Home)
+                && _previousKeyboardState.IsKeyUp(Keys.Home)
+                && SkillMacroOwnerKeyHandler.ShouldApplyCaretBoundaryNavigation(ctrl))
+            {
+                ClearCompositionText();
+                ClearOwnerNotice();
+                MoveNameCaret(0, shift);
+                _caretBlinkTick = Environment.TickCount;
+            }
+
+            if (keyboardState.IsKeyDown(Keys.End)
+                && _previousKeyboardState.IsKeyUp(Keys.End)
+                && SkillMacroOwnerKeyHandler.ShouldApplyCaretBoundaryNavigation(ctrl))
+            {
+                ClearCompositionText();
+                ClearOwnerNotice();
+                MoveNameCaret(_editingMacroName.Length, shift);
+                _validationMessage = string.Empty;
+                _caretBlinkTick = Environment.TickCount;
+            }
+
+            if (_compositionInsertionIndex >= 0 && _compositionInsertionIndex != _editingCursorPosition)
+            {
+                _compositionInsertionIndex = _editingCursorPosition;
+            }
+
+            if (_compositionText.Length > 0)
+            {
+                _validationMessage = string.Empty;
+            }
+
+            if (ctrl && keyboardState.IsKeyDown(Keys.V) && _previousKeyboardState.IsKeyUp(Keys.V))
+            {
+                HandleClipboardPaste();
+                return;
+            }
+
+            if (ctrl && keyboardState.IsKeyDown(Keys.C) && _previousKeyboardState.IsKeyUp(Keys.C))
+            {
+                CopySelectedNameText(cutSelection: false);
+                return;
+            }
+
+            if (ctrl && keyboardState.IsKeyDown(Keys.X) && _previousKeyboardState.IsKeyUp(Keys.X))
+            {
+                CopySelectedNameText(cutSelection: true);
+                return;
+            }
+        }
+
+        private bool TryHandleImeCandidateKeyboardSelection(KeyboardState keyboardState)
+        {
+            int candidateIndex = SkillMacroImeCandidateWindowLayout.ResolveVisibleCandidateIndexFromKeyboard(
+                _candidateListState,
+                keyboardState,
+                WasNameEditKeyPressed);
+            if (candidateIndex < 0)
+            {
+                return false;
+            }
+
+            return OnImeCandidateSelected?.Invoke(_candidateListState.ListIndex, candidateIndex) == true;
+        }
+
+        private bool TryHandleImeCandidateKeyboardNavigation(KeyboardState keyboardState)
+        {
+            int candidateIndex = SkillMacroImeCandidateWindowLayout.ResolveAdjacentCandidateIndexFromKeyboard(
+                _candidateListState,
+                keyboardState,
+                WasNameEditKeyPressed);
+            if (candidateIndex < 0)
+            {
+                return false;
+            }
+
+            return OnImeCandidateSelected?.Invoke(_candidateListState.ListIndex, candidateIndex) == true;
+        }
+
+        private bool TryHandleDeferredImeDownKey(KeyboardState keyboardState, bool controlHeld, bool shiftHeld)
+        {
+            bool imeCompositionActive = _compositionText.Length > 0;
+            bool imeCandidateWindowActive = _candidateListState.HasCandidates;
+            if (!WasNameEditKeyPressed(keyboardState, Keys.Down)
+                || !SkillMacroOwnerKeyHandler.ShouldDeferDownKeyToIme(
+                    Keys.Down,
+                    imeCompositionActive,
+                    imeCandidateWindowActive))
+            {
+                return false;
+            }
+
+            bool imeHandledKeyDown = !controlHeld && TryHandleImeCandidateKeyboardNavigation(keyboardState);
+            if (SkillMacroOwnerKeyHandler.ShouldForwardDeferredDownKeyToParentAfterIme(imeHandledKeyDown))
+            {
+                ForwardDeferredImeDownKeyToParent(
+                    controlHeld,
+                    shiftHeld,
+                    imeCompositionActive,
+                    imeCandidateWindowActive);
+            }
+
+            return true;
+        }
+
+        private void ForwardDeferredImeDownKeyToParent(
+            bool controlHeld,
+            bool shiftHeld,
+            bool imeCompositionActive,
+            bool imeCandidateWindowActive)
+        {
+            if (OnClientForwardedNonFunctionPhysicalKeyStateChanged == null
+                || _forwardedNonFunctionPhysicalKeys.ContainsKey(Keys.Down))
+            {
+                return;
+            }
+
+            OnClientForwardedNonFunctionPhysicalKeyStateChanged(
+                Keys.Down,
+                true,
+                controlHeld,
+                shiftHeld,
+                imeCompositionActive,
+                imeCandidateWindowActive);
+            _forwardedNonFunctionPhysicalKeys[Keys.Down] = new ForwardedNonFunctionPhysicalKeyState(
+                controlHeld,
+                shiftHeld,
+                imeCompositionActive,
+                imeCandidateWindowActive);
+            _imeSuppressedNonFunctionHotkeyPhysicalKeys.Add(Keys.Down);
+        }
+
+        private bool WasNameEditKeyPressed(KeyboardState keyboardState, Keys key)
+        {
+            return keyboardState.IsKeyDown(key) && _previousKeyboardState.IsKeyUp(key);
+        }
+
+        private void ForwardClientOwnedFunctionKeyTransitions(KeyboardState keyboardState)
+        {
+            if (OnClientForwardedFunctionKeyStateChanged == null)
+            {
+                _forwardedFunctionKeyIndices.Clear();
+                return;
+            }
+
+            for (int i = 0; i < SkillMacroOwnerKeyHandler.ClientForwardedFunctionKeyCount; i++)
+            {
+                Keys key = (Keys)((int)Keys.F1 + i);
+                bool isDown = keyboardState.IsKeyDown(key);
+                bool wasDown = _previousKeyboardState.IsKeyDown(key);
+                if (isDown == wasDown)
+                {
+                    continue;
+                }
+
+                if (SkillMacroOwnerKeyHandler.TryGetClientForwardedFunctionKeyIndex(key, out int functionKeyIndex))
+                {
+                    if (isDown)
+                    {
+                        _forwardedFunctionKeyIndices.Add(functionKeyIndex);
+                    }
+                    else
+                    {
+                        _forwardedFunctionKeyIndices.Remove(functionKeyIndex);
+                    }
+
+                    OnClientForwardedFunctionKeyStateChanged(functionKeyIndex, isDown);
+                }
+            }
+        }
+
+        private void ForwardClientOwnedNonFunctionKeyTransitions(KeyboardState keyboardState, bool controlHeld, bool shiftHeld)
+        {
+            bool hasPhysicalKeyCallback = OnClientForwardedNonFunctionPhysicalKeyStateChanged != null;
+            bool hasHotkeySlotCallback = OnClientForwardedNonFunctionHotkeyStateChanged != null;
+            if (!hasPhysicalKeyCallback && !hasHotkeySlotCallback)
+            {
+                _forwardedNonFunctionHotkeySlotsByPhysicalKey.Clear();
+                _forwardedNonFunctionPhysicalKeys.Clear();
+                _imeSuppressedNonFunctionHotkeyPhysicalKeys.Clear();
+                return;
+            }
+
+            bool imeCompositionActive = _compositionText.Length > 0;
+            bool imeCandidateWindowActive = _candidateListState.HasCandidates;
+            ReleaseActiveForwardedNonFunctionKeysTakenByIme(
+                keyboardState,
+                imeCompositionActive,
+                imeCandidateWindowActive);
+
+            Keys[] pressedKeys = keyboardState.GetPressedKeys();
+            for (int i = 0; i < pressedKeys.Length; i++)
+            {
+                Keys key = pressedKeys[i];
+                if (!_previousKeyboardState.IsKeyUp(key))
+                {
+                    continue;
+                }
+
+                if (!SkillMacroOwnerKeyHandler.ShouldForwardClientOwnedNonFunctionKeyDownToParent(
+                        key,
+                        controlHeld,
+                        shiftHeld,
+                        imeCompositionActive,
+                        imeCandidateWindowActive))
+                {
+                    continue;
+                }
+
+                OnClientForwardedNonFunctionPhysicalKeyStateChanged?.Invoke(
+                    key,
+                    true,
+                    controlHeld,
+                    shiftHeld,
+                    imeCompositionActive,
+                    imeCandidateWindowActive);
+                _forwardedNonFunctionPhysicalKeys[key] = new ForwardedNonFunctionPhysicalKeyState(
+                    controlHeld,
+                    shiftHeld,
+                    imeCompositionActive,
+                    imeCandidateWindowActive);
+
+                bool suppressImeOwnedHotkeyForwarding = SkillMacroOwnerKeyHandler.ShouldSuppressConfiguredNonFunctionHotkeyForwarding(
+                    key,
+                    imeCompositionActive,
+                    imeCandidateWindowActive);
+                if (!hasHotkeySlotCallback
+                    || suppressImeOwnedHotkeyForwarding
+                    || !SkillMacroOwnerKeyHandler.TryResolveClientForwardedNonFunctionHotkeySlot(key, controlHeld, out int hotkeySlot))
+                {
+                    if (hasHotkeySlotCallback && suppressImeOwnedHotkeyForwarding)
+                    {
+                        _imeSuppressedNonFunctionHotkeyPhysicalKeys.Add(key);
+                    }
+                    continue;
+                }
+
+                _imeSuppressedNonFunctionHotkeyPhysicalKeys.Remove(key);
+                _forwardedNonFunctionHotkeySlotsByPhysicalKey[key] = hotkeySlot;
+                OnClientForwardedNonFunctionHotkeyStateChanged(hotkeySlot, true);
+            }
+
+            Keys[] releasedKeys = _previousKeyboardState.GetPressedKeys();
+            for (int i = 0; i < releasedKeys.Length; i++)
+            {
+                Keys key = releasedKeys[i];
+                if (!keyboardState.IsKeyUp(key))
+                {
+                    continue;
+                }
+
+                bool hasTrackedPhysicalKey = _forwardedNonFunctionPhysicalKeys.TryGetValue(
+                    key,
+                    out ForwardedNonFunctionPhysicalKeyState trackedPhysicalKeyState);
+                if (!hasTrackedPhysicalKey
+                    && !SkillMacroOwnerKeyHandler.ShouldForwardClientOwnedNonFunctionKeyUpToParent(
+                        key,
+                        imeCompositionActive,
+                        imeCandidateWindowActive))
+                {
+                    continue;
+                }
+
+                _forwardedNonFunctionPhysicalKeys.Remove(key);
+                if (hasPhysicalKeyCallback)
+                {
+                    OnClientForwardedNonFunctionPhysicalKeyStateChanged?.Invoke(
+                        key,
+                        false,
+                        hasTrackedPhysicalKey ? trackedPhysicalKeyState.ControlHeld : controlHeld,
+                        hasTrackedPhysicalKey ? trackedPhysicalKeyState.ShiftHeld : shiftHeld,
+                        hasTrackedPhysicalKey ? trackedPhysicalKeyState.ImeCompositionActive : imeCompositionActive,
+                        hasTrackedPhysicalKey ? trackedPhysicalKeyState.ImeCandidateWindowActive : imeCandidateWindowActive);
+                }
+
+                if (!hasHotkeySlotCallback)
+                {
+                    continue;
+                }
+
+                if (_imeSuppressedNonFunctionHotkeyPhysicalKeys.Remove(key))
+                {
+                    _forwardedNonFunctionHotkeySlotsByPhysicalKey.Remove(key);
+                    continue;
+                }
+
+                bool hasTrackedHotkeySlot = _forwardedNonFunctionHotkeySlotsByPhysicalKey.TryGetValue(key, out int hotkeySlot);
+                if (!hasTrackedHotkeySlot
+                    && SkillMacroOwnerKeyHandler.ShouldSuppressConfiguredNonFunctionHotkeyForwarding(
+                        key,
+                        imeCompositionActive,
+                        imeCandidateWindowActive))
+                {
+                    continue;
+                }
+
+                if (!hasTrackedHotkeySlot
+                    && !SkillMacroOwnerKeyHandler.TryResolveClientForwardedNonFunctionHotkeySlot(key, controlHeld, out hotkeySlot))
+                {
+                    continue;
+                }
+
+                _forwardedNonFunctionHotkeySlotsByPhysicalKey.Remove(key);
+                OnClientForwardedNonFunctionHotkeyStateChanged(hotkeySlot, false);
+            }
+        }
+
+        private void ReleaseActiveForwardedNonFunctionKeysTakenByIme(
+            KeyboardState keyboardState,
+            bool imeCompositionActive,
+            bool imeCandidateWindowActive)
+        {
+            if (_forwardedNonFunctionPhysicalKeys.Count == 0)
+            {
+                return;
+            }
+
+            KeyValuePair<Keys, ForwardedNonFunctionPhysicalKeyState>[] trackedKeys =
+                _forwardedNonFunctionPhysicalKeys.ToArray();
+            for (int i = 0; i < trackedKeys.Length; i++)
+            {
+                Keys key = trackedKeys[i].Key;
+                if (keyboardState.IsKeyUp(key)
+                    || !SkillMacroOwnerKeyHandler.ShouldReleaseActiveForwardedNonFunctionKeyForImeOwnership(
+                        key,
+                        imeCompositionActive,
+                        imeCandidateWindowActive))
+                {
+                    continue;
+                }
+
+                ForwardedNonFunctionPhysicalKeyState state = trackedKeys[i].Value;
+                _forwardedNonFunctionPhysicalKeys.Remove(key);
+                _forwardedNonFunctionHotkeySlotsByPhysicalKey.Remove(key);
+                _imeSuppressedNonFunctionHotkeyPhysicalKeys.Add(key);
+                OnClientForwardedNonFunctionPhysicalKeyStateChanged?.Invoke(
+                    key,
+                    false,
+                    state.ControlHeld,
+                    state.ShiftHeld,
+                    imeCompositionActive,
+                    imeCandidateWindowActive);
+            }
+        }
+
+        private void ReleaseForwardedOwnerKeys()
+        {
+            ReleaseForwardedFunctionKeys();
+            ReleaseForwardedNonFunctionHotkeys();
+            ReleaseForwardedNonFunctionPhysicalKeys();
+        }
+
+        private void ReleaseForwardedFunctionKeys()
+        {
+            if (_forwardedFunctionKeyIndices.Count == 0)
+            {
+                return;
+            }
+
+            if (OnClientForwardedFunctionKeyStateChanged == null)
+            {
+                _forwardedFunctionKeyIndices.Clear();
+                return;
+            }
+
+            int[] indices = _forwardedFunctionKeyIndices.ToArray();
+            _forwardedFunctionKeyIndices.Clear();
+            for (int i = 0; i < indices.Length; i++)
+            {
+                OnClientForwardedFunctionKeyStateChanged(indices[i], false);
+            }
+        }
+
+        private void ReleaseForwardedNonFunctionHotkeys()
+        {
+            if (_forwardedNonFunctionHotkeySlotsByPhysicalKey.Count == 0
+                && _imeSuppressedNonFunctionHotkeyPhysicalKeys.Count == 0)
+            {
+                return;
+            }
+
+            if (OnClientForwardedNonFunctionHotkeyStateChanged == null)
+            {
+                _forwardedNonFunctionHotkeySlotsByPhysicalKey.Clear();
+                _imeSuppressedNonFunctionHotkeyPhysicalKeys.Clear();
+                return;
+            }
+
+            int[] uniqueSlots = _forwardedNonFunctionHotkeySlotsByPhysicalKey.Values
+                .Distinct()
+                .ToArray();
+            _forwardedNonFunctionHotkeySlotsByPhysicalKey.Clear();
+            _imeSuppressedNonFunctionHotkeyPhysicalKeys.Clear();
+            for (int i = 0; i < uniqueSlots.Length; i++)
+            {
+                OnClientForwardedNonFunctionHotkeyStateChanged(uniqueSlots[i], false);
+            }
+        }
+
+        private void ReleaseForwardedNonFunctionPhysicalKeys()
+        {
+            if (_forwardedNonFunctionPhysicalKeys.Count == 0)
+            {
+                return;
+            }
+
+            if (OnClientForwardedNonFunctionPhysicalKeyStateChanged == null)
+            {
+                _forwardedNonFunctionPhysicalKeys.Clear();
+                return;
+            }
+
+            KeyValuePair<Keys, ForwardedNonFunctionPhysicalKeyState>[] physicalKeys = _forwardedNonFunctionPhysicalKeys.ToArray();
+            _forwardedNonFunctionPhysicalKeys.Clear();
+            for (int i = 0; i < physicalKeys.Length; i++)
+            {
+                ForwardedNonFunctionPhysicalKeyState state = physicalKeys[i].Value;
+                OnClientForwardedNonFunctionPhysicalKeyStateChanged(
+                    physicalKeys[i].Key,
+                    false,
+                    state.ControlHeld,
+                    state.ShiftHeld,
+                    state.ImeCompositionActive,
+                    state.ImeCandidateWindowActive);
+            }
+        }
+
+        private bool WasNameEditKeyPressedOrRepeated(KeyboardState keyboardState, Keys key, int tickCount)
+        {
+            if (!keyboardState.IsKeyDown(key))
+            {
+                if (_lastHeldNameEditKey == key)
+                {
+                    ResetNameEditKeyRepeatState();
+                }
+
+                return false;
+            }
+
+            if (_previousKeyboardState.IsKeyUp(key))
+            {
+                _lastHeldNameEditKey = key;
+                _nameEditKeyHoldStartTime = tickCount;
+                _lastNameEditKeyRepeatTime = tickCount;
+                return true;
+            }
+
+            if (_lastHeldNameEditKey == key
+                && KeyboardTextInputHelper.ShouldRepeatKeyUsingFixedCadence(
+                    key,
+                    keyboardState,
+                    _nameEditKeyHoldStartTime,
+                    _lastNameEditKeyRepeatTime,
+                    tickCount))
+            {
+                _lastNameEditKeyRepeatTime = tickCount;
+                return true;
+            }
+
+            return false;
+        }
+
+        private void ResetNameEditKeyRepeatState()
+        {
+            _lastHeldNameEditKey = Keys.None;
+            _nameEditKeyHoldStartTime = int.MinValue;
+            _lastNameEditKeyRepeatTime = int.MinValue;
+        }
+
+        private void HandleClipboardPaste()
+        {
+            try
+            {
+                if (!System.Windows.Forms.Clipboard.ContainsText())
+                {
+                    return;
+                }
+
+                string clipboardText = System.Windows.Forms.Clipboard.GetText();
+                if (string.IsNullOrEmpty(clipboardText))
+                {
+                    return;
+                }
+
+                string normalizedClipboardText = SanitizeCompositionText(
+                    clipboardText.Replace("\r", string.Empty).Replace("\n", string.Empty));
+                if (string.IsNullOrEmpty(normalizedClipboardText))
+                {
+                    return;
+                }
+
+                ClearCompositionText();
+                ClearOwnerNotice();
+                DeleteNameSelectionIfAny();
+                if (SkillMacroNameRules.TryInsertBestEffort(_editingMacroName, _editingCursorPosition, normalizedClipboardText, out string updatedText, out int insertedLength, out string error))
+                {
+                    _editingMacroName = updatedText;
+                    _editingCursorPosition = Math.Clamp(_editingCursorPosition + insertedLength, 0, _editingMacroName.Length);
+                    _validationMessage = string.Empty;
+                    _caretBlinkTick = Environment.TickCount;
+                }
+                else
+                {
+                    _validationMessage = error;
+                }
+            }
+            catch
+            {
+                _validationMessage = "Clipboard paste is not available right now.";
+            }
+        }
+
+        private void SetOwnerNotice(string message, Color color)
+        {
+            _ownerNoticeMessage = message ?? string.Empty;
+            _ownerNoticeColor = color;
+        }
+
+        private void ClearOwnerNotice()
+        {
+            _ownerNoticeMessage = string.Empty;
+            _ownerNoticeColor = Color.White;
+        }
+
+        private bool ShouldShowChangeNameTooltip()
+        {
+            if (_editingMacroIndex < 0
+                || _selectedMacroIndex < 0
+                || _btnOK == null
+                || !_btnOK.ButtonVisible
+                || !_btnOK.IsEnabled
+                || _dragMode != MacroDragMode.None
+                || !_lastMousePosition.HasValue)
+            {
+                return false;
+            }
+
+            return GetButtonBounds(_btnOK).Contains(_lastMousePosition.Value);
+        }
+
+        private Rectangle GetButtonBounds(UIObject button)
+        {
+            return new Rectangle(
+                Position.X + button.X,
+                Position.Y + button.Y,
+                Math.Max(1, button.CanvasSnapshotWidth),
+                Math.Max(1, button.CanvasSnapshotHeight));
+        }
+
+        private static string SanitizeCompositionText(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return string.Empty;
+            }
+
+            StringBuilder builder = new(text.Length);
+            foreach (char ch in text)
+            {
+                if (!char.IsControl(ch))
+                {
+                    builder.Append(ch);
+                }
+            }
+
+            return builder.ToString();
+        }
+
+        private string BuildDisplayedNameText()
+        {
+            string committedText = _editingMacroName ?? string.Empty;
+            if (string.IsNullOrEmpty(_compositionText))
+            {
+                return committedText;
+            }
+
+            int insertionIndex = Math.Clamp(_compositionInsertionIndex >= 0 ? _compositionInsertionIndex : _editingCursorPosition, 0, committedText.Length);
+            return committedText.Insert(insertionIndex, _compositionText);
+        }
+
+        private void DrawImeCandidateWindow(SpriteBatch sprite)
+        {
+            if (_font == null || !_candidateListState.HasCandidates)
+            {
+                return;
+            }
+
+            Rectangle candidateBounds = GetImeCandidateWindowBounds(sprite.GraphicsDevice.Viewport);
+            if (candidateBounds.Width <= 0 || candidateBounds.Height <= 0)
+            {
+                return;
+            }
+
+            sprite.Draw(_textPixelTexture, candidateBounds, new Color(33, 33, 41, 235));
+
+            Color borderColor = new(214, 214, 214, 220);
+            sprite.Draw(_textPixelTexture, new Rectangle(candidateBounds.X, candidateBounds.Y, candidateBounds.Width, 1), borderColor);
+            sprite.Draw(_textPixelTexture, new Rectangle(candidateBounds.X, candidateBounds.Bottom - 1, candidateBounds.Width, 1), borderColor);
+            sprite.Draw(_textPixelTexture, new Rectangle(candidateBounds.X, candidateBounds.Y, 1, candidateBounds.Height), borderColor);
+            sprite.Draw(_textPixelTexture, new Rectangle(candidateBounds.Right - 1, candidateBounds.Y, 1, candidateBounds.Height), borderColor);
+
+            int start = Math.Clamp(_candidateListState.PageStart, 0, _candidateListState.Candidates.Count);
+            int count = Math.Min(GetVisibleCandidateCount(), _candidateListState.Candidates.Count - start);
+            if (count <= 0)
+            {
+                return;
+            }
+
+            if (_candidateListState.Vertical)
+            {
+                int rowHeight = GetClientCandidateRowHeight();
+                int numberWidth = GetCandidateNumberWidth();
+                for (int i = 0; i < count; i++)
+                {
+                    int candidateIndex = start + i;
+                    string numberText = FormatCandidateNumber(i + 1);
+                    Rectangle rowBounds = new(candidateBounds.X + 2, candidateBounds.Y + 2 + (i * rowHeight), candidateBounds.Width - 4, rowHeight);
+                    bool selected = candidateIndex == _candidateListState.Selection;
+                    if (selected)
+                    {
+                        sprite.Draw(_textPixelTexture, rowBounds, new Color(89, 108, 147, 220));
+                    }
+
+                    DrawCandidateWindowText(sprite, numberText, new Vector2(rowBounds.X + 4, rowBounds.Y), selected ? Color.White : new Color(222, 222, 222), selected);
+                    DrawCandidateWindowText(
+                        sprite,
+                        _candidateListState.Candidates[candidateIndex] ?? string.Empty,
+                        new Vector2(rowBounds.X + 8 + numberWidth, rowBounds.Y),
+                        selected ? Color.White : new Color(240, 235, 200),
+                        selected);
+                }
+            }
+            else
+            {
+                int cellWidth = GetHorizontalCandidateCellWidth();
+                int textY = candidateBounds.Y + 3;
+                for (int i = 0; i < count; i++)
+                {
+                    int candidateIndex = start + i;
+                    int cellX = candidateBounds.X + 3 + (i * cellWidth);
+                    string numberText = FormatCandidateNumber(i + 1);
+                    int numberWidth = (int)Math.Ceiling(MeasureCandidateWindowText(numberText).X);
+                    Rectangle cellBounds = new(cellX - 1, candidateBounds.Y + 1, cellWidth, Math.Max(1, candidateBounds.Height - 2));
+                    bool selected = candidateIndex == _candidateListState.Selection;
+                    if (selected)
+                    {
+                        sprite.Draw(_textPixelTexture, cellBounds, new Color(89, 108, 147, 220));
+                    }
+
+                    DrawCandidateWindowText(sprite, numberText, new Vector2(cellX, textY), selected ? Color.White : new Color(222, 222, 222), selected);
+                    DrawCandidateWindowText(
+                        sprite,
+                        _candidateListState.Candidates[candidateIndex] ?? string.Empty,
+                        new Vector2(cellX + numberWidth + 3, textY),
+                        selected ? Color.White : new Color(240, 235, 200),
+                        selected);
+                }
+            }
+        }
+
+        private Rectangle GetImeCandidateWindowBounds(Viewport viewport)
+        {
+            if (ImeCandidateWindowRendering.ShouldPreferNativeWindow(_candidateListState, clientOwnedCandidateWindow: true))
+            {
+                return Rectangle.Empty;
+            }
+
+            int visibleCount = GetVisibleCandidateCount();
+            if (visibleCount <= 0)
+            {
+                return Rectangle.Empty;
+            }
+
+            Rectangle ownerBounds = GetNameFieldBounds();
+            if (ownerBounds.IsEmpty)
+            {
+                return Rectangle.Empty;
+            }
+
+            int start = Math.Clamp(_candidateListState.PageStart, 0, _candidateListState.Candidates.Count);
+            int count = Math.Min(visibleCount, _candidateListState.Candidates.Count - start);
+            int viewportWidth = Math.Max(1, Math.Min(viewport.Width, SkillMacroImeCandidateWindowLayout.ClientViewportWidth));
+            int viewportHeight = Math.Max(1, Math.Min(viewport.Height, SkillMacroImeCandidateWindowLayout.ClientViewportHeight));
+            int width;
+            int height;
+            if (_candidateListState.Vertical)
+            {
+                int widestEntryWidth = 0;
+                for (int i = 0; i < count; i++)
+                {
+                    int candidateIndex = start + i;
+                    string numberText = FormatCandidateNumber(i + 1);
+                    string candidateText = _candidateListState.Candidates[candidateIndex] ?? string.Empty;
+                    int entryWidth = (int)Math.Ceiling(
+                        MeasureCandidateWindowText(numberText).X
+                        + MeasureCandidateWindowText(candidateText).X)
+                        + 2;
+                    widestEntryWidth = Math.Max(widestEntryWidth, entryWidth);
+                }
+
+                SkillMacroImeCandidateWindowMetrics metrics = SkillMacroImeCandidateWindowLayout.MeasureVerticalClientOwnerExact(
+                    _font.LineSpacing,
+                    count,
+                    widestEntryWidth);
+                width = metrics.Width;
+                height = metrics.Height;
+            }
+            else
+            {
+                SkillMacroImeCandidateWindowMetrics metrics = SkillMacroImeCandidateWindowLayout.MeasureHorizontal(
+                    _font.LineSpacing,
+                    count);
+                width = metrics.Width;
+                height = metrics.Height;
+            }
+
+            width = Math.Max(1, width);
+            height = Math.Max(1, height);
+            Point origin = ResolveCandidateWindowOrigin(viewport, width, height);
+
+            return SkillMacroImeCandidateWindowLayout.ResolveClientOwnerBounds(
+                viewportWidth,
+                viewportHeight,
+                width,
+                height,
+                origin,
+                ownerBounds.Y - height - 1);
+        }
+
+        private Viewport GetActiveViewport()
+        {
+            if (_graphicsDevice != null)
+            {
+                return _graphicsDevice.Viewport;
+            }
+
+            return new Viewport(0, 0, SkillMacroImeCandidateWindowLayout.ClientViewportWidth, SkillMacroImeCandidateWindowLayout.ClientViewportHeight);
+        }
+
+        private bool IsPointInImeCandidateWindow(int mouseX, int mouseY)
+        {
+            Rectangle candidateBounds = GetImeCandidateWindowBounds(GetActiveViewport());
+            return !candidateBounds.IsEmpty && candidateBounds.Contains(mouseX, mouseY);
+        }
+
+        private int ResolveImeCandidateIndexFromPoint(int mouseX, int mouseY)
+        {
+            if (!_candidateListState.HasCandidates)
+            {
+                return -1;
+            }
+
+            int start = Math.Clamp(_candidateListState.PageStart, 0, _candidateListState.Candidates.Count);
+            int count = Math.Min(GetVisibleCandidateCount(), _candidateListState.Candidates.Count - start);
+            if (count <= 0)
+            {
+                return -1;
+            }
+
+            Rectangle candidateBounds = GetImeCandidateWindowBounds(GetActiveViewport());
+            int localIndex = SkillMacroImeCandidateWindowLayout.HitTestCandidate(
+                candidateBounds,
+                new Point(mouseX, mouseY),
+                _candidateListState.Vertical,
+                count,
+                GetClientCandidateRowHeight(),
+                GetHorizontalCandidateCellWidth());
+            return localIndex >= 0
+                ? start + localIndex
+                : -1;
+        }
+
+        private Point ResolveCandidateWindowOrigin(Viewport viewport, int width, int height)
+        {
+            if (TryResolveCandidateWindowOriginFromWindowForm(viewport, width, height, out Point windowFormOrigin))
+            {
+                return windowFormOrigin;
+            }
+
+            Rectangle bounds = GetNameFieldBounds();
+            bool useClauseAnchor = ShouldUseCompositionClauseAnchor();
+            string prefix = useClauseAnchor
+                ? ResolveCompositionAnchorPrefix()
+                : ResolveCandidateCaretPrefix();
+
+            float prefixWidth = prefix.Length > 0 ? _font.MeasureString(prefix).X : 0f;
+            int x = bounds.X + NAME_FIELD_TEXT_INSET_X + (int)Math.Round(prefixWidth);
+            if (useClauseAnchor)
+            {
+                x -= _font.LineSpacing + 4;
+            }
+
+            return new Point(x, bounds.Y + _font.LineSpacing + 1);
+        }
+
+        private bool TryResolveCandidateWindowOriginFromWindowForm(Viewport viewport, int width, int height, out Point origin)
+        {
+            int viewportWidth = Math.Max(1, Math.Min(viewport.Width, SkillMacroImeCandidateWindowLayout.ClientViewportWidth));
+            int viewportHeight = Math.Max(1, Math.Min(viewport.Height, SkillMacroImeCandidateWindowLayout.ClientViewportHeight));
+            _ = width;
+            return SkillMacroImeCandidateWindowLayout.TryResolveWindowFormOrigin(
+                _candidateListState?.WindowForm,
+                viewportWidth,
+                viewportHeight,
+                height,
+                out origin);
+        }
+
+        private string ResolveCompositionAnchorPrefix()
+        {
+            if (string.IsNullOrEmpty(_compositionText))
+            {
+                return ResolveCommittedInsertionPrefix();
+            }
+
+            int anchorIndex = ResolveCompositionAnchorIndex();
+            string committedPrefix = ResolveCommittedInsertionPrefix();
+            if (anchorIndex <= 0)
+            {
+                return committedPrefix;
+            }
+
+            return committedPrefix + _compositionText[..Math.Min(anchorIndex, _compositionText.Length)];
+        }
+
+        private int ResolveCompositionAnchorIndex()
+        {
+            if (string.IsNullOrEmpty(_compositionText))
+            {
+                return 0;
+            }
+
+            if (_compositionClauseOffsets.Count >= 2)
+            {
+                int cursor = Math.Clamp(_compositionCursorPosition, 0, _compositionText.Length);
+                for (int i = 0; i < _compositionClauseOffsets.Count - 1; i++)
+                {
+                    int start = Math.Clamp(_compositionClauseOffsets[i], 0, _compositionText.Length);
+                    int end = Math.Clamp(_compositionClauseOffsets[i + 1], start, _compositionText.Length);
+                    if (cursor >= start && cursor <= end)
+                    {
+                        return start;
+                    }
+                }
+            }
+
+            return _compositionCursorPosition >= 0
+                ? Math.Clamp(_compositionCursorPosition, 0, _compositionText.Length)
+                : _compositionText.Length;
+        }
+
+        private int GetVisibleCandidateCount()
+        {
+            if (!_candidateListState.HasCandidates)
+            {
+                return 0;
+            }
+
+            int pageStart = Math.Clamp(_candidateListState.PageStart, 0, _candidateListState.Candidates.Count);
+            int pageSize = _candidateListState.PageSize > 0 ? _candidateListState.PageSize : _candidateListState.Candidates.Count;
+            return Math.Max(0, Math.Min(pageSize, _candidateListState.Candidates.Count - pageStart));
+        }
+
+        private int GetCandidatePageSize()
+        {
+            if (!_candidateListState.HasCandidates)
+            {
+                return 0;
+            }
+
+            return Math.Max(1, _candidateListState.PageSize > 0 ? _candidateListState.PageSize : GetVisibleCandidateCount());
+        }
+
+        private int GetClientCandidateRowHeight()
+        {
+            return SkillMacroImeCandidateWindowLayout.MeasureVertical(_font.LineSpacing, 1, 0).RowHeight;
+        }
+
+        private int GetHorizontalCandidateCellWidth()
+        {
+            if (_font == null)
+            {
+                return SkillMacroImeCandidateWindowLayout.MeasureHorizontal(10, 1).CellWidth;
+            }
+
+            return SkillMacroImeCandidateWindowLayout.MeasureHorizontal(_font.LineSpacing, 1).CellWidth;
+        }
+
+        private int GetHorizontalCandidateWindowWidth()
+        {
+            int pageSize = GetCandidatePageSize();
+            if (pageSize <= 0)
+            {
+                return 64;
+            }
+
+            return SkillMacroImeCandidateWindowLayout.MeasureHorizontal(_font.LineSpacing, pageSize).Width;
+        }
+
+        private int GetCandidateNumberWidth()
+        {
+            int widestIndex = Math.Max(1, GetVisibleCandidateCount());
+            return (int)Math.Ceiling(MeasureCandidateWindowText(FormatCandidateNumber(widestIndex)).X);
+        }
+
+        private static string FormatCandidateNumber(int candidateNumber)
+        {
+            string format = MapleStoryStringPool.GetCompositeFormatOrFallback(
+                CandidateNumberFormatStringPoolId,
+                "{0}",
+                maxPlaceholderCount: 1,
+                out _);
+            return string.Format(CultureInfo.InvariantCulture, format, candidateNumber);
+        }
+
+        private Vector2 MeasureCandidateWindowText(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return Vector2.Zero;
+            }
+
+            ClientTextRasterizer rasterizer = EnsureCandidateWindowTextRasterizer(selected: false);
+            return rasterizer?.MeasureString(text) ?? _font?.MeasureString(text) ?? Vector2.Zero;
+        }
+
+        private void DrawCandidateWindowText(SpriteBatch sprite, string text, Vector2 position, Color color, bool selected)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return;
+            }
+
+            ClientTextRasterizer rasterizer = EnsureCandidateWindowTextRasterizer(selected);
+            if (rasterizer != null)
+            {
+                rasterizer.DrawString(sprite, text, position, color);
+                return;
+            }
+
+            if (_font != null)
+            {
+                sprite.DrawString(_font, text, position, color);
+            }
+        }
+
+        private ClientTextRasterizer EnsureCandidateWindowTextRasterizer(bool selected)
+        {
+            if (_graphicsDevice == null || _font == null)
+            {
+                return null;
+            }
+
+            float basePointSize = Math.Max(1f, _font.LineSpacing);
+            if (selected)
+            {
+                _candidateSelectedTextRasterizer ??= new ClientTextRasterizer(
+                    _graphicsDevice,
+                    basePointSize: basePointSize,
+                    fontStyle: System.Drawing.FontStyle.Bold);
+                return _candidateSelectedTextRasterizer;
+            }
+
+            _candidateTextRasterizer ??= new ClientTextRasterizer(
+                _graphicsDevice,
+                basePointSize: basePointSize,
+                fontStyle: System.Drawing.FontStyle.Regular);
+            return _candidateTextRasterizer;
+        }
+
+        private bool ShouldUseCompositionClauseAnchor()
+        {
+            return !string.IsNullOrEmpty(_compositionText)
+                && _compositionClauseOffsets.Count >= 2
+                && _compositionCursorPosition >= 0;
+        }
+
+        private string ResolveCandidateCaretPrefix()
+        {
+            string committedPrefix = ResolveCommittedInsertionPrefix();
+            if (string.IsNullOrEmpty(_compositionText))
+            {
+                return committedPrefix;
+            }
+
+            string compositionCaretPrefix = ResolveCompositionCaretPrefix();
+            return compositionCaretPrefix.Length == 0
+                ? committedPrefix
+                : committedPrefix + compositionCaretPrefix;
+        }
+
+        private string ResolveCommittedInsertionPrefix()
+        {
+            int insertionIndex = Math.Clamp(_compositionInsertionIndex >= 0 ? _compositionInsertionIndex : _editingCursorPosition, 0, _editingMacroName.Length);
+            return insertionIndex <= 0
+                ? string.Empty
+                : _editingMacroName[..insertionIndex];
+        }
+
+        private string ResolveCompositionCaretPrefix()
+        {
+            if (string.IsNullOrEmpty(_compositionText))
+            {
+                return string.Empty;
+            }
+
+            int caretIndex = _compositionCursorPosition >= 0
+                ? Math.Clamp(_compositionCursorPosition, 0, _compositionText.Length)
+                : _compositionText.Length;
+            return caretIndex <= 0
+                ? string.Empty
+                : _compositionText[..caretIndex];
+        }
+
+        private static IReadOnlyList<int> ClampClauseOffsets(IReadOnlyList<int> offsets, int maxLength)
+        {
+            if (offsets == null || offsets.Count == 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            List<int> clamped = new(offsets.Count);
+            foreach (int offset in offsets)
+            {
+                int safeOffset = Math.Clamp(offset, 0, maxLength);
+                if (clamped.Count == 0 || safeOffset >= clamped[^1])
+                {
+                    clamped.Add(safeOffset);
+                }
+            }
+
+            if (clamped.Count == 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            if (clamped[^1] != maxLength)
+            {
+                clamped.Add(maxLength);
+            }
+
+            return clamped;
+        }
+
+        private void UpdateImePresentationPlacement()
+        {
+            if (!CapturesKeyboardInput
+                || _font == null
+                || ResolveImeWindowHandle == null)
+            {
+                return;
+            }
+
+            IntPtr windowHandle = ResolveImeWindowHandle();
+            if (windowHandle == IntPtr.Zero)
+            {
+                return;
+            }
+
+            Rectangle nameFieldBounds = GetNameFieldBounds();
+            int compositionCaretWidth = MeasureImePlacementWidth(ResolveCandidateCaretPrefix());
+            bool useClauseAnchor = ShouldUseCompositionClauseAnchor();
+            int clauseAnchorWidth = useClauseAnchor
+                ? MeasureImePlacementWidth(ResolveCompositionAnchorPrefix())
+                : compositionCaretWidth;
+            int clauseWidth = useClauseAnchor
+                ? MeasureImePlacementWidth(ResolveActiveCompositionClauseText())
+                : 1;
+
+            SkillMacroImeWindowPlacement placement = SkillMacroImeWindowPlacementLayout.Resolve(
+                nameFieldBounds,
+                NAME_FIELD_TEXT_INSET_X,
+                _font.LineSpacing,
+                compositionCaretWidth,
+                useClauseAnchor,
+                clauseAnchorWidth,
+                clauseWidth);
+            placement = SkillMacroImeWindowPlacementLayout.PreserveNativeCandidateWindowPlacement(placement, _candidateListState);
+            if (WindowsImePresentationBridge.TryUpdatePlacement(windowHandle, placement, _candidateListState, out ImeCandidateListState refreshedCandidateState))
+            {
+                _candidateListState = refreshedCandidateState;
+            }
+        }
+
+        public override void RefreshImePresentationPlacement()
+        {
+            UpdateImePresentationPlacement();
+        }
+
+        protected override void ResetImePresentationPlacement()
+        {
+            if (ResolveImeWindowHandle == null)
+            {
+                return;
+            }
+
+            IntPtr windowHandle = ResolveImeWindowHandle();
+            if (windowHandle != IntPtr.Zero)
+            {
+                WindowsImePresentationBridge.TryResetPlacement(windowHandle);
+            }
+        }
+
+        private int MeasureImePlacementWidth(string text)
+        {
+            if (_font == null || string.IsNullOrEmpty(text))
+            {
+                return 0;
+            }
+
+            return (int)Math.Round(_font.MeasureString(text).X);
+        }
+
+        private string ResolveActiveCompositionClauseText()
+        {
+            if (string.IsNullOrEmpty(_compositionText))
+            {
+                return string.Empty;
+            }
+
+            if (_compositionClauseOffsets.Count >= 2)
+            {
+                int cursor = Math.Clamp(_compositionCursorPosition, 0, _compositionText.Length);
+                for (int i = 0; i < _compositionClauseOffsets.Count - 1; i++)
+                {
+                    int start = Math.Clamp(_compositionClauseOffsets[i], 0, _compositionText.Length);
+                    int end = Math.Clamp(_compositionClauseOffsets[i + 1], start, _compositionText.Length);
+                    if (cursor >= start && cursor <= end)
+                    {
+                        return _compositionText[start..end];
+                    }
+                }
+            }
+
+            return _compositionText;
+        }
+
+        private static IEnumerable<int> EnumerateCaretStops(string text)
+        {
+            string value = text ?? string.Empty;
+            yield return 0;
+            if (value.Length == 0)
+            {
+                yield break;
+            }
+
+            TextElementEnumerator enumerator = StringInfo.GetTextElementEnumerator(value);
+            while (enumerator.MoveNext())
+            {
+                yield return enumerator.ElementIndex + enumerator.GetTextElement().Length;
+            }
         }
         #endregion
     }
@@ -920,7 +3633,7 @@ namespace HaCreator.MapSimulator.UI
         /// <summary>
         /// Whether this macro is enabled
         /// </summary>
-        public bool IsEnabled => SkillIds != null && SkillIds.Length > 0 && SkillIds[0] != 0;
+        public bool IsEnabled => SkillCount > 0;
 
         /// <summary>
         /// Get the skill ID at a specific position (0-2)

@@ -1,0 +1,972 @@
+﻿using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.Fields;
+using HaCreator.MapSimulator.Interaction;
+using HaCreator.MapSimulator.Managers;
+using HaCreator.MapSimulator.UI;
+using Microsoft.Xna.Framework;
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
+
+namespace HaCreator.MapSimulator
+{
+    public partial class MapSimulator
+    {
+        private string _lastAuthoritativeMapTransferBootstrapSummary = "Authoritative map-transfer bootstrap idle.";
+
+        private sealed class PendingOfficialMapTransferRequest
+        {
+            public CharacterBuild Build { get; init; }
+            public MapTransferRuntimeRequest Request { get; init; }
+            public MapTransferRuntimeResponse PredictedResponse { get; init; }
+        }
+
+        private readonly MapTransferOfficialSessionBridgeManager _mapTransferOfficialSessionBridge;
+        private readonly List<PendingOfficialMapTransferRequest> _pendingOfficialMapTransferRequests = new();
+        private readonly Dictionary<MapTransferDestinationBook, MapTransferRuntimeRequest> _lastAuthoritativeRequestByBook = new();
+
+        private bool TryDispatchMapTransferRequest(
+            CharacterBuild build,
+            MapTransferRuntimeRequest request,
+            out MapTransferRuntimeResponse response,
+            out string dispatchStatus)
+        {
+            dispatchStatus = null;
+
+            if (!_mapTransferOfficialSessionBridge.HasConnectedSession)
+            {
+                response = _mapTransferRuntime.PreviewRequest(build, request);
+                CacheMapTransferAuthoritativeRequest(request);
+                response = _mapTransferRuntime.SubmitRequest(build, request);
+                return true;
+            }
+
+            MapTransferRuntimeRequest officialRequest = NormalizeMapTransferRequestForOfficialSession(
+                request,
+                _mapBoard?.MapInfo?.id ?? 0);
+            response = _mapTransferRuntime.PreviewRequest(build, officialRequest);
+            CacheMapTransferAuthoritativeRequest(officialRequest);
+
+            if (!ShouldForwardMapTransferRequestToOfficialSession(_mapTransferOfficialSessionBridge.HasConnectedSession, officialRequest, response))
+            {
+                return false;
+            }
+
+            if (!_mapTransferOfficialSessionBridge.TrySendRequest(officialRequest, out dispatchStatus))
+            {
+                response = new MapTransferRuntimeResponse
+                {
+                    Applied = false,
+                    FailureMessage = dispatchStatus,
+                    FocusMapId = response.FocusMapId,
+                    FocusSlotIndex = response.FocusSlotIndex
+                };
+                return false;
+            }
+
+            _pendingOfficialMapTransferRequests.Add(new PendingOfficialMapTransferRequest
+            {
+                Build = build?.Clone(),
+                Request = officialRequest,
+                PredictedResponse = response
+            });
+            response = new MapTransferRuntimeResponse
+            {
+                Applied = false,
+                FocusMapId = officialRequest.MapId,
+                FocusSlotIndex = officialRequest.SlotIndex
+            };
+            return true;
+        }
+
+        internal static MapTransferRuntimeRequest NormalizeMapTransferRequestForOfficialSession(
+            MapTransferRuntimeRequest request,
+            int activeFieldMapId)
+        {
+            if (request == null)
+            {
+                return null;
+            }
+
+            if (request.Type != MapTransferRuntimeRequestType.Register)
+            {
+                return CloneMapTransferRuntimeRequest(request);
+            }
+
+            int resolvedMapId = activeFieldMapId > 0
+                ? activeFieldMapId
+                : request.MapId;
+            return new MapTransferRuntimeRequest
+            {
+                Type = request.Type,
+                Book = request.Book,
+                MapId = resolvedMapId,
+                SlotIndex = request.SlotIndex
+            };
+        }
+
+        internal static bool ShouldForwardMapTransferRequestToOfficialSession(
+            bool hasConnectedSession,
+            MapTransferRuntimeRequest request,
+            MapTransferRuntimeResponse previewResponse)
+        {
+            _ = previewResponse;
+            if (!hasConnectedSession || request == null || request.MapId <= 0)
+            {
+                return false;
+            }
+
+            return request.Type == MapTransferRuntimeRequestType.Register ||
+                   request.Type == MapTransferRuntimeRequestType.Delete;
+        }
+
+        private void DrainMapTransferOfficialSessionBridge()
+        {
+            while (_mapTransferOfficialSessionBridge.TryDequeue(out MapTransferPacketInboxMessage message))
+            {
+                if (!_mapTransferRuntime.TryPreviewMapTransferResultPayload(message.Payload, out MapTransferRuntimeResponse previewResponse))
+                {
+                    _mapTransferOfficialSessionBridge.RecordDispatchResult(message.Source, success: false, "map transfer result payload could not be decoded");
+                    continue;
+                }
+
+                int pendingRequestIndex = MapTransferOfficialSessionResultResolver.ResolvePendingRequestIndex(
+                    _pendingOfficialMapTransferRequests.ConvertAll(pending => pending?.Request),
+                    previewResponse);
+                PendingOfficialMapTransferRequest pendingRequest = pendingRequestIndex >= 0 &&
+                                                                  pendingRequestIndex < _pendingOfficialMapTransferRequests.Count
+                    ? _pendingOfficialMapTransferRequests[pendingRequestIndex]
+                    : null;
+                if (pendingRequestIndex >= 0)
+                {
+                    _pendingOfficialMapTransferRequests.RemoveAt(pendingRequestIndex);
+                }
+
+                CharacterBuild targetBuild = pendingRequest?.Build ?? GetActiveMapTransferCharacterBuild();
+                MapTransferRuntimeRequest request = pendingRequest?.Request;
+                MapTransferRuntimeResponse predictedResponse = pendingRequest?.PredictedResponse;
+                if (request != null)
+                {
+                    _mapTransferOfficialSessionBridge.DropObservedRequest(request);
+                }
+
+                if (request == null &&
+                    _mapTransferOfficialSessionBridge.TryResolveObservedRequest(previewResponse, out MapTransferRuntimeRequest observedRequest))
+                {
+                    request = NormalizeObservedOfficialMapTransferRequest(observedRequest);
+                    if (request != null)
+                    {
+                        CacheMapTransferAuthoritativeRequest(request);
+                        predictedResponse = _mapTransferRuntime.PreviewRequest(targetBuild, request);
+                    }
+                }
+
+                MapTransferDestinationBook responseBook = previewResponse.CanTransferContinent
+                    ? MapTransferDestinationBook.Continent
+                    : MapTransferDestinationBook.Regular;
+                IReadOnlyList<int> preApplyFieldList = _mapTransferRuntime.SnapshotFieldList(targetBuild, responseBook);
+                bool applied = _mapTransferRuntime.ApplyMapTransferResultPayload(targetBuild, message.Payload, out MapTransferRuntimeResponse response);
+                if (!applied)
+                {
+                    _mapTransferOfficialSessionBridge.RecordDispatchResult(message.Source, success: false, "map transfer result payload could not be decoded");
+                    continue;
+                }
+
+                if (request == null)
+                {
+                    request = MapTransferOfficialSessionResultResolver.InferRequestFromAuthoritativeDelta(response, preApplyFieldList);
+                    request ??= InferRequestFromAuthoritativeContext(response, responseBook, preApplyFieldList);
+                }
+                else
+                {
+                    request = MapTransferOfficialSessionResultResolver.CompleteRequestFromAuthoritativeDelta(
+                        request,
+                        response,
+                        preApplyFieldList);
+                }
+
+                response = MapTransferOfficialSessionResultResolver.Resolve(
+                    predictedResponse,
+                    response,
+                    request);
+                if (response.Applied)
+                {
+                    if (request?.Type == MapTransferRuntimeRequestType.Register)
+                    {
+                        if (_mapTransferManualDestination?.MapId == request.MapId)
+                        {
+                            _mapTransferManualDestination = null;
+                        }
+
+                        _mapTransferEditDestination = null;
+                    }
+                    else if (request?.Type == MapTransferRuntimeRequestType.Delete)
+                    {
+                        if (_mapTransferEditDestination?.SavedSlotIndex == request.SlotIndex)
+                        {
+                            _mapTransferEditDestination = null;
+                        }
+
+                        if (_mapTransferManualDestination?.MapId == request.MapId)
+                        {
+                            _mapTransferManualDestination = null;
+                        }
+                    }
+                }
+
+                RefreshMapTransferWindow();
+                if (request?.Type == MapTransferRuntimeRequestType.Register &&
+                    request.MapId > 0 &&
+                    uiWindowManager?.GetWindow(MapSimulatorWindowNames.MapTransfer) is MapTransferUI mapTransferWindow)
+                {
+                    mapTransferWindow.SetSelectedMapId(request.MapId);
+                }
+
+                if (!response.Applied && !string.IsNullOrWhiteSpace(response.FailureMessage))
+                {
+                    _chat.AddMessage(response.FailureMessage, new Color(255, 228, 151), Environment.TickCount);
+                }
+
+                string detail = response.Applied
+                    ? $"map transfer result {response.PacketResultCode}"
+                    : response.FailureMessage ?? $"map transfer result {response.PacketResultCode}";
+                _mapTransferOfficialSessionBridge.RecordDispatchResult(message.Source, success: true, detail);
+            }
+        }
+
+        private MapTransferRuntimeRequest InferRequestFromAuthoritativeContext(
+            MapTransferRuntimeResponse authoritativeResponse,
+            MapTransferDestinationBook responseBook,
+            IReadOnlyList<int> preApplyFieldList)
+        {
+            MapTransferRuntimeRequestType? requestType = MapTransferOfficialSessionResultResolver.InferRequestType(authoritativeResponse);
+            if (!requestType.HasValue)
+            {
+                return null;
+            }
+
+            MapTransferRuntimeRequest cachedRequest = GetCachedMapTransferAuthoritativeRequest(responseBook, requestType.Value);
+            if (cachedRequest != null)
+            {
+                if (cachedRequest.Type == MapTransferRuntimeRequestType.Register &&
+                    cachedRequest.MapId > 0)
+                {
+                    return CloneMapTransferRuntimeRequest(cachedRequest);
+                }
+
+                if (cachedRequest.Type == MapTransferRuntimeRequestType.Delete)
+                {
+                    int cachedDeleteMapId = cachedRequest.MapId;
+                    if (cachedDeleteMapId <= 0 &&
+                        cachedRequest.SlotIndex >= 0 &&
+                        preApplyFieldList != null &&
+                        cachedRequest.SlotIndex < preApplyFieldList.Count)
+                    {
+                        cachedDeleteMapId = preApplyFieldList[cachedRequest.SlotIndex];
+                    }
+
+                    if (cachedDeleteMapId > 0)
+                    {
+                        return new MapTransferRuntimeRequest
+                        {
+                            Type = MapTransferRuntimeRequestType.Delete,
+                            Book = responseBook,
+                            MapId = cachedDeleteMapId,
+                            SlotIndex = cachedRequest.SlotIndex
+                        };
+                    }
+                }
+            }
+
+            if (requestType.Value == MapTransferRuntimeRequestType.Register)
+            {
+                int mapId = _mapTransferManualDestination?.MapId ?? (_mapBoard?.MapInfo?.id ?? 0);
+                if (mapId <= 0)
+                {
+                    return null;
+                }
+
+                int slotIndex = _mapTransferEditDestination?.IsSavedSlot == true
+                    ? _mapTransferEditDestination.SavedSlotIndex
+                    : -1;
+                return new MapTransferRuntimeRequest
+                {
+                    Type = MapTransferRuntimeRequestType.Register,
+                    Book = responseBook,
+                    MapId = mapId,
+                    SlotIndex = slotIndex
+                };
+            }
+
+            if (requestType.Value != MapTransferRuntimeRequestType.Delete)
+            {
+                return null;
+            }
+
+            int deleteSlotIndex = _mapTransferEditDestination?.IsSavedSlot == true
+                ? _mapTransferEditDestination.SavedSlotIndex
+                : -1;
+            int deleteMapId = 0;
+            if (deleteSlotIndex >= 0 && preApplyFieldList != null && deleteSlotIndex < preApplyFieldList.Count)
+            {
+                deleteMapId = preApplyFieldList[deleteSlotIndex];
+            }
+
+            if (deleteMapId <= 0)
+            {
+                deleteMapId = _mapTransferEditDestination?.MapId ?? 0;
+            }
+
+            if (deleteMapId <= 0 && deleteSlotIndex < 0)
+            {
+                return null;
+            }
+
+            return new MapTransferRuntimeRequest
+            {
+                Type = MapTransferRuntimeRequestType.Delete,
+                Book = responseBook,
+                MapId = deleteMapId,
+                SlotIndex = deleteSlotIndex
+            };
+        }
+
+        private void UpdatePacketOwnedMapTransferBootstrapFromSetField(PacketSetFieldPacket packet)
+        {
+            if (!packet.HasCharacterData)
+            {
+                _lastAuthoritativeMapTransferBootstrapSummary = "Skipped map-transfer bootstrap because the latest SetField branch did not carry CharacterData.";
+                return;
+            }
+
+            if ((packet.CharacterDataFlags & MapTransferAuthoritativeBootstrapDecoder.CharacterDataMapTransferFlag) == 0)
+            {
+                _lastAuthoritativeMapTransferBootstrapSummary =
+                    $"Skipped map-transfer bootstrap because CharacterData dbcharFlag 0x{packet.CharacterDataFlags.ToString("X", CultureInfo.InvariantCulture)} did not include the client-owned 0x1000 map-transfer arrays.";
+                return;
+            }
+
+            CharacterBuild build = GetActiveMapTransferCharacterBuild();
+            if (build == null)
+            {
+                _lastAuthoritativeMapTransferBootstrapSummary = "Skipped map-transfer bootstrap because no active player or selected login-roster character is available.";
+                return;
+            }
+
+            PacketCharacterDataSnapshot snapshot = packet.CharacterDataSnapshot;
+            if (snapshot?.RegularMapTransferFields?.Count == MapTransferRuntimeManager.RegularCapacity &&
+                snapshot.ContinentMapTransferFields?.Count == MapTransferRuntimeManager.ContinentCapacity)
+            {
+                int[] regularSnapshotFields = snapshot.RegularMapTransferFields.ToArray();
+                int[] continentSnapshotFields = snapshot.ContinentMapTransferFields.ToArray();
+                _mapTransferRuntime.ApplyAuthoritativeBootstrap(build, regularSnapshotFields, continentSnapshotFields);
+                RefreshMapTransferWindow();
+                string snapshotSetFieldTailSuffix = FormatDirectSnapshotSetFieldTailSuffix(
+                    packet.TrailingPayload,
+                    packet.ServerFileTime);
+                _lastAuthoritativeMapTransferBootstrapSummary =
+                    $"Hydrated authoritative map-transfer books for {build.Name ?? "Character"} directly from the decoded CharacterData dbcharFlag 0x{packet.CharacterDataFlags.ToString("X", CultureInfo.InvariantCulture)} stage-transition snapshot{snapshotSetFieldTailSuffix}.";
+                return;
+            }
+
+            byte[] trailingPayload = packet.TrailingPayload ?? Array.Empty<byte>();
+            if (!MapTransferAuthoritativeBootstrapDecoder.TryFindBootstrapBooks(
+                    trailingPayload,
+                    packet.CharacterDataFlags,
+                    (short)build.Job,
+                    IsPlausibleAuthoritativeMapTransferMapId,
+                    out int[] regularFields,
+                    out int[] continentFields,
+                    out int matchedOffset,
+                    out bool ignoredTrailingLogoutGiftConfig,
+                    out bool matchedExactTailBoundary,
+                    out bool matchedKnownLeadingCharacterDataTail,
+                    out ulong matchedKnownLeadingSectionFlags,
+                    out int matchedOpaquePreMapTransferByteCount,
+                    out bool matchedKnownCharacterDataTail))
+            {
+                _lastAuthoritativeMapTransferBootstrapSummary =
+                    $"CharacterData dbcharFlag 0x{packet.CharacterDataFlags.ToString("X", CultureInfo.InvariantCulture)} exposed the client-owned map-transfer branch, but no authoritative 5+10 slot array could be recovered from the remaining {trailingPayload.Length.ToString(CultureInfo.InvariantCulture)} byte payload tail.";
+                return;
+            }
+
+            _mapTransferRuntime.ApplyAuthoritativeBootstrap(build, regularFields, continentFields);
+            RefreshMapTransferWindow();
+            string logoutGiftSuffix = ignoredTrailingLogoutGiftConfig
+                ? " after preserving the client 16-byte logout-gift cache (`CWvsContext::m_bPredictQuit` plus three commodity serial numbers) that follows CharacterData::Decode in CStage::OnSetField"
+                : string.Empty;
+            string tailBoundarySuffix = matchedExactTailBoundary
+                ? " using the exact payload-tail boundary the client keeps after CharacterData::Decode"
+                : string.Empty;
+            string knownLeadingSuffix = matchedKnownLeadingCharacterDataTail
+                ? FormatKnownLeadingCharacterDataTailSuffix(matchedKnownLeadingSectionFlags, matchedOpaquePreMapTransferByteCount)
+                : string.Empty;
+            string knownTailSuffix = matchedKnownCharacterDataTail
+                ? " matched against a known CharacterData tail layout"
+                : string.Empty;
+            _lastAuthoritativeMapTransferBootstrapSummary =
+                $"Hydrated authoritative map-transfer books for {build.Name ?? "Character"} from CharacterData dbcharFlag 0x{packet.CharacterDataFlags.ToString("X", CultureInfo.InvariantCulture)} at payload offset {matchedOffset.ToString(CultureInfo.InvariantCulture)}{logoutGiftSuffix}{tailBoundarySuffix}{knownLeadingSuffix}{knownTailSuffix}.";
+        }
+
+        internal static string FormatDirectSnapshotSetFieldTailSuffix(byte[] trailingPayload, long serverFileTime)
+        {
+            bool hasLogoutGiftCache = (trailingPayload?.Length ?? 0) == PacketStageTransitionRuntime.LogoutGiftConfigByteLength;
+            bool hasServerFileTime = serverFileTime > 0 && serverFileTime != long.MaxValue;
+            if (hasServerFileTime)
+            {
+                try
+                {
+                    _ = DateTime.FromFileTimeUtc(serverFileTime);
+                }
+                catch (ArgumentOutOfRangeException)
+                {
+                    hasServerFileTime = false;
+                }
+            }
+
+            if (hasLogoutGiftCache && hasServerFileTime)
+            {
+                return " while preserving the client 16-byte logout-gift cache (`CWvsContext::m_bPredictQuit` plus three commodity serial numbers) and trailing SetField server FILETIME that follow CharacterData::Decode in CStage::OnSetField";
+            }
+
+            if (hasLogoutGiftCache)
+            {
+                return " while preserving the client 16-byte logout-gift cache (`CWvsContext::m_bPredictQuit` plus three commodity serial numbers) that follows CharacterData::Decode in CStage::OnSetField";
+            }
+
+            return hasServerFileTime
+                ? " while preserving the trailing SetField server FILETIME that follows CharacterData::Decode in CStage::OnSetField"
+                : string.Empty;
+        }
+
+        private static string FormatKnownLeadingCharacterDataTailSuffix(ulong matchedSectionFlags, int opaquePreMapTransferByteCount)
+        {
+            List<string> sections = new();
+            if ((matchedSectionFlags & 0x2UL) != 0)
+            {
+                sections.Add("meso");
+            }
+
+            if ((matchedSectionFlags & 0x80UL) != 0)
+            {
+                sections.Add("inventory slot limits");
+            }
+
+            if ((matchedSectionFlags & 0x100000UL) != 0)
+            {
+                sections.Add("the pre-inventory two-int header");
+            }
+
+            if ((matchedSectionFlags & 0x4UL) != 0)
+            {
+                sections.Add("equip inventory");
+            }
+
+            if ((matchedSectionFlags & 0x8UL) != 0)
+            {
+                sections.Add("use inventory");
+            }
+
+            if ((matchedSectionFlags & 0x10UL) != 0)
+            {
+                sections.Add("setup inventory");
+            }
+
+            if ((matchedSectionFlags & 0x20UL) != 0)
+            {
+                sections.Add("etc inventory");
+            }
+
+            if ((matchedSectionFlags & 0x40UL) != 0)
+            {
+                sections.Add("cash inventory");
+            }
+
+            if ((matchedSectionFlags & 0x100UL) != 0)
+            {
+                sections.Add("skill records");
+            }
+
+            if ((matchedSectionFlags & 0x200UL) != 0)
+            {
+                sections.Add("skill expirations");
+            }
+
+            if ((matchedSectionFlags & 0x4000UL) != 0)
+            {
+                sections.Add("skill cooltimes");
+            }
+
+            if ((matchedSectionFlags & 0x8000UL) != 0)
+            {
+                string opaqueSectionText = opaquePreMapTransferByteCount > 0
+                    ? $"the preserved opaque 0x8000 span ({opaquePreMapTransferByteCount.ToString(CultureInfo.InvariantCulture)} byte(s))"
+                    : "the 0x8000 lead-in section";
+                sections.Add(opaqueSectionText);
+            }
+
+            if ((matchedSectionFlags & 0x10000UL) != 0)
+            {
+                sections.Add("quest strings");
+            }
+
+            if ((matchedSectionFlags & 0x20000UL) != 0)
+            {
+                sections.Add("short filetimes");
+            }
+
+            if ((matchedSectionFlags & 0x400UL) != 0)
+            {
+                sections.Add("mini-game records");
+            }
+
+            if ((matchedSectionFlags & 0x800UL) != 0)
+            {
+                sections.Add("relationship records");
+            }
+
+            if (sections.Count == 0)
+            {
+                return " after consuming a known CharacterData lead-in immediately before adwMapTransfer";
+            }
+
+            if (sections.Count == 1)
+            {
+                return $" after consuming {sections[0]} immediately before adwMapTransfer";
+            }
+
+            return $" after consuming {string.Join(", ", sections.Take(sections.Count - 1))}, and {sections[^1]} immediately before adwMapTransfer";
+        }
+
+        private bool IsPlausibleAuthoritativeMapTransferMapId(int mapId)
+        {
+            return mapId > 0 && ResolveMapTransferDestinationMapInfo(mapId) != null;
+        }
+
+        private MapTransferRuntimeRequest NormalizeObservedOfficialMapTransferRequest(MapTransferRuntimeRequest request)
+        {
+            if (request == null)
+            {
+                return null;
+            }
+
+            int resolvedMapId = request.MapId;
+            if (request.Type == MapTransferRuntimeRequestType.Register && resolvedMapId <= 0)
+            {
+                resolvedMapId = _mapBoard?.MapInfo?.id ?? 0;
+            }
+
+            return new MapTransferRuntimeRequest
+            {
+                Type = request.Type,
+                Book = request.Book,
+                MapId = resolvedMapId,
+                SlotIndex = request.SlotIndex
+            };
+        }
+
+        private void CacheMapTransferAuthoritativeRequest(MapTransferRuntimeRequest request)
+        {
+            if (request == null)
+            {
+                return;
+            }
+
+            _lastAuthoritativeRequestByBook[request.Book] = CloneMapTransferRuntimeRequest(request);
+        }
+
+        private MapTransferRuntimeRequest GetCachedMapTransferAuthoritativeRequest(
+            MapTransferDestinationBook book,
+            MapTransferRuntimeRequestType expectedType)
+        {
+            if (!_lastAuthoritativeRequestByBook.TryGetValue(book, out MapTransferRuntimeRequest request) ||
+                request == null ||
+                request.Type != expectedType)
+            {
+                return null;
+            }
+
+            return CloneMapTransferRuntimeRequest(request);
+        }
+
+        private void ClearMapTransferAuthoritativeRequestState()
+        {
+            _pendingOfficialMapTransferRequests.Clear();
+            _lastAuthoritativeRequestByBook.Clear();
+        }
+
+        private static MapTransferRuntimeRequest CloneMapTransferRuntimeRequest(MapTransferRuntimeRequest request)
+        {
+            if (request == null)
+            {
+                return null;
+            }
+
+            return new MapTransferRuntimeRequest
+            {
+                Type = request.Type,
+                Book = request.Book,
+                MapId = request.MapId,
+                SlotIndex = request.SlotIndex
+            };
+        }
+
+        private MapTransferRuntimePacketResultCode? ResolveMapTransferRegisterRuntimeRestrictionResultCode(MapTransferRuntimeRequest request)
+        {
+            if (request?.Type != MapTransferRuntimeRequestType.Register || request.MapId <= 0)
+            {
+                return null;
+            }
+
+            return FieldInteractionRestrictionEvaluator.GetMapTransferRegistrationResultCode(
+                request.MapId,
+                ResolveMapTransferDestinationMapInfo(request.MapId),
+                BuildFieldEntryRestrictionContext());
+        }
+
+        private string DescribeMapTransferOfficialSessionBridgeStatus()
+        {
+            CharacterBuild build = GetActiveMapTransferCharacterBuild();
+            string buildLabel = build?.Id > 0
+                ? $"{build.Name ?? "Character"} ({build.Id})"
+                : build?.Name ?? "session character";
+            int regularCount = _mapTransferRuntime.GetDestinations(build, MapTransferDestinationBook.Regular).Count;
+            int continentCount = _mapTransferRuntime.GetDestinations(build, MapTransferDestinationBook.Continent).Count;
+            string enabledText = _mapTransferOfficialSessionBridgeEnabled ? "enabled" : "disabled";
+            string modeText = _mapTransferOfficialSessionBridgeUseDiscovery ? "auto-discovery" : "direct proxy";
+            string configuredTarget = _mapTransferOfficialSessionBridgeUseDiscovery
+                ? _mapTransferOfficialSessionBridgeConfiguredLocalPort.HasValue
+                    ? $"discover remote port {_mapTransferOfficialSessionBridgeConfiguredRemotePort} with local port {_mapTransferOfficialSessionBridgeConfiguredLocalPort.Value}"
+                    : $"discover remote port {_mapTransferOfficialSessionBridgeConfiguredRemotePort}"
+                : $"{_mapTransferOfficialSessionBridgeConfiguredRemoteHost}:{_mapTransferOfficialSessionBridgeConfiguredRemotePort}";
+            string processText = string.IsNullOrWhiteSpace(_mapTransferOfficialSessionBridgeConfiguredProcessSelector)
+                ? string.Empty
+                : $" for {_mapTransferOfficialSessionBridgeConfiguredProcessSelector}";
+            return $"Map transfer session bridge {enabledText}, {modeText}, target {configuredTarget}{processText}. {_mapTransferOfficialSessionBridge.DescribeStatus()} Pending requests={_pendingOfficialMapTransferRequests.Count}; owner={buildLabel}; saved regular={regularCount}/{MapTransferRuntimeManager.RegularCapacity}; continent={continentCount}/{MapTransferRuntimeManager.ContinentCapacity}.";
+        }
+
+        private void EnsureMapTransferOfficialSessionBridgeState(bool shouldRun)
+        {
+            if (!shouldRun || !_mapTransferOfficialSessionBridgeEnabled)
+            {
+                if (_mapTransferOfficialSessionBridge.IsRunning)
+                {
+                    _mapTransferOfficialSessionBridge.Stop();
+                    ClearMapTransferAuthoritativeRequestState();
+                }
+
+                return;
+            }
+
+            if (_mapTransferOfficialSessionBridgeConfiguredListenPort <= 0 ||
+                _mapTransferOfficialSessionBridgeConfiguredListenPort > ushort.MaxValue)
+            {
+                if (_mapTransferOfficialSessionBridge.IsRunning)
+                {
+                    _mapTransferOfficialSessionBridge.Stop();
+                }
+
+                _mapTransferOfficialSessionBridgeEnabled = false;
+                _mapTransferOfficialSessionBridgeConfiguredListenPort = MapTransferOfficialSessionBridgeManager.DefaultListenPort;
+                ClearMapTransferAuthoritativeRequestState();
+                return;
+            }
+
+            if (_mapTransferOfficialSessionBridgeUseDiscovery)
+            {
+                if (_mapTransferOfficialSessionBridgeConfiguredRemotePort <= 0 ||
+                    _mapTransferOfficialSessionBridgeConfiguredRemotePort > ushort.MaxValue)
+                {
+                    if (_mapTransferOfficialSessionBridge.IsRunning)
+                    {
+                        _mapTransferOfficialSessionBridge.Stop();
+                    }
+
+                    ClearMapTransferAuthoritativeRequestState();
+                    return;
+                }
+
+                _mapTransferOfficialSessionBridge.TryStartFromDiscovery(
+                    _mapTransferOfficialSessionBridgeConfiguredListenPort,
+                    _mapTransferOfficialSessionBridgeConfiguredRemotePort,
+                    _mapTransferOfficialSessionBridgeConfiguredProcessSelector,
+                    _mapTransferOfficialSessionBridgeConfiguredLocalPort,
+                    out _);
+                return;
+            }
+
+            if (_mapTransferOfficialSessionBridgeConfiguredRemotePort <= 0 ||
+                _mapTransferOfficialSessionBridgeConfiguredRemotePort > ushort.MaxValue ||
+                string.IsNullOrWhiteSpace(_mapTransferOfficialSessionBridgeConfiguredRemoteHost))
+            {
+                if (_mapTransferOfficialSessionBridge.IsRunning)
+                {
+                    _mapTransferOfficialSessionBridge.Stop();
+                }
+
+                ClearMapTransferAuthoritativeRequestState();
+                return;
+            }
+
+            _mapTransferOfficialSessionBridge.TryStart(
+                _mapTransferOfficialSessionBridgeConfiguredListenPort,
+                _mapTransferOfficialSessionBridgeConfiguredRemoteHost,
+                _mapTransferOfficialSessionBridgeConfiguredRemotePort,
+                out _);
+        }
+
+        private void RefreshMapTransferOfficialSessionBridgeDiscovery(int currentTickCount)
+        {
+            if (!_mapTransferOfficialSessionBridgeEnabled ||
+                !_mapTransferOfficialSessionBridgeUseDiscovery ||
+                _mapTransferOfficialSessionBridgeConfiguredRemotePort <= 0 ||
+                _mapTransferOfficialSessionBridgeConfiguredRemotePort > ushort.MaxValue ||
+                _mapTransferOfficialSessionBridge.HasConnectedSession ||
+                currentTickCount < _nextMapTransferOfficialSessionBridgeDiscoveryRefreshAt)
+            {
+                return;
+            }
+
+            _nextMapTransferOfficialSessionBridgeDiscoveryRefreshAt = currentTickCount + MapTransferOfficialSessionBridgeDiscoveryRefreshIntervalMs;
+            _mapTransferOfficialSessionBridge.TryStartFromDiscovery(
+                _mapTransferOfficialSessionBridgeConfiguredListenPort,
+                _mapTransferOfficialSessionBridgeConfiguredRemotePort,
+                _mapTransferOfficialSessionBridgeConfiguredProcessSelector,
+                _mapTransferOfficialSessionBridgeConfiguredLocalPort,
+                out _);
+        }
+
+        private ChatCommandHandler.CommandResult HandleMapTransferCommand(string[] args)
+        {
+            if (args == null || args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
+            {
+                return ChatCommandHandler.CommandResult.Info(DescribeMapTransferOfficialSessionBridgeStatus());
+            }
+
+            if (string.Equals(args[0], "session", StringComparison.OrdinalIgnoreCase))
+            {
+                return HandleMapTransferSessionCommand(args.Skip(1).ToArray());
+            }
+
+            if (string.Equals(args[0], "packet", StringComparison.OrdinalIgnoreCase))
+            {
+                return HandleMapTransferPacketCommand(args.Skip(1).ToArray());
+            }
+
+            return ChatCommandHandler.CommandResult.Error("Usage: /maptransfer [status|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|packet [request <rawOpcode114Hex>|clientraw <opcodeFramedHex>|clientrawseq <opcodeFramedHex1;opcodeFramedHex2;...>|result <resultCode> <regular|continent> [mapId1 mapId2 ...]]]");
+        }
+
+        private ChatCommandHandler.CommandResult HandleMapTransferSessionCommand(string[] args)
+        {
+            if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
+            {
+                return ChatCommandHandler.CommandResult.Info(DescribeMapTransferOfficialSessionBridgeStatus());
+            }
+
+            if (string.Equals(args[0], "discover", StringComparison.OrdinalIgnoreCase))
+            {
+                if (args.Length < 2 || !int.TryParse(args[1], out int remotePort) || remotePort <= 0)
+                {
+                    return ChatCommandHandler.CommandResult.Error("Usage: /maptransfer session discover <remotePort> [processName|pid] [localPort]");
+                }
+
+                string processSelector = args.Length >= 3 ? args[2] : null;
+                int? localPort = null;
+                if (args.Length >= 4)
+                {
+                    if (!int.TryParse(args[3], out int parsedLocalPort) || parsedLocalPort <= 0)
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /maptransfer session discover <remotePort> [processName|pid] [localPort]");
+                    }
+
+                    localPort = parsedLocalPort;
+                }
+
+                return ChatCommandHandler.CommandResult.Info(
+                    _mapTransferOfficialSessionBridge.DescribeDiscoveredSessions(remotePort, processSelector, localPort));
+            }
+
+            if (string.Equals(args[0], "start", StringComparison.OrdinalIgnoreCase))
+            {
+                if (args.Length < 4 ||
+                    !int.TryParse(args[1], out int listenPort) ||
+                    listenPort <= 0 ||
+                    !int.TryParse(args[3], out int remotePort) ||
+                    remotePort <= 0)
+                {
+                    return ChatCommandHandler.CommandResult.Error("Usage: /maptransfer session start <listenPort> <serverHost> <serverPort>");
+                }
+
+                _mapTransferOfficialSessionBridgeEnabled = true;
+                _mapTransferOfficialSessionBridgeUseDiscovery = false;
+                _mapTransferOfficialSessionBridgeConfiguredListenPort = listenPort;
+                _mapTransferOfficialSessionBridgeConfiguredRemoteHost = args[2];
+                _mapTransferOfficialSessionBridgeConfiguredRemotePort = remotePort;
+                _mapTransferOfficialSessionBridgeConfiguredProcessSelector = null;
+                _mapTransferOfficialSessionBridgeConfiguredLocalPort = null;
+
+                return _mapTransferOfficialSessionBridge.TryStart(listenPort, args[2], remotePort, out string status)
+                    ? ChatCommandHandler.CommandResult.Ok($"{status} {DescribeMapTransferOfficialSessionBridgeStatus()}")
+                    : ChatCommandHandler.CommandResult.Error(status);
+            }
+
+            if (string.Equals(args[0], "startauto", StringComparison.OrdinalIgnoreCase))
+            {
+                if (args.Length < 3 ||
+                    !int.TryParse(args[1], out int listenPort) ||
+                    listenPort <= 0 ||
+                    !int.TryParse(args[2], out int remotePort) ||
+                    remotePort <= 0)
+                {
+                    return ChatCommandHandler.CommandResult.Error("Usage: /maptransfer session startauto <listenPort> <remotePort> [processName|pid] [localPort]");
+                }
+
+                string processSelector = args.Length >= 4 ? args[3] : null;
+                int? localPort = null;
+                if (args.Length >= 5)
+                {
+                    if (!int.TryParse(args[4], out int parsedLocalPort) || parsedLocalPort <= 0)
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /maptransfer session startauto <listenPort> <remotePort> [processName|pid] [localPort]");
+                    }
+
+                    localPort = parsedLocalPort;
+                }
+
+                _mapTransferOfficialSessionBridgeEnabled = true;
+                _mapTransferOfficialSessionBridgeUseDiscovery = true;
+                _mapTransferOfficialSessionBridgeConfiguredListenPort = listenPort;
+                _mapTransferOfficialSessionBridgeConfiguredRemotePort = remotePort;
+                _mapTransferOfficialSessionBridgeConfiguredProcessSelector = processSelector;
+                _mapTransferOfficialSessionBridgeConfiguredLocalPort = localPort;
+                _mapTransferOfficialSessionBridgeConfiguredRemoteHost = "127.0.0.1";
+                _nextMapTransferOfficialSessionBridgeDiscoveryRefreshAt = 0;
+
+                return _mapTransferOfficialSessionBridge.TryStartFromDiscovery(listenPort, remotePort, processSelector, localPort, out string status)
+                    ? ChatCommandHandler.CommandResult.Ok($"{status} {DescribeMapTransferOfficialSessionBridgeStatus()}")
+                    : ChatCommandHandler.CommandResult.Error(status);
+            }
+
+            if (string.Equals(args[0], "stop", StringComparison.OrdinalIgnoreCase))
+            {
+                _mapTransferOfficialSessionBridgeEnabled = false;
+                _mapTransferOfficialSessionBridgeUseDiscovery = false;
+                _mapTransferOfficialSessionBridgeConfiguredProcessSelector = null;
+                _mapTransferOfficialSessionBridgeConfiguredLocalPort = null;
+                _mapTransferOfficialSessionBridge.Stop();
+                ClearMapTransferAuthoritativeRequestState();
+                return ChatCommandHandler.CommandResult.Ok(DescribeMapTransferOfficialSessionBridgeStatus());
+            }
+
+            return ChatCommandHandler.CommandResult.Error("Usage: /maptransfer session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]");
+        }
+
+        private ChatCommandHandler.CommandResult HandleMapTransferPacketCommand(string[] args)
+        {
+            if (args.Length >= 2 && string.Equals(args[0], "request", StringComparison.OrdinalIgnoreCase))
+            {
+                string rawPacketHex = string.Concat(args.Skip(1));
+                if (!MapTransferPacketCodec.TryParseRawPacketHex(rawPacketHex, out byte[] rawPacket, out string parseError))
+                {
+                    return ChatCommandHandler.CommandResult.Error(parseError);
+                }
+
+                return _mapTransferOfficialSessionBridge.TryObserveOutboundRequestPacket(
+                    rawPacket,
+                    "maptransfer:command",
+                    out string requestStatus)
+                    ? ChatCommandHandler.CommandResult.Ok(requestStatus)
+                    : ChatCommandHandler.CommandResult.Error(requestStatus);
+            }
+
+            if (args.Length >= 2 && string.Equals(args[0], "clientraw", StringComparison.OrdinalIgnoreCase))
+            {
+                string rawPacketHex = string.Concat(args.Skip(1));
+                if (!MapTransferPacketCodec.TryParseRawPacketHex(rawPacketHex, out byte[] rawPacket, out string parseError))
+                {
+                    return ChatCommandHandler.CommandResult.Error(parseError);
+                }
+
+                return _mapTransferOfficialSessionBridge.TryObserveClientRawPacket(
+                    rawPacket,
+                    "maptransfer:command",
+                    out string clientRawStatus)
+                    ? ChatCommandHandler.CommandResult.Ok(clientRawStatus)
+                    : ChatCommandHandler.CommandResult.Error(clientRawStatus);
+            }
+
+            if (args.Length >= 2 && string.Equals(args[0], "clientrawseq", StringComparison.OrdinalIgnoreCase))
+            {
+                string rawPacketSequence = string.Join(" ", args.Skip(1));
+                if (!MapTransferPacketCodec.TryParseRawPacketHexSequence(rawPacketSequence, out IReadOnlyList<byte[]> rawPackets, out string parseError))
+                {
+                    return ChatCommandHandler.CommandResult.Error(parseError);
+                }
+
+                int acceptedCount = 0;
+                List<string> failures = new();
+                for (int packetIndex = 0; packetIndex < rawPackets.Count; packetIndex++)
+                {
+                    string packetSource = $"maptransfer:command:{packetIndex + 1}";
+                    if (_mapTransferOfficialSessionBridge.TryObserveClientRawPacket(rawPackets[packetIndex], packetSource, out _))
+                    {
+                        acceptedCount++;
+                        continue;
+                    }
+
+                    failures.Add($"packet #{packetIndex + 1} could not be decoded as opcode 114 or 69");
+                }
+
+                if (failures.Count > 0)
+                {
+                    return ChatCommandHandler.CommandResult.Error(string.Join("; ", failures));
+                }
+
+                return ChatCommandHandler.CommandResult.Ok(
+                    $"Queued {acceptedCount} map transfer packet(s) through the opcode-framed 114/69 client-raw intake path.");
+            }
+
+            if (args.Length < 3 || !string.Equals(args[0], "result", StringComparison.OrdinalIgnoreCase))
+            {
+                return ChatCommandHandler.CommandResult.Error("Usage: /maptransfer packet [request <rawOpcode114Hex>|clientraw <opcodeFramedHex>|clientrawseq <opcodeFramedHex1;opcodeFramedHex2;...>|result <resultCode> <regular|continent> [mapId1 mapId2 ...]]");
+            }
+
+            if (!byte.TryParse(args[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out byte resultCode))
+            {
+                return ChatCommandHandler.CommandResult.Error($"Invalid map transfer result code: {args[1]}");
+            }
+
+            bool continent = args[2].Equals("continent", StringComparison.OrdinalIgnoreCase)
+                || args[2].Equals("1", StringComparison.OrdinalIgnoreCase)
+                || args[2].Equals("true", StringComparison.OrdinalIgnoreCase);
+            if (!continent &&
+                !args[2].Equals("regular", StringComparison.OrdinalIgnoreCase) &&
+                !args[2].Equals("0", StringComparison.OrdinalIgnoreCase) &&
+                !args[2].Equals("false", StringComparison.OrdinalIgnoreCase))
+            {
+                return ChatCommandHandler.CommandResult.Error("Usage: /maptransfer packet [request <rawOpcode114Hex>|clientraw <opcodeFramedHex>|clientrawseq <opcodeFramedHex1;opcodeFramedHex2;...>|result <resultCode> <regular|continent> [mapId1 mapId2 ...]]");
+            }
+
+            List<int> fieldList = new();
+            for (int i = 3; i < args.Length; i++)
+            {
+                if (!int.TryParse(args[i], NumberStyles.Integer, CultureInfo.InvariantCulture, out int mapId))
+                {
+                    return ChatCommandHandler.CommandResult.Error($"Invalid map id: {args[i]}");
+                }
+
+                fieldList.Add(mapId);
+            }
+
+            byte[] payload = MapTransferPacketCodec.BuildSyntheticResultPayload(
+                (MapTransferRuntimePacketResultCode)resultCode,
+                continent,
+                fieldList);
+            return _mapTransferOfficialSessionBridge.TryQueueInjectedResultPayload(payload, "maptransfer:command", out string status)
+                ? ChatCommandHandler.CommandResult.Ok(status)
+                : ChatCommandHandler.CommandResult.Error(status);
+        }
+    }
+}
+

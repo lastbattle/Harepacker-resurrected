@@ -36,24 +36,35 @@ namespace HaCreator.MapSimulator.Character
         private const float BASE_CRITICAL_CHANCE = 0.05f;
         private const float BASE_MISS_CHANCE = 0.05f;
         private const float CRITICAL_MULTIPLIER = 1.5f;
-        private const float KNOCKBACK_FORCE = 250f; // Horizontal knockback velocity (px/s) - matches official client feel
+        private const float KNOCKBACK_FORCE = 250f; // Player knockback velocity when hit by mobs (px/s)
         private const float KNOCKBACK_FORCE_Y = -150f; // Vertical knockback velocity (px/s, negative = up)
+        private const float MOB_HIT_KNOCKBACK_FORCE = 8f; // Grounded mob hit reaction in simulator movement units
+        private const float SWIM_KNOCKBACK_FORCE_SCALE_X = 0.6f;
+        private const float SWIM_KNOCKBACK_FORCE_SCALE_Y = 0.45f;
         private const int INVINCIBILITY_DURATION = 2000; // 2 seconds after hit
 
         // State
         private int _lastHitTime;
+        private int _invincibilityDurationMs = INVINCIBILITY_DURATION;
         private readonly List<int> _recentlyHitMobs = new(); // Prevent multi-hit exploits
+        private Func<int, bool> _damageBlockedEvaluator;
+        private Func<int, int, int> _incomingDamageResolver;
+        private float _additionalPlayerMissChance;
 
         // Callbacks
         public Action<DamageResult> OnDamageDealt;
         public Action<PlayerCharacter, int, MobItem> OnDamageReceived;
         public Action<MobItem> OnMobKilled;
+        public Action<float, float, int> OnMobAttackMissPlayer;
+        public Action<DropPickupAttemptResult> OnPickupAttemptFailed;
+        public Func<DropItem, DropPickupFailureReason> EvaluatePickupAvailability;
         /// <summary>
         /// Callback when player is hit by a mob skill attack.
         /// Parameters: playerX, playerY, mobSkillId, skillLevel
         /// Used to trigger the "affected" animation from MobSkill.img on the player.
         /// </summary>
         public Action<float, float, int, int> OnMobSkillHitPlayer;
+        public Func<int, int, int, float, bool, bool> OnMobSkillStatusApplied;
 
         /// <summary>
         /// Callback when player is hit by a mob's regular attack (attack1, attack2, etc.)
@@ -65,6 +76,21 @@ namespace HaCreator.MapSimulator.Character
         public PlayerCombat(PlayerCharacter player)
         {
             _player = player ?? throw new ArgumentNullException(nameof(player));
+        }
+
+        public void SetDamageBlockedEvaluator(Func<int, bool> damageBlockedEvaluator)
+        {
+            _damageBlockedEvaluator = damageBlockedEvaluator;
+        }
+
+        public void SetIncomingDamageResolver(Func<int, int, int> incomingDamageResolver)
+        {
+            _incomingDamageResolver = incomingDamageResolver;
+        }
+
+        public void SetAdditionalPlayerMissChance(float additionalPlayerMissChance)
+        {
+            _additionalPlayerMissChance = Math.Clamp(additionalPlayerMissChance, 0f, 0.9f);
         }
 
         #region Player Attack
@@ -112,7 +138,7 @@ namespace HaCreator.MapSimulator.Character
 
         private bool IsMobInHitbox(MobItem mob, Rectangle hitbox)
         {
-            if (mob?.MovementInfo == null)
+            if (mob?.MovementInfo == null || mob.IsProtectedFromPlayerDamage)
                 return false;
 
             // Get mob hitbox
@@ -138,16 +164,18 @@ namespace HaCreator.MapSimulator.Character
 
         private DamageResult CalculateDamage(MobItem mob)
         {
+            Vector2 damageAnchor = mob?.GetDamageNumberAnchor() ?? Vector2.Zero;
+
             var result = new DamageResult
             {
                 Target = mob,
-                HitX = mob.MovementInfo?.X ?? 0,
-                HitY = mob.MovementInfo?.Y ?? 0,
+                HitX = damageAnchor.X,
+                HitY = damageAnchor.Y,
                 KnockbackDirection = _player.FacingRight ? 1 : -1
             };
 
             // Check for miss
-            if (_random.NextDouble() < BASE_MISS_CHANCE)
+            if (ShouldPlayerAttackMiss(mob))
             {
                 result.IsMiss = true;
                 result.Damage = 0;
@@ -155,8 +183,8 @@ namespace HaCreator.MapSimulator.Character
             }
 
             // Base damage calculation
-            int baseAttack = _player.Build.Attack;
-            var weapon = _player.Build.GetWeapon();
+            int baseAttack = _player.Build?.Attack ?? 10;
+            var weapon = _player.Build?.GetWeapon();
             if (weapon != null)
             {
                 baseAttack += weapon.Attack;
@@ -186,14 +214,45 @@ namespace HaCreator.MapSimulator.Character
                 return;
 
             // Apply damage with sound effects and aggro (pass player position for chase)
-            mob.ApplyDamage(result.Damage, Environment.TickCount, result.IsCritical, _player.X, _player.Y);
+            mob.ApplyDamage(result.Damage, Environment.TickCount, result.IsCritical, _player.X, _player.Y, damageType: MobDamageType.Physical);
+            ApplyMobReflectDamage(mob, MobDamageType.Physical);
 
             // Apply knockback
             if (mob.MovementInfo != null && !result.IsMiss)
             {
-                float knockback = KNOCKBACK_FORCE * result.KnockbackDirection;
-                mob.MovementInfo.ApplyKnockback(knockback, -2f);
+                mob.MovementInfo.ApplyKnockback(MOB_HIT_KNOCKBACK_FORCE, result.KnockbackDirection > 0);
             }
+        }
+
+        private void ApplyMobReflectDamage(MobItem mob, MobDamageType damageType)
+        {
+            if (mob?.AI == null || !_player.IsAlive)
+            {
+                return;
+            }
+
+            int reflectedDamage = mob.AI.CalculateReflectedDamageToAttacker(mob.AI.LastDamageTaken, damageType);
+            if (reflectedDamage > 0)
+            {
+                reflectedDamage = ResolveIncomingDamage(reflectedDamage, Environment.TickCount);
+                _player.TakeDamage(reflectedDamage, 0f, 0f);
+            }
+        }
+
+        private bool ShouldPlayerAttackMiss(MobItem mob)
+        {
+            float missChance = BASE_MISS_CHANCE + _additionalPlayerMissChance;
+            MobAI mobAI = mob?.AI;
+
+            if (mobAI != null)
+            {
+                missChance += Math.Clamp(mobAI.GetStatusEffectValue(MobStatusEffect.EVA) / 100f, -0.2f, 0.3f);
+            }
+
+            int playerAccuracy = Math.Max(0, _player.Build?.TotalAccuracy ?? _player.Build?.Accuracy ?? 0);
+            missChance -= Math.Min(0.2f, playerAccuracy / 1000f);
+
+            return _random.NextDouble() < Math.Clamp(missChance, 0.01f, 0.65f);
         }
 
         #endregion
@@ -208,8 +267,11 @@ namespace HaCreator.MapSimulator.Character
             if (mobPool == null || !_player.IsAlive)
                 return;
 
+            if (_damageBlockedEvaluator?.Invoke(currentTime) == true)
+                return;
+
             // Check invincibility frames
-            if (currentTime - _lastHitTime < INVINCIBILITY_DURATION)
+            if (currentTime - _lastHitTime < _invincibilityDurationMs)
                 return;
 
             var playerHitbox = _player.GetHitbox();
@@ -219,24 +281,43 @@ namespace HaCreator.MapSimulator.Character
                 if (mob?.AI == null)
                     continue;
 
-                // Check for regular attack or skill attack
-                bool isAttacking = mob.AI.State == MobAIState.Attack;
                 bool isUsingSkill = mob.AI.State == MobAIState.Skill;
-
-                if (!isAttacking && !isUsingSkill)
+                if (!isUsingSkill)
                     continue;
 
-                // Check if mob's attack hitbox overlaps player
-                var mobAttackHitbox = GetMobAttackHitbox(mob);
+                MobSkillEntry currentSkill = mob.AI.GetCurrentSkill();
+                bool skillTriggered = isUsingSkill && mob.AI.ShouldApplySkillEffect(currentTime);
+                if (!skillTriggered)
+                    continue;
+
+                Rectangle mobAttackHitbox = GetMobAttackHitbox(mob, null, currentSkill);
                 if (playerHitbox.Intersects(mobAttackHitbox))
                 {
-                    ProcessPlayerHit(mob, currentTime, isUsingSkill);
+                    ProcessPlayerHit(mob, currentTime, null, currentSkill);
                     return; // Only take one hit per frame
                 }
             }
         }
 
-        private Rectangle GetMobAttackHitbox(MobItem mob)
+        public bool TryApplyMobHit(MobItem mob, Rectangle hitbox, int currentTime, MobAttackEntry attackOverride = null, MobSkillEntry skillOverride = null)
+        {
+            if (mob?.AI == null || !_player.IsAlive)
+                return false;
+
+            if (_damageBlockedEvaluator?.Invoke(currentTime) == true)
+                return false;
+
+            if (currentTime - _lastHitTime < _invincibilityDurationMs)
+                return false;
+
+            if (hitbox.IsEmpty || !_player.GetHitbox().Intersects(hitbox))
+                return false;
+
+            ProcessPlayerHit(mob, currentTime, attackOverride, skillOverride);
+            return true;
+        }
+
+        private Rectangle GetMobAttackHitbox(MobItem mob, MobAttackEntry attackOverride = null, MobSkillEntry skillOverride = null)
         {
             if (mob?.MovementInfo == null)
                 return Rectangle.Empty;
@@ -244,27 +325,72 @@ namespace HaCreator.MapSimulator.Character
             float mobX = mob.MovementInfo.X;
             float mobY = mob.MovementInfo.Y;
             bool facingRight = mob.MovementInfo.FlipX; // FlipX = true means facing right
+            var attack = attackOverride ?? mob.AI?.GetCurrentAttack();
 
-            // Attack extends in front of mob
-            var currentAttack = mob.AI?.GetCurrentAttack();
-            int range = currentAttack?.Range ?? 50;
-            int width = range;
-            int height = 60;
+            if (skillOverride == null && attack?.HasRangeBounds == true)
+            {
+                int left = attack.RangeLeft;
+                int right = attack.RangeRight;
+                if (facingRight)
+                {
+                    left = -attack.RangeRight;
+                    right = -attack.RangeLeft;
+                }
+
+                int top = attack.RangeTop;
+                int bottom = attack.RangeBottom;
+                int rangeWidth = Math.Max(1, right - left);
+                int rangeHeight = Math.Max(1, bottom - top);
+
+                return new Rectangle(
+                    (int)mobX + left,
+                    (int)mobY + top,
+                    rangeWidth,
+                    rangeHeight);
+            }
+
+            int range = skillOverride?.Range ?? attack?.Range ?? 50;
+            int width = Math.Max(50, range);
+            int height = skillOverride != null
+                ? 90
+                : Math.Max(60, attack?.AreaHeight ?? 60);
+
+            if (skillOverride != null && skillOverride.Range >= 180)
+            {
+                return new Rectangle(
+                    (int)mobX - width / 2,
+                    (int)mobY - height,
+                    width,
+                    height);
+            }
 
             return new Rectangle(
                 (int)mobX + (facingRight ? 0 : -width),
-                (int)mobY - 40,
+                (int)mobY - height + 20,
                 width,
                 height);
         }
 
-        private void ProcessPlayerHit(MobItem mob, int currentTime, bool isSkillAttack = false)
+        private void ProcessPlayerHit(MobItem mob, int currentTime, MobAttackEntry attackOverride = null, MobSkillEntry skillOverride = null)
         {
+            bool isSkillAttack = skillOverride != null;
+
+            if (ShouldMobAttackMiss(mob))
+            {
+                OnMobAttackMissPlayer?.Invoke(_player.X, _player.Y, currentTime);
+                return;
+            }
+
             _lastHitTime = currentTime;
+            _invincibilityDurationMs = INVINCIBILITY_DURATION;
 
             // Calculate damage from mob
-            var currentAttack = mob.AI?.GetCurrentAttack();
-            int mobAttack = currentAttack?.Damage ?? 10;
+            var currentAttack = attackOverride ?? mob.AI?.GetCurrentAttack();
+            int baseMobAttack = currentAttack?.Damage ?? GetFallbackMobSkillDamage(mob);
+            MobDamageType damageType = ResolveMobAttackDamageType(currentAttack, isSkillAttack);
+            int mobAttack = mob.AI?.CalculateOutgoingDamage(
+                baseMobAttack,
+                damageType) ?? baseMobAttack;
             int playerDefense = _player.Build?.Defense ?? 0;
 
             int damage = Math.Max(1, mobAttack - playerDefense / 2);
@@ -272,38 +398,68 @@ namespace HaCreator.MapSimulator.Character
             // Apply damage variance
             float variance = 0.9f + (float)_random.NextDouble() * 0.2f;
             damage = (int)(damage * variance);
+            damage = ResolveIncomingDamage(damage, currentTime);
+            if (currentAttack?.DeadlyAttack == true)
+            {
+                damage = ResolveDeadlyAttackDamage(_player.HP, damage);
+            }
 
-            // Calculate knockback direction (away from mob)
-            float knockbackX = mob.MovementInfo.X < _player.X ? KNOCKBACK_FORCE : -KNOCKBACK_FORCE;
+            Vector2 knockback = ShouldApplyMobAttackKnockback(currentAttack, isSkillAttack)
+                ? GetPlayerKnockbackVelocity(mob.MovementInfo.X)
+                : Vector2.Zero;
 
             // Play character damage sound from mob (CharDam1/CharDam2)
             int attackNum = currentAttack?.AttackId ?? 1;
             mob.PlayCharDamSound(attackNum);
 
             // Apply damage and knockback (KNOCKBACK_FORCE_Y is negative for upward motion)
-            _player.TakeDamage(damage, knockbackX, KNOCKBACK_FORCE_Y);
+            _player.TakeDamage(damage, knockback.X, knockback.Y);
+            ApplyMobAttackVitalSideEffects(_player, currentAttack);
 
             OnDamageReceived?.Invoke(_player, damage, mob);
 
             // Trigger mob skill hit effect if this was a skill attack
-            if (isSkillAttack && mob.AI != null)
+            if (isSkillAttack)
             {
-                var currentSkill = mob.AI.GetCurrentSkill();
+                var currentSkill = skillOverride ?? mob.AI?.GetCurrentSkill();
                 if (currentSkill != null)
                 {
+                    bool runtimeApplied = OnMobSkillStatusApplied?.Invoke(
+                        currentSkill.SkillId,
+                        currentSkill.Level,
+                        currentTime,
+                        mob.MovementInfo.X,
+                        false) ?? true;
+
                     // Trigger the "affected" animation from MobSkill.img on the player
                     // The animation plays at the player's position
-                    OnMobSkillHitPlayer?.Invoke(_player.X, _player.Y, currentSkill.SkillId, currentSkill.Level);
+                    if (runtimeApplied)
+                    {
+                        OnMobSkillHitPlayer?.Invoke(_player.X, _player.Y, currentSkill.SkillId, currentSkill.Level);
+                    }
                     System.Diagnostics.Debug.WriteLine($"[PlayerCombat] Player hit by mob skill {currentSkill.SkillId} level {currentSkill.Level}");
                 }
             }
             else
             {
-                // Trigger regular attack hit effect (from attack/info/hit in mob data)
-                // Reuse currentAttack from above (already retrieved at line 266)
-                if (currentAttack != null)
+                if ((currentAttack?.DiseaseSkillId ?? 0) > 0)
                 {
-                    // Get the hit effect frames for this attack action
+                    bool runtimeApplied = OnMobSkillStatusApplied?.Invoke(
+                        currentAttack.DiseaseSkillId,
+                        currentAttack.DiseaseLevel,
+                        currentTime,
+                        mob.MovementInfo.X,
+                        true) ?? false;
+                    if (runtimeApplied)
+                    {
+                        OnMobSkillHitPlayer?.Invoke(_player.X, _player.Y, currentAttack.DiseaseSkillId, currentAttack.DiseaseLevel);
+                    }
+                }
+
+                // Scheduler-owned mob attacks spawn WZ attack/info/hit through
+                // MobAttackSystem so hitAfter and attach metadata stay intact.
+                if (ShouldUseLegacyImmediateAttackHitEffect(attackOverride, skillOverride, currentAttack))
+                {
                     var hitFrames = mob.GetAttackHitFrames(currentAttack.AnimationName);
                     if (hitFrames != null && hitFrames.Count > 0)
                     {
@@ -312,6 +468,109 @@ namespace HaCreator.MapSimulator.Character
                     }
                 }
             }
+        }
+
+        private bool ShouldMobAttackMiss(MobItem mob)
+        {
+            if (mob?.AI == null)
+                return false;
+
+            if (mob.AI.HasStatusEffect(MobStatusEffect.Blind))
+                return true;
+
+            float hitChance = GetMobHitChance(mob.AI);
+            return _random.NextDouble() > hitChance;
+        }
+
+        internal static int ResolveDeadlyAttackDamage(int currentHp, int calculatedDamage)
+        {
+            if (currentHp <= 1)
+            {
+                return 0;
+            }
+
+            return Math.Clamp(calculatedDamage, 1, currentHp - 1);
+        }
+
+        internal static int ResolveMpBurnAmount(MobAttackEntry attack, int currentMp)
+        {
+            if (attack == null || attack.MpBurn <= 0 || attack.ConMP <= 0 || currentMp <= 0)
+            {
+                return 0;
+            }
+
+            return Math.Min(currentMp, attack.ConMP);
+        }
+
+        internal static bool ShouldApplyMobAttackKnockback(MobAttackEntry attack, bool isSkillAttack)
+        {
+            return attack == null || isSkillAttack || attack.Knockback;
+        }
+
+        internal static bool ShouldUseLegacyImmediateAttackHitEffect(
+            MobAttackEntry attackOverride,
+            MobSkillEntry skillOverride,
+            MobAttackEntry currentAttack)
+        {
+            return currentAttack != null &&
+                   skillOverride == null &&
+                   attackOverride == null;
+        }
+
+        internal static MobDamageType ResolveMobAttackDamageType(MobAttackEntry attack, bool isSkillAttack)
+        {
+            return isSkillAttack || attack?.MagicAttack == true
+                ? MobDamageType.Magical
+                : MobDamageType.Physical;
+        }
+
+        private static void ApplyMobAttackVitalSideEffects(PlayerCharacter player, MobAttackEntry attack)
+        {
+            if (player == null || attack == null || !player.IsAlive || player.GodMode)
+            {
+                return;
+            }
+
+            if (attack.DeadlyAttack)
+            {
+                player.HP = Math.Min(player.HP, 1);
+                player.MP = Math.Min(player.MP, 1);
+                return;
+            }
+
+            int mpBurnAmount = ResolveMpBurnAmount(attack, player.MP);
+            if (mpBurnAmount > 0)
+            {
+                player.MP -= mpBurnAmount;
+            }
+        }
+
+        private float GetMobHitChance(MobAI mobAI)
+        {
+            if (mobAI == null)
+                return 0.95f;
+
+            float hitChance = 0.95f;
+            hitChance += Math.Clamp(mobAI.GetStatusEffectValue(MobStatusEffect.ACC) / 100f, -0.35f, 0.35f);
+
+            if (mobAI.HasStatusEffect(MobStatusEffect.Darkness))
+            {
+                int darknessPenalty = mobAI.GetStatusEffectValue(MobStatusEffect.Darkness);
+                if (darknessPenalty <= 0)
+                {
+                    darknessPenalty = 20;
+                }
+
+                hitChance -= Math.Min(0.85f, darknessPenalty / 100f);
+            }
+
+            int playerAvoidability = Math.Max(0, _player.Build?.TotalAvoidability ?? _player.Build?.Avoidability ?? 0);
+            hitChance -= Math.Min(0.45f, playerAvoidability / 400f);
+
+            int playerAccuracy = Math.Max(0, _player.Build?.TotalAccuracy ?? _player.Build?.Accuracy ?? 0);
+            hitChance -= Math.Min(0.2f, playerAccuracy / 1000f);
+
+            return Math.Clamp(hitChance, 0.05f, 0.99f);
         }
 
         #endregion
@@ -326,8 +585,11 @@ namespace HaCreator.MapSimulator.Character
             if (mobPool == null || !_player.IsAlive)
                 return;
 
+            if (_damageBlockedEvaluator?.Invoke(currentTime) == true)
+                return;
+
             // Check invincibility frames
-            if (currentTime - _lastHitTime < INVINCIBILITY_DURATION)
+            if (currentTime - _lastHitTime < _invincibilityDurationMs)
                 return;
 
             var playerHitbox = _player.GetHitbox();
@@ -338,7 +600,7 @@ namespace HaCreator.MapSimulator.Character
                     continue;
 
                 // Get mob body hitbox
-                var mobHitbox = GetMobBodyHitbox(mob);
+                var mobHitbox = GetMobBodyHitbox(mob, currentTime);
                 if (playerHitbox.Intersects(mobHitbox))
                 {
                     ProcessTouchDamage(mob, currentTime);
@@ -347,48 +609,45 @@ namespace HaCreator.MapSimulator.Character
             }
         }
 
-        private Rectangle GetMobBodyHitbox(MobItem mob)
+        private static int GetFallbackMobSkillDamage(MobItem mob)
         {
-            if (mob?.MovementInfo == null)
+            int physical = mob?.MobData?.PADamage ?? 0;
+            int magical = mob?.MobData?.MADamage ?? 0;
+            return Math.Max(10, Math.Max(physical, magical));
+        }
+
+        private Rectangle GetMobBodyHitbox(MobItem mob, int currentTime)
+        {
+            if (mob == null)
                 return Rectangle.Empty;
 
-            float mobX = mob.MovementInfo.X;
-            float mobY = mob.MovementInfo.Y;
-
-            // Body hitbox based on mob size
-            int width = 40;
-            int height = 50;
-
-            // TODO: Get actual mob bounds from MobInfo
-
-            return new Rectangle(
-                (int)mobX - width / 2,
-                (int)mobY - height,
-                width,
-                height);
+            return mob.GetBodyHitbox(currentTime);
         }
 
         private void ProcessTouchDamage(MobItem mob, int currentTime)
         {
             _lastHitTime = currentTime;
+            _invincibilityDurationMs = INVINCIBILITY_DURATION;
 
             // Touch damage is typically lower than attack damage (body collision)
             // Use a portion of the mob's attack damage or a default
             var attack = mob.AI?.GetCurrentAttack();
-            int touchDamage = (attack?.Damage ?? 10) / 2; // Half of attack damage
+            int baseTouchDamage = (attack?.Damage ?? 10) / 2; // Half of attack damage
+            int touchDamage = mob.AI?.CalculateOutgoingDamage(baseTouchDamage, MobDamageType.Physical) ?? baseTouchDamage;
             touchDamage = Math.Max(5, touchDamage); // Minimum 5 damage
             int playerDefense = _player.Build?.Defense ?? 0;
 
             int damage = Math.Max(1, touchDamage - playerDefense / 2);
+            damage = ResolveIncomingDamage(damage, currentTime);
 
             // Calculate knockback direction (away from mob)
-            float knockbackX = mob.MovementInfo.X < _player.X ? KNOCKBACK_FORCE : -KNOCKBACK_FORCE;
+            Vector2 knockback = GetPlayerKnockbackVelocity(mob.MovementInfo.X);
 
             // Play character damage sound from mob (CharDam1 for touch damage)
             mob.PlayCharDamSound(1);
 
             // Apply damage and knockback (touch damage uses same knockback as attacks)
-            _player.TakeDamage(damage, knockbackX, KNOCKBACK_FORCE_Y);
+            _player.TakeDamage(damage, knockback.X, knockback.Y);
 
             OnDamageReceived?.Invoke(_player, damage, mob);
 
@@ -409,7 +668,7 @@ namespace HaCreator.MapSimulator.Character
         /// </summary>
         public bool IsInvincible(int currentTime)
         {
-            return currentTime - _lastHitTime < INVINCIBILITY_DURATION;
+            return currentTime - _lastHitTime < _invincibilityDurationMs;
         }
 
         /// <summary>
@@ -417,16 +676,42 @@ namespace HaCreator.MapSimulator.Character
         /// </summary>
         public int GetInvincibilityRemaining(int currentTime)
         {
-            int remaining = INVINCIBILITY_DURATION - (currentTime - _lastHitTime);
+            int remaining = _invincibilityDurationMs - (currentTime - _lastHitTime);
             return Math.Max(0, remaining);
+        }
+
+        private int ResolveIncomingDamage(int damage, int currentTime)
+        {
+            if (damage <= 0)
+            {
+                return 0;
+            }
+
+            int resolvedDamage = _incomingDamageResolver?.Invoke(damage, currentTime) ?? damage;
+            return Math.Max(1, resolvedDamage);
         }
 
         /// <summary>
         /// Force invincibility (e.g., after respawn)
         /// </summary>
-        public void SetInvincible(int currentTime)
+        public void SetInvincible(int currentTime, int durationMs = INVINCIBILITY_DURATION)
         {
             _lastHitTime = currentTime;
+            _invincibilityDurationMs = Math.Max(0, durationMs);
+        }
+
+        private Vector2 GetPlayerKnockbackVelocity(float sourceX)
+        {
+            float horizontal = sourceX < _player.X ? KNOCKBACK_FORCE : -KNOCKBACK_FORCE;
+            float vertical = KNOCKBACK_FORCE_Y;
+
+            if (_player.Physics.IsSwimming())
+            {
+                horizontal *= SWIM_KNOCKBACK_FORCE_SCALE_X;
+                vertical *= SWIM_KNOCKBACK_FORCE_SCALE_Y;
+            }
+
+            return new Vector2(horizontal, vertical);
         }
 
         /// <summary>
@@ -434,7 +719,7 @@ namespace HaCreator.MapSimulator.Character
         /// </summary>
         public int GetAttackRange()
         {
-            var weapon = _player.Build.GetWeapon();
+            var weapon = _player.Build?.GetWeapon();
             return weapon?.Range ?? 50;
         }
 
@@ -443,8 +728,8 @@ namespace HaCreator.MapSimulator.Character
         /// </summary>
         public float CalculateDPS()
         {
-            int baseAttack = _player.Build.Attack;
-            var weapon = _player.Build.GetWeapon();
+            int baseAttack = _player.Build?.Attack ?? 10;
+            var weapon = _player.Build?.GetWeapon();
             if (weapon != null)
             {
                 baseAttack += weapon.Attack;
@@ -473,11 +758,18 @@ namespace HaCreator.MapSimulator.Character
             if (dropPool == null || !_player.IsAlive)
                 return null;
 
-            var drop = dropPool.TryPickupClosest(_player.X, _player.Y, 0, currentTime, pickupRange);
-            if (drop != null)
+            DropPickupAttemptResult result = dropPool.TryPickupClosestDetailed(
+                _player.X,
+                _player.Y,
+                _player.Build?.Id ?? 0,
+                currentTime,
+                pickupRange,
+                EvaluatePickupAvailability);
+
+            if (result.Drop != null)
             {
                 // Apply drop effects
-                if (drop.Type == DropType.Meso)
+                if (result.Drop.Type == DropType.Meso)
                 {
                     // Add mesos to player (would need inventory system)
                     // For now, just consume the drop
@@ -487,8 +779,13 @@ namespace HaCreator.MapSimulator.Character
                     // Add item to inventory (would need inventory system)
                 }
             }
+            else if (result.FailureReason != DropPickupFailureReason.None
+                     && result.FailureReason != DropPickupFailureReason.NoDropInRange)
+            {
+                OnPickupAttemptFailed?.Invoke(result);
+            }
 
-            return drop;
+            return result.Drop;
         }
 
         /// <summary>

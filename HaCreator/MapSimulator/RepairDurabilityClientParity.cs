@@ -1,0 +1,2509 @@
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
+using System.Buffers.Binary;
+using System.Text;
+using System.Text.Json;
+using HaCreator.MapSimulator.Animation;
+using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.Interaction;
+using HaCreator.MapSimulator.Loaders;
+using HaCreator.MapSimulator.Managers;
+using MapleLib.PacketLib;
+using MapleLib.WzLib;
+using Microsoft.Xna.Framework;
+
+namespace HaCreator.MapSimulator
+{
+    internal static class RepairDurabilityClientParity
+    {
+        internal readonly struct HoverTooltipPlacement
+        {
+            public HoverTooltipPlacement(Rectangle bounds, int frameIndex)
+            {
+                Bounds = bounds;
+                FrameIndex = frameIndex;
+            }
+
+            public Rectangle Bounds { get; }
+            public int FrameIndex { get; }
+        }
+
+        internal readonly struct ResultPayload
+        {
+            public ResultPayload(
+                bool success,
+                int? reasonCode,
+                short? operationCode,
+                int? encodedSlotPosition,
+                string statusText,
+                IReadOnlyList<int> encodedSlotPositions = null)
+            {
+                Success = success;
+                ReasonCode = reasonCode;
+                OperationCode = operationCode;
+                EncodedSlotPosition = encodedSlotPosition;
+                StatusText = statusText ?? string.Empty;
+                EncodedSlotPositions = NormalizeEncodedSlotPositions(encodedSlotPosition, encodedSlotPositions);
+            }
+
+            public bool Success { get; }
+            public int? ReasonCode { get; }
+            public short? OperationCode { get; }
+            public int? EncodedSlotPosition { get; }
+            public IReadOnlyList<int> EncodedSlotPositions { get; }
+            public string StatusText { get; }
+        }
+
+        private static readonly string[] ExplicitNpcActionFallbacks =
+        {
+            "shop",
+            "say",
+            "speak"
+        };
+
+        private static readonly (int MaskBit, string Key)[] JobBadgeDefinitions =
+        {
+            (1, "beginner"),
+            (2, "warrior"),
+            (4, "magician"),
+            (8, "bowman"),
+            (16, "thief"),
+            (32, "pirate")
+        };
+
+        internal static IEnumerable<string> EnumerateNpcActionCandidates(int? shopActionId)
+        {
+            return EnumerateNpcActionCandidates(shopActionId, source: null);
+        }
+
+        internal static IEnumerable<string> EnumerateNpcActionCandidates(int? shopActionId, WzImage source)
+        {
+            int clientShopAction = shopActionId.GetValueOrDefault();
+            if (clientShopAction <= 0)
+            {
+                clientShopAction = 1;
+            }
+
+            foreach (string candidate in NpcClientActionSetLoader.EnumerateClientActionNameCandidates(clientShopAction, source))
+            {
+                yield return candidate;
+            }
+
+            foreach (string candidate in ExplicitNpcActionFallbacks)
+            {
+                yield return candidate;
+            }
+        }
+
+        internal static IEnumerable<string> EnumerateNpcSpeakFallbackActions(WzImage source)
+        {
+            return NpcClientActionSetLoader.EnumerateAuthoredSpeakFallbackActions(source);
+        }
+
+        internal static string ResolvePreferredNpcAction(
+            int? shopActionId,
+            IEnumerable<string> availableActions,
+            IEnumerable<string> speakFallbackActions,
+            WzImage source = null,
+            IEnumerable<string> authoredTemplateActionOrder = null)
+        {
+            List<string> availableActionOrder = availableActions?
+                .Where(static action => !string.IsNullOrWhiteSpace(action))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList() ?? new List<string>();
+            var availableActionMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string action in availableActionOrder)
+            {
+                availableActionMap[action] = action;
+            }
+
+            if (shopActionId.GetValueOrDefault() > 0)
+            {
+                List<string> clientTemplateActionOrder = authoredTemplateActionOrder?
+                    .Where(static action => !string.IsNullOrWhiteSpace(action))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+                if (clientTemplateActionOrder == null || clientTemplateActionOrder.Count == 0)
+                {
+                    clientTemplateActionOrder =
+                        NpcClientActionSetLoader.BuildClientTemplateActionOrder(source).ToList();
+                }
+
+                if (clientTemplateActionOrder.Count == 0)
+                {
+                    clientTemplateActionOrder = availableActionOrder;
+                }
+
+                foreach (string candidate in NpcClientActionSetLoader.EnumerateClientActionNameCandidates(
+                             shopActionId.Value,
+                             clientTemplateActionOrder))
+                {
+                    if (!string.IsNullOrWhiteSpace(candidate)
+                        && availableActionMap.TryGetValue(candidate, out string resolvedCandidate))
+                    {
+                        return resolvedCandidate;
+                    }
+                }
+            }
+
+            foreach (string candidate in ExplicitNpcActionFallbacks)
+            {
+                if (availableActionMap.TryGetValue(candidate, out string resolvedCandidate))
+                {
+                    return resolvedCandidate;
+                }
+            }
+
+            foreach (string candidate in speakFallbackActions?
+                         .Where(static action => !string.IsNullOrWhiteSpace(action))
+                         .Distinct(StringComparer.OrdinalIgnoreCase)
+                     ?? Array.Empty<string>())
+            {
+                if (availableActionMap.TryGetValue(candidate, out string resolvedCandidate))
+                {
+                    return resolvedCandidate;
+                }
+            }
+
+            foreach (string action in availableActionOrder)
+            {
+                if (action.StartsWith(AnimationKeys.Stand, StringComparison.OrdinalIgnoreCase))
+                {
+                    return action;
+                }
+            }
+
+            return availableActionOrder.FirstOrDefault() ?? AnimationKeys.Stand;
+        }
+
+        internal static int ResolveRepairNpcActionSetIndex(
+            IReadOnlyList<NpcClientActionSetLoader.NpcClientActionSetDefinition> actionSets,
+            int? shopActionId,
+            int automaticActionSetIndex,
+            int preferredActionSetIndex,
+            IEnumerable<string> preferredActionCandidates)
+        {
+            if (actionSets == null || actionSets.Count <= 0)
+            {
+                return automaticActionSetIndex;
+            }
+
+            if (TryGetActionSetByIndex(actionSets, automaticActionSetIndex, out NpcClientActionSetLoader.NpcClientActionSetDefinition automaticSet)
+                && ActionSetContainsAnyCandidate(automaticSet, preferredActionCandidates))
+            {
+                return automaticActionSetIndex;
+            }
+
+            // Keep the CActionMan::LoadNpcAction(..., -2) automatic action-set path authoritative.
+            // Only hop to a fallback set when it is still conditionless/non-hidden.
+            int rootActionSetIndex = ResolveRootActionSetIndex(actionSets, automaticActionSetIndex);
+            if (TryGetActionSetByIndex(actionSets, rootActionSetIndex, out NpcClientActionSetLoader.NpcClientActionSetDefinition rootSet)
+                && rootActionSetIndex != automaticActionSetIndex
+                && IsRepairActionSetFallbackSafe(rootSet)
+                && ActionSetContainsAnyCandidate(rootSet, preferredActionCandidates))
+            {
+                return rootActionSetIndex;
+            }
+
+            if (preferredActionSetIndex != automaticActionSetIndex
+                && preferredActionSetIndex != rootActionSetIndex
+                && TryGetActionSetByIndex(actionSets, preferredActionSetIndex, out NpcClientActionSetLoader.NpcClientActionSetDefinition preferredSet)
+                && IsRepairActionSetFallbackSafe(preferredSet)
+                && ActionSetContainsAnyCandidate(preferredSet, preferredActionCandidates))
+            {
+                return preferredActionSetIndex;
+            }
+
+            return automaticActionSetIndex;
+        }
+
+        internal static bool TryEncodeEquippedPosition(EquipSlot slot, int itemId, out int encodedPosition)
+        {
+            if (LoginAvatarLookCodec.TryGetBodyPart(slot, itemId, out byte bodyPart)
+                && IsClientEncodableBodyPart(bodyPart))
+            {
+                encodedPosition = -bodyPart;
+                return true;
+            }
+
+            return TryEncodeLegacyEquippedPosition(slot, out encodedPosition);
+        }
+
+        internal static bool TryEncodeEquippedPositionFromAvatarLook(
+            EquipSlot slot,
+            int itemId,
+            bool preferHiddenLayer,
+            IReadOnlyDictionary<byte, int> visibleEquipmentByBodyPart,
+            IReadOnlyDictionary<byte, int> hiddenEquipmentByBodyPart,
+            out int encodedPosition)
+        {
+            encodedPosition = int.MinValue;
+            if (TryResolveEncodedPositionFromSlotHint(
+                    slot,
+                    itemId,
+                    preferHiddenLayer,
+                    visibleEquipmentByBodyPart,
+                    hiddenEquipmentByBodyPart,
+                    out encodedPosition))
+            {
+                return true;
+            }
+
+            if (TryResolveEncodedPositionFromAvatarLook(
+                    itemId,
+                    preferHiddenLayer,
+                    visibleEquipmentByBodyPart,
+                    hiddenEquipmentByBodyPart,
+                    out encodedPosition))
+            {
+                return true;
+            }
+
+            if (LoginAvatarLookCodec.TryGetBodyPart(slot, itemId, out byte bodyPart)
+                && IsClientEncodableBodyPart(bodyPart))
+            {
+                encodedPosition = -bodyPart;
+                return true;
+            }
+
+            if (LoginAvatarLookCodec.TryGetBodyPart(slot, itemId, out bodyPart)
+                && IsClientEncodableBodyPart(bodyPart))
+            {
+                encodedPosition = -bodyPart;
+                return true;
+            }
+
+            return TryEncodeLegacyEquippedPosition(slot, out encodedPosition);
+        }
+
+        private static bool TryResolveEncodedPositionFromSlotHint(
+            EquipSlot slot,
+            int itemId,
+            bool preferHiddenLayer,
+            IReadOnlyDictionary<byte, int> visibleEquipmentByBodyPart,
+            IReadOnlyDictionary<byte, int> hiddenEquipmentByBodyPart,
+            out int encodedPosition)
+        {
+            encodedPosition = int.MinValue;
+            if (itemId <= 0)
+            {
+                return false;
+            }
+
+            List<byte> preferredBodyParts = BuildPreferredBodyPartCandidates(slot);
+            if (preferredBodyParts.Count <= 0)
+            {
+                return false;
+            }
+
+            if (preferHiddenLayer)
+            {
+                return TryResolveEncodedPositionFromPreferredBodyParts(itemId, preferredBodyParts, hiddenEquipmentByBodyPart, out encodedPosition)
+                       || TryResolveEncodedPositionFromPreferredBodyParts(itemId, preferredBodyParts, visibleEquipmentByBodyPart, out encodedPosition);
+            }
+
+            return TryResolveEncodedPositionFromPreferredBodyParts(itemId, preferredBodyParts, visibleEquipmentByBodyPart, out encodedPosition)
+                   || TryResolveEncodedPositionFromPreferredBodyParts(itemId, preferredBodyParts, hiddenEquipmentByBodyPart, out encodedPosition);
+        }
+
+        private static List<byte> BuildPreferredBodyPartCandidates(EquipSlot slot)
+        {
+            var candidates = new List<byte>(capacity: 3);
+            if (TryResolveLegacyBodyPart(slot, out int legacyBodyPart))
+            {
+                candidates.Add((byte)legacyBodyPart);
+            }
+
+            int rawSlot = (int)slot;
+            if (rawSlot > 0
+                && rawSlot <= byte.MaxValue
+                && !candidates.Contains((byte)rawSlot))
+            {
+                candidates.Add((byte)rawSlot);
+            }
+
+            return candidates;
+        }
+
+        private static bool TryResolveEncodedPositionFromPreferredBodyParts(
+            int itemId,
+            IReadOnlyList<byte> preferredBodyParts,
+            IReadOnlyDictionary<byte, int> equipmentByBodyPart,
+            out int encodedPosition)
+        {
+            encodedPosition = int.MinValue;
+            if (equipmentByBodyPart == null
+                || equipmentByBodyPart.Count <= 0
+                || preferredBodyParts == null
+                || preferredBodyParts.Count <= 0)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < preferredBodyParts.Count; i++)
+            {
+                byte preferredBodyPart = preferredBodyParts[i];
+                if (preferredBodyPart == 0
+                    || !IsClientEncodableBodyPart(preferredBodyPart)
+                    || !equipmentByBodyPart.TryGetValue(preferredBodyPart, out int preferredItemId)
+                    || preferredItemId != itemId)
+                {
+                    continue;
+                }
+
+                encodedPosition = -preferredBodyPart;
+                return true;
+            }
+
+            return false;
+        }
+
+        internal static bool TryEncodeLegacyEquippedPosition(EquipSlot slot, out int encodedPosition)
+        {
+            if (TryResolveLegacyBodyPart(slot, out int legacyBodyPart))
+            {
+                encodedPosition = -legacyBodyPart;
+                return true;
+            }
+
+            int legacySlotPosition = (int)slot;
+            if (legacySlotPosition == 0)
+            {
+                encodedPosition = 0;
+                return true;
+            }
+
+            if (IsClientEncodableBodyPart(legacySlotPosition))
+            {
+                encodedPosition = -legacySlotPosition;
+                return true;
+            }
+
+            encodedPosition = int.MinValue;
+            return false;
+        }
+
+        internal static bool TryResolveEncodedPositionFromAvatarLook(
+            int itemId,
+            bool preferHiddenLayer,
+            IReadOnlyDictionary<byte, int> visibleEquipmentByBodyPart,
+            IReadOnlyDictionary<byte, int> hiddenEquipmentByBodyPart,
+            out int encodedPosition)
+        {
+            if (itemId <= 0)
+            {
+                encodedPosition = int.MinValue;
+                return false;
+            }
+
+            if (preferHiddenLayer)
+            {
+                if (TryResolveEncodedPositionFromBodyPartMap(itemId, hiddenEquipmentByBodyPart, out encodedPosition))
+                {
+                    return true;
+                }
+
+                return TryResolveEncodedPositionFromBodyPartMap(itemId, visibleEquipmentByBodyPart, out encodedPosition);
+            }
+
+            if (TryResolveEncodedPositionFromBodyPartMap(itemId, visibleEquipmentByBodyPart, out encodedPosition))
+            {
+                return true;
+            }
+
+            return TryResolveEncodedPositionFromBodyPartMap(itemId, hiddenEquipmentByBodyPart, out encodedPosition);
+        }
+
+        private static bool TryResolveEncodedPositionFromBodyPartMap(
+            int itemId,
+            IReadOnlyDictionary<byte, int> equipmentByBodyPart,
+            out int encodedPosition)
+        {
+            encodedPosition = int.MinValue;
+            if (equipmentByBodyPart == null || equipmentByBodyPart.Count <= 0)
+            {
+                return false;
+            }
+
+            foreach ((byte bodyPart, int equippedItemId) in equipmentByBodyPart)
+            {
+                if (equippedItemId == itemId
+                    && IsClientEncodableBodyPart(bodyPart))
+                {
+                    encodedPosition = -bodyPart;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryResolveLegacyBodyPart(EquipSlot slot, out int bodyPart)
+        {
+            bodyPart = slot switch
+            {
+                EquipSlot.Cap => 1,
+                EquipSlot.FaceAccessory => 2,
+                EquipSlot.EyeAccessory => 3,
+                EquipSlot.Earrings => 4,
+                EquipSlot.Coat => 5,
+                EquipSlot.Longcoat => 5,
+                EquipSlot.Pants => 6,
+                EquipSlot.Shoes => 7,
+                EquipSlot.Glove => 8,
+                EquipSlot.Cape => 9,
+                EquipSlot.Shield => 10,
+                EquipSlot.Weapon => 11,
+                EquipSlot.Ring1 => 12,
+                EquipSlot.Ring2 => 13,
+                EquipSlot.Ring3 => 15,
+                EquipSlot.Ring4 => 16,
+                EquipSlot.Pendant => 17,
+                EquipSlot.TamingMob => 18,
+                EquipSlot.Saddle => 19,
+                EquipSlot.TamingMobAccessory => 20,
+                EquipSlot.Medal => 49,
+                EquipSlot.Belt => 50,
+                EquipSlot.Shoulder => 51,
+                EquipSlot.Pocket => 52,
+                EquipSlot.Badge => 53,
+                EquipSlot.Pendant2 => 59,
+                EquipSlot.Android => 166,
+                EquipSlot.AndroidHeart => 167,
+                _ => 0
+            };
+            return IsClientEncodableBodyPart(bodyPart);
+        }
+
+        private static bool ActionSetContainsAnyCandidate(
+            NpcClientActionSetLoader.NpcClientActionSetDefinition actionSet,
+            IEnumerable<string> candidates)
+        {
+            if (actionSet.Actions == null || actionSet.Actions.Count <= 0 || candidates == null)
+            {
+                return false;
+            }
+
+            HashSet<string> candidateSet = candidates
+                .Where(static candidate => !string.IsNullOrWhiteSpace(candidate))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            if (candidateSet.Count <= 0)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < actionSet.Actions.Count; i++)
+            {
+                string actionName = actionSet.Actions[i]?.Name;
+                if (!string.IsNullOrWhiteSpace(actionName) && candidateSet.Contains(actionName))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryGetActionSetByIndex(
+            IReadOnlyList<NpcClientActionSetLoader.NpcClientActionSetDefinition> actionSets,
+            int index,
+            out NpcClientActionSetLoader.NpcClientActionSetDefinition actionSet)
+        {
+            actionSet = default;
+            if (actionSets == null || actionSets.Count <= 0)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < actionSets.Count; i++)
+            {
+                if (actionSets[i].Index == index)
+                {
+                    actionSet = actionSets[i];
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static int ResolveRootActionSetIndex(
+            IReadOnlyList<NpcClientActionSetLoader.NpcClientActionSetDefinition> actionSets,
+            int fallbackIndex)
+        {
+            if (actionSets == null || actionSets.Count <= 0)
+            {
+                return fallbackIndex;
+            }
+
+            for (int i = 0; i < actionSets.Count; i++)
+            {
+                if (actionSets[i].IsRootSet)
+                {
+                    return actionSets[i].Index;
+                }
+            }
+
+            return fallbackIndex;
+        }
+
+        private static bool IsRepairActionSetFallbackSafe(
+            NpcClientActionSetLoader.NpcClientActionSetDefinition actionSet)
+        {
+            return !actionSet.Hide
+                   && !actionSet.HasQuestConditions
+                   && !actionSet.RequiredGender.HasValue;
+        }
+
+        internal static IReadOnlyList<(string Key, bool Enabled)> ResolveRequiredJobBadgeStates(int requiredJobMask)
+        {
+            var states = new (string Key, bool Enabled)[JobBadgeDefinitions.Length];
+            for (int i = 0; i < JobBadgeDefinitions.Length; i++)
+            {
+                (int maskBit, string key) = JobBadgeDefinitions[i];
+                bool enabled = requiredJobMask == 0 || (requiredJobMask & maskBit) != 0;
+                states[i] = (key, enabled);
+            }
+
+            return states;
+        }
+
+        internal static byte[] BuildRepairRequestPayload(short operationCode, int encodedPosition)
+        {
+            if (operationCode == 130)
+            {
+                return Array.Empty<byte>();
+            }
+
+            if (operationCode != 131)
+            {
+                throw new ArgumentOutOfRangeException(nameof(operationCode), operationCode, "Repair durability only supports opcodes 130 and 131.");
+            }
+
+            using PacketWriter writer = new();
+            writer.WriteInt(encodedPosition);
+            return writer.ToArray();
+        }
+
+        internal static int CalculateRepairDurabilityPay(
+            int requiredLevel,
+            int sellPrice,
+            int maxDurability,
+            int currentDurability,
+            bool isEpic)
+        {
+            if (maxDurability <= 0 || currentDurability >= maxDurability)
+            {
+                return 0;
+            }
+
+            int clampedCurrentDurability = Math.Clamp(currentDurability, 0, maxDurability);
+            int level = Math.Max(0, requiredLevel);
+            int durabilityPercent = (100 * clampedCurrentDurability) / maxDurability;
+            double lostPercent = 100d - durabilityPercent;
+            double durabilityScale = maxDurability / 100d;
+            if (durabilityScale <= 0d)
+            {
+                return 0;
+            }
+
+            double cost = lostPercent
+                * ((double)(level * level) * (sellPrice / 50d) / durabilityScale)
+                * (isEpic ? 1.25d : 1d);
+            if (double.IsNaN(cost) || double.IsInfinity(cost) || cost <= 0d)
+            {
+                return 0;
+            }
+
+            return (int)cost;
+        }
+
+        internal static HoverTooltipPlacement ResolveHoverTooltipPlacement(
+            Point anchorPoint,
+            int tooltipWidth,
+            int tooltipHeight,
+            int renderWidth,
+            int renderHeight,
+            int viewportPadding,
+            int cursorGap,
+            IReadOnlyList<Point> tooltipFrameOrigins = null,
+            IReadOnlyList<Point> tooltipFrameSizes = null)
+        {
+            (Rectangle Rect, int FrameIndex)[] candidates = TryBuildOriginAwareHoverCandidates(
+                anchorPoint,
+                tooltipWidth,
+                tooltipHeight,
+                cursorGap,
+                tooltipFrameOrigins,
+                tooltipFrameSizes,
+                out (Rectangle Rect, int FrameIndex)[] originAwareCandidates)
+                ? originAwareCandidates
+                : new[]
+                {
+                    (new Rectangle(anchorPoint.X, anchorPoint.Y, tooltipWidth, tooltipHeight), 1),
+                    (new Rectangle(anchorPoint.X - tooltipWidth, anchorPoint.Y, tooltipWidth, tooltipHeight), 2),
+                    (new Rectangle(anchorPoint.X, anchorPoint.Y - tooltipHeight - cursorGap, tooltipWidth, tooltipHeight), 1),
+                    (new Rectangle(anchorPoint.X - tooltipWidth, anchorPoint.Y - tooltipHeight - cursorGap, tooltipWidth, tooltipHeight), 0)
+                };
+
+            Rectangle bestRect = candidates[0].Rect;
+            int bestFrame = candidates[0].FrameIndex;
+            int bestOverflow = int.MaxValue;
+            int bestClampDistance = int.MaxValue;
+
+            for (int i = 0; i < candidates.Length; i++)
+            {
+                Rectangle candidate = candidates[i].Rect;
+                int overflow = ComputeTooltipOverflow(candidate, renderWidth, renderHeight, viewportPadding);
+                int frameIndex = candidates[i].FrameIndex;
+                if (overflow == 0)
+                {
+                    return new HoverTooltipPlacement(candidate, frameIndex);
+                }
+
+                int clampDistance = ComputeTooltipClampDistance(candidate, renderWidth, renderHeight, viewportPadding);
+                if (overflow < bestOverflow
+                    || (overflow == bestOverflow && clampDistance < bestClampDistance))
+                {
+                    bestOverflow = overflow;
+                    bestRect = candidate;
+                    bestFrame = frameIndex;
+                    bestClampDistance = clampDistance;
+                }
+            }
+
+            return new HoverTooltipPlacement(
+                ClampTooltipRect(bestRect, renderWidth, renderHeight, viewportPadding),
+                bestFrame);
+        }
+
+        internal static bool MatchesPendingResultOperation(short pendingOperationCode, short? resultOperationCode)
+        {
+            return !resultOperationCode.HasValue || resultOperationCode.Value == pendingOperationCode;
+        }
+
+        internal static bool MatchesPendingResultTarget(
+            bool repairAllRequest,
+            int pendingEncodedSlotPosition,
+            int? resultEncodedSlotPosition)
+        {
+            return MatchesPendingResultTarget(
+                repairAllRequest,
+                pendingEncodedSlotPosition,
+                pendingRepairAllEncodedSlotPositions: null,
+                resultEncodedSlotPosition,
+                resultEncodedSlotPositions: null);
+        }
+
+        internal static bool MatchesPendingResultTarget(
+            bool repairAllRequest,
+            int pendingEncodedSlotPosition,
+            IEnumerable<int> pendingRepairAllEncodedSlotPositions,
+            int? resultEncodedSlotPosition,
+            IReadOnlyList<int> resultEncodedSlotPositions)
+        {
+            if (!repairAllRequest)
+            {
+                return !resultEncodedSlotPosition.HasValue
+                       || resultEncodedSlotPosition.Value == pendingEncodedSlotPosition;
+            }
+
+            IReadOnlyList<int> echoedPositions = NormalizeEncodedSlotPositions(resultEncodedSlotPosition, resultEncodedSlotPositions);
+            if (echoedPositions.Count <= 0)
+            {
+                return true;
+            }
+
+            HashSet<int> pendingPositions = pendingRepairAllEncodedSlotPositions == null
+                ? new HashSet<int>()
+                : pendingRepairAllEncodedSlotPositions
+                    .Where(static position => LooksLikeEncodedSlotPosition(position))
+                    .ToHashSet();
+            if (pendingPositions.Count <= 0)
+            {
+                return true;
+            }
+
+            return echoedPositions.All(pendingPositions.Contains);
+        }
+
+        internal static IReadOnlyList<int> BuildClientEquippedPositionOrder(IEnumerable<int> encodedPositions)
+        {
+            HashSet<int> uniquePositions = encodedPositions == null
+                ? new HashSet<int>()
+                : new HashSet<int>(encodedPositions);
+            if (uniquePositions.Count <= 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            List<int> ordered = uniquePositions
+                .Where(static position => position == 0)
+                .ToList();
+            ordered.AddRange(uniquePositions
+                .Where(static position => position is <= -1 and >= -59)
+                .OrderByDescending(static position => position)
+                .ToList());
+
+            foreach (int overflowPosition in uniquePositions
+                         .Where(static position => position is > 0 or < -59)
+                         .OrderByDescending(static position => position))
+            {
+                ordered.Add(overflowPosition);
+            }
+
+            return ordered;
+        }
+
+        internal static bool TryDecodeSyntheticResultPayload(
+            byte[] payload,
+            out ResultPayload result,
+            out string error)
+        {
+            result = new ResultPayload(success: true, reasonCode: null, operationCode: null, encodedSlotPosition: null, statusText: string.Empty);
+            error = null;
+
+            if (payload == null || payload.Length == 0)
+            {
+                return true;
+            }
+
+            if (TryDecodePrefixedRepairResultPayload(payload, out result, out error))
+            {
+                return true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(error))
+            {
+                return false;
+            }
+
+            if (TryDecodeJsonResultPayload(payload, out result, out error))
+            {
+                return true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(error))
+            {
+                return false;
+            }
+
+            if (TryDecodeOpcodeResultEchoedSlotPayload(payload, out result, out error))
+            {
+                return true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(error))
+            {
+                return false;
+            }
+
+            if (TryDecodeSlotListResultPayload(payload, out result, out error))
+            {
+                return true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(error))
+            {
+                return false;
+            }
+
+            if (TryDecodeEmptyRepairAllSlotListResultPayload(payload, out result, out error))
+            {
+                return true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(error))
+            {
+                return false;
+            }
+
+            if (TryDecodeResultFirstSlotListPayload(payload, out result, out error))
+            {
+                return true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(error))
+            {
+                return false;
+            }
+
+            if (TryDecodeResultFirstPayload(payload, out result, out error))
+            {
+                return true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(error))
+            {
+                return false;
+            }
+
+            int offset = 0;
+            short? operationCode = null;
+            if (payload.Length >= sizeof(int) + 1)
+            {
+                int intOperationCode = BinaryPrimitives.ReadInt32LittleEndian(payload);
+                if (intOperationCode == 130 || intOperationCode == 131)
+                {
+                    operationCode = (short)intOperationCode;
+                    offset += sizeof(int);
+                }
+            }
+
+            if (!operationCode.HasValue && payload.Length >= sizeof(short) + 1)
+            {
+                short shortOperationCode = BinaryPrimitives.ReadInt16LittleEndian(payload);
+                if (shortOperationCode == 130 || shortOperationCode == 131)
+                {
+                    operationCode = shortOperationCode;
+                    offset += sizeof(short);
+                }
+            }
+
+            if (!operationCode.HasValue && (payload[0] == 130 || payload[0] == 131))
+            {
+                operationCode = payload[0];
+                offset++;
+            }
+
+            int? encodedSlotPosition = null;
+            TryReadEncodedSlotPosition(payload, ref offset, out encodedSlotPosition);
+
+            if (!operationCode.HasValue)
+            {
+                int trailingOpcodeOffset = offset;
+                if (TryReadRepairOpcode(payload, ref trailingOpcodeOffset, out short? trailingOperationCode))
+                {
+                    operationCode = trailingOperationCode;
+                    offset = trailingOpcodeOffset;
+                }
+            }
+
+            if (!encodedSlotPosition.HasValue)
+            {
+                int trailingSlotOffset = offset;
+                if (TryReadEncodedSlotPosition(payload, ref trailingSlotOffset, out int? trailingSlotPosition))
+                {
+                    encodedSlotPosition = trailingSlotPosition;
+                    offset = trailingSlotOffset;
+                }
+            }
+
+            if (!TryDecodeResultAndReasonFromOffset(
+                    payload,
+                    offset,
+                    successIndexInTail: 0,
+                    out bool success,
+                    out int? reasonCode,
+                    out string statusText,
+                    out string decodeError))
+            {
+                error = decodeError ?? "Repair-result payload must be empty, [result], [result+reason], [opcode+result], [opcode16+result], [slot+result], [slot+opcode+result], or [opcode/slot+result+reason(+text)].";
+                return false;
+            }
+
+            result = new ResultPayload(success, reasonCode, operationCode, encodedSlotPosition, statusText);
+            return true;
+        }
+
+        private static bool TryDecodePrefixedRepairResultPayload(
+            byte[] payload,
+            out ResultPayload result,
+            out string error)
+        {
+            result = new ResultPayload(success: true, reasonCode: null, operationCode: null, encodedSlotPosition: null, statusText: string.Empty);
+            error = null;
+            if (payload == null || payload.Length <= sizeof(short))
+            {
+                return false;
+            }
+
+            int prefixSize = 0;
+            if (payload.Length >= sizeof(int)
+                && BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(0, sizeof(int))) == 1025)
+            {
+                prefixSize = sizeof(int);
+            }
+            else if (BinaryPrimitives.ReadUInt16LittleEndian(payload.AsSpan(0, sizeof(short))) == 1025)
+            {
+                prefixSize = sizeof(short);
+            }
+
+            if (prefixSize <= 0 || payload.Length <= prefixSize)
+            {
+                return false;
+            }
+
+            byte[] body = payload[prefixSize..];
+            if (body.Length <= 0)
+            {
+                result = new ResultPayload(success: true, reasonCode: null, operationCode: null, encodedSlotPosition: null, statusText: string.Empty);
+                return true;
+            }
+
+            return TryDecodeSyntheticResultPayload(body, out result, out error);
+        }
+
+        private static bool TryDecodeOpcodeResultEchoedSlotPayload(byte[] payload, out ResultPayload result, out string error)
+        {
+            result = new ResultPayload(success: true, reasonCode: null, operationCode: null, encodedSlotPosition: null, statusText: string.Empty);
+            error = null;
+            if (payload == null || payload.Length < 1 + 1 + sizeof(int))
+            {
+                return false;
+            }
+
+            int offset = 0;
+            if (!TryReadRepairOpcode(payload, ref offset, out short? operationCode) || !operationCode.HasValue)
+            {
+                return false;
+            }
+
+            byte resultByte = payload[offset];
+            if (resultByte is not (byte)0 and not (byte)1)
+            {
+                return false;
+            }
+
+            offset++;
+            if (!TryReadIntEncodedSlotPosition(payload, ref offset, out int? encodedSlotPosition)
+                || !encodedSlotPosition.HasValue)
+            {
+                return false;
+            }
+
+            if (!TryDecodeReasonAndStatusTail(payload, offset, out int? reasonCode, out string statusText, out error))
+            {
+                return false;
+            }
+
+            result = new ResultPayload(
+                success: resultByte == 0,
+                reasonCode,
+                operationCode,
+                encodedSlotPosition,
+                statusText);
+            return true;
+        }
+
+        private static bool TryDecodeSlotListResultPayload(byte[] payload, out ResultPayload result, out string error)
+        {
+            result = new ResultPayload(success: true, reasonCode: null, operationCode: null, encodedSlotPosition: null, statusText: string.Empty);
+            error = null;
+            if (payload == null || payload.Length < 1 + sizeof(int) + 1)
+            {
+                return false;
+            }
+
+            foreach (bool opcodeFirst in new[] { true, false })
+            {
+                int offset = 0;
+                short? operationCode = null;
+                if (opcodeFirst && !TryReadRepairOpcode(payload, ref offset, out operationCode))
+                {
+                    continue;
+                }
+
+                foreach (int countSize in new[] { sizeof(byte), sizeof(short), sizeof(int) })
+                {
+                    int candidateOffset = offset;
+                    if (!TryReadSlotListCount(payload, ref candidateOffset, countSize, out int slotCount))
+                    {
+                        continue;
+                    }
+
+                    int requiredSlotBytes = slotCount * sizeof(int);
+                    if (payload.Length - candidateOffset < requiredSlotBytes + 1)
+                    {
+                        continue;
+                    }
+
+                    var encodedSlotPositions = new List<int>(slotCount);
+                    bool validPositions = true;
+                    for (int i = 0; i < slotCount; i++)
+                    {
+                        int encodedPosition = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(candidateOffset, sizeof(int)));
+                        candidateOffset += sizeof(int);
+                        if (!LooksLikeEncodedSlotPosition(encodedPosition))
+                        {
+                            validPositions = false;
+                            break;
+                        }
+
+                        encodedSlotPositions.Add(encodedPosition);
+                    }
+
+                    if (!validPositions)
+                    {
+                        continue;
+                    }
+
+                    if (!TryDecodeResultAndReasonFromOffset(
+                            payload,
+                            candidateOffset,
+                            successIndexInTail: 0,
+                            out bool success,
+                            out int? reasonCode,
+                            out string statusText,
+                            out string decodeError))
+                    {
+                        error = decodeError;
+                        return false;
+                    }
+
+                    result = new ResultPayload(
+                        success,
+                        reasonCode,
+                        operationCode,
+                        encodedSlotPositions.Count > 0 ? encodedSlotPositions[0] : null,
+                        statusText,
+                        encodedSlotPositions);
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryDecodeResultFirstSlotListPayload(byte[] payload, out ResultPayload result, out string error)
+        {
+            result = new ResultPayload(success: true, reasonCode: null, operationCode: null, encodedSlotPosition: null, statusText: string.Empty);
+            error = null;
+            if (payload == null || payload.Length < 1 + sizeof(byte) + sizeof(int) || payload[0] > 1)
+            {
+                return false;
+            }
+
+            bool success = payload[0] == 0;
+            foreach (bool opcodeBeforeCount in new[] { true, false })
+            {
+                int offset = 1;
+                short? operationCode = null;
+                if (opcodeBeforeCount)
+                {
+                    TryReadRepairOpcode(payload, ref offset, out operationCode);
+                }
+
+                foreach (int countSize in new[] { sizeof(byte), sizeof(short), sizeof(int) })
+                {
+                    int candidateOffset = offset;
+                    if (!TryReadSlotListCount(payload, ref candidateOffset, countSize, out int slotCount))
+                    {
+                        continue;
+                    }
+
+                    int requiredSlotBytes = slotCount * sizeof(int);
+                    if (payload.Length - candidateOffset < requiredSlotBytes)
+                    {
+                        continue;
+                    }
+
+                    var encodedSlotPositions = new List<int>(slotCount);
+                    bool validPositions = true;
+                    for (int i = 0; i < slotCount; i++)
+                    {
+                        int encodedPosition = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(candidateOffset, sizeof(int)));
+                        candidateOffset += sizeof(int);
+                        if (!LooksLikeEncodedSlotPosition(encodedPosition))
+                        {
+                            validPositions = false;
+                            break;
+                        }
+
+                        encodedSlotPositions.Add(encodedPosition);
+                    }
+
+                    if (!validPositions)
+                    {
+                        continue;
+                    }
+
+                    if (!TryDecodeReasonAndStatusTail(payload, candidateOffset, out int? reasonCode, out string statusText, out string decodeError))
+                    {
+                        error = decodeError;
+                        return false;
+                    }
+
+                    result = new ResultPayload(
+                        success,
+                        reasonCode,
+                        operationCode,
+                        encodedSlotPositions.Count > 0 ? encodedSlotPositions[0] : null,
+                        statusText,
+                        encodedSlotPositions);
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryDecodeEmptyRepairAllSlotListResultPayload(byte[] payload, out ResultPayload result, out string error)
+        {
+            result = new ResultPayload(success: true, reasonCode: null, operationCode: null, encodedSlotPosition: null, statusText: string.Empty);
+            error = null;
+            if (payload == null || payload.Length < sizeof(short) + sizeof(byte) + 1)
+            {
+                return false;
+            }
+
+            if (TryDecodeOpcodeFirstEmptyRepairAllSlotListResultPayload(payload, out result, out error))
+            {
+                return true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(error))
+            {
+                return false;
+            }
+
+            return TryDecodeResultFirstEmptyRepairAllSlotListResultPayload(payload, out result, out error);
+        }
+
+        private static bool TryDecodeOpcodeFirstEmptyRepairAllSlotListResultPayload(byte[] payload, out ResultPayload result, out string error)
+        {
+            result = new ResultPayload(success: true, reasonCode: null, operationCode: null, encodedSlotPosition: null, statusText: string.Empty);
+            error = null;
+
+            int opcodeOffset = 0;
+            if (!TryReadRepairOpcode(payload, ref opcodeOffset, out short? operationCode)
+                || operationCode != 130)
+            {
+                return false;
+            }
+
+            foreach (int countSize in new[] { sizeof(byte), sizeof(short), sizeof(int) })
+            {
+                int countOffset = opcodeOffset;
+                if (!TryReadEmptySlotListCount(payload, ref countOffset, countSize))
+                {
+                    continue;
+                }
+
+                if (!TryDecodeResultAndReasonFromOffset(
+                        payload,
+                        countOffset,
+                        successIndexInTail: 0,
+                        out bool success,
+                        out int? reasonCode,
+                        out string statusText,
+                        out string decodeError))
+                {
+                    error = decodeError;
+                    return false;
+                }
+
+                result = new ResultPayload(success, reasonCode, operationCode, encodedSlotPosition: null, statusText);
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryDecodeResultFirstEmptyRepairAllSlotListResultPayload(byte[] payload, out ResultPayload result, out string error)
+        {
+            result = new ResultPayload(success: true, reasonCode: null, operationCode: null, encodedSlotPosition: null, statusText: string.Empty);
+            error = null;
+            if (payload == null || payload.Length < 1 + sizeof(short) + sizeof(byte) || payload[0] > 1)
+            {
+                return false;
+            }
+
+            bool success = payload[0] == 0;
+            int opcodeOffset = 1;
+            if (!TryReadRepairOpcode(payload, ref opcodeOffset, out short? operationCode)
+                || operationCode != 130)
+            {
+                return false;
+            }
+
+            foreach (int countSize in new[] { sizeof(byte), sizeof(short), sizeof(int) })
+            {
+                int countOffset = opcodeOffset;
+                if (!TryReadEmptySlotListCount(payload, ref countOffset, countSize))
+                {
+                    continue;
+                }
+
+                if (!TryDecodeReasonAndStatusTail(payload, countOffset, out int? reasonCode, out string statusText, out string decodeError))
+                {
+                    error = decodeError;
+                    return false;
+                }
+
+                result = new ResultPayload(success, reasonCode, operationCode, encodedSlotPosition: null, statusText);
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryReadSlotListCount(byte[] payload, ref int offset, int countSize, out int slotCount)
+        {
+            slotCount = 0;
+            if (payload == null || payload.Length - offset < countSize)
+            {
+                return false;
+            }
+
+            slotCount = countSize switch
+            {
+                sizeof(byte) => payload[offset],
+                sizeof(short) => BinaryPrimitives.ReadUInt16LittleEndian(payload.AsSpan(offset, sizeof(short))),
+                sizeof(int) => BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(offset, sizeof(int))),
+                _ => 0
+            };
+            if (slotCount <= 0 || slotCount > 128)
+            {
+                return false;
+            }
+
+            offset += countSize;
+            return true;
+        }
+
+        private static bool TryReadEmptySlotListCount(byte[] payload, ref int offset, int countSize)
+        {
+            if (payload == null || payload.Length - offset < countSize)
+            {
+                return false;
+            }
+
+            int slotCount = countSize switch
+            {
+                sizeof(byte) => payload[offset],
+                sizeof(short) => BinaryPrimitives.ReadUInt16LittleEndian(payload.AsSpan(offset, sizeof(short))),
+                sizeof(int) => BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(offset, sizeof(int))),
+                _ => -1
+            };
+            if (slotCount != 0)
+            {
+                return false;
+            }
+
+            offset += countSize;
+            return true;
+        }
+
+        private static bool TryDecodeResultFirstPayload(byte[] payload, out ResultPayload result, out string error)
+        {
+            result = new ResultPayload(success: true, reasonCode: null, operationCode: null, encodedSlotPosition: null, statusText: string.Empty);
+            error = null;
+            if (payload == null || payload.Length <= 1 || payload[0] > 1)
+            {
+                return false;
+            }
+
+            int headerOffset = 1;
+            short? operationCode = null;
+            int? encodedSlotPosition = null;
+            bool success = payload[0] == 0;
+            if (!TryReadResultFirstHeader(payload, ref headerOffset, success, out operationCode, out encodedSlotPosition))
+            {
+                // A plain [result + reason] body is handled by the generic result/reason parser.
+                // Only this branch owns the optional result-first echoed opcode/slot header.
+                return false;
+            }
+
+            if (!TryDecodeReasonAndStatusTail(
+                    payload,
+                    headerOffset,
+                    out int? reasonCode,
+                    out string statusText,
+                    out string decodeError))
+            {
+                error = decodeError ?? "Result-first repair-result payload has trailing bytes after the echoed opcode/slot.";
+                return false;
+            }
+
+            result = new ResultPayload(
+                success: success,
+                reasonCode,
+                operationCode,
+                encodedSlotPosition,
+                statusText);
+            return true;
+        }
+
+        private static bool TryReadResultFirstHeader(
+            byte[] payload,
+            ref int offset,
+            bool success,
+            out short? operationCode,
+            out int? encodedSlotPosition)
+        {
+            operationCode = null;
+            encodedSlotPosition = null;
+
+            int bestOffset = offset;
+            short? bestOperationCode = null;
+            int? bestEncodedSlotPosition = null;
+            int bestScore = int.MinValue;
+
+            foreach (bool opcodeFirst in new[] { true, false })
+            {
+                int candidateOffset = offset;
+                short? candidateOperationCode = null;
+                int? candidateEncodedSlotPosition = null;
+                int encodedSlotStartOffset = -1;
+                int encodedSlotEndOffset = -1;
+
+                if (opcodeFirst)
+                {
+                    TryReadRepairOpcode(payload, ref candidateOffset, out candidateOperationCode);
+                    encodedSlotStartOffset = candidateOffset;
+                    TryReadResultFirstEncodedSlotPosition(payload, ref candidateOffset, success, out candidateEncodedSlotPosition);
+                    encodedSlotEndOffset = candidateOffset;
+                }
+                else
+                {
+                    encodedSlotStartOffset = candidateOffset;
+                    TryReadResultFirstEncodedSlotPosition(payload, ref candidateOffset, success, out candidateEncodedSlotPosition);
+                    encodedSlotEndOffset = candidateOffset;
+                    TryReadRepairOpcode(payload, ref candidateOffset, out candidateOperationCode);
+                }
+
+                int remaining = payload.Length - candidateOffset;
+                if (remaining != 0 && remaining < sizeof(short))
+                {
+                    continue;
+                }
+
+                if (!candidateOperationCode.HasValue
+                    && candidateEncodedSlotPosition.HasValue
+                    && candidateEncodedSlotPosition.Value >= 0
+                    && encodedSlotEndOffset - encodedSlotStartOffset == sizeof(short)
+                    && (remaining < sizeof(int)
+                        || TryResolveRepairResultStringPoolStatusText(
+                            BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(candidateOffset, sizeof(int))),
+                            out _)))
+                {
+                    // A result-first [result][Int16 reason] failure body, optionally
+                    // followed by a StringPool notice id, is more common than a
+                    // positive-slot echo encoded as Int16 without an opcode. Keep int32
+                    // echoes valid, but leave this compact shape to the reason parser.
+                    continue;
+                }
+
+                int score = candidateOffset - offset;
+                if (candidateOperationCode.HasValue)
+                {
+                    score += 4;
+                }
+
+                if (candidateEncodedSlotPosition.HasValue)
+                {
+                    score += 2;
+                }
+
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    bestOffset = candidateOffset;
+                    bestOperationCode = candidateOperationCode;
+                    bestEncodedSlotPosition = candidateEncodedSlotPosition;
+                }
+            }
+
+            if (bestScore < 0)
+            {
+                return false;
+            }
+
+            offset = bestOffset;
+            operationCode = bestOperationCode;
+            encodedSlotPosition = bestEncodedSlotPosition;
+            return true;
+        }
+
+        private static bool ShouldTreatResultFirstIntAsEncodedSlot(
+            bool success,
+            int candidateEncodedSlotPosition,
+            int remainingAfterSlot)
+        {
+            if (!success && candidateEncodedSlotPosition >= 0 && remainingAfterSlot == 0)
+            {
+                return false;
+            }
+
+            if (remainingAfterSlot >= sizeof(int))
+            {
+                return true;
+            }
+
+            if (candidateEncodedSlotPosition < 0)
+            {
+                return true;
+            }
+
+            // Result-first repair replies can echo an equip-inventory nPOS as a 32-bit
+            // positive slot and then carry only the compact byte/short reason tail.
+            return remainingAfterSlot is 0 or sizeof(byte) or sizeof(short);
+        }
+
+        private static bool TryReadIntEncodedSlotPosition(byte[] payload, ref int offset, out int? encodedSlotPosition)
+        {
+            encodedSlotPosition = null;
+            if (payload == null || payload.Length - offset < sizeof(int))
+            {
+                return false;
+            }
+
+            int candidateEncodedSlotPosition = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(offset, sizeof(int)));
+            if (!LooksLikeEncodedSlotPosition(candidateEncodedSlotPosition))
+            {
+                return false;
+            }
+
+            encodedSlotPosition = candidateEncodedSlotPosition;
+            offset += sizeof(int);
+            return true;
+        }
+
+        private static bool TryReadResultFirstEncodedSlotPosition(byte[] payload, ref int offset, bool success, out int? encodedSlotPosition)
+        {
+            encodedSlotPosition = null;
+            if (payload == null || payload.Length - offset < sizeof(short))
+            {
+                return false;
+            }
+
+            if (payload.Length - offset >= sizeof(int))
+            {
+                int candidateEncodedSlotPosition = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(offset, sizeof(int)));
+                int remainingAfterSlot = payload.Length - (offset + sizeof(int));
+                if (!success
+                    && candidateEncodedSlotPosition >= 0
+                    && remainingAfterSlot == sizeof(int)
+                    && TryResolveRepairResultStringPoolStatusText(
+                        BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(offset + sizeof(int), sizeof(int))),
+                        out _))
+                {
+                    return false;
+                }
+
+                if (LooksLikeEncodedSlotPosition(candidateEncodedSlotPosition)
+                    && ShouldTreatResultFirstIntAsEncodedSlot(success, candidateEncodedSlotPosition, remainingAfterSlot))
+                {
+                    encodedSlotPosition = candidateEncodedSlotPosition;
+                    offset += sizeof(int);
+                    return true;
+                }
+            }
+
+            short candidateShortSlotPosition = BinaryPrimitives.ReadInt16LittleEndian(payload.AsSpan(offset, sizeof(short)));
+            int remainingAfterShortSlot = payload.Length - (offset + sizeof(short));
+            if (!LooksLikeEncodedSlotPosition(candidateShortSlotPosition)
+                || LooksLikeRepairOpcode(candidateShortSlotPosition)
+                || (remainingAfterShortSlot > 0 && remainingAfterShortSlot < sizeof(short)))
+            {
+                return false;
+            }
+
+            encodedSlotPosition = candidateShortSlotPosition;
+            offset += sizeof(short);
+            return true;
+        }
+
+        private static bool TryReadEncodedSlotPosition(byte[] payload, ref int offset, out int? encodedSlotPosition)
+        {
+            encodedSlotPosition = null;
+            if (payload == null || payload.Length - offset < sizeof(short))
+            {
+                return false;
+            }
+
+            if (payload.Length - offset >= sizeof(int))
+            {
+                int candidateEncodedSlotPosition = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(offset, sizeof(int)));
+                int remainingAfterSlot = payload.Length - (offset + sizeof(int));
+                if (LooksLikeEncodedSlotPosition(candidateEncodedSlotPosition)
+                    && ShouldTreatResultFirstIntAsEncodedSlot(success: true, candidateEncodedSlotPosition, remainingAfterSlot))
+                {
+                    encodedSlotPosition = candidateEncodedSlotPosition;
+                    offset += sizeof(int);
+                    return true;
+                }
+            }
+
+            short candidateShortSlotPosition = BinaryPrimitives.ReadInt16LittleEndian(payload.AsSpan(offset, sizeof(short)));
+            int remainingAfterShortSlot = payload.Length - (offset + sizeof(short));
+            if (!LooksLikeEncodedSlotPosition(candidateShortSlotPosition)
+                || LooksLikeRepairOpcode(candidateShortSlotPosition)
+                || (remainingAfterShortSlot > 0 && remainingAfterShortSlot < sizeof(short)))
+            {
+                return false;
+            }
+
+            encodedSlotPosition = candidateShortSlotPosition;
+            offset += sizeof(short);
+            return true;
+        }
+
+        private static bool TryDecodeResultAndReasonFromOffset(
+            byte[] payload,
+            int offset,
+            int successIndexInTail,
+            out bool success,
+            out int? reasonCode,
+            out string statusText,
+            out string error)
+        {
+            success = true;
+            reasonCode = null;
+            statusText = string.Empty;
+            error = null;
+
+            if (payload == null || offset < 0 || offset >= payload.Length)
+            {
+                error = "Repair-result payload is missing the result byte.";
+                return false;
+            }
+
+            int remainingLength = payload.Length - offset;
+            if (remainingLength < 1 || successIndexInTail < 0 || successIndexInTail >= remainingLength)
+            {
+                error = "Repair-result payload is missing the result byte.";
+                return false;
+            }
+
+            byte resultByte = payload[offset + successIndexInTail];
+            if (resultByte is not (byte)0 and not (byte)1)
+            {
+                error = "Repair-result payload result byte must be 0 (success) or 1 (failure).";
+                return false;
+            }
+
+            success = resultByte == 0;
+            int reasonOffset = offset + successIndexInTail + 1;
+            return TryDecodeReasonAndStatusTail(payload, reasonOffset, out reasonCode, out statusText, out error);
+        }
+
+        private static bool TryDecodeReasonAndStatusTail(
+            byte[] payload,
+            int reasonOffset,
+            out int? reasonCode,
+            out string statusText,
+            out string error)
+        {
+            reasonCode = null;
+            statusText = string.Empty;
+            error = null;
+
+            int reasonPayloadLength = payload.Length - reasonOffset;
+            if (reasonPayloadLength == 0)
+            {
+                return true;
+            }
+
+            if (reasonPayloadLength < 0)
+            {
+                error = "Repair-result payload reason segment starts beyond the result body.";
+                return false;
+            }
+
+            if (TryDecodeReasonAndStringPoolStatusTail(
+                    payload,
+                    reasonOffset,
+                    reasonPayloadLength,
+                    out reasonCode,
+                    out statusText))
+            {
+                return true;
+            }
+
+            if (reasonPayloadLength >= sizeof(int))
+            {
+                int intReasonCode = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(reasonOffset, sizeof(int)));
+                int intTextOffset = reasonOffset + sizeof(int);
+                int intTextLength = payload.Length - intTextOffset;
+                string intStatusText = intTextLength > 0
+                    ? DecodeResultStatusText(payload.AsSpan(intTextOffset, intTextLength))
+                    : string.Empty;
+
+                short shortReasonCode = BinaryPrimitives.ReadInt16LittleEndian(payload.AsSpan(reasonOffset, sizeof(short)));
+                int shortTextOffset = reasonOffset + sizeof(short);
+                int shortTextLength = payload.Length - shortTextOffset;
+                string shortStatusText = shortTextLength > 0
+                    ? DecodeResultStatusText(payload.AsSpan(shortTextOffset, shortTextLength))
+                    : string.Empty;
+                bool preferShortReasonAndText = shortTextLength > 0
+                    && LooksLikeReasonCode(shortReasonCode)
+                    && !string.IsNullOrWhiteSpace(shortStatusText)
+                    && (!LooksLikeReasonCode(intReasonCode)
+                        || string.IsNullOrWhiteSpace(intStatusText)
+                        || LooksLikeMapleStringPayload(payload.AsSpan(shortTextOffset, shortTextLength)));
+
+                if (preferShortReasonAndText)
+                {
+                    reasonCode = shortReasonCode;
+                    statusText = shortStatusText;
+                    return true;
+                }
+
+                reasonCode = intReasonCode;
+                statusText = intStatusText;
+                return true;
+            }
+
+            if (reasonPayloadLength == sizeof(short))
+            {
+                reasonCode = BinaryPrimitives.ReadInt16LittleEndian(payload.AsSpan(reasonOffset, sizeof(short)));
+                return true;
+            }
+
+            if (reasonPayloadLength == sizeof(byte))
+            {
+                reasonCode = payload[reasonOffset];
+                return true;
+            }
+
+            error = "Repair-result payload reason segment must be Byte, Int16, or Int32 when present.";
+            return false;
+        }
+
+        private static bool TryDecodeReasonAndStringPoolStatusTail(
+            byte[] payload,
+            int reasonOffset,
+            int reasonPayloadLength,
+            out int? reasonCode,
+            out string statusText)
+        {
+            reasonCode = null;
+            statusText = string.Empty;
+            if (payload == null || reasonPayloadLength < sizeof(int))
+            {
+                return false;
+            }
+
+            if (reasonPayloadLength == sizeof(int))
+            {
+                int stringPoolId = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(reasonOffset, sizeof(int)));
+                if (TryResolveRepairResultStringPoolStatusText(stringPoolId, out statusText))
+                {
+                    return true;
+                }
+            }
+
+            foreach (int reasonSize in new[] { sizeof(byte), sizeof(short), sizeof(int) })
+            {
+                if (reasonPayloadLength != reasonSize + sizeof(int))
+                {
+                    continue;
+                }
+
+                int stringPoolOffset = reasonOffset + reasonSize;
+                int stringPoolId = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(stringPoolOffset, sizeof(int)));
+                if (!TryResolveRepairResultStringPoolStatusText(stringPoolId, out statusText))
+                {
+                    continue;
+                }
+
+                reasonCode = reasonSize switch
+                {
+                    sizeof(byte) => payload[reasonOffset],
+                    sizeof(short) => BinaryPrimitives.ReadInt16LittleEndian(payload.AsSpan(reasonOffset, sizeof(short))),
+                    sizeof(int) => BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(reasonOffset, sizeof(int))),
+                    _ => null
+                };
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryResolveRepairResultStringPoolStatusText(int stringPoolId, out string statusText)
+        {
+            statusText = string.Empty;
+            if (stringPoolId < 0x100
+                || !MapleStoryStringPool.TryGet(stringPoolId, out string resolvedText)
+                || string.IsNullOrWhiteSpace(resolvedText)
+                || LooksLikeAssetPathOrUrl(resolvedText))
+            {
+                return false;
+            }
+
+            statusText = resolvedText.Trim();
+            return true;
+        }
+
+        private static bool LooksLikeAssetPathOrUrl(string text)
+        {
+            string trimmed = text?.Trim() ?? string.Empty;
+            return trimmed.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+                   || trimmed.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+                   || trimmed.Contains(".img", StringComparison.OrdinalIgnoreCase)
+                   || trimmed.Contains(".wz", StringComparison.OrdinalIgnoreCase)
+                   || trimmed.Contains('/');
+        }
+
+        private static bool TryReadRepairOpcode(byte[] payload, ref int offset, out short? operationCode)
+        {
+            operationCode = null;
+            int remainingLength = payload.Length - offset;
+            if (remainingLength >= sizeof(int))
+            {
+                int intOperationCode = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(offset, sizeof(int)));
+                if (intOperationCode == 130 || intOperationCode == 131)
+                {
+                    operationCode = (short)intOperationCode;
+                    offset += sizeof(int);
+                    return true;
+                }
+            }
+
+            if (remainingLength >= sizeof(short))
+            {
+                short shortOperationCode = BinaryPrimitives.ReadInt16LittleEndian(payload.AsSpan(offset, sizeof(short)));
+                if (shortOperationCode == 130 || shortOperationCode == 131)
+                {
+                    operationCode = shortOperationCode;
+                    offset += sizeof(short);
+                    return true;
+                }
+            }
+
+            if (remainingLength >= 1 && (payload[offset] == 130 || payload[offset] == 131))
+            {
+                operationCode = payload[offset];
+                offset++;
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryDecodeJsonResultPayload(byte[] payload, out ResultPayload result, out string error)
+        {
+            result = new ResultPayload(success: true, reasonCode: null, operationCode: null, encodedSlotPosition: null, statusText: string.Empty);
+            error = null;
+
+            ReadOnlySpan<byte> trimmedPayload = TrimJsonPayload(payload);
+            if (trimmedPayload.Length <= 0 || trimmedPayload[0] != (byte)'{')
+            {
+                return false;
+            }
+
+            try
+            {
+                using JsonDocument document = JsonDocument.Parse(trimmedPayload.ToArray());
+                JsonElement root = document.RootElement;
+                if (root.ValueKind != JsonValueKind.Object)
+                {
+                    error = "Repair-result JSON payload must be an object.";
+                    return false;
+                }
+
+                JsonElement body = root;
+                foreach (string nestedBodyName in new[]
+                         {
+                             "result",
+                             "repairDurabilityResult",
+                             "repairResult",
+                             "payload",
+                             "body",
+                             "data"
+                         })
+                {
+                    if (root.TryGetProperty(nestedBodyName, out JsonElement nestedResult)
+                        && nestedResult.ValueKind == JsonValueKind.Object)
+                    {
+                        body = nestedResult;
+                        break;
+                    }
+                }
+
+                bool success = ReadBooleanWithFallback(body, root, true, "success", "succeeded", "ok", "accepted")
+                    && !ReadBooleanWithFallback(body, root, false, "failure", "failed", "rejected", "error");
+                short? operationCode = ReadIntWithFallback(body, root, "operationCode", "opcode", "op", "repairOpcode") is int op
+                    && (op == 130 || op == 131)
+                        ? (short)op
+                        : null;
+                int? encodedSlotPosition = ReadIntWithFallback(
+                    body,
+                    root,
+                    "encodedSlotPosition",
+                    "encodedPosition",
+                    "nPOS",
+                    "nPos",
+                    "npos",
+                    "encodedSlot",
+                    "slotPosition",
+                    "position");
+                if (encodedSlotPosition.HasValue && !LooksLikeEncodedSlotPosition(encodedSlotPosition.Value))
+                {
+                    error = $"Repair-result JSON encoded slot position {encodedSlotPosition.Value} is outside the client slot range.";
+                    return false;
+                }
+
+                IReadOnlyList<int> encodedSlotPositions = ReadIntArrayWithFallback(
+                    body,
+                    root,
+                    "encodedSlotPositions",
+                    "encodedPositions",
+                    "nPOSList",
+                    "nPosList",
+                    "nposList",
+                    "encodedSlots",
+                    "slotPositions",
+                    "positions",
+                    "slots");
+                if (encodedSlotPositions.Any(static position => !LooksLikeEncodedSlotPosition(position)))
+                {
+                    error = "Repair-result JSON encoded slot position list contains a value outside the client slot range.";
+                    return false;
+                }
+
+                int? reasonCode = ReadIntWithFallback(body, root, "reasonCode", "reason", "errorCode", "rejectReason");
+                string statusText = ReadStringWithFallback(body, root, "statusText", "message", "text", "localizedText", "notice");
+                if (string.IsNullOrWhiteSpace(statusText))
+                {
+                    statusText = ReadStringPoolStatusTextWithFallback(
+                        body,
+                        root,
+                        "statusStringPoolId",
+                        "stringPoolId",
+                        "noticeStringPoolId",
+                        "messageStringPoolId",
+                        "localizedStringPoolId",
+                        "stringId",
+                        "msgId",
+                        "noticeId");
+                }
+
+                result = new ResultPayload(success, reasonCode, operationCode, encodedSlotPosition, statusText, encodedSlotPositions);
+                return true;
+            }
+            catch (JsonException ex)
+            {
+                error = $"Repair-result JSON payload could not be decoded: {ex.Message}";
+                return false;
+            }
+        }
+
+        private static ReadOnlySpan<byte> TrimJsonPayload(byte[] payload)
+        {
+            ReadOnlySpan<byte> span = payload ?? Array.Empty<byte>();
+            while (span.Length > 0 && char.IsWhiteSpace((char)span[0]))
+            {
+                span = span[1..];
+            }
+
+            while (span.Length > 0 && (span[^1] == 0 || char.IsWhiteSpace((char)span[^1])))
+            {
+                span = span[..^1];
+            }
+
+            return span;
+        }
+
+        private static int? ReadInt(JsonElement root, params string[] names)
+        {
+            foreach (string name in names)
+            {
+                if (!root.TryGetProperty(name, out JsonElement value))
+                {
+                    continue;
+                }
+
+                if (value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out int number))
+                {
+                    return number;
+                }
+
+                if (value.ValueKind == JsonValueKind.String
+                    && TryParseJsonInt(value.GetString(), out number))
+                {
+                    return number;
+                }
+            }
+
+            return null;
+        }
+
+        private static int? ReadIntWithFallback(JsonElement primaryRoot, JsonElement fallbackRoot, params string[] names)
+        {
+            int? value = ReadInt(primaryRoot, names);
+            if (value.HasValue || primaryRoot.ValueKind == fallbackRoot.ValueKind && primaryRoot.GetRawText() == fallbackRoot.GetRawText())
+            {
+                return value;
+            }
+
+            return ReadInt(fallbackRoot, names);
+        }
+
+        private static IReadOnlyList<int> ReadIntArray(JsonElement root, params string[] names)
+        {
+            foreach (string name in names)
+            {
+                if (!root.TryGetProperty(name, out JsonElement value))
+                {
+                    continue;
+                }
+
+                if (value.ValueKind == JsonValueKind.Array)
+                {
+                    List<int> values = new();
+                    foreach (JsonElement child in value.EnumerateArray())
+                    {
+                        if (child.ValueKind == JsonValueKind.Number && child.TryGetInt32(out int number))
+                        {
+                            values.Add(number);
+                        }
+                        else if (child.ValueKind == JsonValueKind.String
+                                 && TryParseJsonInt(child.GetString(), out number))
+                        {
+                            values.Add(number);
+                        }
+                    }
+
+                    return values;
+                }
+
+                if (value.ValueKind == JsonValueKind.String)
+                {
+                    string text = value.GetString();
+                    if (string.IsNullOrWhiteSpace(text))
+                    {
+                        return Array.Empty<int>();
+                    }
+
+                    string[] tokens = text.Split(new[] { ',', ';', ' ', '\t', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                    List<int> values = new(tokens.Length);
+                    for (int i = 0; i < tokens.Length; i++)
+                    {
+                        if (TryParseJsonInt(tokens[i], out int number))
+                        {
+                            values.Add(number);
+                        }
+                    }
+
+                    return values;
+                }
+            }
+
+            return Array.Empty<int>();
+        }
+
+        private static IReadOnlyList<int> ReadIntArrayWithFallback(JsonElement primaryRoot, JsonElement fallbackRoot, params string[] names)
+        {
+            IReadOnlyList<int> values = ReadIntArray(primaryRoot, names);
+            if (values.Count > 0
+                || primaryRoot.ValueKind == fallbackRoot.ValueKind && primaryRoot.GetRawText() == fallbackRoot.GetRawText())
+            {
+                return values;
+            }
+
+            return ReadIntArray(fallbackRoot, names);
+        }
+
+        private static bool ReadBoolean(JsonElement root, bool defaultValue, params string[] names)
+        {
+            foreach (string name in names)
+            {
+                if (!root.TryGetProperty(name, out JsonElement value))
+                {
+                    continue;
+                }
+
+                if (value.ValueKind == JsonValueKind.True)
+                {
+                    return true;
+                }
+
+                if (value.ValueKind == JsonValueKind.False)
+                {
+                    return false;
+                }
+
+                if (value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out int number))
+                {
+                    return number != 0;
+                }
+
+                if (value.ValueKind == JsonValueKind.String)
+                {
+                    string text = value.GetString();
+                    if (bool.TryParse(text, out bool parsed))
+                    {
+                        return parsed;
+                    }
+
+                    if (TryParseJsonInt(text, out number))
+                    {
+                        return number != 0;
+                    }
+                }
+            }
+
+            return defaultValue;
+        }
+
+        private static bool ReadBooleanWithFallback(
+            JsonElement primaryRoot,
+            JsonElement fallbackRoot,
+            bool defaultValue,
+            params string[] names)
+        {
+            bool primary = ReadBoolean(primaryRoot, defaultValue, names);
+            if (primaryRoot.ValueKind == fallbackRoot.ValueKind
+                && primaryRoot.GetRawText() == fallbackRoot.GetRawText())
+            {
+                return primary;
+            }
+
+            bool fallback = ReadBoolean(fallbackRoot, defaultValue, names);
+            return primary == defaultValue ? fallback : primary;
+        }
+
+        private static string ReadString(JsonElement root, params string[] names)
+        {
+            foreach (string name in names)
+            {
+                if (root.TryGetProperty(name, out JsonElement value)
+                    && value.ValueKind == JsonValueKind.String)
+                {
+                    return value.GetString() ?? string.Empty;
+                }
+            }
+
+            return string.Empty;
+        }
+
+        private static string ReadStringWithFallback(JsonElement primaryRoot, JsonElement fallbackRoot, params string[] names)
+        {
+            string primary = ReadString(primaryRoot, names);
+            if (!string.IsNullOrWhiteSpace(primary)
+                || primaryRoot.ValueKind == fallbackRoot.ValueKind && primaryRoot.GetRawText() == fallbackRoot.GetRawText())
+            {
+                return primary;
+            }
+
+            return ReadString(fallbackRoot, names);
+        }
+
+        private static string ReadStringPoolStatusTextWithFallback(JsonElement primaryRoot, JsonElement fallbackRoot, params string[] names)
+        {
+            string primary = ReadStringPoolStatusText(primaryRoot, names);
+            if (!string.IsNullOrWhiteSpace(primary)
+                || primaryRoot.ValueKind == fallbackRoot.ValueKind && primaryRoot.GetRawText() == fallbackRoot.GetRawText())
+            {
+                return primary;
+            }
+
+            return ReadStringPoolStatusText(fallbackRoot, names);
+        }
+
+        private static string ReadStringPoolStatusText(JsonElement root, params string[] names)
+        {
+            int? stringPoolId = ReadInt(root, names);
+            return stringPoolId.HasValue && TryResolveRepairResultStringPoolStatusText(stringPoolId.Value, out string statusText)
+                ? statusText
+                : string.Empty;
+        }
+
+        private static bool TryParseJsonInt(string text, out int value)
+        {
+            value = 0;
+            string trimmed = text?.Trim() ?? string.Empty;
+            if (trimmed.Length <= 0)
+            {
+                return false;
+            }
+
+            NumberStyles integerStyle = NumberStyles.Integer;
+            if (trimmed.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            {
+                return int.TryParse(trimmed[2..], NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out value);
+            }
+
+            if (trimmed.StartsWith("-0x", StringComparison.OrdinalIgnoreCase))
+            {
+                bool parsed = int.TryParse(trimmed[3..], NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out value);
+                value = -value;
+                return parsed;
+            }
+
+            return int.TryParse(trimmed, integerStyle, CultureInfo.InvariantCulture, out value);
+        }
+
+        private static bool LooksLikeEncodedSlotPosition(int encodedSlotPosition)
+        {
+            return encodedSlotPosition is >= 0 and <= 255
+                || encodedSlotPosition is <= -1 and >= -255;
+        }
+
+        private static IReadOnlyList<int> NormalizeEncodedSlotPositions(int? encodedSlotPosition, IReadOnlyList<int> encodedSlotPositions)
+        {
+            List<int> normalized = new();
+            if (encodedSlotPositions != null)
+            {
+                for (int i = 0; i < encodedSlotPositions.Count; i++)
+                {
+                    int position = encodedSlotPositions[i];
+                    if (!normalized.Contains(position))
+                    {
+                        normalized.Add(position);
+                    }
+                }
+            }
+
+            if (encodedSlotPosition.HasValue && !normalized.Contains(encodedSlotPosition.Value))
+            {
+                normalized.Add(encodedSlotPosition.Value);
+            }
+
+            return normalized;
+        }
+
+        private static bool IsClientEncodableBodyPart(int bodyPart)
+        {
+            // CRepairDurabilityDlg::SetItems appends equipped rows from aEquipped[0] down to aEquipped[-59].
+            // Keep the shared repair/Vega nPOS encoder on that recovered equipped-array range.
+            return bodyPart is > 0 and <= 59;
+        }
+
+        private static bool LooksLikeRepairOpcode(int candidateValue)
+        {
+            return candidateValue == 130 || candidateValue == 131;
+        }
+
+        private static bool LooksLikeReasonCode(int reasonCode)
+        {
+            return reasonCode is >= -32768 and <= 32767;
+        }
+
+        private static string DecodeResultStatusText(ReadOnlySpan<byte> payload)
+        {
+            if (payload.Length <= 0)
+            {
+                return string.Empty;
+            }
+
+            if (TryDecodeMapleStringStatusText(payload, out string mapleStringText))
+            {
+                return mapleStringText;
+            }
+
+            if (TryDecodeLengthPrefixedStatusText(payload, out string lengthPrefixedText))
+            {
+                return lengthPrefixedText;
+            }
+
+            if (LooksLikeUtf16Le(payload))
+            {
+                int terminatorIndex = FindUtf16LeTerminator(payload);
+                if (terminatorIndex >= 0)
+                {
+                    payload = payload[..terminatorIndex];
+                }
+
+                if ((payload.Length & 1) != 0)
+                {
+                    payload = payload[..^1];
+                }
+
+                return payload.Length <= 0
+                    ? string.Empty
+                    : Encoding.Unicode.GetString(payload).Trim();
+            }
+
+            int utf8TerminatorIndex = payload.IndexOf((byte)0);
+            if (utf8TerminatorIndex >= 0)
+            {
+                payload = payload[..utf8TerminatorIndex];
+            }
+
+            return Encoding.UTF8.GetString(payload).Trim();
+        }
+
+        private static bool LooksLikeMapleStringPayload(ReadOnlySpan<byte> payload)
+        {
+            if (payload.Length < sizeof(short))
+            {
+                return false;
+            }
+
+            short lengthPrefix = BinaryPrimitives.ReadInt16LittleEndian(payload);
+            if (lengthPrefix >= 0)
+            {
+                return payload.Length >= sizeof(short) + lengthPrefix
+                       && HasOnlyZeroPadding(payload[(sizeof(short) + lengthPrefix)..]);
+            }
+
+            int byteLength = -lengthPrefix * sizeof(char);
+            return payload.Length >= sizeof(short) + byteLength
+                   && HasOnlyZeroPadding(payload[(sizeof(short) + byteLength)..]);
+        }
+
+        private static bool TryDecodeMapleStringStatusText(ReadOnlySpan<byte> payload, out string statusText)
+        {
+            statusText = string.Empty;
+            if (payload.Length < sizeof(short))
+            {
+                return false;
+            }
+
+            short lengthPrefix = BinaryPrimitives.ReadInt16LittleEndian(payload);
+            if (lengthPrefix >= 0)
+            {
+                int byteLength = lengthPrefix;
+                if (payload.Length < sizeof(short) + byteLength)
+                {
+                    return false;
+                }
+
+                ReadOnlySpan<byte> encodedText = payload.Slice(sizeof(short), byteLength);
+                ReadOnlySpan<byte> trailing = payload.Slice(sizeof(short) + byteLength);
+                if (!HasOnlyZeroPadding(trailing))
+                {
+                    return false;
+                }
+
+                statusText = Encoding.UTF8.GetString(encodedText).Trim();
+                return true;
+            }
+
+            int charLength = -lengthPrefix;
+            int byteCount = charLength * sizeof(char);
+            if (payload.Length < sizeof(short) + byteCount)
+            {
+                return false;
+            }
+
+            ReadOnlySpan<byte> utf16Payload = payload.Slice(sizeof(short), byteCount);
+            ReadOnlySpan<byte> utf16Trailing = payload.Slice(sizeof(short) + byteCount);
+            if (!HasOnlyZeroPadding(utf16Trailing))
+            {
+                return false;
+            }
+
+            statusText = Encoding.Unicode.GetString(utf16Payload).Trim();
+            return true;
+        }
+
+        private static bool HasOnlyZeroPadding(ReadOnlySpan<byte> payload)
+        {
+            for (int i = 0; i < payload.Length; i++)
+            {
+                if (payload[i] != 0)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static bool TryDecodeLengthPrefixedStatusText(ReadOnlySpan<byte> payload, out string statusText)
+        {
+            statusText = string.Empty;
+            if (payload.Length < sizeof(ushort))
+            {
+                return false;
+            }
+
+            ushort lengthPrefix = BinaryPrimitives.ReadUInt16LittleEndian(payload);
+            ReadOnlySpan<byte> encodedText = payload[sizeof(ushort)..];
+            if (lengthPrefix == encodedText.Length)
+            {
+                statusText = DecodeResultStatusText(encodedText);
+                return true;
+            }
+
+            if (encodedText.Length > 0
+                && (lengthPrefix * sizeof(char)) == encodedText.Length
+                && LooksLikeUtf16Le(encodedText))
+            {
+                statusText = DecodeResultStatusText(encodedText);
+                return true;
+            }
+
+            return false;
+        }
+
+        private static int FindUtf16LeTerminator(ReadOnlySpan<byte> payload)
+        {
+            for (int i = 0; i + 1 < payload.Length; i += 2)
+            {
+                if (payload[i] == 0 && payload[i + 1] == 0)
+                {
+                    return i;
+                }
+            }
+
+            return -1;
+        }
+
+        private static bool LooksLikeUtf16Le(ReadOnlySpan<byte> payload)
+        {
+            if (payload.Length < 2 || (payload.Length & 1) != 0)
+            {
+                return false;
+            }
+
+            int zeroCount = 0;
+            for (int i = 1; i < payload.Length; i += 2)
+            {
+                if (payload[i] == 0)
+                {
+                    zeroCount++;
+                }
+            }
+
+            return zeroCount >= payload.Length / 4;
+        }
+
+        private static bool TryBuildOriginAwareHoverCandidates(
+            Point anchorPoint,
+            int tooltipWidth,
+            int tooltipHeight,
+            int cursorGap,
+            IReadOnlyList<Point> tooltipFrameOrigins,
+            IReadOnlyList<Point> tooltipFrameSizes,
+            out (Rectangle Rect, int FrameIndex)[] candidates)
+        {
+            candidates = null;
+            if (!TryGetTooltipFrameLayout(tooltipFrameOrigins, tooltipFrameSizes, 0, out Point aboveLeftOrigin, out Point aboveLeftSize)
+                || !TryGetTooltipFrameLayout(tooltipFrameOrigins, tooltipFrameSizes, 1, out Point rightOrigin, out Point rightSize))
+            {
+                return false;
+            }
+
+            bool hasBelowLeftFrame = TryGetTooltipFrameLayout(
+                tooltipFrameOrigins,
+                tooltipFrameSizes,
+                2,
+                out Point belowLeftOrigin,
+                out Point belowLeftSize);
+            Point aboveAnchorPoint = new(anchorPoint.X, anchorPoint.Y - tooltipHeight - cursorGap);
+            candidates = new (Rectangle Rect, int FrameIndex)[]
+            {
+                (CreateTooltipRectFromFrameOrigin(anchorPoint, tooltipWidth, tooltipHeight, rightOrigin, rightSize), 1),
+                (CreateTooltipRectFromFrameOrigin(
+                    anchorPoint,
+                    tooltipWidth,
+                    tooltipHeight,
+                    hasBelowLeftFrame ? belowLeftOrigin : aboveLeftOrigin,
+                    hasBelowLeftFrame ? belowLeftSize : aboveLeftSize), hasBelowLeftFrame ? 2 : 0),
+                (CreateTooltipRectFromFrameOrigin(aboveAnchorPoint, tooltipWidth, tooltipHeight, rightOrigin, rightSize), 1),
+                (CreateTooltipRectFromFrameOrigin(aboveAnchorPoint, tooltipWidth, tooltipHeight, aboveLeftOrigin, aboveLeftSize), 0)
+            };
+            return true;
+        }
+
+        private static bool TryGetTooltipFrameLayout(
+            IReadOnlyList<Point> tooltipFrameOrigins,
+            IReadOnlyList<Point> tooltipFrameSizes,
+            int frameIndex,
+            out Point origin,
+            out Point size)
+        {
+            origin = Point.Zero;
+            size = Point.Zero;
+            if (tooltipFrameOrigins == null
+                || tooltipFrameSizes == null
+                || frameIndex < 0
+                || frameIndex >= tooltipFrameOrigins.Count
+                || frameIndex >= tooltipFrameSizes.Count)
+            {
+                return false;
+            }
+
+            origin = tooltipFrameOrigins[frameIndex];
+            size = tooltipFrameSizes[frameIndex];
+            if (size.X <= 0 || size.Y <= 0)
+            {
+                return false;
+            }
+
+            if (origin == Point.Zero)
+            {
+                origin = ResolveFallbackTooltipOrigin(frameIndex, size);
+            }
+
+            return true;
+        }
+
+        private static Point ResolveFallbackTooltipOrigin(int frameIndex, Point frameSize)
+        {
+            int width = Math.Max(1, frameSize.X);
+            int height = Math.Max(1, frameSize.Y);
+            return frameIndex switch
+            {
+                0 => new Point(width - 1, height - 1),
+                2 => new Point(width - 1, 0),
+                _ => new Point(0, height - 1)
+            };
+        }
+
+        private static Rectangle CreateTooltipRectFromFrameOrigin(
+            Point anchorPoint,
+            int tooltipWidth,
+            int tooltipHeight,
+            Point origin,
+            Point frameSize)
+        {
+            float scaleX = frameSize.X > 0 ? tooltipWidth / (float)frameSize.X : 1f;
+            float scaleY = frameSize.Y > 0 ? tooltipHeight / (float)frameSize.Y : 1f;
+            return new Rectangle(
+                anchorPoint.X - (int)Math.Round(origin.X * scaleX),
+                anchorPoint.Y - (int)Math.Round(origin.Y * scaleY),
+                tooltipWidth,
+                tooltipHeight);
+        }
+
+        private static int ComputeTooltipOverflow(Rectangle rect, int renderWidth, int renderHeight, int viewportPadding)
+        {
+            int overflow = 0;
+
+            if (rect.Left < viewportPadding)
+            {
+                overflow += viewportPadding - rect.Left;
+            }
+
+            if (rect.Top < viewportPadding)
+            {
+                overflow += viewportPadding - rect.Top;
+            }
+
+            if (rect.Right > renderWidth - viewportPadding)
+            {
+                overflow += rect.Right - (renderWidth - viewportPadding);
+            }
+
+            if (rect.Bottom > renderHeight - viewportPadding)
+            {
+                overflow += rect.Bottom - (renderHeight - viewportPadding);
+            }
+
+            return overflow;
+        }
+
+        private static Rectangle ClampTooltipRect(Rectangle rect, int renderWidth, int renderHeight, int viewportPadding)
+        {
+            int minX = viewportPadding;
+            int minY = viewportPadding;
+            int maxX = Math.Max(minX, renderWidth - viewportPadding - rect.Width);
+            int maxY = Math.Max(minY, renderHeight - viewportPadding - rect.Height);
+
+            return new Rectangle(
+                Math.Clamp(rect.X, minX, maxX),
+                Math.Clamp(rect.Y, minY, maxY),
+                rect.Width,
+                rect.Height);
+        }
+
+        private static int ComputeTooltipClampDistance(
+            Rectangle rect,
+            int renderWidth,
+            int renderHeight,
+            int viewportPadding)
+        {
+            Rectangle clamped = ClampTooltipRect(rect, renderWidth, renderHeight, viewportPadding);
+            return Math.Abs(rect.X - clamped.X) + Math.Abs(rect.Y - clamped.Y);
+        }
+    }
+}
