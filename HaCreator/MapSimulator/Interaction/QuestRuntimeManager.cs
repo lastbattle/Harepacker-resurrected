@@ -10747,7 +10747,7 @@ namespace HaCreator.MapSimulator.Interaction
                 AddAllowedDaysFromClientMask(days, scalarMask.Value);
             }
 
-            AddParsedAllowedDays(days, property.GetString());
+            AddParsedAllowedDays(days, TryGetStringValue(property));
 
             if (property.WzProperties != null)
             {
@@ -10760,11 +10760,30 @@ namespace HaCreator.MapSimulator.Interaction
                         AddAllowedDaysFromClientMask(days, childMask.Value);
                     }
 
-                    AddParsedAllowedDays(days, child?.GetString());
+                    AddParsedAllowedDays(days, TryGetStringValue(child));
                 }
             }
 
             return days;
+        }
+
+        private static string TryGetStringValue(WzImageProperty property)
+        {
+            try
+            {
+                return property switch
+                {
+                    WzStringProperty stringProperty => stringProperty.Value,
+                    WzUOLProperty uolProperty => uolProperty.GetString(),
+                    WzLuaProperty luaProperty => luaProperty.GetString(),
+                    _ => null
+                };
+            }
+            catch (NotImplementedException)
+            {
+                // Numeric and container WZ nodes do not expose a string value.
+                return null;
+            }
         }
 
         internal static IReadOnlyList<DayOfWeek> ParseAllowedDaysForTesting(WzImageProperty property)

@@ -1,10 +1,25 @@
 using HaCreator.MapSimulator.Interaction;
+using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure.Data.QuestStructure;
 
 namespace UnitTest_MapSimulator;
 
 public sealed class NpcQuestIssueConversationParityTests
 {
+    [Fact]
+    public void AllowedDaysAcceptsNumericAndContainerProperties()
+    {
+        var allowedDays = new WzSubProperty("dayOfWeek");
+        allowedDays.AddProperty(new WzIntProperty("0", 1));
+
+        Assert.Equal(
+            new[] { DayOfWeek.Sunday },
+            QuestRuntimeManager.ParseAllowedDaysForTesting(allowedDays));
+        Assert.Equal(
+            new[] { DayOfWeek.Monday },
+            QuestRuntimeManager.ParseAllowedDaysForTesting(new WzIntProperty("dayOfWeek", 2)));
+    }
+
     [Fact]
     public void UnmetTraitRequirementPrefersAuthoredTraitStopBranch()
     {
