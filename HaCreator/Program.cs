@@ -147,6 +147,31 @@ namespace HaCreator
         }
 
         /// <summary>
+        /// Marks an image as updated using an explicit path within its category.
+        /// This is needed for IMG files stored below category subdirectories.
+        /// </summary>
+        public static void MarkImageUpdated(string category, WzImage image, string relativePath)
+        {
+            if (image == null) return;
+            if (string.IsNullOrWhiteSpace(relativePath))
+            {
+                MarkImageUpdated(category, image);
+                return;
+            }
+
+            if (DataSource != null)
+            {
+                string normalizedPath = NormalizeCategoryRelativePath(
+                    category,
+                    relativePath.Replace('\\', '/').Trim('/'));
+                DataSource.SaveImage(category, image, normalizedPath);
+                return;
+            }
+
+            MarkImageUpdated(category, image);
+        }
+
+        /// <summary>
         /// Gets directories from either IDataSource or WzManager
         /// </summary>
         /// <param name="baseCategory">Base category name (e.g., "string", "map")</param>

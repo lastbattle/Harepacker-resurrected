@@ -26,6 +26,7 @@ namespace HaCreator.GUI.Cutscene
     {
         public string Name { get; init; }
         public string Path { get; init; }
+        public string ImagePath { get; init; }
         public WzImage Image { get; init; }
         public WzObject Source { get; init; }
         public List<CutsceneEventModel> Events { get; } = new();

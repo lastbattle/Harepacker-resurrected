@@ -169,7 +169,7 @@ namespace HaCreator.GUI.Cutscene
             imageModel.LoadedByWorkspace = !hadImage || !image.Parsed;
             try
             {
-                imageModel.Scenes = DiscoverScenes(image);
+                imageModel.Scenes = DiscoverScenes(image, imageModel.RelativePath);
                 return imageModel.Scenes;
             }
             catch
@@ -226,13 +226,14 @@ namespace HaCreator.GUI.Cutscene
             return ("Sound", imagePath);
         }
 
-        internal static IReadOnlyList<CutsceneSceneModel> DiscoverScenes(WzImage image)
+        internal static IReadOnlyList<CutsceneSceneModel> DiscoverScenes(WzImage image, string imagePath = null)
         {
             if (image == null)
                 return Array.Empty<CutsceneSceneModel>();
             image.ParseImage();
             List<CutsceneSceneModel> scenes = new();
-            DiscoverScenes(image, image, image.Name, scenes);
+            string normalizedImagePath = string.IsNullOrWhiteSpace(imagePath) ? image.Name : imagePath;
+            DiscoverScenes(image, image, image.Name, normalizedImagePath, scenes);
             return scenes;
         }
 
@@ -245,7 +246,7 @@ namespace HaCreator.GUI.Cutscene
                 RemoveProperty(scene.Source, existingEvent);
             foreach (CutsceneEventModel cutsceneEvent in scene.Events)
                 AddProperty(scene.Source, cutsceneEvent.Source);
-            Program.MarkImageUpdated("Effect", scene.Image);
+            Program.MarkImageUpdated("Effect", scene.Image, scene.ImagePath ?? scene.Image.Name);
         }
 
         private static IEnumerable<WzImage> EnumerateEffectImages()
@@ -316,7 +317,12 @@ namespace HaCreator.GUI.Cutscene
             }
         }
 
-        private static void DiscoverScenes(WzImage image, WzObject node, string path, ICollection<CutsceneSceneModel> scenes)
+        private static void DiscoverScenes(
+            WzImage image,
+            WzObject node,
+            string path,
+            string imagePath,
+            ICollection<CutsceneSceneModel> scenes)
         {
             IEnumerable<WzImageProperty> properties = node switch
             {
@@ -334,6 +340,7 @@ namespace HaCreator.GUI.Cutscene
                 {
                     Name = node.Name,
                     Path = path,
+                    ImagePath = imagePath,
                     Image = image,
                     Source = node
                 };
@@ -347,7 +354,7 @@ namespace HaCreator.GUI.Cutscene
             // UOL/canvas/scalar child projections: some client properties return null here,
             // and linked properties can lead discovery back into an already visited branch.
             foreach (WzSubProperty child in properties.OfType<WzSubProperty>())
-                DiscoverScenes(image, child, $"{path}/{child.Name}", scenes);
+                DiscoverScenes(image, child, $"{path}/{child.Name}", imagePath, scenes);
         }
 
         private static int ParseIndex(string value) => int.TryParse(value, out int index) ? index : int.MaxValue;

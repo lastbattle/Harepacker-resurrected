@@ -577,8 +577,13 @@ namespace HaCreator.GUI
                 string categoryPath = Path.Combine(_versionPath, category);
                 if (Directory.Exists(categoryPath))
                 {
-                    int imgCount = Directory.EnumerateFiles(categoryPath, "*.img", SearchOption.AllDirectories).Count();
-                    int subDirCount = Directory.EnumerateDirectories(categoryPath, "*", SearchOption.AllDirectories).Count();
+                    int imgCount = HaCreatorPaths.EnumerateFilesExcludingBackups(
+                        categoryPath,
+                        "*.img",
+                        SearchOption.AllDirectories).Count();
+                    int subDirCount = HaCreatorPaths.EnumerateDirectoriesExcludingBackups(
+                        categoryPath,
+                        SearchOption.AllDirectories).Count();
                     bool hasListJson = category.Equals("List", StringComparison.OrdinalIgnoreCase) &&
                                        File.Exists(Path.Combine(categoryPath, "List.json"));
 
@@ -606,7 +611,7 @@ namespace HaCreator.GUI
             }
 
             // Then add any non-standard categories found in the version directory
-            foreach (var dirPath in Directory.EnumerateDirectories(_versionPath))
+            foreach (var dirPath in HaCreatorPaths.EnumerateDirectoriesExcludingBackups(_versionPath))
             {
                 string dirName = Path.GetFileName(dirPath);
 
@@ -616,8 +621,13 @@ namespace HaCreator.GUI
                     dirName.Equals("manifest", StringComparison.OrdinalIgnoreCase))
                     continue;
 
-                int imgCount = Directory.EnumerateFiles(dirPath, "*.img", SearchOption.AllDirectories).Count();
-                int subDirCount = Directory.EnumerateDirectories(dirPath, "*", SearchOption.AllDirectories).Count();
+                int imgCount = HaCreatorPaths.EnumerateFilesExcludingBackups(
+                    dirPath,
+                    "*.img",
+                    SearchOption.AllDirectories).Count();
+                int subDirCount = HaCreatorPaths.EnumerateDirectoriesExcludingBackups(
+                    dirPath,
+                    SearchOption.AllDirectories).Count();
                 bool hasListJson = dirName.Equals("List", StringComparison.OrdinalIgnoreCase) &&
                                    File.Exists(Path.Combine(dirPath, "List.json"));
 

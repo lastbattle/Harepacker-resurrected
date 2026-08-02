@@ -1,5 +1,6 @@
 ﻿using MapleLib.WzLib;
 using MapleLib.WzLib.Serializer;
+using MapleLib.Helpers;
 using HaCreator.GUI.Localization;
 using System;
 using System.CodeDom;
@@ -178,12 +179,13 @@ namespace HaCreator.GUI
 
                     if (!saveFileInHaCreatorDirectory)
                     {
-                        string backupName = $"{orgFile}_BAK_{DateTime.Now:yyyy_MM_dd_HH_mm_ss}.wz";
+                        string backupName = FileReplacement.GetBackupFilePath(orgFile);
 
                         try
                         {
-                            File.Move(orgFile, backupName);
-                            File.Move(tmpFile, orgFile);
+                            // Replace the original only after the new file has been written
+                            // successfully, retaining the old file before the atomic swap.
+                            FileReplacement.ReplaceWithBackup(tmpFile, orgFile, backupName);
                         }
                         catch (Exception exp)
                         {
@@ -289,7 +291,6 @@ namespace HaCreator.GUI
 
             return tmpFile;
         }
-
 
         /// <summary>
         /// Alternative method that provides more detailed file access information

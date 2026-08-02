@@ -402,6 +402,12 @@ Returns all WZ files that have been modified:
 public List<WzFile> GetUpdatedWzFiles()
 ```
 
+### Legacy WZ/IMG overwrite safety
+
+The shared IMG filesystem save path and legacy repack flow serialize to a temporary path before touching the original, then use one atomic replacement helper. Legacy WZ files saved outside the extracted `.img` version directory retain the previous file as a timestamped backup beside it. IMG filesystem saves keep the previous `.img` under a `Backups\IMG\<version>` sibling of the active version directory, preserving its category-relative path. This keeps backups visible beside the user-selected data location without placing them inside the extracted version. The backup naming format is `<path>_BAK_<yyyy_MM_dd_HH_mm_ss><extension>` (with a numeric suffix if needed). If the swap cannot complete, the original path remains intact.
+
+The reserved `Backups` directory (`HaCreatorPaths.BackupsFolderName`) is outside the extracted version data and is ignored by IMG/WZ source enumeration. Repacking and extraction also prune nested `Backups` directories, so backup files are never included in generated WZ files or newly extracted versions.
+
 ---
 
 ## Unloading
