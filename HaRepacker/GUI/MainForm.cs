@@ -553,6 +553,7 @@ namespace HaRepacker.GUI
         {
             bool ctrl = (System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Control) != 0;
             if (!ctrl) return;
+            if (MainPanel?.IsTextEditorFocused == true) return;
             switch (e.Key)
             {
                 case System.Windows.Input.Key.N: newToolStripMenuItem_Click(this, EventArgs.Empty); break;

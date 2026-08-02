@@ -130,6 +130,7 @@ namespace HaRepacker.GUI.Panels
 
         #region Exported Fields
         public UndoRedoManager UndoRedoMan { get { return undoRedoMan; } }
+        public bool IsTextEditorFocused => textEditor.IsKeyboardFocusWithin;
 
         #endregion
 
