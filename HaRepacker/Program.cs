@@ -24,6 +24,11 @@ namespace HaRepacker
             set { _wzFileManager = value; }
         }
 
+        public static WzFileManager EnsureWzFileManager()
+        {
+            return _wzFileManager ??= new WzFileManager();
+        }
+
         public static NamedPipeServerStream pipe;
         public static Thread pipeThread;
 

@@ -91,7 +91,15 @@ namespace HaRepacker.GUI
                 file.Header.RecalculateFileStart();
                 file.Name = name + ".wz";
                 file.WzDirectory.Name = name + ".wz";
-                _mainPanel.DataTree.Nodes.Add(new WzNode(file));
+                _mainPanel.DataTree.BeginUpdate();
+                try
+                {
+                    _mainPanel.DataTree.Nodes.Add(new WzNode(file));
+                }
+                finally
+                {
+                    _mainPanel.DataTree.EndUpdate();
+                }
             }
             else if (listBox.IsChecked == true)
             {
@@ -101,7 +109,15 @@ namespace HaRepacker.GUI
             {
                 WzImage image = new(name + ".wz");
                 image.MarkWzImageAsParsed();
-                _mainPanel.DataTree.Nodes.Add(new WzNode(image));
+                _mainPanel.DataTree.BeginUpdate();
+                try
+                {
+                    _mainPanel.DataTree.Nodes.Add(new WzNode(image));
+                }
+                finally
+                {
+                    _mainPanel.DataTree.EndUpdate();
+                }
             }
             Close();
         }

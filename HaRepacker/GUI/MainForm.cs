@@ -270,7 +270,8 @@ namespace HaRepacker.GUI
         {
             try
             {
-                WzFile loadedWzFile = Program.WzFileManager.LoadWzFile(path, GetSelectedEncryptionVersion());
+                WzFileManager wzFileManager = Program.EnsureWzFileManager();
+                WzFile loadedWzFile = wzFileManager.LoadWzFile(path, GetSelectedEncryptionVersion());
                 if (loadedWzFile != null)
                 {
                     WzNode node = new WzNode(loadedWzFile);
@@ -390,6 +391,10 @@ namespace HaRepacker.GUI
         /// <param name="currentDispatcher"></param>
         public async void ReloadWzFile(WzFile existingLoadedWzFile, Dispatcher currentDispatcher = null)
         {
+            WzFileManager wzFileManager = Program.WzFileManager;
+            if (wzFileManager == null)
+                return;
+
             // Get the current loaded wz file information
             WzMapleVersion encVersion = existingLoadedWzFile.MapleVersion;
             string path = existingLoadedWzFile.FilePath;
@@ -406,7 +411,7 @@ namespace HaRepacker.GUI
                 UnloadWzFile(existingLoadedWzFile, currentDispatcher);
 
             // Load the new wz file from the same path
-            WzFile newWzFile = Program.WzFileManager.LoadWzFile(path, encVersion);
+            WzFile newWzFile = wzFileManager.LoadWzFile(path, encVersion);
             if (newWzFile != null)
             {
                 AddLoadedWzObjectToMainPanel(newWzFile, currentDispatcher);  
@@ -434,7 +439,7 @@ namespace HaRepacker.GUI
                 // Dispose clears FilePath. A stale native-tree node can therefore point to
                 // a file which was already unloaded before the WPF tree was refreshed.
                 if (!file.IsUnloaded && !string.IsNullOrEmpty(filePath))
-                    Program.WzFileManager.UnloadWzFile(file, filePath);
+                    Program.WzFileManager?.UnloadWzFile(file, filePath);
 
                 if (node?.TreeView != null)
                     node.DeleteWzNode();
@@ -467,7 +472,7 @@ namespace HaRepacker.GUI
             WzNode node = wzImage.HRTag as WzNode;
             Action unload = () =>
             {
-                Program.WzFileManager.UnloadWzImgFile(wzImage);
+                Program.WzFileManager?.UnloadWzImgFile(wzImage);
                 if (node?.TreeView != null)
                     node.DeleteWzNode();
 
@@ -882,6 +887,7 @@ namespace HaRepacker.GUI
         /// <param name="fileNames"></param>
         private async void OpenFileInternal(string[] fileNames) {
             Dispatcher currentDispatcher = Dispatcher.CurrentDispatcher;
+            WzFileManager wzFileManager = Program.WzFileManager;
 
             WzMapleVersion MapleVersionEncryptionSelected = GetSelectedEncryptionVersion();
 
@@ -960,18 +966,19 @@ namespace HaRepacker.GUI
                             }
                         }
 
-                        Program.WzFileManager = new WzFileManager(maplestoryBaseDirectory, bIsStandAloneWzFile);
-                        Program.WzFileManager.BuildWzFileList();
+                        wzFileManager = new WzFileManager(maplestoryBaseDirectory, bIsStandAloneWzFile);
+                        Program.WzFileManager = wzFileManager;
+                        wzFileManager.BuildWzFileList();
 
                         // Set image format detection flag for pre-Big Bang compatibility
                         // DXT formats (Format3, Format1026, Format2050) are not supported by pre-BB clients
-                        ImageFormatDetector.UsePreBigBangImageFormats = Program.WzFileManager.IsPreBBDataWzFormat;
+                        ImageFormatDetector.UsePreBigBangImageFormats = wzFileManager.IsPreBBDataWzFormat;
                     }
 
                     // Data.wz hotfix file
                     if (filePathLowerCase.EndsWith("data.wz") && WzTool.IsDataWzHotfixFile(filePath))
                     {
-                        WzImage img = Program.WzFileManager.LoadDataWzHotfixFile(filePath, MapleVersionEncryptionSelected);
+                        WzImage img = wzFileManager.LoadDataWzHotfixFile(filePath, MapleVersionEncryptionSelected);
                         if (img == null)
                         {
                             MessageBox.Show(HaRepacker.Properties.Resources.MainFileOpenFail, HaRepacker.Properties.Resources.Error);
@@ -985,7 +992,7 @@ namespace HaRepacker.GUI
                     // this is the same as the hotfix Data.wz
                     else if (filePathLowerCase.EndsWith(".img"))
                     {
-                        WzImage img = Program.WzFileManager.LoadDataWzHotfixFile(filePath, MapleVersionEncryptionSelected);
+                        WzImage img = wzFileManager.LoadDataWzHotfixFile(filePath, MapleVersionEncryptionSelected);
                         if (img == null)
                         {
                             MessageBox.Show(HaRepacker.Properties.Resources.MainFileOpenFail, HaRepacker.Properties.Resources.Error);
@@ -1011,7 +1018,7 @@ namespace HaRepacker.GUI
                         // Use the new static method to load as WzFile
                         var wzFile = msFile.LoadAsWzFile();
 
-                        Program.WzFileManager.LoadWzFile(msFileName, wzFile);
+                        wzFileManager.LoadWzFile(msFileName, wzFile);
 
                         AddLoadedWzObjectToMainPanel(wzFile, currentDispatcher);
 
@@ -1081,7 +1088,7 @@ namespace HaRepacker.GUI
                 List<WzFile> loadedWzFiles = new List<WzFile>();
                 ParallelLoopResult loop = Parallel.ForEach(wzfilePathsToLoad, filePath =>
                 {
-                    WzFile f = Program.WzFileManager.LoadWzFile(filePath, MapleVersionEncryptionSelected);
+                    WzFile f = wzFileManager.LoadWzFile(filePath, MapleVersionEncryptionSelected);
                     if (f == null) {
                         // error should be thrown 
                     }
@@ -1334,6 +1341,7 @@ namespace HaRepacker.GUI
 
                 // Show splash screen
                 MainPanel.OnSetPanelLoading();
+                WzFileManager wzFileManager = Program.EnsureWzFileManager();
 
 
                 // Load all original WZ files 
@@ -1342,7 +1350,7 @@ namespace HaRepacker.GUI
                     List<WzFile> loadedWzFiles = new List<WzFile>();
                     ParallelLoopResult loop = Parallel.ForEach(wzfilePathsToLoad, filePath =>
                     {
-                        WzFile f = Program.WzFileManager.LoadWzFile(filePath, MapleVersionEncryptionSelected);
+                        WzFile f = wzFileManager.LoadWzFile(filePath, MapleVersionEncryptionSelected);
                         if (f == null)
                         {
                             // error should be thrown 
