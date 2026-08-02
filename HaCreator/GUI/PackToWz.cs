@@ -577,9 +577,8 @@ namespace HaCreator.GUI
                 string categoryPath = Path.Combine(_versionPath, category);
                 if (Directory.Exists(categoryPath))
                 {
-                    int imgCount = HaCreatorPaths.EnumerateFilesExcludingBackups(
+                    int imgCount = WzPackingService.EnumeratePackableImageFiles(
                         categoryPath,
-                        "*.img",
                         SearchOption.AllDirectories).Count();
                     int subDirCount = HaCreatorPaths.EnumerateDirectoriesExcludingBackups(
                         categoryPath,
@@ -621,9 +620,8 @@ namespace HaCreator.GUI
                     dirName.Equals("manifest", StringComparison.OrdinalIgnoreCase))
                     continue;
 
-                int imgCount = HaCreatorPaths.EnumerateFilesExcludingBackups(
+                int imgCount = WzPackingService.EnumeratePackableImageFiles(
                     dirPath,
-                    "*.img",
                     SearchOption.AllDirectories).Count();
                 int subDirCount = HaCreatorPaths.EnumerateDirectoriesExcludingBackups(
                     dirPath,

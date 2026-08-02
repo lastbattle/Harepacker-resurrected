@@ -36,6 +36,15 @@ Loads data from extracted `.img` files in the filesystem. Benefits:
 - Easy modification via file system
 - Hot-swap support for live editing
 
+Lua WZ images use a text representation in the extracted filesystem: a Lua WZ
+image such as `BattleScene.lua` (containing a `WzLuaProperty`) is written as
+UTF-8 `BattleScene.lua`, not as a binary `BattleScene.lua.img`. When packing,
+the `.lua` file is encoded back into `WzLuaProperty`. UTF-8 (with or without a
+BOM) and BOM-marked UTF-16 source files are accepted. A legacy `.lua.img` is
+accepted only when its
+matching `.lua` text file is absent, so an old export cannot override edited
+script text.
+
 When packing IMG files back to WZ, the Pack IMG files to WZ dialog uses the
 manifest's `isPreBBDataWzFormat` value as the initial suggestion. The user can
 change the pre-Big-Bang checkbox; selecting it produces split category WZ

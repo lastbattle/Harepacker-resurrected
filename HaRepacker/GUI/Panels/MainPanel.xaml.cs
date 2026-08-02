@@ -1184,8 +1184,7 @@ namespace HaRepacker.GUI.Panels
                 string setText = textEditor.textEditor.Text;
                 // Lua payloads are UTF-8 after decryption; preserve non-ASCII
                 // characters when converting edited text back to bytes.
-                byte[] encBytes = luaProp.EncodeDecode(Encoding.UTF8.GetBytes(setText));
-                luaProp.Value = encBytes;
+                luaProp.SetString(setText);
 
                 // highlight node to the user
                 node.ChangedNodeProperty();
