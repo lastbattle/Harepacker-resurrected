@@ -112,6 +112,7 @@ namespace HaCreator.MapSimulator
 
         private SpriteBatch _spriteBatch;
         private Texture2D _minimapTooltipPixelTexture;
+        private MinimapUI _minimapTooltipResourcesOwner;
 
 
 
@@ -29440,6 +29441,14 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            // The tooltip frame lookup parses UI IMG data. RefreshMinimapTrackedUserMarkers
+            // calls this method from Draw, so remember the MinimapUI instance that already
+            // owns the immutable resources instead of resolving them again every frame.
+            if (ReferenceEquals(_minimapTooltipResourcesOwner, miniMapUi))
+            {
+                return;
+            }
+
 
             if (_minimapTooltipPixelTexture == null)
             {
@@ -29453,6 +29462,7 @@ namespace HaCreator.MapSimulator
                 _minimapTooltipPixelTexture,
                 UILoader.LoadSkillTooltipTextures(GraphicsDevice),
                 UILoader.LoadSkillTooltipOrigins());
+            _minimapTooltipResourcesOwner = miniMapUi;
 
         }
 

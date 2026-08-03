@@ -1398,6 +1398,7 @@ namespace HaCreator.MapSimulator
 
 
             // Clear map-scoped UI so the next field rebuild starts from a clean state.
+            _minimapTooltipResourcesOwner = null;
             miniMapUi = null;
             statusBarUi = null;
             statusBarChatUI = null;
