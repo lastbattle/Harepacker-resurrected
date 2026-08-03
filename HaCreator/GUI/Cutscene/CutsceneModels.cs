@@ -28,6 +28,7 @@ namespace HaCreator.GUI.Cutscene
         public string Path { get; init; }
         public string ImagePath { get; init; }
         public WzImage Image { get; init; }
+        public WzObject Parent { get; init; }
         public WzObject Source { get; init; }
         public List<CutsceneEventModel> Events { get; } = new();
         public override string ToString() => Path;

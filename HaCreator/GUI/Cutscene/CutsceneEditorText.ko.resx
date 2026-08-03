@@ -162,4 +162,10 @@
   <data name="Cutscene_NegativeDuration" xml:space="preserve"><value>이벤트 {0}의 지속 시간이 음수입니다</value></data>
   <data name="Cutscene_DuplicateEvent" xml:space="preserve"><value>이벤트 ID {0}이 중복됩니다</value></data>
   <data name="Cutscene_DuplicateTrigger" xml:space="preserve"><value>트리거 ID {0}이 중복됩니다</value></data>
+  <data name="Cutscene_AddScene" xml:space="preserve"><value>추가</value></data>
+  <data name="Cutscene_DeleteScene" xml:space="preserve"><value>삭제</value></data>
+  <data name="Cutscene_NewSceneTitle" xml:space="preserve"><value>새 장면 추가</value></data>
+  <data name="Cutscene_SceneName" xml:space="preserve"><value>장면 경로</value></data>
+  <data name="Cutscene_SceneNamePrompt" xml:space="preserve"><value>Direction*.img/ 접두사를 포함한 전체 장면 경로를 입력하세요.</value></data>
+  <data name="Cutscene_Ok" xml:space="preserve"><value>확인</value></data>
 </root>

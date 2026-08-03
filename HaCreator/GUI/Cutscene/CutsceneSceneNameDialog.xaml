@@ -1,0 +1,35 @@
+<Window x:Class="HaCreator.GUI.Cutscene.CutsceneSceneNameDialog"
+        x:ClassModifier="internal"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:HaCreator.GUI.Cutscene"
+        Title="{local:CutsceneEditorText Cutscene_NewSceneTitle}"
+        Width="430" SizeToContent="Height" ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner" Background="{DynamicResource HareCanvasBrush}" FontFamily="Segoe UI"
+        Loaded="Dialog_Loaded">
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/HaSharedLibrary;component/GUI/Themes/HarepackerTheme.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Window.Resources>
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <TextBlock Style="{StaticResource HareMutedTextStyle}" Text="{local:CutsceneEditorText Cutscene_SceneNamePrompt}" TextWrapping="Wrap"/>
+        <TextBox x:Name="nameTextBox" Grid.Row="1" Margin="0,10,0,0" MinHeight="28"
+                 ToolTip="{local:CutsceneEditorText Cutscene_SceneName}"/>
+        <TextBlock x:Name="validationTextBlock" Grid.Row="2" Margin="0,6,0,0" Foreground="#B91C1C"
+                   TextWrapping="Wrap" Visibility="Collapsed"/>
+        <StackPanel Grid.Row="3" Margin="0,18,0,0" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button MinWidth="88" IsCancel="True" Content="{local:CutsceneEditorText Cutscene_Cancel}"/>
+            <Button MinWidth="88" Margin="8,0,0,0" IsDefault="True" Style="{StaticResource HarePrimaryButtonStyle}"
+                    Content="{local:CutsceneEditorText Cutscene_Ok}" Click="Ok_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>

@@ -180,6 +180,38 @@ namespace HaCreator.GUI.Cutscene
             }
         }
 
+        public static CutsceneSceneModel CreateScene(
+            CutsceneImageModel imageModel,
+            WzObject parent,
+            string name,
+            string path)
+        {
+            if (imageModel == null || parent == null || string.IsNullOrWhiteSpace(name))
+                return null;
+
+            WzImage image = imageModel.ResolveImage();
+            if (image == null)
+                return null;
+            image.ParseImage();
+
+            WzSubProperty source = new(name);
+            WzSubProperty eventSource = new("0");
+            CutsceneEventModel cutsceneEvent = CutsceneEventModel.FromProperty(eventSource);
+            cutsceneEvent.Type = (int)ReservedSceneEventType.Visual;
+
+            CutsceneSceneModel scene = new()
+            {
+                Name = name,
+                Path = path,
+                ImagePath = imageModel.RelativePath,
+                Image = image,
+                Parent = parent,
+                Source = source
+            };
+            scene.Events.Add(cutsceneEvent);
+            return scene;
+        }
+
         public static void ReleaseScenes(CutsceneImageModel imageModel)
         {
             if (imageModel?.Scenes == null)
@@ -241,6 +273,8 @@ namespace HaCreator.GUI.Cutscene
         {
             foreach (CutsceneEventModel cutsceneEvent in scene.Events)
                 cutsceneEvent.Save();
+            if (scene.Source.Parent == null)
+                AddProperty(scene.Parent, scene.Source as WzImageProperty);
             foreach (WzSubProperty existingEvent in GetProperties(scene.Source).OfType<WzSubProperty>()
                 .Where(property => property["type"] != null).ToList())
                 RemoveProperty(scene.Source, existingEvent);
@@ -248,6 +282,28 @@ namespace HaCreator.GUI.Cutscene
                 AddProperty(scene.Source, cutsceneEvent.Source);
             Program.MarkImageUpdated("Effect", scene.Image, scene.ImagePath ?? scene.Image.Name);
         }
+
+        public static void DeleteScene(CutsceneSceneModel scene)
+        {
+            if (scene?.Source == null)
+                return;
+
+            if (scene.Source is WzImage image)
+            {
+                foreach (CutsceneEventModel cutsceneEvent in scene.Events)
+                {
+                    if (cutsceneEvent.Source?.Parent == image)
+                        image.RemoveProperty(cutsceneEvent.Source);
+                }
+            }
+            else if (scene.Source is WzImageProperty source && source.Parent != null)
+                RemoveProperty(scene.Parent, source);
+
+            Program.MarkImageUpdated("Effect", scene.Image, scene.ImagePath ?? scene.Image.Name);
+        }
+
+        internal static bool HasProperty(WzObject parent, string name) =>
+            GetProperties(parent).Any(property => string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase));
 
         private static IEnumerable<WzImage> EnumerateEffectImages()
         {
@@ -342,18 +398,19 @@ namespace HaCreator.GUI.Cutscene
                     Path = path,
                     ImagePath = imagePath,
                     Image = image,
+                    Parent = node is WzImage ? node : node.Parent,
                     Source = node
                 };
                 foreach (WzSubProperty eventNode in eventNodes)
                     scene.Events.Add(CutsceneEventModel.FromProperty(eventNode));
                 scenes.Add(scene);
-                return;
             }
 
             // Direction scene hierarchy is stored in physical subproperties. Do not follow
             // UOL/canvas/scalar child projections: some client properties return null here,
             // and linked properties can lead discovery back into an already visited branch.
-            foreach (WzSubProperty child in properties.OfType<WzSubProperty>())
+            foreach (WzSubProperty child in properties.OfType<WzSubProperty>()
+                .Where(child => !eventNodes.Contains(child)))
                 DiscoverScenes(image, child, $"{path}/{child.Name}", imagePath, scenes);
         }
 
