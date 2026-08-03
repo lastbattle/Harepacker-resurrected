@@ -531,4 +531,40 @@
   <data name="QuestEditor_WorldMin" xml:space="preserve">
     <value>최소 월드:</value>
   </data>
+  <data name="QuestEditor_GraphTab" xml:space="preserve">
+    <value>그래프</value>
+  </data>
+  <data name="QuestEditor_GraphFlow" xml:space="preserve">
+    <value>퀘스트 흐름</value>
+  </data>
+  <data name="QuestEditor_GraphRequirements" xml:space="preserve">
+    <value>요구 조건</value>
+  </data>
+  <data name="QuestEditor_GraphDialogue" xml:space="preserve">
+    <value>대화</value>
+  </data>
+  <data name="QuestEditor_GraphReadOnly" xml:space="preserve">
+    <value>읽기 전용 관계 보기</value>
+  </data>
+  <data name="QuestEditor_GraphFocusSelected" xml:space="preserve">
+    <value>선택 항목에 초점</value>
+  </data>
+  <data name="QuestEditor_GraphFit" xml:space="preserve">
+    <value>그래프 맞춤</value>
+  </data>
+  <data name="QuestEditor_GraphRefresh" xml:space="preserve">
+    <value>새로 고침</value>
+  </data>
+  <data name="QuestEditor_GraphEmpty" xml:space="preserve">
+    <value>그래프를 만들 퀘스트를 선택하세요.</value>
+  </data>
+  <data name="QuestEditor_GraphStatus" xml:space="preserve">
+    <value>노드 {0}개, 관계 {1}개. 배경을 드래그하여 이동하고 마우스 휠로 확대하거나 축소할 수 있습니다.</value>
+  </data>
+  <data name="QuestEditor_GraphStatusDiagnostics" xml:space="preserve">
+    <value>노드 {0}개, 관계 {1}개, 진단 {2}개. 노드와 연결선 위에 마우스를 올리면 세부 정보를 볼 수 있습니다.</value>
+  </data>
+  <data name="QuestEditor_GraphDangling" xml:space="preserve">
+    <value>이 퀘스트는 참조되었지만 로드되지 않았습니다.</value>
+  </data>
 </root>

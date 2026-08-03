@@ -543,4 +543,40 @@
   <data name="QuestEditor_WorldMin" xml:space="preserve">
     <value>最低世界：</value>
   </data>
+  <data name="QuestEditor_GraphTab" xml:space="preserve">
+    <value>關係圖</value>
+  </data>
+  <data name="QuestEditor_GraphFlow" xml:space="preserve">
+    <value>任務流程</value>
+  </data>
+  <data name="QuestEditor_GraphRequirements" xml:space="preserve">
+    <value>需求條件</value>
+  </data>
+  <data name="QuestEditor_GraphDialogue" xml:space="preserve">
+    <value>對話</value>
+  </data>
+  <data name="QuestEditor_GraphReadOnly" xml:space="preserve">
+    <value>唯讀關係檢視</value>
+  </data>
+  <data name="QuestEditor_GraphFocusSelected" xml:space="preserve">
+    <value>聚焦所選項目</value>
+  </data>
+  <data name="QuestEditor_GraphFit" xml:space="preserve">
+    <value>符合關係圖</value>
+  </data>
+  <data name="QuestEditor_GraphRefresh" xml:space="preserve">
+    <value>重新整理</value>
+  </data>
+  <data name="QuestEditor_GraphEmpty" xml:space="preserve">
+    <value>請選擇一個任務以建立關係圖。</value>
+  </data>
+  <data name="QuestEditor_GraphStatus" xml:space="preserve">
+    <value>{0} 個節點，{1} 個關係。拖曳背景可平移，使用滑鼠滾輪可縮放。</value>
+  </data>
+  <data name="QuestEditor_GraphStatusDiagnostics" xml:space="preserve">
+    <value>{0} 個節點，{1} 個關係，{2} 個診斷。將滑鼠停留在節點或連線上可檢視詳細資料。</value>
+  </data>
+  <data name="QuestEditor_GraphDangling" xml:space="preserve">
+    <value>此任務已被參照，但尚未載入。</value>
+  </data>
 </root>

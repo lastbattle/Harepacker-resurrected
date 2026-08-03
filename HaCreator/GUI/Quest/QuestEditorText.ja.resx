@@ -531,4 +531,40 @@
   <data name="QuestEditor_WorldMin" xml:space="preserve">
     <value>最小ワールド：</value>
   </data>
+  <data name="QuestEditor_GraphTab" xml:space="preserve">
+    <value>グラフ</value>
+  </data>
+  <data name="QuestEditor_GraphFlow" xml:space="preserve">
+    <value>クエストフロー</value>
+  </data>
+  <data name="QuestEditor_GraphRequirements" xml:space="preserve">
+    <value>必要条件</value>
+  </data>
+  <data name="QuestEditor_GraphDialogue" xml:space="preserve">
+    <value>会話</value>
+  </data>
+  <data name="QuestEditor_GraphReadOnly" xml:space="preserve">
+    <value>読み取り専用の関連ビュー</value>
+  </data>
+  <data name="QuestEditor_GraphFocusSelected" xml:space="preserve">
+    <value>選択項目にフォーカス</value>
+  </data>
+  <data name="QuestEditor_GraphFit" xml:space="preserve">
+    <value>グラフ全体を表示</value>
+  </data>
+  <data name="QuestEditor_GraphRefresh" xml:space="preserve">
+    <value>更新</value>
+  </data>
+  <data name="QuestEditor_GraphEmpty" xml:space="preserve">
+    <value>グラフを作成するクエストを選択してください。</value>
+  </data>
+  <data name="QuestEditor_GraphStatus" xml:space="preserve">
+    <value>ノード数: {0}、関連数: {1}。背景をドラッグして移動し、マウスホイールで拡大・縮小できます。</value>
+  </data>
+  <data name="QuestEditor_GraphStatusDiagnostics" xml:space="preserve">
+    <value>ノード数: {0}、関連数: {1}、診断数: {2}。ノードやエッジにカーソルを合わせると詳細を表示します。</value>
+  </data>
+  <data name="QuestEditor_GraphDangling" xml:space="preserve">
+    <value>このクエストは参照されていますが、読み込まれていません。</value>
+  </data>
 </root>

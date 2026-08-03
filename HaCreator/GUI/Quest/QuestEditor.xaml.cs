@@ -91,6 +91,12 @@ namespace HaCreator.GUI.Quest
                 OnPropertyChanged(nameof(FilteredQuests));
             }
         }
+
+        /// <summary>
+        /// All loaded quests for relationship views. The graph intentionally uses the
+        /// unfiltered collection so a reference remains navigable after a search.
+        /// </summary>
+        public ObservableCollection<QuestEditorModel> Quests => _quests;
         #endregion
 
         #region Overrides
@@ -2062,6 +2068,24 @@ namespace HaCreator.GUI.Quest
             QueueFirstVisibleQuestConversationSelection();
         }
 
+        private void QuestGraph_QuestSelected(object sender, Graph.QuestGraphQuestSelectedEventArgs e)
+        {
+            QuestEditorModel quest = _quests.FirstOrDefault(item => item.Id == e.QuestId);
+            if (quest == null)
+                return;
+
+            if (!FilteredQuests.Contains(quest))
+            {
+                searchBox.Text = string.Empty;
+                SortQuestAreaCode = QuestAreaCodeType.Unknown;
+                UpdateSortedQuestList();
+            }
+
+            SelectedQuest = quest;
+            listbox_Quest.SelectedItem = quest;
+            listbox_Quest.ScrollIntoView(quest);
+        }
+
         /// <summary>
         /// Selects the first item in the active quest data grid after the new quest has
         /// propagated through the bindings. This also refreshes the conversation studio
@@ -2111,6 +2135,9 @@ namespace HaCreator.GUI.Quest
 
         private void QuestEditorTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
+            if (QuestEditorTabs?.SelectedItem == QuestGraphTab)
+                QuestGraph?.RefreshGraph();
+
             Dispatcher.BeginInvoke(
                 DispatcherPriority.Loaded,
                 new Action(RefreshConversationStudio));

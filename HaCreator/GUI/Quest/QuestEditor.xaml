@@ -5,6 +5,7 @@
         xmlns:sys="clr-namespace:System;assembly=mscorlib"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
         xmlns:local="clr-namespace:HaCreator.GUI.Quest"
+        xmlns:questGraph="clr-namespace:HaCreator.GUI.Quest.Graph"
         xmlns:converter="clr-namespace:HaCreator.Converter"
         xmlns:haSharedLib="clr-namespace:HaSharedLibrary.GUI;assembly=HaSharedLibrary"
         xmlns:haSharedLibConverter="clr-namespace:HaSharedLibrary.Converter;assembly=HaSharedLibrary"
@@ -3176,6 +3177,14 @@
                                 </StackPanel>
                             </ScrollViewer>
                         </Grid>
+                    </TabItem>
+
+                    <!-- Read-only relationship graph. Editing remains in the source tabs until all WZ layouts are lossless. -->
+                    <TabItem x:Name="QuestGraphTab" Header="{local:QuestText QuestEditor_GraphTab}" FontWeight="Normal">
+                        <questGraph:QuestGraphView x:Name="QuestGraph"
+                                                   ItemsSource="{Binding Quests}"
+                                                   SelectedQuest="{Binding SelectedQuest, Mode=OneWay}"
+                                                   QuestSelected="QuestGraph_QuestSelected"/>
                     </TabItem>
 
                     <!-- Say Info Tab -->

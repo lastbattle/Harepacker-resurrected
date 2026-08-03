@@ -543,4 +543,40 @@ Overwrite them?</value>
   <data name="QuestEditor_WorldMin" xml:space="preserve">
     <value>World min:</value>
   </data>
+  <data name="QuestEditor_GraphTab" xml:space="preserve">
+    <value>Graph</value>
+  </data>
+  <data name="QuestEditor_GraphFlow" xml:space="preserve">
+    <value>Quest flow</value>
+  </data>
+  <data name="QuestEditor_GraphRequirements" xml:space="preserve">
+    <value>Requirements</value>
+  </data>
+  <data name="QuestEditor_GraphDialogue" xml:space="preserve">
+    <value>Dialogue</value>
+  </data>
+  <data name="QuestEditor_GraphReadOnly" xml:space="preserve">
+    <value>Read-only relationship view</value>
+  </data>
+  <data name="QuestEditor_GraphFocusSelected" xml:space="preserve">
+    <value>Focus selected</value>
+  </data>
+  <data name="QuestEditor_GraphFit" xml:space="preserve">
+    <value>Fit graph</value>
+  </data>
+  <data name="QuestEditor_GraphRefresh" xml:space="preserve">
+    <value>Refresh</value>
+  </data>
+  <data name="QuestEditor_GraphEmpty" xml:space="preserve">
+    <value>Select a quest to build its graph.</value>
+  </data>
+  <data name="QuestEditor_GraphStatus" xml:space="preserve">
+    <value>{0} nodes, {1} relationships. Drag the background to pan and use the mouse wheel to zoom.</value>
+  </data>
+  <data name="QuestEditor_GraphStatusDiagnostics" xml:space="preserve">
+    <value>{0} nodes, {1} relationships, {2} diagnostics. Hover nodes and edges for details.</value>
+  </data>
+  <data name="QuestEditor_GraphDangling" xml:space="preserve">
+    <value>This quest is referenced but is not loaded.</value>
+  </data>
 </root>
