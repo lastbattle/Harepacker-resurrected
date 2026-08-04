@@ -3,6 +3,8 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="clr-namespace:HaCreator.GUI.Quest"
              MinHeight="360"
+             Focusable="True"
+             PreviewKeyDown="QuestGraphView_PreviewKeyDown"
              Background="{DynamicResource HareCanvasBrush}">
     <UserControl.Resources>
         <ResourceDictionary>
@@ -84,12 +86,36 @@
                         VerticalAlignment="Center"
                         Background="{StaticResource HareSurfaceAltBrush}"
                         CornerRadius="4">
-                    <TextBlock Foreground="{StaticResource HareMutedTextBrush}"
+                    <TextBlock x:Name="EditingScopeText"
+                               Foreground="{StaticResource HareMutedTextBrush}"
                                FontSize="11"
-                               Text="{local:QuestText QuestEditor_GraphReadOnly}"/>
+                               Text="{local:QuestText QuestEditor_GraphEditingEnabled}"/>
                 </Border>
 
                 <StackPanel Grid.Column="2" Orientation="Horizontal">
+                    <Button x:Name="AddRelationshipButton"
+                            Margin="0,0,6,0"
+                            Style="{StaticResource HarePrimaryButtonStyle}"
+                            Click="AddRelationshipButton_Click"
+                            Content="{local:QuestText QuestEditor_GraphAddRelationship}"/>
+                    <Button x:Name="UndoRelationshipButton"
+                            Width="34"
+                            Margin="0,0,4,0"
+                            Padding="4"
+                            IsEnabled="False"
+                            ToolTip="{local:QuestText QuestEditor_GraphUndo}"
+                            Style="{StaticResource HareButtonStyle}"
+                            Click="UndoRelationshipButton_Click"
+                            Content="↶"/>
+                    <Button x:Name="RedoRelationshipButton"
+                            Width="34"
+                            Margin="0,0,8,0"
+                            Padding="4"
+                            IsEnabled="False"
+                            ToolTip="{local:QuestText QuestEditor_GraphRedo}"
+                            Style="{StaticResource HareButtonStyle}"
+                            Click="RedoRelationshipButton_Click"
+                            Content="↷"/>
                     <Button Margin="0,0,6,0"
                             Style="{StaticResource HareButtonStyle}"
                             Click="RefreshGraphButton_Click"

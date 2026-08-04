@@ -3184,7 +3184,8 @@
                         <questGraph:QuestGraphView x:Name="QuestGraph"
                                                    ItemsSource="{Binding Quests}"
                                                    SelectedQuest="{Binding SelectedQuest, Mode=OneWay}"
-                                                   QuestSelected="QuestGraph_QuestSelected"/>
+                                                   QuestSelected="QuestGraph_QuestSelected"
+                                                   RelationshipChanged="QuestGraph_RelationshipChanged"/>
                     </TabItem>
 
                     <!-- Say Info Tab -->

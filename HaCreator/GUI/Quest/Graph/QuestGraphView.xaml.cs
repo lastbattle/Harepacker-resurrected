@@ -21,6 +21,43 @@ namespace HaCreator.GUI.Quest.Graph
         public int QuestId { get; }
     }
 
+    public enum QuestGraphRelationshipRequestType
+    {
+        Add,
+        Replace,
+        Remove,
+    }
+
+    public sealed class QuestGraphRelationshipRequest
+    {
+        public QuestGraphRelationshipRequest(
+            QuestGraphRelationshipRequestType requestType,
+            QuestEditorModel sourceQuest,
+            QuestGraphRelationshipDraft draft = null,
+            QuestGraphRelationshipAddress address = null)
+        {
+            RequestType = requestType;
+            SourceQuest = sourceQuest;
+            Draft = draft;
+            Address = address;
+        }
+
+        public QuestGraphRelationshipRequestType RequestType { get; }
+        public QuestEditorModel SourceQuest { get; }
+        public QuestGraphRelationshipDraft Draft { get; }
+        public QuestGraphRelationshipAddress Address { get; }
+    }
+
+    public sealed class QuestGraphRelationshipChangedEventArgs : EventArgs
+    {
+        public QuestGraphRelationshipChangedEventArgs(QuestGraphRelationshipOperation operation)
+        {
+            Operation = operation;
+        }
+
+        public QuestGraphRelationshipOperation Operation { get; }
+    }
+
     public partial class QuestGraphView : UserControl
     {
         private enum GraphLensMode
@@ -45,6 +82,8 @@ namespace HaCreator.GUI.Quest.Graph
         private const double MinimumScale = 0.18;
         private const double MaximumScale = 2.4;
         private readonly Dictionary<string, Border> _nodeControls = [];
+        private readonly Stack<QuestGraphRelationshipOperation> _undoRelationships = new();
+        private readonly Stack<QuestGraphRelationshipOperation> _redoRelationships = new();
         private QuestGraphSnapshot _snapshot;
         private GraphLensMode _lens = GraphLensMode.Flow;
         private Point _panStart;
@@ -60,6 +99,9 @@ namespace HaCreator.GUI.Quest.Graph
         }
 
         public event EventHandler<QuestGraphQuestSelectedEventArgs> QuestSelected;
+        public event EventHandler<QuestGraphRelationshipChangedEventArgs> RelationshipChanged;
+
+        public Func<QuestGraphRelationshipRequest, QuestGraphRelationshipResult> RelationshipCommandExecutor { get; set; }
 
         public IEnumerable<QuestEditorModel> ItemsSource
         {
@@ -88,11 +130,17 @@ namespace HaCreator.GUI.Quest.Graph
         private static void OnSelectedQuestChanged(DependencyObject sender, DependencyPropertyChangedEventArgs e)
         {
             QuestGraphView view = (QuestGraphView)sender;
+            view._undoRelationships.Clear();
+            view._redoRelationships.Clear();
+            view.UpdateHistoryButtons();
             view.RebuildGraph(fitAfterBuild: false);
         }
 
         private void ItemsSource_CollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
         {
+            _undoRelationships.Clear();
+            _redoRelationships.Clear();
+            UpdateHistoryButtons();
             RebuildGraph(fitAfterBuild: true);
         }
 
@@ -100,6 +148,8 @@ namespace HaCreator.GUI.Quest.Graph
         {
             if (!IsLoaded || GraphCanvas == null)
                 return;
+
+            AddRelationshipButton.IsEnabled = _lens != GraphLensMode.Dialogue && SelectedQuest != null;
 
             QuestEditorModel[] quests = ItemsSource?.Where(quest => quest != null).ToArray() ?? [];
             GraphCanvas.Children.Clear();
@@ -194,12 +244,26 @@ namespace HaCreator.GUI.Quest.Graph
                 StrokeThickness = 1.7,
                 Opacity = 0.88,
                 ToolTip = edge.Label,
-                IsHitTestVisible = true
+                IsHitTestVisible = false
             };
             if (IsRequirementEdge(edge))
                 path.StrokeDashArray = new DoubleCollection([5, 4]);
             Panel.SetZIndex(path, 0);
             GraphCanvas.Children.Add(path);
+
+            Path hitPath = new()
+            {
+                Data = path.Data,
+                Stroke = Brushes.Transparent,
+                StrokeThickness = 12,
+                Cursor = edge.IsEditable ? Cursors.Hand : Cursors.Arrow,
+                Tag = edge,
+                ToolTip = edge.IsEditable ? edge.Label : $"{edge.Label}\n{ReadOnlyReason(edge)}"
+            };
+            hitPath.MouseLeftButtonUp += Edge_MouseLeftButtonUp;
+            hitPath.ContextMenu = CreateEdgeContextMenu(edge);
+            Panel.SetZIndex(hitPath, 1);
+            GraphCanvas.Children.Add(hitPath);
 
             Vector direction = end - new Point(middleX, end.Y);
             if (direction.Length < 0.1)
@@ -258,8 +322,214 @@ namespace HaCreator.GUI.Quest.Graph
                     : node.Subtitle
             };
             result.MouseLeftButtonUp += Node_MouseLeftButtonUp;
+            if (node.QuestId.HasValue && SelectedQuest != null && node.QuestId.Value != SelectedQuest.Id && !node.IsDangling)
+            {
+                ContextMenu menu = new();
+                MenuItem addItem = new() { Header = QuestTextExtension.Get("QuestEditor_GraphAddRelationship"), Tag = node };
+                addItem.Click += AddRelationshipToNode_Click;
+                menu.Items.Add(addItem);
+                result.ContextMenu = menu;
+            }
             return result;
         }
+
+        private ContextMenu CreateEdgeContextMenu(QuestGraphEdgeModel edge)
+        {
+            ContextMenu menu = new();
+            if (!edge.IsEditable)
+            {
+                menu.Items.Add(new MenuItem { Header = ReadOnlyReason(edge), IsEnabled = false });
+                return menu;
+            }
+
+            MenuItem edit = new() { Header = QuestTextExtension.Get("QuestEditor_GraphEditRelationship"), Tag = edge };
+            edit.Click += EditRelationship_Click;
+            MenuItem remove = new() { Header = QuestTextExtension.Get("QuestEditor_GraphRemoveRelationship"), Tag = edge };
+            remove.Click += RemoveRelationship_Click;
+            menu.Items.Add(edit);
+            menu.Items.Add(remove);
+            return menu;
+        }
+
+        private static string ReadOnlyReason(QuestGraphEdgeModel edge) =>
+            string.IsNullOrWhiteSpace(edge.ReadOnlyReason)
+                ? QuestTextExtension.Get("QuestEditor_GraphReadOnly")
+                : QuestTextExtension.Get(edge.ReadOnlyReason);
+
+        private void Edge_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+        {
+            if (e.ClickCount == 2 && sender is Path { Tag: QuestGraphEdgeModel edge } && edge.IsEditable)
+            {
+                EditRelationship(edge);
+                e.Handled = true;
+            }
+        }
+
+        private void AddRelationshipToNode_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is MenuItem { Tag: QuestGraphNodeModel node } && node.QuestId.HasValue)
+                AddRelationship(node.QuestId.Value);
+        }
+
+        private void EditRelationship_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is MenuItem { Tag: QuestGraphEdgeModel edge })
+                EditRelationship(edge);
+        }
+
+        private void RemoveRelationship_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not MenuItem { Tag: QuestGraphEdgeModel { Relationship: not null } edge })
+                return;
+            QuestEditorModel source = FindQuest(edge.Relationship.OwnerQuestId);
+            if (source == null)
+                return;
+
+            MessageBoxResult confirmation = MessageBox.Show(
+                QuestTextExtension.Get("QuestEditor_GraphRemovePrompt", source.Id, edge.Relationship.TargetQuestId),
+                QuestTextExtension.Get("QuestEditor_GraphRemoveTitle"),
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+            if (confirmation != MessageBoxResult.Yes)
+                return;
+
+            ExecuteRelationshipRequest(new QuestGraphRelationshipRequest(
+                QuestGraphRelationshipRequestType.Remove,
+                source,
+                address: edge.Relationship));
+        }
+
+        private void AddRelationship(int? targetQuestId = null)
+        {
+            if (_lens == GraphLensMode.Dialogue || SelectedQuest == null)
+                return;
+            QuestGraphRelationshipDraft initial = targetQuestId.HasValue
+                ? new QuestGraphRelationshipDraft(QuestGraphRelationshipDraftKind.CompletionNextQuest, targetQuestId.Value, MapleLib.WzLib.WzStructure.Data.QuestStructure.QuestStateType.Completed)
+                : null;
+            QuestGraphRelationshipDialog dialog = new(SelectedQuest, ItemsSource ?? [], initial) { Owner = Window.GetWindow(this) };
+            if (dialog.ShowDialog() == true && dialog.Result != null)
+            {
+                ExecuteRelationshipRequest(new QuestGraphRelationshipRequest(
+                    QuestGraphRelationshipRequestType.Add,
+                    SelectedQuest,
+                    dialog.Result));
+            }
+        }
+
+        private void EditRelationship(QuestGraphEdgeModel edge)
+        {
+            QuestGraphRelationshipAddress address = edge.Relationship;
+            QuestEditorModel source = address == null ? null : FindQuest(address.OwnerQuestId);
+            if (address == null || source == null)
+                return;
+            QuestGraphRelationshipDraft initial = DraftFromAddress(address);
+            QuestGraphRelationshipDialog dialog = new(source, ItemsSource ?? [], initial, lockRelationshipType: true) { Owner = Window.GetWindow(this) };
+            if (dialog.ShowDialog() == true && dialog.Result != null)
+            {
+                ExecuteRelationshipRequest(new QuestGraphRelationshipRequest(
+                    QuestGraphRelationshipRequestType.Replace,
+                    source,
+                    dialog.Result,
+                    address));
+            }
+        }
+
+        private static QuestGraphRelationshipDraft DraftFromAddress(QuestGraphRelationshipAddress address)
+        {
+            QuestGraphRelationshipDraftKind kind = address.Kind == QuestGraphRelationshipKind.NextQuest
+                ? address.Phase == QuestGraphRelationshipPhase.Start
+                    ? QuestGraphRelationshipDraftKind.StartNextQuest
+                    : QuestGraphRelationshipDraftKind.CompletionNextQuest
+                : address.Phase == QuestGraphRelationshipPhase.Start
+                    ? QuestGraphRelationshipDraftKind.StartRequirement
+                    : QuestGraphRelationshipDraftKind.CompletionRequirement;
+            return new QuestGraphRelationshipDraft(
+                kind,
+                address.TargetQuestId,
+                address.QuestState ?? MapleLib.WzLib.WzStructure.Data.QuestStructure.QuestStateType.Completed);
+        }
+
+        private QuestEditorModel FindQuest(int questId) =>
+            ItemsSource?.FirstOrDefault(quest => quest?.Id == questId);
+
+        private void ExecuteRelationshipRequest(QuestGraphRelationshipRequest request)
+        {
+            if (RelationshipCommandExecutor == null)
+                return;
+            QuestGraphRelationshipResult result = RelationshipCommandExecutor(request);
+            if (!result.Success || result.Operation == null)
+            {
+                MessageBox.Show(RelationshipErrorText(result.ErrorCode), QuestTextExtension.Get("QuestEditor_GraphRelationshipErrorTitle"), MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            _undoRelationships.Push(result.Operation);
+            _redoRelationships.Clear();
+            OnRelationshipChanged(result.Operation);
+        }
+
+        private void OnRelationshipChanged(QuestGraphRelationshipOperation operation)
+        {
+            UpdateHistoryButtons();
+            RebuildGraph(fitAfterBuild: false);
+            StatusText.Text = QuestTextExtension.Get("QuestEditor_GraphRelationshipChanged");
+            RelationshipChanged?.Invoke(this, new QuestGraphRelationshipChangedEventArgs(operation));
+        }
+
+        private void UndoRelationship()
+        {
+            if (_undoRelationships.Count == 0)
+                return;
+            QuestGraphRelationshipOperation operation = _undoRelationships.Peek();
+            if (!operation.TryUndo(out string error))
+            {
+                MessageBox.Show(QuestTextExtension.Get("QuestEditor_GraphErrorApplyFailed"), QuestTextExtension.Get("QuestEditor_GraphRelationshipErrorTitle"), MessageBoxButton.OK, MessageBoxImage.Error);
+                _undoRelationships.Clear();
+                _redoRelationships.Clear();
+                UpdateHistoryButtons();
+                return;
+            }
+            _undoRelationships.Pop();
+            _redoRelationships.Push(operation);
+            OnRelationshipChanged(operation);
+        }
+
+        private void RedoRelationship()
+        {
+            if (_redoRelationships.Count == 0)
+                return;
+            QuestGraphRelationshipOperation operation = _redoRelationships.Peek();
+            if (!operation.TryRedo(out string error))
+            {
+                MessageBox.Show(QuestTextExtension.Get("QuestEditor_GraphErrorApplyFailed"), QuestTextExtension.Get("QuestEditor_GraphRelationshipErrorTitle"), MessageBoxButton.OK, MessageBoxImage.Error);
+                _undoRelationships.Clear();
+                _redoRelationships.Clear();
+                UpdateHistoryButtons();
+                return;
+            }
+            _redoRelationships.Pop();
+            _undoRelationships.Push(operation);
+            OnRelationshipChanged(operation);
+        }
+
+        private void UpdateHistoryButtons()
+        {
+            UndoRelationshipButton.IsEnabled = _undoRelationships.Count > 0;
+            RedoRelationshipButton.IsEnabled = _redoRelationships.Count > 0;
+        }
+
+        private static string RelationshipErrorText(QuestGraphRelationshipErrorCode code) => code switch
+        {
+            QuestGraphRelationshipErrorCode.InvalidSource or QuestGraphRelationshipErrorCode.StaleAddress =>
+                QuestTextExtension.Get("QuestEditor_GraphErrorStale"),
+            QuestGraphRelationshipErrorCode.InvalidTarget => QuestTextExtension.Get("QuestEditor_GraphErrorInvalidTarget"),
+            QuestGraphRelationshipErrorCode.TargetNotLoaded => QuestTextExtension.Get("QuestEditor_GraphErrorTargetNotLoaded"),
+            QuestGraphRelationshipErrorCode.SelfLink => QuestTextExtension.Get("QuestEditor_GraphErrorSelfLink"),
+            QuestGraphRelationshipErrorCode.Duplicate => QuestTextExtension.Get("QuestEditor_GraphErrorDuplicate"),
+            QuestGraphRelationshipErrorCode.Cycle => QuestTextExtension.Get("QuestEditor_GraphErrorCycle"),
+            QuestGraphRelationshipErrorCode.UnsupportedRawShape => QuestTextExtension.Get("QuestEditor_GraphErrorUnsupported"),
+            _ => QuestTextExtension.Get("QuestEditor_GraphErrorApplyFailed"),
+        };
 
         private void Node_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
         {
@@ -344,7 +614,29 @@ namespace HaCreator.GUI.Quest.Graph
             FlowLensButton.IsChecked = lens == GraphLensMode.Flow;
             RequirementsLensButton.IsChecked = lens == GraphLensMode.Requirements;
             DialogueLensButton.IsChecked = lens == GraphLensMode.Dialogue;
+            AddRelationshipButton.IsEnabled = lens != GraphLensMode.Dialogue && SelectedQuest != null;
+            EditingScopeText.Text = lens == GraphLensMode.Dialogue
+                ? QuestTextExtension.Get("QuestEditor_GraphDialogueReadOnly")
+                : QuestTextExtension.Get("QuestEditor_GraphEditingEnabled");
             RebuildGraph(fitAfterBuild: true);
+        }
+
+        private void AddRelationshipButton_Click(object sender, RoutedEventArgs e) => AddRelationship();
+        private void UndoRelationshipButton_Click(object sender, RoutedEventArgs e) => UndoRelationship();
+        private void RedoRelationshipButton_Click(object sender, RoutedEventArgs e) => RedoRelationship();
+
+        private void QuestGraphView_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if ((Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control && e.Key == Key.Z)
+            {
+                UndoRelationship();
+                e.Handled = true;
+            }
+            else if ((Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control && e.Key == Key.Y)
+            {
+                RedoRelationship();
+                e.Handled = true;
+            }
         }
 
         private void FlowLensButton_Click(object sender, RoutedEventArgs e) => SetLens(GraphLensMode.Flow);
@@ -387,7 +679,8 @@ namespace HaCreator.GUI.Quest.Graph
 
         private void Viewport_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
-            if (FindNodeControl(e.OriginalSource as DependencyObject) != null)
+            DependencyObject originalSource = e.OriginalSource as DependencyObject;
+            if (FindNodeControl(originalSource) != null || FindEdgeControl(originalSource) != null)
                 return;
 
             _isPanning = true;
@@ -450,6 +743,18 @@ namespace HaCreator.GUI.Quest.Graph
             {
                 if (current is Border { Tag: QuestGraphNodeModel })
                     return (Border)current;
+                current = VisualTreeHelper.GetParent(current);
+            }
+            return null;
+        }
+
+        private static Path FindEdgeControl(DependencyObject source)
+        {
+            DependencyObject current = source;
+            while (current != null)
+            {
+                if (current is Path { Tag: QuestGraphEdgeModel })
+                    return (Path)current;
                 current = VisualTreeHelper.GetParent(current);
             }
             return null;

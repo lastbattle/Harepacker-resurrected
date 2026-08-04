@@ -234,7 +234,13 @@ public static class QuestGraphBuilder
                         edgeKeys,
                         diagnostics,
                         lens,
-                        knownQuestIds);
+                        knownQuestIds,
+                        relationship: new QuestGraphRelationshipAddress(
+                            quest.Id,
+                            QuestGraphRelationshipKind.NextQuest,
+                            ParsePhase(phase),
+                            targetId,
+                            modelIndex: index));
                 }
             }
             else if (act.ActType == QuestEditorActType.Quest && lens.IncludeQuestRequirements)
@@ -356,7 +362,15 @@ public static class QuestGraphBuilder
                             edgeKeys,
                             diagnostics,
                             lens,
-                            knownQuestIds);
+                            knownQuestIds,
+                            relationship: new QuestGraphRelationshipAddress(
+                                ownerQuestId: ParseQuestId(sourceId) ?? 0,
+                                kind: QuestGraphRelationshipKind.CheckQuestRequirement,
+                                phase: ParsePhase(phase),
+                                targetQuestId: req.QuestId,
+                                questState: req.QuestState,
+                                modelIndex: index,
+                                requirementIndex: reqIndex));
                     }
                 }
             }
@@ -375,7 +389,11 @@ public static class QuestGraphBuilder
         QuestGraphLens lens,
         ISet<int> knownQuestIds)
     {
-        QuestEditorCheckInfoModel[] materialized = checks.Where(check => check != null).ToArray();
+        (QuestEditorCheckInfoModel Check, int ModelIndex)[] materialized = checks
+            .Select((check, modelIndex) => (check, modelIndex))
+            .Where(item => item.check != null)
+            .Select(item => (item.check!, item.modelIndex))
+            .ToArray();
         if (materialized.Length == 0)
             return;
 
@@ -400,8 +418,9 @@ public static class QuestGraphBuilder
 
         for (int index = 0; index < materialized.Length; index++)
         {
-            QuestEditorCheckInfoModel check = materialized[index];
-            string provenance = $"Check{Capitalize(phase)}Info[{index}]";
+            QuestEditorCheckInfoModel check = materialized[index].Check;
+            int modelIndex = materialized[index].ModelIndex;
+            string provenance = $"Check{Capitalize(phase)}Info[{modelIndex}]";
 
             if (check.CheckType == QuestEditorCheckType.Quest && check.QuestReqs != null && check.QuestReqs.Count > 0)
             {
@@ -427,7 +446,15 @@ public static class QuestGraphBuilder
                         groupId,
                         QuestGraphEdgeKind.CheckQuestRequirement,
                         $"quest {req.QuestId} = {req.QuestState}",
-                        $"{provenance}.QuestReqs[{reqIndex}]");
+                        $"{provenance}.QuestReqs[{reqIndex}]",
+                        new QuestGraphRelationshipAddress(
+                            ownerQuestId: ParseQuestId(dependentId) ?? 0,
+                            kind: QuestGraphRelationshipKind.CheckQuestRequirement,
+                            phase: ParsePhase(phase),
+                            targetQuestId: req.QuestId,
+                            questState: req.QuestState,
+                            modelIndex: modelIndex,
+                            requirementIndex: reqIndex));
                 }
                 continue;
             }
@@ -673,7 +700,8 @@ public static class QuestGraphBuilder
         ISet<string> edgeKeys,
         IList<string> diagnostics,
         QuestGraphLens lens,
-        ISet<int> knownQuestIds)
+        ISet<int> knownQuestIds,
+        QuestGraphRelationshipAddress? relationship = null)
     {
         if (targetQuestId <= 0)
         {
@@ -692,7 +720,7 @@ public static class QuestGraphBuilder
         if (!nodes.ContainsKey(targetId))
             return;
 
-        AddEdge(edges, edgeKeys, sourceId, targetId, kind, label, provenance);
+        AddEdge(edges, edgeKeys, sourceId, targetId, kind, label, provenance, relationship);
     }
 
     private static void TryAddPrerequisiteEdge(
@@ -706,7 +734,8 @@ public static class QuestGraphBuilder
         ISet<string> edgeKeys,
         IList<string> diagnostics,
         QuestGraphLens lens,
-        ISet<int> knownQuestIds)
+        ISet<int> knownQuestIds,
+        QuestGraphRelationshipAddress? relationship = null)
     {
         if (prerequisiteQuestId <= 0)
         {
@@ -721,7 +750,7 @@ public static class QuestGraphBuilder
         if (!nodes.ContainsKey(prerequisiteId))
             return;
 
-        AddEdge(edges, edgeKeys, prerequisiteId, dependentId, kind, label, provenance);
+        AddEdge(edges, edgeKeys, prerequisiteId, dependentId, kind, label, provenance, relationship);
     }
 
     private static void AddNode(IDictionary<string, QuestGraphNodeModel> nodes, QuestGraphNodeModel node) =>
@@ -734,7 +763,8 @@ public static class QuestGraphBuilder
         string targetId,
         QuestGraphEdgeKind kind,
         string label,
-        string provenance)
+        string provenance,
+        QuestGraphRelationshipAddress? relationship = null)
     {
         string key = $"{sourceId}\u001f{targetId}\u001f{kind}\u001f{label}\u001f{provenance}";
         if (!edgeKeys.Add(key))
@@ -745,7 +775,9 @@ public static class QuestGraphBuilder
             targetId,
             kind,
             label,
-            provenance));
+            provenance,
+            relationship,
+            relationship == null ? ReadOnlyReasonFor(kind) : null));
     }
 
     private static HashSet<string> ApplyLens(
@@ -835,4 +867,11 @@ public static class QuestGraphBuilder
 
     private static string Capitalize(string value) =>
         string.IsNullOrEmpty(value) ? value : char.ToUpperInvariant(value[0]) + value[1..];
+
+    private static QuestGraphRelationshipPhase ParsePhase(string phase) =>
+        string.Equals(phase, "end", StringComparison.OrdinalIgnoreCase)
+            ? QuestGraphRelationshipPhase.End
+            : QuestGraphRelationshipPhase.Start;
+
+    private static string ReadOnlyReasonFor(QuestGraphEdgeKind kind) => "QuestEditor_GraphReadOnly";
 }

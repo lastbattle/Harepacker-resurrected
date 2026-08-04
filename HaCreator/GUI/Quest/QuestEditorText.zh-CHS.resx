@@ -567,4 +567,44 @@
   <data name="QuestEditor_GraphDangling" xml:space="preserve">
     <value>此任务已被引用，但尚未加载。</value>
   </data>
+  <data name="QuestEditor_GraphRelationshipScope" xml:space="preserve"><value>此处仅可编辑后续任务链接以及开始/完成任务条件。对话和任务状态操作仍为只读。</value></data>
+  <data name="QuestEditor_GraphRelationshipSource" xml:space="preserve"><value>源任务</value></data>
+  <data name="QuestEditor_GraphRelationshipType" xml:space="preserve"><value>关系类型</value></data>
+  <data name="QuestEditor_GraphRelationshipTarget" xml:space="preserve"><value>目标任务</value></data>
+  <data name="QuestEditor_GraphRelationshipState" xml:space="preserve"><value>所需状态</value></data>
+  <data name="QuestEditor_GraphRelationshipNextCompletion" xml:space="preserve"><value>后续任务 · 完成操作</value></data>
+  <data name="QuestEditor_GraphRelationshipNextStart" xml:space="preserve"><value>后续任务 · 开始操作</value></data>
+  <data name="QuestEditor_GraphRelationshipRequirementStart" xml:space="preserve"><value>开始条件</value></data>
+  <data name="QuestEditor_GraphRelationshipRequirementCompletion" xml:space="preserve"><value>完成条件</value></data>
+  <data name="QuestEditor_GraphQuestStateNotStarted" xml:space="preserve"><value>未开始</value></data>
+  <data name="QuestEditor_GraphQuestStateStarted" xml:space="preserve"><value>进行中</value></data>
+  <data name="QuestEditor_GraphQuestStateCompleted" xml:space="preserve"><value>已完成</value></data>
+  <data name="QuestEditor_GraphQuestStatePartyQuest" xml:space="preserve"><value>组队任务</value></data>
+  <data name="QuestEditor_GraphQuestStateNo" xml:space="preserve"><value>无状态</value></data>
+  <data name="QuestEditor_GraphQuestStateImpossible" xml:space="preserve"><value>不可进行</value></data>
+  <data name="QuestEditor_GraphRelationshipPreview" xml:space="preserve"><value>更改预览</value></data>
+  <data name="QuestEditor_GraphRelationshipPreviewFormat" xml:space="preserve"><value>{0} → {1} · {2}{3}</value></data>
+  <data name="QuestEditor_GraphRelationshipSelectTarget" xml:space="preserve"><value>请选择目标任务</value></data>
+  <data name="QuestEditor_GraphRelationshipApply" xml:space="preserve"><value>应用更改</value></data>
+  <data name="QuestEditor_GraphRelationshipCancel" xml:space="preserve"><value>取消</value></data>
+  <data name="QuestEditor_GraphRelationshipDialogTitle" xml:space="preserve"><value>编辑任务关系</value></data>
+  <data name="QuestEditor_GraphAddRelationship" xml:space="preserve"><value>添加关系</value></data>
+  <data name="QuestEditor_GraphEditRelationship" xml:space="preserve"><value>编辑关系</value></data>
+  <data name="QuestEditor_GraphRemoveRelationship" xml:space="preserve"><value>移除关系</value></data>
+  <data name="QuestEditor_GraphUndo" xml:space="preserve"><value>撤销关系更改</value></data>
+  <data name="QuestEditor_GraphRedo" xml:space="preserve"><value>重做关系更改</value></data>
+  <data name="QuestEditor_GraphEditingEnabled" xml:space="preserve"><value>安全关系编辑</value></data>
+  <data name="QuestEditor_GraphDialogueReadOnly" xml:space="preserve"><value>对话关系图为只读</value></data>
+  <data name="QuestEditor_GraphRemovePrompt" xml:space="preserve"><value>是否移除从 {0} 到 {1} 的关系？</value></data>
+  <data name="QuestEditor_GraphRemoveTitle" xml:space="preserve"><value>移除任务关系</value></data>
+  <data name="QuestEditor_GraphRelationshipChanged" xml:space="preserve"><value>关系已更新。请重新打包以保存任务数据。</value></data>
+  <data name="QuestEditor_GraphRelationshipErrorTitle" xml:space="preserve"><value>关系更改失败</value></data>
+  <data name="QuestEditor_GraphErrorStale" xml:space="preserve"><value>该关系已在关系图之外发生变化。请刷新后重试。</value></data>
+  <data name="QuestEditor_GraphErrorInvalidTarget" xml:space="preserve"><value>请选择有效的目标任务和状态。</value></data>
+  <data name="QuestEditor_GraphErrorTargetNotLoaded" xml:space="preserve"><value>目标任务尚未加载，无法安全建立关系。</value></data>
+  <data name="QuestEditor_GraphErrorSelfLink" xml:space="preserve"><value>任务不能链接到自身。</value></data>
+  <data name="QuestEditor_GraphErrorDuplicate" xml:space="preserve"><value>该阶段已包含此关系。</value></data>
+  <data name="QuestEditor_GraphErrorCycle" xml:space="preserve"><value>此关系会形成任务循环。</value></data>
+  <data name="QuestEditor_GraphErrorUnsupported" xml:space="preserve"><value>无法无损修改源关系数据。请先编辑并保存对应的 Act 或 Check 部分。</value></data>
+  <data name="QuestEditor_GraphErrorApplyFailed" xml:space="preserve"><value>无法应用该关系。操作历史记录未发生变化。</value></data>
 </root>
