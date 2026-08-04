@@ -843,15 +843,6 @@
   <data name="Editor_Save_1509F5" xml:space="preserve">
     <value>儲存</value>
   </data>
-  <data name="Editor_Save_map_AB74BA" xml:space="preserve">
-    <value>儲存地圖</value>
-  </data>
-  <data name="Editor_Save_map_Ctrl_S_1E254B" xml:space="preserve">
-    <value>儲存地圖 (Ctrl+S)</value>
-  </data>
-  <data name="Editor_Save_map_1EA04E" xml:space="preserve">
-    <value>儲存地圖...</value>
-  </data>
   <data name="Editor_Save_to_WZ_A5F5FB" xml:space="preserve">
     <value>儲存至 WZ</value>
   </data>

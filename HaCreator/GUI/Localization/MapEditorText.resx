@@ -11,9 +11,6 @@
   <data name="CloseMapConfirm" xml:space="preserve"><value>Are you sure you want to close this map?</value></data>
   <data name="CloseTitle" xml:space="preserve"><value>Close</value></data>
   <data name="UnsupportedPropertiesTitle" xml:space="preserve"><value>List of unsupported properties</value></data>
-  <data name="SelectExportLocation" xml:space="preserve"><value>Select export location</value></data>
-  <data name="HaCreatorMapFilter" xml:space="preserve"><value>HaCreator Map File (*.ham)|*.ham</value></data>
-  <data name="CouldNotSave" xml:space="preserve"><value>Could not save: {0}\r\n\r\n{1}</value></data>
   <data name="FinalizeFootholdsConfirm" xml:space="preserve"><value>This will finalize all footholds, remove their tile bindings, and clear the Undo/Redo list.\r\nContinue?</value></data>
   <data name="WarningTitle" xml:space="preserve"><value>Warning</value></data>
   <data name="MinimapRegenerated" xml:space="preserve"><value>Minimap regenerated successfully.</value></data>

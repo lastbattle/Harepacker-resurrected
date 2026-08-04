@@ -1063,10 +1063,9 @@ namespace HaCreator.MapEditor
             return false;
         }
 
-        public void OnExportRequested()
+        public void OnSaveRequested()
         {
-            if (ExportRequested != null)
-                ExportRequested.Invoke();
+            SaveRequested?.Invoke();
         }
 
         public void OnLoadRequested()
@@ -1108,7 +1107,7 @@ namespace HaCreator.MapEditor
         public delegate void ImageDroppedDelegate(Board selectedBoard, System.Drawing.Bitmap bmp, string name, Point pos);
         public event ImageDroppedDelegate ImageDropped;
 
-        public event Action ExportRequested;
+        public event Action SaveRequested;
         public event Action LoadRequested;
         public event Action CloseTabRequested;
         public event EventHandler<bool> SwitchTabRequested;

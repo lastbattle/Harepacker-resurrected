@@ -511,15 +511,6 @@ This will permanently delete all extracted IMG files.</value></data>
   <data name="Editor_Save_1509F5" xml:space="preserve">
     <value>Save</value>
   </data>
-  <data name="Editor_Save_map_AB74BA" xml:space="preserve">
-    <value>Save map</value>
-  </data>
-  <data name="Editor_Save_map_Ctrl_S_1E254B" xml:space="preserve">
-    <value>Save map (Ctrl+S)</value>
-  </data>
-  <data name="Editor_Save_map_1EA04E" xml:space="preserve">
-    <value>Save map...</value>
-  </data>
   <data name="Editor_Save_to_WZ_A5F5FB" xml:space="preserve">
     <value>Save to WZ</value>
   </data>

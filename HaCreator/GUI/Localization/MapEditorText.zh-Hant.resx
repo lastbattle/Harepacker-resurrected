@@ -11,9 +11,6 @@
   <data name="CloseMapConfirm" xml:space="preserve"><value>確定要關閉此地圖嗎？</value></data>
   <data name="CloseTitle" xml:space="preserve"><value>關閉</value></data>
   <data name="UnsupportedPropertiesTitle" xml:space="preserve"><value>不支援的屬性清單</value></data>
-  <data name="SelectExportLocation" xml:space="preserve"><value>選擇匯出位置</value></data>
-  <data name="HaCreatorMapFilter" xml:space="preserve"><value>HaCreator 地圖檔案 (*.ham)|*.ham</value></data>
-  <data name="CouldNotSave" xml:space="preserve"><value>無法儲存：{0}\r\n\r\n{1}</value></data>
   <data name="FinalizeFootholdsConfirm" xml:space="preserve"><value>這將完成所有立足點、移除其圖塊繫結並清除復原/重做清單。\r\n是否繼續？</value></data>
   <data name="WarningTitle" xml:space="preserve"><value>警告</value></data>
   <data name="MinimapRegenerated" xml:space="preserve"><value>小地圖重新產生成功。</value></data>

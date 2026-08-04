@@ -105,7 +105,6 @@ namespace HaCreator.MapEditor
             this.editorShell.FinalizeClicked += Ribbon_FinalizeClicked;
             this.editorShell.NewPlatformClicked += ribbon_NewPlatformClicked;
             this.editorShell.UserObjsClicked += Ribbon_UserObjsClicked;
-            this.editorShell.ExportClicked += Ribbon_ExportClicked;
             this.editorShell.MapPhysicsClicked += Ribbon_EditMapPhysicsClicked;
 
             // Etc
@@ -129,7 +128,7 @@ namespace HaCreator.MapEditor
             this.multiBoard.SelectedItemChanged += MultiBoard_SelectedItemChanged;
             this.multiBoard.MouseMoved += MultiBoard_MouseMoved;
             this.multiBoard.ImageDropped += MultiBoard_ImageDropped;
-            this.multiBoard.ExportRequested += Ribbon_ExportClicked;
+            this.multiBoard.SaveRequested += Ribbon_SaveClicked;
             this.multiBoard.LoadRequested += Ribbon_OpenClicked;
             this.multiBoard.CloseTabRequested += MultiBoard_CloseTabRequested;
             this.multiBoard.SwitchTabRequested += MultiBoard_SwitchTabRequested;
@@ -595,27 +594,6 @@ namespace HaCreator.MapEditor
 
 
         #region Ribbon Handlers
-        private string lastSaveLoc = null;
-
-        public void Ribbon_ExportClicked()
-        {
-            SaveFileDialog ofd = new SaveFileDialog() { Title = MapEditorText.Get("SelectExportLocation"), Filter = MapEditorText.Get("HaCreatorMapFilter") };
-            if (lastSaveLoc != null)
-                ofd.FileName = lastSaveLoc;
-            if (ofd.ShowDialog() != DialogResult.OK)
-                return;
-            lastSaveLoc = ofd.FileName;
-            // No need to lock, SerializeBoard locks only the critical areas to cut down on locked time
-            try
-            {
-                File.WriteAllText(ofd.FileName, multiBoard.SelectedBoard.SerializationManager.SerializeBoard(true));
-            }
-            catch (Exception e)
-            {
-                MessageBox.Show(MapEditorText.Format("CouldNotSave", e.Message, e.StackTrace));
-            }
-        }
-
         void Ribbon_UserObjsClicked()
         {
             lock (multiBoard)

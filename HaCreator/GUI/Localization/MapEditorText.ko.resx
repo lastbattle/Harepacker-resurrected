@@ -11,9 +11,6 @@
   <data name="CloseMapConfirm" xml:space="preserve"><value>이 맵을 닫으시겠습니까?</value></data>
   <data name="CloseTitle" xml:space="preserve"><value>닫기</value></data>
   <data name="UnsupportedPropertiesTitle" xml:space="preserve"><value>지원하지 않는 속성 목록</value></data>
-  <data name="SelectExportLocation" xml:space="preserve"><value>내보낼 위치 선택</value></data>
-  <data name="HaCreatorMapFilter" xml:space="preserve"><value>HaCreator 맵 파일 (*.ham)|*.ham</value></data>
-  <data name="CouldNotSave" xml:space="preserve"><value>저장할 수 없습니다: {0}\r\n\r\n{1}</value></data>
   <data name="FinalizeFootholdsConfirm" xml:space="preserve"><value>모든 발판을 확정하고 타일 연결 및 실행 취소/다시 실행 목록을 지웁니다.\r\n계속하시겠습니까?</value></data>
   <data name="WarningTitle" xml:space="preserve"><value>경고</value></data>
   <data name="MinimapRegenerated" xml:space="preserve"><value>미니맵을 다시 생성했습니다.</value></data>

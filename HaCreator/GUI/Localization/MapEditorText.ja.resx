@@ -11,9 +11,6 @@
   <data name="CloseMapConfirm" xml:space="preserve"><value>このマップを閉じますか？</value></data>
   <data name="CloseTitle" xml:space="preserve"><value>閉じる</value></data>
   <data name="UnsupportedPropertiesTitle" xml:space="preserve"><value>未対応プロパティ一覧</value></data>
-  <data name="SelectExportLocation" xml:space="preserve"><value>エクスポート先を選択</value></data>
-  <data name="HaCreatorMapFilter" xml:space="preserve"><value>HaCreator マップファイル (*.ham)|*.ham</value></data>
-  <data name="CouldNotSave" xml:space="preserve"><value>保存できませんでした: {0}\r\n\r\n{1}</value></data>
   <data name="FinalizeFootholdsConfirm" xml:space="preserve"><value>すべての足場を確定し、タイルとの関連付けと元に戻す/やり直す履歴を削除します。\r\n続行しますか？</value></data>
   <data name="WarningTitle" xml:space="preserve"><value>警告</value></data>
   <data name="MinimapRegenerated" xml:space="preserve"><value>ミニマップを再生成しました。</value></data>

@@ -533,7 +533,7 @@ namespace HaCreator.MapEditor.Input
                         break;
                     case Keys.S:
                         if (ctrl)
-                            parentBoard.OnExportRequested();
+                            parentBoard.OnSaveRequested();
                         break;
                     case Keys.O:
                         if (ctrl)

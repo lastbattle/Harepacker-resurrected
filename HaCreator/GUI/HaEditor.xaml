@@ -21,7 +21,6 @@
     <Window.CommandBindings>
         <CommandBinding Command="{x:Static local:HaEditor.New}" CanExecute="AlwaysExecute" Executed="New_Executed"/>
         <CommandBinding Command="{x:Static local:HaEditor.Open}" CanExecute="AlwaysExecute" Executed="Open_Executed"/>
-        <CommandBinding Command="{x:Static local:HaEditor.Export}" CanExecute="AlwaysExecute" Executed="Export_Executed"/>
         <CommandBinding Command="{x:Static local:HaEditor.Save}" CanExecute="AlwaysExecute" Executed="Save_Executed"/>
         <CommandBinding Command="{x:Static local:HaEditor.Repack}" CanExecute="AlwaysExecute" Executed="Repack_Executed"/>
         <CommandBinding Command="{x:Static local:HaEditor.About}" CanExecute="AlwaysExecute" Executed="About_Executed"/>
@@ -336,9 +335,8 @@
                     <MenuItem Header="{loc:Loc Editor_File_50009C}">
                         <MenuItem Header="{loc:Loc Editor_New_18FDD5}" Command="{x:Static local:HaEditor.New}" InputGestureText="Ctrl+N"/>
                         <MenuItem Header="{loc:Loc Editor_Open_map_03863A}" Command="{x:Static local:HaEditor.Open}" InputGestureText="Ctrl+O"/>
-                        <MenuItem Header="{loc:Loc Editor_Save_map_1EA04E}" Command="{x:Static local:HaEditor.Export}" InputGestureText="Ctrl+S"/>
+                        <MenuItem Header="{loc:Loc Editor_Save_to_WZ_CDEA60}" Command="{x:Static local:HaEditor.Save}" InputGestureText="Ctrl+S"/>
                         <Separator/>
-                        <MenuItem Header="{loc:Loc Editor_Save_to_WZ_CDEA60}" Command="{x:Static local:HaEditor.Save}"/>
                         <MenuItem Header="{loc:Loc Editor_Repack_WZ_files_90BFA4}" Command="{x:Static local:HaEditor.Repack}"/>
                         <MenuItem Header="{loc:Loc Editor_Open_HaRepacker_09E8F1}" Command="{x:Static local:HaEditor.HaRepacker}"/>
                         <Separator/>
@@ -393,8 +391,8 @@
                         <TextBlock FontFamily="Segoe UI Symbol" FontSize="18" Text="↷"/>
                     </Button>
                     <Button Style="{StaticResource CommandButtonStyle}"
-                            Command="{x:Static local:HaEditor.Export}"
-                            ToolTip="{loc:Loc Editor_Save_map_Ctrl_S_1E254B}">
+                            Command="{x:Static local:HaEditor.Save}"
+                            ToolTip="{loc:Loc Editor_Save_to_WZ_CDEA60}">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock FontFamily="Segoe UI Symbol" FontSize="16" Text="▣"/>
                             <TextBlock Margin="7,0,0,0" VerticalAlignment="Center" Text="{loc:Loc Editor_Save_1509F5}"/>

@@ -21,8 +21,7 @@ namespace HaCreator.GUI
 
         public static readonly RoutedUICommand New = CreateCommand(nameof(New), new KeyGesture(Key.N, ModifierKeys.Control));
         public static readonly RoutedUICommand Open = CreateCommand(nameof(Open), new KeyGesture(Key.O, ModifierKeys.Control));
-        public static readonly RoutedUICommand Export = CreateCommand(nameof(Export), new KeyGesture(Key.S, ModifierKeys.Control));
-        public static readonly RoutedUICommand Save = CreateCommand(nameof(Save));
+        public static readonly RoutedUICommand Save = CreateCommand(nameof(Save), new KeyGesture(Key.S, ModifierKeys.Control));
         public static readonly RoutedUICommand Repack = CreateCommand(nameof(Repack));
         public static readonly RoutedUICommand About = CreateCommand(nameof(About));
         public static readonly RoutedUICommand Help = CreateCommand(nameof(Help));
@@ -71,7 +70,6 @@ namespace HaCreator.GUI
         private void MapSim_Executed(object sender, ExecutedRoutedEventArgs e) => MapSimulationClicked?.Invoke();
         private void RegenMinimap_Executed(object sender, ExecutedRoutedEventArgs e) => RegenerateMinimapClicked?.Invoke();
         private void HaRepacker_Executed(object sender, ExecutedRoutedEventArgs e) => HaRepackerClicked?.Invoke();
-        private void Export_Executed(object sender, ExecutedRoutedEventArgs e) => ExportClicked?.Invoke();
         private void NewPlatform_Executed(object sender, ExecutedRoutedEventArgs e) => NewPlatformClicked?.Invoke();
         private void UserObjs_Executed(object sender, ExecutedRoutedEventArgs e) => UserObjsClicked?.Invoke();
         private void PhysicsEdit_Executed(object sender, ExecutedRoutedEventArgs e) => MapPhysicsClicked?.Invoke();
@@ -294,7 +292,6 @@ namespace HaCreator.GUI
         public event ToggleEvent InfoModeToggled;
         public event ToggleEvent MapObjectPreviewAnimationToggled;
         public event EmptyEvent HaRepackerClicked;
-        public event EmptyEvent ExportClicked;
         public event EmptyEvent NewPlatformClicked;
         public event EmptyEvent UserObjsClicked;
         public event EmptyEvent MapPhysicsClicked;
