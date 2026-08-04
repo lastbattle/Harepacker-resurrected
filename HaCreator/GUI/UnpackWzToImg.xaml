@@ -64,7 +64,11 @@
         </Grid>
 
         <Grid Grid.Row="3">
-            <Grid.ColumnDefinitions><ColumnDefinition Width="3*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="2*"/></Grid.ColumnDefinitions>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="5*"/>
+                <ColumnDefinition Width="12"/>
+                <ColumnDefinition Width="5*"/>
+            </Grid.ColumnDefinitions>
             <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="4">
                 <ListBox x:Name="checkedListBox_wzFiles" BorderThickness="0"/>
             </Border>
