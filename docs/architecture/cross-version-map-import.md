@@ -6,6 +6,8 @@ The Maps sidebar includes an **Import** workflow for bringing selected maps from
 
 `MapImportService` reads the source and destination through `IDataSource`. A plan records every source reference and whether the destination already contains it. The confirmation window presents this plan before calling `Import`.
 
+The source map picker can compare source map IDs with the currently loaded destination and optionally show only maps whose map IMG is not already present. The existing text filter continues to narrow the source list by map ID or label.
+
 The dependency scan covers:
 
 - the selected map image and an `info/link` map target;

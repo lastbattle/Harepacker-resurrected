@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <root>
+<data name="MapImport_OnlyMissingMaps" xml:space="preserve"><value>Only show maps missing from the current version</value></data>
 
 
 

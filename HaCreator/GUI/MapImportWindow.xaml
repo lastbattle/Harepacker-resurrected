@@ -98,9 +98,14 @@
                         <TextBlock FontSize="14" FontWeight="SemiBold" Foreground="#0F172A" Text="{dialogLoc:DialogText MapImport_ChooseMaps}"/>
                         <TextBlock Margin="0,3,0,0" Foreground="#64748B" Text="{dialogLoc:DialogText MapImport_MultiSelectHelp}"/>
                     </StackPanel>
-                    <TextBox x:Name="mapFilterTextBox" Grid.Row="1" Height="32" Margin="14,10,14,8" Padding="9,3"
-                             VerticalContentAlignment="Center" TextChanged="MapFilterTextBox_TextChanged"
-                             ToolTip="{dialogLoc:DialogText MapImport_FilterTooltip}"/>
+                    <StackPanel Grid.Row="1" Margin="14,10,14,8">
+                        <TextBox x:Name="mapFilterTextBox" Height="32" Padding="9,3"
+                                 VerticalContentAlignment="Center" TextChanged="MapFilterTextBox_TextChanged"
+                                 ToolTip="{dialogLoc:DialogText MapImport_FilterTooltip}"/>
+                        <CheckBox x:Name="onlyMissingMapsCheckBox" Margin="0,7,0,0"
+                                  Checked="OnlyMissingMapsCheckBox_Changed" Unchecked="OnlyMissingMapsCheckBox_Changed"
+                                  Content="{dialogLoc:DialogText MapImport_OnlyMissingMaps}"/>
+                    </StackPanel>
                     <ListView x:Name="mapsListView" Grid.Row="2" Margin="8,0" BorderThickness="0"
                               SelectionMode="Extended" SelectionChanged="MapsListView_SelectionChanged">
                         <ListView.View>

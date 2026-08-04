@@ -98,7 +98,7 @@ namespace HaCreator.GUI
                 _source = await Task.Run(() => MapImportService.OpenSource(sourcePath));
                 IReadOnlyDictionary<string, MapImportMapLabel> labels =
                     await Task.Run(() => MapImportService.GetMapLabels(_source));
-                List<SourceMapItem> maps = await Task.Run(() => EnumerateMaps(path, labels));
+                List<SourceMapItem> maps = await Task.Run(() => EnumerateMaps(path, labels, Program.DataSource));
                 _allMaps.Clear();
                 foreach (SourceMapItem map in maps)
                     _allMaps.Add(map);
@@ -121,7 +121,8 @@ namespace HaCreator.GUI
 
         private static List<SourceMapItem> EnumerateMaps(
             string root,
-            IReadOnlyDictionary<string, MapImportMapLabel> labels)
+            IReadOnlyDictionary<string, MapImportMapLabel> labels,
+            IDataSource destination)
         {
             string mapRoot = Path.Combine(root, "Map");
             if (!Directory.Exists(mapRoot))
@@ -141,7 +142,8 @@ namespace HaCreator.GUI
                         mapId,
                         Path.GetRelativePath(root, path).Replace(Path.DirectorySeparatorChar, '/'),
                         label?.StreetName,
-                        label?.MapName);
+                        label?.MapName,
+                        destination?.ImageExists("Map", $"Map/Map{mapId[0]}/{mapId}.img") == true);
                 })
                 .GroupBy(item => item.MapId, StringComparer.OrdinalIgnoreCase)
                 .Select(group => group.First())
@@ -151,13 +153,17 @@ namespace HaCreator.GUI
 
         private void MapFilterTextBox_TextChanged(object sender, TextChangedEventArgs e) => ApplyMapFilter();
 
+        private void OnlyMissingMapsCheckBox_Changed(object sender, RoutedEventArgs e) => ApplyMapFilter();
+
         private void ApplyMapFilter()
         {
             if (mapsListView == null)
                 return;
             var view = System.Windows.Data.CollectionViewSource.GetDefaultView(mapsListView.ItemsSource);
             string filter = mapFilterTextBox?.Text?.Trim() ?? string.Empty;
+            bool onlyMissingMaps = onlyMissingMapsCheckBox?.IsChecked == true;
             view.Filter = value => value is SourceMapItem item &&
+                (!onlyMissingMaps || !item.IsAlreadyInDestination) &&
                 (string.IsNullOrEmpty(filter) || item.SearchText.Contains(filter, StringComparison.OrdinalIgnoreCase));
         }
 
@@ -318,18 +324,21 @@ namespace HaCreator.GUI
 
         private sealed class SourceMapItem
         {
-            public SourceMapItem(string mapId, string relativePath, string streetName, string mapName)
+            public SourceMapItem(string mapId, string relativePath, string streetName, string mapName,
+                bool isAlreadyInDestination)
             {
                 MapId = mapId;
                 RelativePath = relativePath;
                 StreetName = string.IsNullOrWhiteSpace(streetName) ? "—" : streetName;
                 MapName = string.IsNullOrWhiteSpace(mapName) ? mapId : mapName;
+                IsAlreadyInDestination = isAlreadyInDestination;
                 SearchText = $"{MapId} {StreetName} {MapName}";
             }
             public string MapId { get; }
             public string RelativePath { get; }
             public string StreetName { get; }
             public string MapName { get; }
+            public bool IsAlreadyInDestination { get; }
             public string SearchText { get; }
         }
     }
