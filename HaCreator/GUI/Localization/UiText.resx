@@ -288,9 +288,6 @@ This will permanently delete all extracted IMG files.</value></data>
   <data name="Editor_HaCreator_resurrected_8AD585" xml:space="preserve">
     <value>HaCreator resurrected</value>
   </data>
-  <data name="Editor_HAM_4FAE66" xml:space="preserve">
-    <value>HAM</value>
-  </data>
   <data name="Editor_Help_B79CAC" xml:space="preserve">
     <value>Help</value>
   </data>
@@ -349,9 +346,6 @@ This will permanently delete all extracted IMG files.</value></data>
   <data name="Editor_Map_diagnostics_269074" xml:space="preserve">
     <value>Map diagnostics</value>
   </data>
-  <data name="Editor_Map_file_1C2EF1" xml:space="preserve">
-    <value>Map file</value>
-  </data>
   <data name="Editor_Map_Objects_4CD3A1" xml:space="preserve">
     <value>Map Objects</value>
   </data>
@@ -364,9 +358,6 @@ This will permanently delete all extracted IMG files.</value></data>
   </data>
   <data name="Editor_Map_Simulator_68DDBB" xml:space="preserve">
     <value>Map Simulator</value>
-  </data>
-  <data name="Editor_Map_XML_B46847" xml:space="preserve">
-    <value>Map XML</value>
   </data>
   <data name="Editor_Maps_119E66" xml:space="preserve">
     <value>Maps</value>
@@ -637,9 +628,6 @@ This will permanently delete all extracted IMG files.</value></data>
     <value>Virtual
 </value>
   </data>
-  <data name="Editor_XML_40658E" xml:space="preserve">
-    <value>XML</value>
-  </data>
   <data name="Editor_Zoom_509C51" xml:space="preserve">
     <value>Zoom</value>
   </data>
@@ -698,18 +686,6 @@ This will permanently delete all extracted IMG files.</value></data>
   </data>
   <data name="Editor_Loading" xml:space="preserve">
     <value>Loading...</value>
-  </data>
-  <data name="Editor_SelectHamMapTitle" xml:space="preserve">
-    <value>Select a map to load...</value>
-  </data>
-  <data name="Editor_HamMapFileFilter" xml:space="preserve">
-    <value>HaCreator map file (*.ham)|*.ham</value>
-  </data>
-  <data name="Editor_SelectXmlTitle" xml:space="preserve">
-    <value>Select XML to load...</value>
-  </data>
-  <data name="Editor_XmlFileFilter" xml:space="preserve">
-    <value>Extensible Markup Language file (*.xml)|*.xml</value>
   </data>
   <data name="Editor_ResolvingMissingMaps" xml:space="preserve">
     <value>Resolving missing map strings...</value>

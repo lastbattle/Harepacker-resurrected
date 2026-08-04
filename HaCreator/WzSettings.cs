@@ -87,8 +87,6 @@ namespace HaCreator
         public static bool HideLifeEntriesWithoutImages = true;
         public static int lastDefaultLayer = 0;
         public static bool lastAllLayers = true;
-        public static string LastHamPath = "";
-        public static string LastXmlPath = "";
         public static string LastMapImportSourcePath = "";
 
         // Object Viewer settings

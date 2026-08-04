@@ -620,9 +620,6 @@
   <data name="Editor_HaCreator_resurrected_8AD585" xml:space="preserve">
     <value>HaCreator resurrected</value>
   </data>
-  <data name="Editor_HAM_4FAE66" xml:space="preserve">
-    <value>HAM</value>
-  </data>
   <data name="Editor_Help_B79CAC" xml:space="preserve">
     <value>ヘルプ</value>
   </data>
@@ -681,9 +678,6 @@
   <data name="Editor_Map_diagnostics_269074" xml:space="preserve">
     <value>マップ診断</value>
   </data>
-  <data name="Editor_Map_file_1C2EF1" xml:space="preserve">
-    <value>マップファイル</value>
-  </data>
   <data name="Editor_Map_Objects_4CD3A1" xml:space="preserve">
     <value>マップオブジェクト</value>
   </data>
@@ -696,9 +690,6 @@
   </data>
   <data name="Editor_Map_Simulator_68DDBB" xml:space="preserve">
     <value>マップシミュレーター</value>
-  </data>
-  <data name="Editor_Map_XML_B46847" xml:space="preserve">
-    <value>マップ XML</value>
   </data>
   <data name="Editor_Maps_119E66" xml:space="preserve">
     <value>マップ</value>
@@ -969,9 +960,6 @@
     <value>仮想
 </value>
   </data>
-  <data name="Editor_XML_40658E" xml:space="preserve">
-    <value>XML</value>
-  </data>
   <data name="Editor_Zoom_509C51" xml:space="preserve">
     <value>ズーム</value>
   </data>
@@ -1030,18 +1018,6 @@
   </data>
   <data name="Editor_Loading" xml:space="preserve">
     <value>読み込み中...</value>
-  </data>
-  <data name="Editor_SelectHamMapTitle" xml:space="preserve">
-    <value>読み込むマップを選択...</value>
-  </data>
-  <data name="Editor_HamMapFileFilter" xml:space="preserve">
-    <value>HaCreator マップファイル (*.ham)|*.ham</value>
-  </data>
-  <data name="Editor_SelectXmlTitle" xml:space="preserve">
-    <value>読み込む XML を選択...</value>
-  </data>
-  <data name="Editor_XmlFileFilter" xml:space="preserve">
-    <value>拡張可能マークアップ言語ファイル (*.xml)|*.xml</value>
   </data>
   <data name="Editor_ResolvingMissingMaps" xml:space="preserve">
     <value>不足しているマップ文字列を解決しています...</value>

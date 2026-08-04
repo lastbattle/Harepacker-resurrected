@@ -1125,44 +1125,6 @@ namespace HaCreator.MapEditor
             }
         }
 
-        public bool LoadHamMap(string filePath, out string errorMessage)
-        {
-            lock (multiBoard)
-            {
-                errorMessage = null;
-                bool deviceLoadedThisTime = EnsureDeviceLoaded();
-
-                try
-                {
-                    MapLoadService.LoadHamMap(filePath, multiBoard, tabs, MakeRightClickHandler());
-                }
-                catch (Exception ex)
-                {
-                    errorMessage = $"Failed to load HAM map.\r\n\r\n{ex.Message}";
-                    return false;
-                }
-
-                FinishLoadedMap(deviceLoadedThisTime);
-                return true;
-            }
-        }
-
-        public bool LoadXmlMap(string filePath, out string errorMessage)
-        {
-            lock (multiBoard)
-            {
-                bool deviceLoadedThisTime = EnsureDeviceLoaded();
-
-                if (!MapLoadService.TryLoadXmlMap(filePath, tabs, multiBoard, MakeRightClickHandler(), out errorMessage))
-                {
-                    return false;
-                }
-
-                FinishLoadedMap(deviceLoadedThisTime);
-                return true;
-            }
-        }
-
         private bool EnsureDeviceLoaded()
         {
             // load multiboard early before map

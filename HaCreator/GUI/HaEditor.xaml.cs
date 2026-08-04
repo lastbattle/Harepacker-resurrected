@@ -555,8 +555,6 @@ namespace HaCreator.GUI
 
             mapExplorerBrowser.InitializeMapsListboxItem(true);
             mapExplorerBrowser.SelectionChanged += MapExplorerBrowser_SelectionChanged;
-            mapExplorerHamPathTextBox.Text = ApplicationSettings.LastHamPath ?? string.Empty;
-            mapExplorerXmlPathTextBox.Text = ApplicationSettings.LastXmlPath ?? string.Empty;
             mapExplorerImportDestinationTextBlock.Text = Program.DataSource?.VersionInfo?.DirectoryPath ??
                 Program.DataSource?.Name ?? LocExtension.Get("MapImport_CurrentDataSource");
             _isMapExplorerInitialized = true;
@@ -643,28 +641,6 @@ namespace HaCreator.GUI
             }
 
             mapExplorerDeleteHistoryButton.IsEnabled = false;
-            if (Equals(mapExplorerSourceTabControl.SelectedItem, mapExplorerHamTabItem))
-            {
-                mapExplorerResolveMissingButton.Visibility = Visibility.Collapsed;
-                mapExplorerCheckMapButton.Visibility = Visibility.Collapsed;
-                mapExplorerCheckMapButton.IsEnabled = false;
-                mapExplorerLoadButton.IsEnabled = File.Exists(mapExplorerHamPathTextBox.Text);
-                mapExplorerReloadButton.IsEnabled = false;
-                mapExplorerSelectionTextBlock.Text = mapExplorerHamPathTextBox.Text;
-                return;
-            }
-
-            if (Equals(mapExplorerSourceTabControl.SelectedItem, mapExplorerXmlTabItem))
-            {
-                mapExplorerResolveMissingButton.Visibility = Visibility.Collapsed;
-                mapExplorerCheckMapButton.Visibility = Visibility.Collapsed;
-                mapExplorerCheckMapButton.IsEnabled = false;
-                mapExplorerLoadButton.IsEnabled = File.Exists(mapExplorerXmlPathTextBox.Text);
-                mapExplorerReloadButton.IsEnabled = false;
-                mapExplorerSelectionTextBlock.Text = mapExplorerXmlPathTextBox.Text;
-                return;
-            }
-
             string wzSelectedItem = mapExplorerBrowser.SelectedItem;
             mapExplorerResolveMissingButton.Visibility = Visibility.Visible;
             mapExplorerCheckMapButton.Visibility = Visibility.Visible;
@@ -843,32 +819,21 @@ namespace HaCreator.GUI
                 string errorMessage = null;
                 bool loaded;
 
-                if (Equals(mapExplorerSourceTabControl.SelectedItem, mapExplorerHamTabItem))
-                {
-                    loaded = hcsm.LoadHamMap(mapExplorerHamPathTextBox.Text, out errorMessage);
-                }
-                else if (Equals(mapExplorerSourceTabControl.SelectedItem, mapExplorerXmlTabItem))
-                {
-                    loaded = hcsm.LoadXmlMap(mapExplorerXmlPathTextBox.Text, out errorMessage);
-                }
-                else
-                {
-                    bool fromHistory = Equals(mapExplorerSourceTabControl.SelectedItem, mapExplorerHistoryTabItem);
-                    string selectedItem = fromHistory
-                        ? mapExplorerHistoryBrowser.SelectedItem
-                        : mapExplorerBrowser.SelectedItem;
+                bool fromHistory = Equals(mapExplorerSourceTabControl.SelectedItem, mapExplorerHistoryTabItem);
+                string selectedItem = fromHistory
+                    ? mapExplorerHistoryBrowser.SelectedItem
+                    : mapExplorerBrowser.SelectedItem;
 
-                    if (string.IsNullOrEmpty(selectedItem))
-                    {
-                        return;
-                    }
+                if (string.IsNullOrEmpty(selectedItem))
+                {
+                    return;
+                }
 
-                    loaded = hcsm.LoadWzMapSelection(selectedItem, out errorMessage);
-                    if (loaded && !fromHistory)
-                    {
-                        InitializeMapExplorerHistory();
-                        mapExplorerHistoryBrowser.AddLoadedMapToHistory(selectedItem);
-                    }
+                loaded = hcsm.LoadWzMapSelection(selectedItem, out errorMessage);
+                if (loaded && !fromHistory)
+                {
+                    InitializeMapExplorerHistory();
+                    mapExplorerHistoryBrowser.AddLoadedMapToHistory(selectedItem);
                 }
 
                 if (!loaded)
@@ -880,58 +845,6 @@ namespace HaCreator.GUI
             {
                 waitWindow.EndWait();
             }
-        }
-
-        private void MapExplorerBrowseHamButton_Click(object sender, RoutedEventArgs e)
-        {
-            using (Forms.OpenFileDialog dialog = new Forms.OpenFileDialog())
-            {
-                dialog.Title = LocExtension.Get("Editor_SelectHamMapTitle");
-                dialog.Filter = LocExtension.Get("Editor_HamMapFileFilter");
-                if (!string.IsNullOrEmpty(mapExplorerHamPathTextBox.Text))
-                {
-                    dialog.FileName = mapExplorerHamPathTextBox.Text;
-                }
-
-                if (dialog.ShowDialog() != Forms.DialogResult.OK)
-                {
-                    return;
-                }
-
-                mapExplorerHamPathTextBox.Text = dialog.FileName;
-            }
-        }
-
-        private void MapExplorerBrowseXmlButton_Click(object sender, RoutedEventArgs e)
-        {
-            using (Forms.OpenFileDialog dialog = new Forms.OpenFileDialog())
-            {
-                dialog.Title = LocExtension.Get("Editor_SelectXmlTitle");
-                dialog.Filter = LocExtension.Get("Editor_XmlFileFilter");
-                if (!string.IsNullOrEmpty(mapExplorerXmlPathTextBox.Text))
-                {
-                    dialog.FileName = mapExplorerXmlPathTextBox.Text;
-                }
-
-                if (dialog.ShowDialog() != Forms.DialogResult.OK)
-                {
-                    return;
-                }
-
-                mapExplorerXmlPathTextBox.Text = dialog.FileName;
-            }
-        }
-
-        private void MapExplorerHamPathTextBox_TextChanged(object sender, TextChangedEventArgs e)
-        {
-            ApplicationSettings.LastHamPath = mapExplorerHamPathTextBox.Text;
-            UpdateMapExplorerSelectionState();
-        }
-
-        private void MapExplorerXmlPathTextBox_TextChanged(object sender, TextChangedEventArgs e)
-        {
-            ApplicationSettings.LastXmlPath = mapExplorerXmlPathTextBox.Text;
-            UpdateMapExplorerSelectionState();
         }
 
         private void MapExplorerClearHistoryButton_Click(object sender, RoutedEventArgs e)

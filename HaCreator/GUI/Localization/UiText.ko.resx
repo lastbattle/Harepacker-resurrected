@@ -620,9 +620,6 @@
   <data name="Editor_HaCreator_resurrected_8AD585" xml:space="preserve">
     <value>HaCreator resurrected</value>
   </data>
-  <data name="Editor_HAM_4FAE66" xml:space="preserve">
-    <value>HAM</value>
-  </data>
   <data name="Editor_Help_B79CAC" xml:space="preserve">
     <value>도움말</value>
   </data>
@@ -681,9 +678,6 @@
   <data name="Editor_Map_diagnostics_269074" xml:space="preserve">
     <value>맵 진단</value>
   </data>
-  <data name="Editor_Map_file_1C2EF1" xml:space="preserve">
-    <value>맵 파일</value>
-  </data>
   <data name="Editor_Map_Objects_4CD3A1" xml:space="preserve">
     <value>맵 오브젝트</value>
   </data>
@@ -696,9 +690,6 @@
   </data>
   <data name="Editor_Map_Simulator_68DDBB" xml:space="preserve">
     <value>맵 시뮬레이터</value>
-  </data>
-  <data name="Editor_Map_XML_B46847" xml:space="preserve">
-    <value>맵 XML</value>
   </data>
   <data name="Editor_Maps_119E66" xml:space="preserve">
     <value>맵</value>
@@ -969,9 +960,6 @@
     <value>가상
 </value>
   </data>
-  <data name="Editor_XML_40658E" xml:space="preserve">
-    <value>XML</value>
-  </data>
   <data name="Editor_Zoom_509C51" xml:space="preserve">
     <value>확대/축소</value>
   </data>
@@ -1030,18 +1018,6 @@
   </data>
   <data name="Editor_Loading" xml:space="preserve">
     <value>불러오는 중...</value>
-  </data>
-  <data name="Editor_SelectHamMapTitle" xml:space="preserve">
-    <value>불러올 맵 선택...</value>
-  </data>
-  <data name="Editor_HamMapFileFilter" xml:space="preserve">
-    <value>HaCreator 맵 파일 (*.ham)|*.ham</value>
-  </data>
-  <data name="Editor_SelectXmlTitle" xml:space="preserve">
-    <value>불러올 XML 선택...</value>
-  </data>
-  <data name="Editor_XmlFileFilter" xml:space="preserve">
-    <value>확장성 마크업 언어 파일 (*.xml)|*.xml</value>
   </data>
   <data name="Editor_ResolvingMissingMaps" xml:space="preserve">
     <value>누락된 맵 문자열 해결 중...</value>

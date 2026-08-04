@@ -4,7 +4,6 @@ using HaCreator.Wz;
 using HaSharedLibrary.Wz;
 using MapleLib.Img;
 using MapleLib.WzLib;
-using MapleLib.WzLib.Serializer;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure;
 using System;
@@ -17,40 +16,6 @@ namespace HaCreator.GUI
 {
     internal static class MapLoadService
     {
-        public static void LoadHamMap(
-            string filePath,
-            MultiBoard multiBoard,
-            System.Windows.Controls.TabControl tabs,
-            System.Windows.RoutedEventHandler[] rightClickHandler)
-        {
-            MapLoader.CreateMapFromHam(multiBoard, tabs, File.ReadAllText(filePath), rightClickHandler);
-        }
-
-        public static bool TryLoadXmlMap(
-            string filePath,
-            System.Windows.Controls.TabControl tabs,
-            MultiBoard multiBoard,
-            System.Windows.RoutedEventHandler[] rightClickHandler,
-            out string errorMessage)
-        {
-            errorMessage = null;
-
-            WzImage mapImage;
-            try
-            {
-                mapImage = (WzImage)new WzXmlDeserializer(false, null).ParseXML(filePath)[0];
-            }
-            catch
-            {
-                errorMessage = "Error while loading XML. Aborted.";
-                return false;
-            }
-
-            MapInfo info = new MapInfo(mapImage, null, string.Empty, string.Empty);
-            MapLoader.CreateMapFromImage(-1, mapImage, info, null, string.Empty, string.Empty, tabs, multiBoard, rightClickHandler);
-            return true;
-        }
-
         public static bool TryLoadWzMapSelection(
             string selectedItem,
             System.Windows.Controls.TabControl tabs,

@@ -620,9 +620,6 @@
   <data name="Editor_HaCreator_resurrected_8AD585" xml:space="preserve">
     <value>HaCreator resurrected</value>
   </data>
-  <data name="Editor_HAM_4FAE66" xml:space="preserve">
-    <value>HAM</value>
-  </data>
   <data name="Editor_Help_B79CAC" xml:space="preserve">
     <value>說明</value>
   </data>
@@ -681,9 +678,6 @@
   <data name="Editor_Map_diagnostics_269074" xml:space="preserve">
     <value>地圖診斷</value>
   </data>
-  <data name="Editor_Map_file_1C2EF1" xml:space="preserve">
-    <value>地圖檔案</value>
-  </data>
   <data name="Editor_Map_Objects_4CD3A1" xml:space="preserve">
     <value>地圖物件</value>
   </data>
@@ -696,9 +690,6 @@
   </data>
   <data name="Editor_Map_Simulator_68DDBB" xml:space="preserve">
     <value>地圖模擬器</value>
-  </data>
-  <data name="Editor_Map_XML_B46847" xml:space="preserve">
-    <value>地圖 XML</value>
   </data>
   <data name="Editor_Maps_119E66" xml:space="preserve">
     <value>地圖</value>
@@ -969,9 +960,6 @@
     <value>虛擬
 </value>
   </data>
-  <data name="Editor_XML_40658E" xml:space="preserve">
-    <value>XML</value>
-  </data>
   <data name="Editor_Zoom_509C51" xml:space="preserve">
     <value>縮放</value>
   </data>
@@ -1030,18 +1018,6 @@
   </data>
   <data name="Editor_Loading" xml:space="preserve">
     <value>正在載入...</value>
-  </data>
-  <data name="Editor_SelectHamMapTitle" xml:space="preserve">
-    <value>選取要載入的地圖...</value>
-  </data>
-  <data name="Editor_HamMapFileFilter" xml:space="preserve">
-    <value>HaCreator 地圖檔案 (*.ham)|*.ham</value>
-  </data>
-  <data name="Editor_SelectXmlTitle" xml:space="preserve">
-    <value>選取要載入的 XML...</value>
-  </data>
-  <data name="Editor_XmlFileFilter" xml:space="preserve">
-    <value>可延伸標記語言檔案 (*.xml)|*.xml</value>
   </data>
   <data name="Editor_ResolvingMissingMaps" xml:space="preserve">
     <value>正在解析缺少的地圖字串...</value>
