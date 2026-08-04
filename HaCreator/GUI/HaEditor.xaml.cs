@@ -557,6 +557,8 @@ namespace HaCreator.GUI
             mapExplorerBrowser.SelectionChanged += MapExplorerBrowser_SelectionChanged;
             mapExplorerHamPathTextBox.Text = ApplicationSettings.LastHamPath ?? string.Empty;
             mapExplorerXmlPathTextBox.Text = ApplicationSettings.LastXmlPath ?? string.Empty;
+            mapExplorerImportDestinationTextBlock.Text = Program.DataSource?.VersionInfo?.DirectoryPath ??
+                Program.DataSource?.Name ?? LocExtension.Get("MapImport_CurrentDataSource");
             _isMapExplorerInitialized = true;
             InitializeMapExplorerHistory();
             UpdateMapExplorerSelectionState();
@@ -629,6 +631,17 @@ namespace HaCreator.GUI
                 return;
             }
 
+            if (Equals(mapExplorerSourceTabControl.SelectedItem, mapExplorerImportTabItem))
+            {
+                mapExplorerResolveMissingButton.Visibility = Visibility.Collapsed;
+                mapExplorerCheckMapButton.Visibility = Visibility.Collapsed;
+                mapExplorerCheckMapButton.IsEnabled = false;
+                mapExplorerLoadButton.IsEnabled = false;
+                mapExplorerReloadButton.IsEnabled = false;
+                mapExplorerSelectionTextBlock.Text = LocExtension.Get("MapImport_SelectSourceStatus");
+                return;
+            }
+
             mapExplorerDeleteHistoryButton.IsEnabled = false;
             if (Equals(mapExplorerSourceTabControl.SelectedItem, mapExplorerHamTabItem))
             {
@@ -681,6 +694,26 @@ namespace HaCreator.GUI
             }
 
             UpdateMapExplorerSelectionState();
+        }
+
+        private void MapExplorerImportButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (Program.DataSource is not MapleLib.Img.ImgFileSystemDataSource &&
+                (Program.DataSource is not MapleLib.Img.HybridDataSource hybrid || hybrid.ImgSource == null))
+            {
+                MessageBox.Show(LocExtension.Get("MapImport_WritableDestination"),
+                    LocExtension.Get("MapImport_Tab"), MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            var window = new MapImportWindow { Owner = this };
+            bool? result = window.ShowDialog();
+            if (result == true)
+            {
+                mapExplorerBrowser.ReloadMapsListboxItem(true);
+                mapExplorerBrowser.ApplySearch(mapExplorerSearchTextBox.Text);
+                UpdateMapExplorerSelectionState();
+            }
         }
 
         private void MapExplorerSearchTextBox_TextChanged(object sender, TextChangedEventArgs e)
