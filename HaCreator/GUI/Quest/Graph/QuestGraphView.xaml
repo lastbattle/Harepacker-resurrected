@@ -1,0 +1,179 @@
+<UserControl x:Class="HaCreator.GUI.Quest.Graph.QuestGraphView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:HaCreator.GUI.Quest"
+             MinHeight="360"
+             Focusable="True"
+             PreviewKeyDown="QuestGraphView_PreviewKeyDown"
+             Background="{DynamicResource HareCanvasBrush}">
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/HaSharedLibrary;component/GUI/Themes/HarepackerTheme.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+            <Style x:Key="GraphLensButtonStyle" TargetType="ToggleButton">
+            <Setter Property="MinHeight" Value="30"/>
+            <Setter Property="Padding" Value="11,5"/>
+            <Setter Property="Margin" Value="0,0,5,0"/>
+            <Setter Property="Background" Value="{StaticResource HareSurfaceBrush}"/>
+            <Setter Property="Foreground" Value="{StaticResource HareTextBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource HareBorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="Border"
+                                Padding="{TemplateBinding Padding}"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="4">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Border" Property="Background" Value="{StaticResource HareAccentSoftBrush}"/>
+                                <Setter TargetName="Border" Property="BorderBrush" Value="{StaticResource HareAccentBrush}"/>
+                                <Setter Property="Foreground" Value="{StaticResource HareAccentHoverBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Border" Property="BorderBrush" Value="{StaticResource HareAccentBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            </Style>
+        </ResourceDictionary>
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Style="{StaticResource HareToolbarStyle}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Orientation="Horizontal">
+                    <ToggleButton x:Name="FlowLensButton"
+                                  Style="{StaticResource GraphLensButtonStyle}"
+                                  IsChecked="True"
+                                  Click="FlowLensButton_Click"
+                                  Content="{local:QuestText QuestEditor_GraphFlow}"/>
+                    <ToggleButton x:Name="RequirementsLensButton"
+                                  Style="{StaticResource GraphLensButtonStyle}"
+                                  Click="RequirementsLensButton_Click"
+                                  Content="{local:QuestText QuestEditor_GraphRequirements}"/>
+                    <ToggleButton x:Name="DialogueLensButton"
+                                  Style="{StaticResource GraphLensButtonStyle}"
+                                  Click="DialogueLensButton_Click"
+                                  Content="{local:QuestText QuestEditor_GraphDialogue}"/>
+                </StackPanel>
+
+                <Border Grid.Column="1"
+                        Margin="8,0"
+                        Padding="8,4"
+                        HorizontalAlignment="Left"
+                        VerticalAlignment="Center"
+                        Background="{StaticResource HareSurfaceAltBrush}"
+                        CornerRadius="4">
+                    <TextBlock x:Name="EditingScopeText"
+                               Foreground="{StaticResource HareMutedTextBrush}"
+                               FontSize="11"
+                               Text="{local:QuestText QuestEditor_GraphEditingEnabled}"/>
+                </Border>
+
+                <StackPanel Grid.Column="2" Orientation="Horizontal">
+                    <Button x:Name="AddRelationshipButton"
+                            Margin="0,0,6,0"
+                            Style="{StaticResource HarePrimaryButtonStyle}"
+                            Click="AddRelationshipButton_Click"
+                            Content="{local:QuestText QuestEditor_GraphAddRelationship}"/>
+                    <Button x:Name="UndoRelationshipButton"
+                            Width="34"
+                            Margin="0,0,4,0"
+                            Padding="4"
+                            IsEnabled="False"
+                            ToolTip="{local:QuestText QuestEditor_GraphUndo}"
+                            Style="{StaticResource HareButtonStyle}"
+                            Click="UndoRelationshipButton_Click"
+                            Content="↶"/>
+                    <Button x:Name="RedoRelationshipButton"
+                            Width="34"
+                            Margin="0,0,8,0"
+                            Padding="4"
+                            IsEnabled="False"
+                            ToolTip="{local:QuestText QuestEditor_GraphRedo}"
+                            Style="{StaticResource HareButtonStyle}"
+                            Click="RedoRelationshipButton_Click"
+                            Content="↷"/>
+                    <Button Margin="0,0,6,0"
+                            Style="{StaticResource HareButtonStyle}"
+                            Click="RefreshGraphButton_Click"
+                            Content="{local:QuestText QuestEditor_GraphRefresh}"/>
+                    <Button Margin="0,0,6,0"
+                            Style="{StaticResource HareButtonStyle}"
+                            Click="FocusSelectedButton_Click"
+                            Content="{local:QuestText QuestEditor_GraphFocusSelected}"/>
+                    <Button Style="{StaticResource HareButtonStyle}"
+                            Click="FitGraphButton_Click"
+                            Content="{local:QuestText QuestEditor_GraphFit}"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Border x:Name="Viewport"
+                Grid.Row="1"
+                ClipToBounds="True"
+                Background="{StaticResource HareSurfaceAltBrush}"
+                MouseLeftButtonDown="Viewport_MouseLeftButtonDown"
+                MouseLeftButtonUp="Viewport_MouseLeftButtonUp"
+                MouseMove="Viewport_MouseMove"
+                MouseWheel="Viewport_MouseWheel"
+                SizeChanged="Viewport_SizeChanged">
+            <Canvas x:Name="GraphCanvas"
+                    Background="Transparent"
+                    RenderTransformOrigin="0,0">
+                <Canvas.RenderTransform>
+                    <TransformGroup>
+                        <ScaleTransform x:Name="GraphScaleTransform" ScaleX="1" ScaleY="1"/>
+                        <TranslateTransform x:Name="GraphTranslateTransform"/>
+                    </TransformGroup>
+                </Canvas.RenderTransform>
+            </Canvas>
+        </Border>
+
+        <Border Grid.Row="2"
+                Padding="10,7"
+                Background="{StaticResource HareSurfaceBrush}"
+                BorderBrush="{StaticResource HareBorderBrush}"
+                BorderThickness="0,1,0,0">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="StatusText"
+                           Foreground="{StaticResource HareMutedTextBrush}"
+                           TextTrimming="CharacterEllipsis"/>
+                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    <TextBlock Foreground="{StaticResource HareAccentBrush}" Text="━━"/>
+                    <TextBlock Margin="4,0,12,0" Foreground="{StaticResource HareMutedTextBrush}" Text="next quest"/>
+                    <TextBlock Foreground="{StaticResource HareWarningBrush}" Text="┄┄"/>
+                    <TextBlock Margin="4,0,12,0" Foreground="{StaticResource HareMutedTextBrush}" Text="requirement"/>
+                    <TextBlock Foreground="{StaticResource HareSuccessBrush}" Text="━━"/>
+                    <TextBlock Margin="4,0,0,0" Foreground="{StaticResource HareMutedTextBrush}" Text="dialogue"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

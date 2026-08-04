@@ -531,4 +531,80 @@
   <data name="QuestEditor_WorldMin" xml:space="preserve">
     <value>最小ワールド：</value>
   </data>
+  <data name="QuestEditor_GraphTab" xml:space="preserve">
+    <value>グラフ</value>
+  </data>
+  <data name="QuestEditor_GraphFlow" xml:space="preserve">
+    <value>クエストフロー</value>
+  </data>
+  <data name="QuestEditor_GraphRequirements" xml:space="preserve">
+    <value>必要条件</value>
+  </data>
+  <data name="QuestEditor_GraphDialogue" xml:space="preserve">
+    <value>会話</value>
+  </data>
+  <data name="QuestEditor_GraphReadOnly" xml:space="preserve">
+    <value>読み取り専用の関連ビュー</value>
+  </data>
+  <data name="QuestEditor_GraphFocusSelected" xml:space="preserve">
+    <value>選択項目にフォーカス</value>
+  </data>
+  <data name="QuestEditor_GraphFit" xml:space="preserve">
+    <value>グラフ全体を表示</value>
+  </data>
+  <data name="QuestEditor_GraphRefresh" xml:space="preserve">
+    <value>更新</value>
+  </data>
+  <data name="QuestEditor_GraphEmpty" xml:space="preserve">
+    <value>グラフを作成するクエストを選択してください。</value>
+  </data>
+  <data name="QuestEditor_GraphStatus" xml:space="preserve">
+    <value>ノード数: {0}、関連数: {1}。背景をドラッグして移動し、マウスホイールで拡大・縮小できます。</value>
+  </data>
+  <data name="QuestEditor_GraphStatusDiagnostics" xml:space="preserve">
+    <value>ノード数: {0}、関連数: {1}、診断数: {2}。ノードやエッジにカーソルを合わせると詳細を表示します。</value>
+  </data>
+  <data name="QuestEditor_GraphDangling" xml:space="preserve">
+    <value>このクエストは参照されていますが、読み込まれていません。</value>
+  </data>
+  <data name="QuestEditor_GraphRelationshipScope" xml:space="preserve"><value>ここでは次のクエストへのリンクと開始・完了条件のみ編集できます。会話とクエスト状態を変更するアクションは読み取り専用です。</value></data>
+  <data name="QuestEditor_GraphRelationshipSource" xml:space="preserve"><value>元のクエスト</value></data>
+  <data name="QuestEditor_GraphRelationshipType" xml:space="preserve"><value>関連の種類</value></data>
+  <data name="QuestEditor_GraphRelationshipTarget" xml:space="preserve"><value>対象クエスト</value></data>
+  <data name="QuestEditor_GraphRelationshipState" xml:space="preserve"><value>必要な状態</value></data>
+  <data name="QuestEditor_GraphRelationshipNextCompletion" xml:space="preserve"><value>次のクエスト・完了時アクション</value></data>
+  <data name="QuestEditor_GraphRelationshipNextStart" xml:space="preserve"><value>次のクエスト・開始時アクション</value></data>
+  <data name="QuestEditor_GraphRelationshipRequirementStart" xml:space="preserve"><value>開始条件</value></data>
+  <data name="QuestEditor_GraphRelationshipRequirementCompletion" xml:space="preserve"><value>完了条件</value></data>
+  <data name="QuestEditor_GraphQuestStateNotStarted" xml:space="preserve"><value>未開始</value></data>
+  <data name="QuestEditor_GraphQuestStateStarted" xml:space="preserve"><value>進行中</value></data>
+  <data name="QuestEditor_GraphQuestStateCompleted" xml:space="preserve"><value>完了</value></data>
+  <data name="QuestEditor_GraphQuestStatePartyQuest" xml:space="preserve"><value>グループクエスト</value></data>
+  <data name="QuestEditor_GraphQuestStateNo" xml:space="preserve"><value>状態なし</value></data>
+  <data name="QuestEditor_GraphQuestStateImpossible" xml:space="preserve"><value>不可能</value></data>
+  <data name="QuestEditor_GraphRelationshipPreview" xml:space="preserve"><value>変更内容</value></data>
+  <data name="QuestEditor_GraphRelationshipPreviewFormat" xml:space="preserve"><value>{0} → {1}・{2}{3}</value></data>
+  <data name="QuestEditor_GraphRelationshipSelectTarget" xml:space="preserve"><value>対象クエストを選択</value></data>
+  <data name="QuestEditor_GraphRelationshipApply" xml:space="preserve"><value>変更を適用</value></data>
+  <data name="QuestEditor_GraphRelationshipCancel" xml:space="preserve"><value>キャンセル</value></data>
+  <data name="QuestEditor_GraphRelationshipDialogTitle" xml:space="preserve"><value>クエストの関連を編集</value></data>
+  <data name="QuestEditor_GraphAddRelationship" xml:space="preserve"><value>関連を追加</value></data>
+  <data name="QuestEditor_GraphEditRelationship" xml:space="preserve"><value>関連を編集</value></data>
+  <data name="QuestEditor_GraphRemoveRelationship" xml:space="preserve"><value>関連を削除</value></data>
+  <data name="QuestEditor_GraphUndo" xml:space="preserve"><value>関連の変更を元に戻す</value></data>
+  <data name="QuestEditor_GraphRedo" xml:space="preserve"><value>関連の変更をやり直す</value></data>
+  <data name="QuestEditor_GraphEditingEnabled" xml:space="preserve"><value>安全な関連編集</value></data>
+  <data name="QuestEditor_GraphDialogueReadOnly" xml:space="preserve"><value>会話グラフは読み取り専用です</value></data>
+  <data name="QuestEditor_GraphRemovePrompt" xml:space="preserve"><value>{0} から {1} への関連を削除しますか？</value></data>
+  <data name="QuestEditor_GraphRemoveTitle" xml:space="preserve"><value>クエストの関連を削除</value></data>
+  <data name="QuestEditor_GraphRelationshipChanged" xml:space="preserve"><value>関連を更新しました。クエストデータを保存するには再パックしてください。</value></data>
+  <data name="QuestEditor_GraphRelationshipErrorTitle" xml:space="preserve"><value>関連の変更に失敗しました</value></data>
+  <data name="QuestEditor_GraphErrorStale" xml:space="preserve"><value>関連がグラフ外で変更されました。更新してから再試行してください。</value></data>
+  <data name="QuestEditor_GraphErrorInvalidTarget" xml:space="preserve"><value>有効な対象クエストと状態を選択してください。</value></data>
+  <data name="QuestEditor_GraphErrorTargetNotLoaded" xml:space="preserve"><value>対象クエストが読み込まれていないため、安全に関連付けできません。</value></data>
+  <data name="QuestEditor_GraphErrorSelfLink" xml:space="preserve"><value>クエストをそれ自体に関連付けることはできません。</value></data>
+  <data name="QuestEditor_GraphErrorDuplicate" xml:space="preserve"><value>このフェーズには同じ関連が既に存在します。</value></data>
+  <data name="QuestEditor_GraphErrorCycle" xml:space="preserve"><value>この関連を追加するとクエストが循環します。</value></data>
+  <data name="QuestEditor_GraphErrorUnsupported" xml:space="preserve"><value>元の関連データを損失なく変更できません。先に Act または Check セクションを編集して保存してください。</value></data>
+  <data name="QuestEditor_GraphErrorApplyFailed" xml:space="preserve"><value>関連を適用できませんでした。操作履歴は変更されていません。</value></data>
 </root>

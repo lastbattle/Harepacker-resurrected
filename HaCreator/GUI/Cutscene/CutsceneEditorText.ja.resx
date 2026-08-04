@@ -162,4 +162,10 @@
   <data name="Cutscene_NegativeDuration" xml:space="preserve"><value>イベント {0} の継続時間が負です</value></data>
   <data name="Cutscene_DuplicateEvent" xml:space="preserve"><value>イベント ID {0} が重複しています</value></data>
   <data name="Cutscene_DuplicateTrigger" xml:space="preserve"><value>トリガー ID {0} が重複しています</value></data>
+  <data name="Cutscene_AddScene" xml:space="preserve"><value>追加</value></data>
+  <data name="Cutscene_DeleteScene" xml:space="preserve"><value>削除</value></data>
+  <data name="Cutscene_NewSceneTitle" xml:space="preserve"><value>シーンの追加</value></data>
+  <data name="Cutscene_SceneName" xml:space="preserve"><value>シーン パス</value></data>
+  <data name="Cutscene_SceneNamePrompt" xml:space="preserve"><value>Direction*.img/ プレフィックスを含む完全なシーン パスを入力してください。</value></data>
+  <data name="Cutscene_Ok" xml:space="preserve"><value>OK</value></data>
 </root>

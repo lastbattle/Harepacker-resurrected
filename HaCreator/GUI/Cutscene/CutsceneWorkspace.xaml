@@ -71,17 +71,25 @@
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="150"/>
                             </Grid.RowDefinitions>
-                            <TextBlock Style="{StaticResource HareSectionTitleStyle}" Text="{local:CutsceneEditorText Cutscene_SceneExplorer}"/>
+                            <DockPanel>
+                                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                    <Button Content="{local:CutsceneEditorText Cutscene_AddScene}" Click="AddScene_Click"/>
+                                    <Button Margin="6,0,0,0" Style="{StaticResource HareDangerButtonStyle}" Content="{local:CutsceneEditorText Cutscene_DeleteScene}" Click="DeleteScene_Click"/>
+                                </StackPanel>
+                                <TextBlock VerticalAlignment="Center" Style="{StaticResource HareSectionTitleStyle}" Text="{local:CutsceneEditorText Cutscene_SceneExplorer}"/>
+                            </DockPanel>
                             <TextBlock Grid.Row="1" Margin="0,4,0,5" Style="{StaticResource HareMutedTextStyle}" Text="Select a Direction image, then choose a scene."/>
                             <ComboBox x:Name="sceneImageComboBox" Grid.Row="2" DisplayMemberPath="Path" SelectionChanged="SceneImage_SelectionChanged" ToolTip="{local:CutsceneEditorText Cutscene_SceneExplorer}" AutomationProperties.Name="{local:CutsceneEditorText Cutscene_SceneExplorer}"/>
                             <TextBox x:Name="sceneSearchBox" Grid.Row="3" Margin="0,6,0,8" ToolTip="{local:CutsceneEditorText Cutscene_SearchTooltip}" TextChanged="SceneSearch_Changed"/>
                             <ListBox x:Name="sceneListBox" Grid.Row="4" DisplayMemberPath="Path" SelectionChanged="Scene_SelectionChanged"/>
-                            <TextBlock Grid.Row="5" Margin="0,12,0,6" Style="{StaticResource HareSectionTitleStyle}" Text="{local:CutsceneEditorText Cutscene_MapTriggers}"/>
-                            <DockPanel Grid.Row="6">
-                                <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,6,0,0">
+                            <DockPanel Grid.Row="5" Margin="0,12,0,6">
+                                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                                     <Button Content="{local:CutsceneEditorText Cutscene_Add}" Click="AddTrigger_Click"/>
                                     <Button Margin="6,0,0,0" Style="{StaticResource HareDangerButtonStyle}" Content="{local:CutsceneEditorText Cutscene_Delete}" Click="DeleteTrigger_Click"/>
                                 </StackPanel>
+                                <TextBlock VerticalAlignment="Center" Style="{StaticResource HareSectionTitleStyle}" Text="{local:CutsceneEditorText Cutscene_MapTriggers}"/>
+                            </DockPanel>
+                            <DockPanel Grid.Row="6">
                                 <ListBox x:Name="triggerListBox" DisplayMemberPath="Name" SelectionChanged="Trigger_SelectionChanged"/>
                             </DockPanel>
                         </Grid>

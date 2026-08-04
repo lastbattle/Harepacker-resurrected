@@ -543,4 +543,80 @@
   <data name="QuestEditor_WorldMin" xml:space="preserve">
     <value>最低世界：</value>
   </data>
+  <data name="QuestEditor_GraphTab" xml:space="preserve">
+    <value>關係圖</value>
+  </data>
+  <data name="QuestEditor_GraphFlow" xml:space="preserve">
+    <value>任務流程</value>
+  </data>
+  <data name="QuestEditor_GraphRequirements" xml:space="preserve">
+    <value>需求條件</value>
+  </data>
+  <data name="QuestEditor_GraphDialogue" xml:space="preserve">
+    <value>對話</value>
+  </data>
+  <data name="QuestEditor_GraphReadOnly" xml:space="preserve">
+    <value>唯讀關係檢視</value>
+  </data>
+  <data name="QuestEditor_GraphFocusSelected" xml:space="preserve">
+    <value>聚焦所選項目</value>
+  </data>
+  <data name="QuestEditor_GraphFit" xml:space="preserve">
+    <value>符合關係圖</value>
+  </data>
+  <data name="QuestEditor_GraphRefresh" xml:space="preserve">
+    <value>重新整理</value>
+  </data>
+  <data name="QuestEditor_GraphEmpty" xml:space="preserve">
+    <value>請選擇一個任務以建立關係圖。</value>
+  </data>
+  <data name="QuestEditor_GraphStatus" xml:space="preserve">
+    <value>{0} 個節點，{1} 個關係。拖曳背景可平移，使用滑鼠滾輪可縮放。</value>
+  </data>
+  <data name="QuestEditor_GraphStatusDiagnostics" xml:space="preserve">
+    <value>{0} 個節點，{1} 個關係，{2} 個診斷。將滑鼠停留在節點或連線上可檢視詳細資料。</value>
+  </data>
+  <data name="QuestEditor_GraphDangling" xml:space="preserve">
+    <value>此任務已被參照，但尚未載入。</value>
+  </data>
+  <data name="QuestEditor_GraphRelationshipScope" xml:space="preserve"><value>此處僅可編輯後續任務連結以及開始/完成任務條件。對話和任務狀態操作仍為唯讀。</value></data>
+  <data name="QuestEditor_GraphRelationshipSource" xml:space="preserve"><value>來源任務</value></data>
+  <data name="QuestEditor_GraphRelationshipType" xml:space="preserve"><value>關係類型</value></data>
+  <data name="QuestEditor_GraphRelationshipTarget" xml:space="preserve"><value>目標任務</value></data>
+  <data name="QuestEditor_GraphRelationshipState" xml:space="preserve"><value>所需狀態</value></data>
+  <data name="QuestEditor_GraphRelationshipNextCompletion" xml:space="preserve"><value>後續任務 · 完成操作</value></data>
+  <data name="QuestEditor_GraphRelationshipNextStart" xml:space="preserve"><value>後續任務 · 開始操作</value></data>
+  <data name="QuestEditor_GraphRelationshipRequirementStart" xml:space="preserve"><value>開始條件</value></data>
+  <data name="QuestEditor_GraphRelationshipRequirementCompletion" xml:space="preserve"><value>完成條件</value></data>
+  <data name="QuestEditor_GraphQuestStateNotStarted" xml:space="preserve"><value>尚未開始</value></data>
+  <data name="QuestEditor_GraphQuestStateStarted" xml:space="preserve"><value>進行中</value></data>
+  <data name="QuestEditor_GraphQuestStateCompleted" xml:space="preserve"><value>已完成</value></data>
+  <data name="QuestEditor_GraphQuestStatePartyQuest" xml:space="preserve"><value>組隊任務</value></data>
+  <data name="QuestEditor_GraphQuestStateNo" xml:space="preserve"><value>無狀態</value></data>
+  <data name="QuestEditor_GraphQuestStateImpossible" xml:space="preserve"><value>無法進行</value></data>
+  <data name="QuestEditor_GraphRelationshipPreview" xml:space="preserve"><value>變更預覽</value></data>
+  <data name="QuestEditor_GraphRelationshipPreviewFormat" xml:space="preserve"><value>{0} → {1} · {2}{3}</value></data>
+  <data name="QuestEditor_GraphRelationshipSelectTarget" xml:space="preserve"><value>請選擇目標任務</value></data>
+  <data name="QuestEditor_GraphRelationshipApply" xml:space="preserve"><value>套用變更</value></data>
+  <data name="QuestEditor_GraphRelationshipCancel" xml:space="preserve"><value>取消</value></data>
+  <data name="QuestEditor_GraphRelationshipDialogTitle" xml:space="preserve"><value>編輯任務關係</value></data>
+  <data name="QuestEditor_GraphAddRelationship" xml:space="preserve"><value>新增關係</value></data>
+  <data name="QuestEditor_GraphEditRelationship" xml:space="preserve"><value>編輯關係</value></data>
+  <data name="QuestEditor_GraphRemoveRelationship" xml:space="preserve"><value>移除關係</value></data>
+  <data name="QuestEditor_GraphUndo" xml:space="preserve"><value>復原關係變更</value></data>
+  <data name="QuestEditor_GraphRedo" xml:space="preserve"><value>重做關係變更</value></data>
+  <data name="QuestEditor_GraphEditingEnabled" xml:space="preserve"><value>安全關係編輯</value></data>
+  <data name="QuestEditor_GraphDialogueReadOnly" xml:space="preserve"><value>對話關係圖為唯讀</value></data>
+  <data name="QuestEditor_GraphRemovePrompt" xml:space="preserve"><value>是否移除從 {0} 到 {1} 的關係？</value></data>
+  <data name="QuestEditor_GraphRemoveTitle" xml:space="preserve"><value>移除任務關係</value></data>
+  <data name="QuestEditor_GraphRelationshipChanged" xml:space="preserve"><value>關係已更新。請重新封裝以儲存任務資料。</value></data>
+  <data name="QuestEditor_GraphRelationshipErrorTitle" xml:space="preserve"><value>關係變更失敗</value></data>
+  <data name="QuestEditor_GraphErrorStale" xml:space="preserve"><value>此關係已在關係圖之外變更。請重新整理後再試。</value></data>
+  <data name="QuestEditor_GraphErrorInvalidTarget" xml:space="preserve"><value>請選擇有效的目標任務和狀態。</value></data>
+  <data name="QuestEditor_GraphErrorTargetNotLoaded" xml:space="preserve"><value>目標任務尚未載入，無法安全建立關係。</value></data>
+  <data name="QuestEditor_GraphErrorSelfLink" xml:space="preserve"><value>任務不能連結到自身。</value></data>
+  <data name="QuestEditor_GraphErrorDuplicate" xml:space="preserve"><value>該階段已包含此關係。</value></data>
+  <data name="QuestEditor_GraphErrorCycle" xml:space="preserve"><value>此關係會形成任務循環。</value></data>
+  <data name="QuestEditor_GraphErrorUnsupported" xml:space="preserve"><value>無法無損修改來源關係資料。請先編輯並儲存對應的 Act 或 Check 區段。</value></data>
+  <data name="QuestEditor_GraphErrorApplyFailed" xml:space="preserve"><value>無法套用此關係。操作歷程未發生變更。</value></data>
 </root>

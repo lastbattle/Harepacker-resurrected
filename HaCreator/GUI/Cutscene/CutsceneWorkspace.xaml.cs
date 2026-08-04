@@ -60,6 +60,8 @@ namespace HaCreator.GUI.Cutscene
         private bool _draggingTimelineEvent;
         private readonly Dictionary<CutsceneSceneModel, List<CutsceneHistoryEntry>> _undoHistory = new();
         private readonly Dictionary<CutsceneSceneModel, List<CutsceneHistoryEntry>> _redoHistory = new();
+        private readonly HashSet<CutsceneSceneModel> _newScenes = new();
+        private readonly HashSet<CutsceneSceneModel> _deletedScenes = new();
         private CutsceneHistorySnapshot _historySnapshot;
         private CutsceneHistorySnapshot _historyTransactionStart;
         private bool _restoringHistory;
@@ -137,6 +139,89 @@ namespace HaCreator.GUI.Cutscene
         }
 
         private void SceneSearch_Changed(object sender, TextChangedEventArgs e) => ApplySceneFilter();
+
+        private void AddScene_Click(object sender, RoutedEventArgs e)
+        {
+            if (_selectedSceneImage?.Scenes == null)
+                return;
+
+            WzImage image = _selectedSceneImage.ResolveImage();
+            if (image == null)
+                return;
+
+            WzObject parent = _selectedScene?.Parent ?? image;
+            string parentPath = image.Name;
+            if (_selectedScene != null)
+            {
+                int separator = _selectedScene.Path.LastIndexOf('/');
+                if (separator >= 0)
+                    parentPath = _selectedScene.Path[..separator];
+            }
+            string name = NextSceneName(parent);
+            string defaultPath = $"{parentPath}/{name}";
+            CutsceneSceneNameDialog nameDialog = new(defaultPath, ValidateNewScenePath)
+            {
+                Owner = this
+            };
+            if (nameDialog.ShowDialog() != true)
+                return;
+            if (!TryResolveNewScenePath(nameDialog.ScenePath, out parent, out name, out string scenePath, out _))
+                return;
+            CutsceneSceneModel scene = CutsceneRepository.CreateScene(
+                _selectedSceneImage,
+                parent,
+                name,
+                scenePath);
+            if (scene == null)
+                return;
+
+            _selectedSceneImage.Scenes = _selectedSceneImage.Scenes.Concat(new[] { scene }).ToList();
+            _allScenes.Add(scene);
+            _newScenes.Add(scene);
+            _dirtyScenes.Add(scene);
+            _hasChanges = true;
+            ApplySceneFilter();
+            if (!_visibleScenes.Contains(scene))
+            {
+                sceneSearchBox.Clear();
+                ApplySceneFilter();
+            }
+            sceneListBox.SelectedItem = scene;
+            sceneListBox.ScrollIntoView(scene);
+            statusTextBlock.Text = $"Created {scene.Path}. Add or edit its events, then save.";
+        }
+
+        private void DeleteScene_Click(object sender, RoutedEventArgs e)
+        {
+            if (_selectedScene == null)
+                return;
+
+            CutsceneSceneModel scene = _selectedScene;
+            bool isNewScene = _newScenes.Remove(scene);
+            if (!isNewScene)
+            {
+                _deletedScenes.Add(scene);
+                _dirtyScenes.Add(scene);
+            }
+            else
+                _dirtyScenes.Remove(scene);
+
+            if (ReferenceEquals(sceneListBox.SelectedItem, scene))
+                sceneListBox.SelectedItem = null;
+            foreach (CutsceneImageModel image in _sceneImages)
+            {
+                if (image.Scenes == null || !image.Scenes.Contains(scene))
+                    continue;
+                image.Scenes = image.Scenes
+                    .Where(existing => !ReferenceEquals(existing, scene))
+                    .ToList();
+            }
+            _visibleScenes.Remove(scene);
+            _allScenes.Remove(scene);
+            _hasChanges = true;
+            sceneExplorerTab.IsSelected = true;
+            statusTextBlock.Text = $"Deleted {scene.Path}. Save to persist the change.";
+        }
 
         private void ChooseMap_Click(object sender, RoutedEventArgs e)
         {
@@ -404,7 +489,8 @@ namespace HaCreator.GUI.Cutscene
         {
             if (_selectedSceneImage == null || _selectedSceneImage.Scenes == null)
                 return;
-            if (_selectedSceneImage.Scenes.Any(scene => _dirtyScenes.Contains(scene)))
+            if (_selectedSceneImage.Scenes.Any(scene => _dirtyScenes.Contains(scene))
+                || _deletedScenes.Any(scene => ReferenceEquals(scene.Image, _selectedSceneImage.Image)))
                 return;
 
             sceneListBox.SelectedItem = null;
@@ -859,14 +945,18 @@ namespace HaCreator.GUI.Cutscene
 
         private bool SaveAllChanges()
         {
-            IReadOnlyList<CutsceneValidationIssue> issues = ValidateWorkspace(_dirtyScenes, includeTriggers: true);
+            IReadOnlyList<CutsceneValidationIssue> issues = ValidateWorkspace(
+                _dirtyScenes.Where(scene => !_deletedScenes.Contains(scene)),
+                includeTriggers: true);
             if (issues.Any(issue => issue.Severity == CutsceneValidationSeverity.Error))
             {
                 ShowValidationResults(issues, CutsceneEditorTextExtension.Get("Cutscene_SaveBlocked"));
                 return false;
             }
-            foreach (CutsceneSceneModel scene in _dirtyScenes.ToList())
+            foreach (CutsceneSceneModel scene in _dirtyScenes.Where(scene => !_deletedScenes.Contains(scene)).ToList())
                 CutsceneRepository.SaveScene(scene);
+            foreach (CutsceneSceneModel scene in _deletedScenes.ToList())
+                CutsceneRepository.DeleteScene(scene);
             if (_board != null)
             {
                 _board.MapInfo.onUserEnter = EmptyToNull(onUserEnterTextBox.Text);
@@ -879,6 +969,8 @@ namespace HaCreator.GUI.Cutscene
             validationListBox.ItemsSource = issues;
             validationListBox.Visibility = issues.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
             _dirtyScenes.Clear();
+            _newScenes.Clear();
+            _deletedScenes.Clear();
             _hasChanges = false;
             return true;
         }
@@ -919,11 +1011,32 @@ namespace HaCreator.GUI.Cutscene
                     e.Cancel = true;
                 return;
             }
+            DiscardNewScenes();
             if (_board != null)
             {
                 _board.MapInfo.directionInfo = MapDirectionInfo.FromProperty(_initialDirectionInfo.ToProperty());
                 _board.Dirty = _initialBoardDirty;
             }
+        }
+
+        private void DiscardNewScenes()
+        {
+            foreach (CutsceneSceneModel scene in _newScenes.ToList())
+            {
+                _allScenes.Remove(scene);
+                foreach (CutsceneImageModel image in _sceneImages)
+                {
+                    if (image.Scenes == null || !image.Scenes.Contains(scene))
+                        continue;
+                    image.Scenes = image.Scenes
+                        .Where(existing => !ReferenceEquals(existing, scene))
+                        .ToList();
+                }
+                ClearHistory(scene);
+                if (ReferenceEquals(_selectedScene, scene))
+                    _selectedScene = null;
+            }
+            _newScenes.Clear();
         }
 
         private void CutsceneWorkspace_Closed(object sender, EventArgs e)
@@ -1692,6 +1805,96 @@ namespace HaCreator.GUI.Cutscene
             for (int index = 0; ; index++)
                 if (!used.Contains(index.ToString()))
                     return index.ToString();
+        }
+
+        private string NextSceneName(WzObject parent)
+        {
+            HashSet<string> used = (_selectedSceneImage.Scenes ?? Array.Empty<CutsceneSceneModel>())
+                .Where(scene => ReferenceEquals(scene.Parent, parent))
+                .Select(scene => scene.Name)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            for (int index = 1; ; index++)
+            {
+                string name = $"Scene{index}";
+                if (!used.Contains(name) && !CutsceneRepository.HasProperty(parent, name))
+                    return name;
+            }
+        }
+
+        private string ValidateNewScenePath(string path)
+        {
+            return TryResolveNewScenePath(path, out _, out _, out _, out string error)
+                ? null
+                : error;
+        }
+
+        private bool TryResolveNewScenePath(
+            string path,
+            out WzObject parent,
+            out string name,
+            out string normalizedPath,
+            out string error)
+        {
+            parent = null;
+            name = null;
+            normalizedPath = path?.Replace('\\', '/').Trim('/');
+            error = null;
+
+            WzImage image = _selectedSceneImage?.ResolveImage();
+            if (image == null)
+            {
+                error = "Select a Direction image first.";
+                return false;
+            }
+
+            string[] segments = normalizedPath?.Split('/', StringSplitOptions.RemoveEmptyEntries) ?? Array.Empty<string>();
+            if (segments.Length < 2 || !string.Equals(segments[0], image.Name, StringComparison.OrdinalIgnoreCase))
+            {
+                error = $"The scene path must start with '{image.Name}/'.";
+                return false;
+            }
+
+            name = segments[^1];
+            if (name is "." or "..")
+            {
+                error = "The scene name is invalid.";
+                return false;
+            }
+
+            WzObject current = image;
+            for (int index = 1; index < segments.Length - 1; index++)
+            {
+                WzImageProperty child = current switch
+                {
+                    WzImage imageNode => imageNode.WzProperties.FirstOrDefault(property =>
+                        property is WzSubProperty
+                        && string.Equals(property.Name, segments[index], StringComparison.OrdinalIgnoreCase)),
+                    WzSubProperty propertyNode => propertyNode.WzProperties.FirstOrDefault(property =>
+                        property is WzSubProperty
+                        && string.Equals(property.Name, segments[index], StringComparison.OrdinalIgnoreCase)),
+                    _ => null
+                };
+                if (child is not WzSubProperty)
+                {
+                    error = $"The parent path '{string.Join('/', segments.Take(index + 1))}' does not exist.";
+                    return false;
+                }
+                current = child;
+            }
+
+            parent = current;
+            WzObject resolvedParent = parent;
+            string resolvedName = name;
+            bool alreadyUsed = (_selectedSceneImage.Scenes ?? Array.Empty<CutsceneSceneModel>())
+                .Any(scene => ReferenceEquals(scene.Parent, resolvedParent)
+                    && string.Equals(scene.Name, resolvedName, StringComparison.OrdinalIgnoreCase))
+                || CutsceneRepository.HasProperty(resolvedParent, resolvedName);
+            if (alreadyUsed)
+            {
+                error = $"A scene named '{name}' already exists at this path.";
+                return false;
+            }
+            return true;
         }
 
         private void ClearHistory(CutsceneSceneModel scene)

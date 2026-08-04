@@ -42,6 +42,8 @@ namespace HaCreator.GUI.Quest
         {
             InitializeComponent();
 
+            QuestGraph.RelationshipCommandExecutor = ExecuteQuestGraphRelationshipCommand;
+
 
             _isLoading = true;
             try
@@ -91,6 +93,12 @@ namespace HaCreator.GUI.Quest
                 OnPropertyChanged(nameof(FilteredQuests));
             }
         }
+
+        /// <summary>
+        /// All loaded quests for relationship views. The graph intentionally uses the
+        /// unfiltered collection so a reference remains navigable after a search.
+        /// </summary>
+        public ObservableCollection<QuestEditorModel> Quests => _quests;
         #endregion
 
         #region Overrides
@@ -2062,6 +2070,110 @@ namespace HaCreator.GUI.Quest
             QueueFirstVisibleQuestConversationSelection();
         }
 
+        private void QuestGraph_QuestSelected(object sender, Graph.QuestGraphQuestSelectedEventArgs e)
+        {
+            QuestEditorModel quest = _quests.FirstOrDefault(item => item.Id == e.QuestId);
+            if (quest == null)
+                return;
+
+            if (!FilteredQuests.Contains(quest))
+            {
+                searchBox.Text = string.Empty;
+                SortQuestAreaCode = QuestAreaCodeType.Unknown;
+                UpdateSortedQuestList();
+            }
+
+            SelectedQuest = quest;
+            listbox_Quest.SelectedItem = quest;
+            listbox_Quest.ScrollIntoView(quest);
+        }
+
+        private Graph.QuestGraphRelationshipResult ExecuteQuestGraphRelationshipCommand(
+            Graph.QuestGraphRelationshipRequest request)
+        {
+            if (request?.SourceQuest == null)
+            {
+                return Graph.QuestGraphRelationshipResult.Fail(
+                    Graph.QuestGraphRelationshipErrorCode.InvalidSource,
+                    "The source quest is unavailable.");
+            }
+
+            Graph.QuestGraphRelationshipKind kind;
+            Graph.QuestGraphRelationshipPhase phase;
+            QuestStateType state;
+            int targetQuestId;
+            if (request.RequestType == Graph.QuestGraphRelationshipRequestType.Remove)
+            {
+                if (request.Address == null)
+                {
+                    return Graph.QuestGraphRelationshipResult.Fail(
+                        Graph.QuestGraphRelationshipErrorCode.StaleAddress,
+                        "The relationship address is unavailable.");
+                }
+                kind = request.Address.Kind;
+                phase = request.Address.Phase;
+                state = request.Address.QuestState ?? QuestStateType.Completed;
+                targetQuestId = request.Address.TargetQuestId;
+            }
+            else
+            {
+                if (request.Draft == null)
+                {
+                    return Graph.QuestGraphRelationshipResult.Fail(
+                        Graph.QuestGraphRelationshipErrorCode.InvalidTarget,
+                        "The relationship change is incomplete.");
+                }
+                (kind, phase) = request.Draft.Kind switch
+                {
+                    Graph.QuestGraphRelationshipDraftKind.StartNextQuest =>
+                        (Graph.QuestGraphRelationshipKind.NextQuest, Graph.QuestGraphRelationshipPhase.Start),
+                    Graph.QuestGraphRelationshipDraftKind.CompletionNextQuest =>
+                        (Graph.QuestGraphRelationshipKind.NextQuest, Graph.QuestGraphRelationshipPhase.End),
+                    Graph.QuestGraphRelationshipDraftKind.StartRequirement =>
+                        (Graph.QuestGraphRelationshipKind.CheckQuestRequirement, Graph.QuestGraphRelationshipPhase.Start),
+                    Graph.QuestGraphRelationshipDraftKind.CompletionRequirement =>
+                        (Graph.QuestGraphRelationshipKind.CheckQuestRequirement, Graph.QuestGraphRelationshipPhase.End),
+                    _ => throw new InvalidOperationException("Unsupported quest graph relationship type."),
+                };
+                state = request.Draft.QuestState;
+                targetQuestId = request.Draft.TargetQuestId;
+            }
+
+            IDictionary<string, WzSubProperty> rawCollection = kind == Graph.QuestGraphRelationshipKind.NextQuest
+                ? Program.InfoManager.QuestActs
+                : Program.InfoManager.QuestChecks;
+            if (!rawCollection.TryGetValue(request.SourceQuest.Id.ToString(), out WzSubProperty rawRoot) ||
+                rawRoot?.ParentImage == null)
+            {
+                return Graph.QuestGraphRelationshipResult.Fail(
+                    Graph.QuestGraphRelationshipErrorCode.UnsupportedRawShape,
+                    "The source quest does not have an attached relationship container. Add and save the corresponding Act or Check section before editing it from the graph.");
+            }
+
+            return request.RequestType switch
+            {
+                Graph.QuestGraphRelationshipRequestType.Add => Graph.QuestGraphRelationshipCommand.TryAdd(
+                    request.SourceQuest, rawRoot, kind, phase, targetQuestId, state, _quests),
+                Graph.QuestGraphRelationshipRequestType.Replace when request.Address != null => Graph.QuestGraphRelationshipCommand.TryReplace(
+                    request.SourceQuest, rawRoot, request.Address, targetQuestId, state, _quests),
+                Graph.QuestGraphRelationshipRequestType.Remove when request.Address != null => Graph.QuestGraphRelationshipCommand.TryRemove(
+                    request.SourceQuest, rawRoot, request.Address),
+                _ => Graph.QuestGraphRelationshipResult.Fail(
+                    Graph.QuestGraphRelationshipErrorCode.StaleAddress,
+                    "The relationship request is incomplete."),
+            };
+        }
+
+        private void QuestGraph_RelationshipChanged(object sender, Graph.QuestGraphRelationshipChangedEventArgs e)
+        {
+            WzImage changedImage = e.Operation.ChangedRawRoot?.ParentImage;
+            if (changedImage == null)
+                return;
+
+            _unsavedChanges = true;
+            Program.MarkImageUpdated("Quest", changedImage);
+        }
+
         /// <summary>
         /// Selects the first item in the active quest data grid after the new quest has
         /// propagated through the bindings. This also refreshes the conversation studio
@@ -2111,6 +2223,9 @@ namespace HaCreator.GUI.Quest
 
         private void QuestEditorTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
+            if (QuestEditorTabs?.SelectedItem == QuestGraphTab)
+                QuestGraph?.RefreshGraph();
+
             Dispatcher.BeginInvoke(
                 DispatcherPriority.Loaded,
                 new Action(RefreshConversationStudio));

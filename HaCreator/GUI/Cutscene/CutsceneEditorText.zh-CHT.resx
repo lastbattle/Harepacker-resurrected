@@ -162,4 +162,10 @@
   <data name="Cutscene_NegativeDuration" xml:space="preserve"><value>事件 {0} 的持續時間為負數</value></data>
   <data name="Cutscene_DuplicateEvent" xml:space="preserve"><value>事件 ID {0} 重複</value></data>
   <data name="Cutscene_DuplicateTrigger" xml:space="preserve"><value>觸發器 ID {0} 重複</value></data>
+  <data name="Cutscene_AddScene" xml:space="preserve"><value>新增</value></data>
+  <data name="Cutscene_DeleteScene" xml:space="preserve"><value>刪除</value></data>
+  <data name="Cutscene_NewSceneTitle" xml:space="preserve"><value>新增場景</value></data>
+  <data name="Cutscene_SceneName" xml:space="preserve"><value>場景路徑</value></data>
+  <data name="Cutscene_SceneNamePrompt" xml:space="preserve"><value>請輸入完整的場景路徑，包括 Direction*.img/ 前綴。</value></data>
+  <data name="Cutscene_Ok" xml:space="preserve"><value>確定</value></data>
 </root>

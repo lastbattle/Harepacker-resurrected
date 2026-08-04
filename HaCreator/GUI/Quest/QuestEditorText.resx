@@ -543,4 +543,80 @@ Overwrite them?</value>
   <data name="QuestEditor_WorldMin" xml:space="preserve">
     <value>World min:</value>
   </data>
+  <data name="QuestEditor_GraphTab" xml:space="preserve">
+    <value>Graph</value>
+  </data>
+  <data name="QuestEditor_GraphFlow" xml:space="preserve">
+    <value>Quest flow</value>
+  </data>
+  <data name="QuestEditor_GraphRequirements" xml:space="preserve">
+    <value>Requirements</value>
+  </data>
+  <data name="QuestEditor_GraphDialogue" xml:space="preserve">
+    <value>Dialogue</value>
+  </data>
+  <data name="QuestEditor_GraphReadOnly" xml:space="preserve">
+    <value>Read-only relationship view</value>
+  </data>
+  <data name="QuestEditor_GraphFocusSelected" xml:space="preserve">
+    <value>Focus selected</value>
+  </data>
+  <data name="QuestEditor_GraphFit" xml:space="preserve">
+    <value>Fit graph</value>
+  </data>
+  <data name="QuestEditor_GraphRefresh" xml:space="preserve">
+    <value>Refresh</value>
+  </data>
+  <data name="QuestEditor_GraphEmpty" xml:space="preserve">
+    <value>Select a quest to build its graph.</value>
+  </data>
+  <data name="QuestEditor_GraphStatus" xml:space="preserve">
+    <value>{0} nodes, {1} relationships. Drag the background to pan and use the mouse wheel to zoom.</value>
+  </data>
+  <data name="QuestEditor_GraphStatusDiagnostics" xml:space="preserve">
+    <value>{0} nodes, {1} relationships, {2} diagnostics. Hover nodes and edges for details.</value>
+  </data>
+  <data name="QuestEditor_GraphDangling" xml:space="preserve">
+    <value>This quest is referenced but is not loaded.</value>
+  </data>
+  <data name="QuestEditor_GraphRelationshipScope" xml:space="preserve"><value>Only next-quest links and start/completion quest requirements can be edited here. Dialogue and quest-state actions remain read-only.</value></data>
+  <data name="QuestEditor_GraphRelationshipSource" xml:space="preserve"><value>Source quest</value></data>
+  <data name="QuestEditor_GraphRelationshipType" xml:space="preserve"><value>Relationship type</value></data>
+  <data name="QuestEditor_GraphRelationshipTarget" xml:space="preserve"><value>Target quest</value></data>
+  <data name="QuestEditor_GraphRelationshipState" xml:space="preserve"><value>Required state</value></data>
+  <data name="QuestEditor_GraphRelationshipNextCompletion" xml:space="preserve"><value>Next quest · completion action</value></data>
+  <data name="QuestEditor_GraphRelationshipNextStart" xml:space="preserve"><value>Next quest · start action</value></data>
+  <data name="QuestEditor_GraphRelationshipRequirementStart" xml:space="preserve"><value>Start requirement</value></data>
+  <data name="QuestEditor_GraphRelationshipRequirementCompletion" xml:space="preserve"><value>Completion requirement</value></data>
+  <data name="QuestEditor_GraphQuestStateNotStarted" xml:space="preserve"><value>Not started</value></data>
+  <data name="QuestEditor_GraphQuestStateStarted" xml:space="preserve"><value>Started</value></data>
+  <data name="QuestEditor_GraphQuestStateCompleted" xml:space="preserve"><value>Completed</value></data>
+  <data name="QuestEditor_GraphQuestStatePartyQuest" xml:space="preserve"><value>Party quest</value></data>
+  <data name="QuestEditor_GraphQuestStateNo" xml:space="preserve"><value>No state</value></data>
+  <data name="QuestEditor_GraphQuestStateImpossible" xml:space="preserve"><value>Impossible</value></data>
+  <data name="QuestEditor_GraphRelationshipPreview" xml:space="preserve"><value>Change preview</value></data>
+  <data name="QuestEditor_GraphRelationshipPreviewFormat" xml:space="preserve"><value>{0} → {1} · {2}{3}</value></data>
+  <data name="QuestEditor_GraphRelationshipSelectTarget" xml:space="preserve"><value>Select a target quest</value></data>
+  <data name="QuestEditor_GraphRelationshipApply" xml:space="preserve"><value>Apply change</value></data>
+  <data name="QuestEditor_GraphRelationshipCancel" xml:space="preserve"><value>Cancel</value></data>
+  <data name="QuestEditor_GraphRelationshipDialogTitle" xml:space="preserve"><value>Edit quest relationship</value></data>
+  <data name="QuestEditor_GraphAddRelationship" xml:space="preserve"><value>Add relationship</value></data>
+  <data name="QuestEditor_GraphEditRelationship" xml:space="preserve"><value>Edit relationship</value></data>
+  <data name="QuestEditor_GraphRemoveRelationship" xml:space="preserve"><value>Remove relationship</value></data>
+  <data name="QuestEditor_GraphUndo" xml:space="preserve"><value>Undo relationship change</value></data>
+  <data name="QuestEditor_GraphRedo" xml:space="preserve"><value>Redo relationship change</value></data>
+  <data name="QuestEditor_GraphEditingEnabled" xml:space="preserve"><value>Safe relationship editing</value></data>
+  <data name="QuestEditor_GraphDialogueReadOnly" xml:space="preserve"><value>Dialogue graph is read-only</value></data>
+  <data name="QuestEditor_GraphRemovePrompt" xml:space="preserve"><value>Remove the relationship from {0} to {1}?</value></data>
+  <data name="QuestEditor_GraphRemoveTitle" xml:space="preserve"><value>Remove quest relationship</value></data>
+  <data name="QuestEditor_GraphRelationshipChanged" xml:space="preserve"><value>Relationship updated. Repack to persist the quest data.</value></data>
+  <data name="QuestEditor_GraphRelationshipErrorTitle" xml:space="preserve"><value>Relationship change failed</value></data>
+  <data name="QuestEditor_GraphErrorStale" xml:space="preserve"><value>The relationship changed outside the graph. Refresh and try again.</value></data>
+  <data name="QuestEditor_GraphErrorInvalidTarget" xml:space="preserve"><value>Select a valid target quest and state.</value></data>
+  <data name="QuestEditor_GraphErrorTargetNotLoaded" xml:space="preserve"><value>The target quest is not loaded and cannot be linked safely.</value></data>
+  <data name="QuestEditor_GraphErrorSelfLink" xml:space="preserve"><value>A quest cannot link to itself.</value></data>
+  <data name="QuestEditor_GraphErrorDuplicate" xml:space="preserve"><value>That phase already contains this relationship.</value></data>
+  <data name="QuestEditor_GraphErrorCycle" xml:space="preserve"><value>The relationship would create a quest cycle.</value></data>
+  <data name="QuestEditor_GraphErrorUnsupported" xml:space="preserve"><value>The source relationship data cannot be changed losslessly. Edit and save its Act or Check section first.</value></data>
+  <data name="QuestEditor_GraphErrorApplyFailed" xml:space="preserve"><value>The relationship could not be applied. No history state was advanced.</value></data>
 </root>
