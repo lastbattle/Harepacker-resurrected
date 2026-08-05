@@ -80,7 +80,8 @@ Notes:
 
 ## Git
 - When committing, include only files added or modified by the agent in this task; do not include unrelated pre-existing uncommitted changes. Every commit must include a detailed commit message body in addition to the title/subject line. The body should explain what changed, why it changed, and important implementation details or tradeoffs. Mention validation or manual verification only when it adds useful context; do not add boilerplate lines such as a build command succeeding with existing warnings or manual UI verification not being run.
-- For commits that include `HaCreator` changes, prefix the commit subject with `[HaCreator] ` (example: `[HaCreator] Update minimap render bounds`).
+- For commits that include `HaCreator/MapSimulator/` changes, prefix the commit subject with `[HaCreator] [MapSimulator] ` (example: `[HaCreator] [MapSimulator] Update minimap render bounds`).
+- For commits that include other `HaCreator` changes, prefix the commit subject with `[HaCreator] ` (example: `[HaCreator] Update editor panel layout`).
 - For commits that include `HaRepacker` changes, prefix the commit subject with `[HaRepacker] ` (example: `[HaRepacker] Fix IMG node rename validation`).
 - For UI behavior changes, include manual verification steps in your summary.
 
