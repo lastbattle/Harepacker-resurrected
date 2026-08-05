@@ -241,7 +241,8 @@ namespace HaCreator.MapSimulator
             {
                 AntiMacroNoticeWindow window = new(
                     MapSimulatorWindowNames.AntiMacroNotice,
-                    popupTexture)
+                    popupTexture,
+                    GraphicsDevice)
                 {
                     Position = ResolvePacketOwnedAntiMacroNoticeWindowPosition(popupTexture)
                 };

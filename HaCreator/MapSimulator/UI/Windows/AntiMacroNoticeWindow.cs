@@ -19,6 +19,8 @@ namespace HaCreator.MapSimulator.UI
         private const int TextBaseY = 59;
         private const int TextVerticalCenterStride = 8;
         private const int LineSpacing = 17;
+        private const int FallbackWindowWidth = 260;
+        private const int FallbackWindowHeight = 131;
 
         private readonly string _windowName;
         private readonly Texture2D _frameTexture;
@@ -32,18 +34,18 @@ namespace HaCreator.MapSimulator.UI
         private int _stringPoolId = -1;
         private KeyboardState _previousKeyboardState;
 
-        public AntiMacroNoticeWindow(string windowName, Texture2D frameTexture)
-            : base(new DXObject(0, 0, frameTexture, 0))
+        public AntiMacroNoticeWindow(string windowName, Texture2D frameTexture, GraphicsDevice graphicsDevice)
+            : base(new DXObject(0, 0, ResolveFrameTexture(frameTexture, graphicsDevice), 0))
         {
             _windowName = windowName ?? throw new ArgumentNullException(nameof(windowName));
-            _frameTexture = frameTexture;
+            _frameTexture = Frame0?.Texture;
         }
 
         public override string WindowName => _windowName;
         public override bool SupportsDragging => false;
         public override bool CapturesKeyboardInput => IsVisible;
         public override bool IsModalDialogOwner => ShouldActAsClientModalDialogOwner(IsVisible);
-        public Point FrameSize => new(_frameTexture?.Width ?? 260, _frameTexture?.Height ?? 131);
+        public Point FrameSize => new(_frameTexture?.Width ?? FallbackWindowWidth, _frameTexture?.Height ?? FallbackWindowHeight);
 
         public event Action<int> CloseRequested;
 
@@ -280,6 +282,35 @@ namespace HaCreator.MapSimulator.UI
         {
             Hide();
             CloseRequested?.Invoke(2);
+        }
+
+        private static Texture2D ResolveFrameTexture(Texture2D frameTexture, GraphicsDevice graphicsDevice)
+        {
+            if (frameTexture != null)
+            {
+                return frameTexture;
+            }
+
+            if (graphicsDevice == null)
+            {
+                throw new ArgumentNullException(nameof(graphicsDevice));
+            }
+
+            Texture2D fallbackTexture = new(graphicsDevice, FallbackWindowWidth, FallbackWindowHeight);
+            Color[] data = new Color[FallbackWindowWidth * FallbackWindowHeight];
+            for (int y = 0; y < FallbackWindowHeight; y++)
+            {
+                for (int x = 0; x < FallbackWindowWidth; x++)
+                {
+                    bool border = x == 0 || y == 0 || x == FallbackWindowWidth - 1 || y == FallbackWindowHeight - 1;
+                    data[(y * FallbackWindowWidth) + x] = border
+                        ? new Color(84, 62, 41)
+                        : new Color(236, 223, 201);
+                }
+            }
+
+            fallbackTexture.SetData(data);
+            return fallbackTexture;
         }
     }
 }
