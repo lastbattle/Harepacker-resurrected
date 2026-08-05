@@ -1221,32 +1221,38 @@ namespace HaCreator.MapSimulator.Loaders
                 yield break;
             }
 
-            WzImageProperty resolvedProperty = WzInfoTools.GetRealProperty(property);
+            if (property is WzUOLProperty uolProperty && !string.IsNullOrWhiteSpace(uolProperty.Value))
+            {
+                yield return uolProperty.Value;
+            }
+
+            WzImageProperty resolvedProperty;
+            try
+            {
+                resolvedProperty = WzInfoTools.GetRealProperty(property);
+            }
+            catch (Exception)
+            {
+                // A malformed optional source UOL must not prevent the mob itself from loading.
+                yield break;
+            }
+
             switch (resolvedProperty)
             {
                 case WzStringProperty stringProperty when !string.IsNullOrWhiteSpace(stringProperty.Value):
                     yield return stringProperty.Value;
                     yield break;
-                case WzUOLProperty uolProperty:
-                    if (!string.IsNullOrWhiteSpace(uolProperty.Value))
+                case WzLuaProperty luaProperty:
+                    string luaValue = luaProperty.GetString();
+                    if (!string.IsNullOrWhiteSpace(luaValue))
                     {
-                        yield return uolProperty.Value;
-                    }
-
-                    string linkedString = uolProperty.GetString();
-                    if (!string.IsNullOrWhiteSpace(linkedString))
-                    {
-                        yield return linkedString;
+                        yield return luaValue;
                     }
 
                     yield break;
                 default:
-                    string stringValue = resolvedProperty?.GetString();
-                    if (!string.IsNullOrWhiteSpace(stringValue))
-                    {
-                        yield return stringValue;
-                    }
-
+                    // Containers, canvases, and numeric metadata do not have string values.
+                    // Calling WzObject.GetString() for them throws NotImplementedException.
                     yield break;
             }
         }
