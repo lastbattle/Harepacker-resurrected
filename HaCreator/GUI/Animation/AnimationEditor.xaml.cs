@@ -68,6 +68,14 @@ namespace HaCreator.GUI.FrameAnimation
         private AnimationLayerModel _editLayer;
         private string _editPropertyName;
         private bool _draggingOrigin;
+        private bool _pixelDrawing;
+        private bool _pixelErase;
+        private bool _pixelChanged;
+        private DrawingBitmap _pixelBeforeBitmap;
+        private DrawingBitmap _pixelWorkingBitmap;
+        private WzImageProperty _pixelBeforeFrame;
+        private AnimationFrameModel _pixelFrame;
+        private System.Drawing.Color _pixelColor = System.Drawing.Color.White;
         private System.Windows.Point _dragStart;
         private int _dragOriginX;
         private int _dragOriginY;
@@ -305,6 +313,8 @@ namespace HaCreator.GUI.FrameAnimation
             layerComboBox.SelectedItem = frame.SelectedLayer ?? frame.Layers.FirstOrDefault();
             frameIndexText.Text = $"{frame.Index + 1} / {_document.Frames.Count}";
             frameCounterText.Text = frameIndexText.Text;
+            allFramesDelayTextBox.Text = frame.Delay.ToString(CultureInfo.InvariantCulture);
+            timelineDurationText.Text = $"{_document.TotalDuration.ToString(CultureInfo.InvariantCulture)} ms";
             _suppressScrub = true;
             scrubSlider.Value = frame.Index;
             _suppressScrub = false;
@@ -401,6 +411,7 @@ namespace HaCreator.GUI.FrameAnimation
         {
             if (_document == null || _document.Frames.Count == 0)
                 return;
+            scrubSlider.Maximum = Math.Max(0, _document.Frames.Count - 1);
             timelineListBox.SelectedIndex = Math.Clamp(index, 0, _document.Frames.Count - 1);
             timelineListBox.ScrollIntoView(timelineListBox.SelectedItem);
         }
@@ -1528,6 +1539,12 @@ namespace HaCreator.GUI.FrameAnimation
 
         private void Window_Closing(object sender, CancelEventArgs e)
         {
+            if (_pixelDrawing)
+                EndPixelEdit();
+            _pixelBeforeBitmap?.Dispose();
+            _pixelWorkingBitmap?.Dispose();
+            _pixelBeforeBitmap = null;
+            _pixelWorkingBitmap = null;
             CancelAIWork();
             if (_closingAfterSave)
                 return;
@@ -1547,6 +1564,8 @@ namespace HaCreator.GUI.FrameAnimation
         {
             if (_document?.IsDirty == true && _trackedEditDepth == 0)
                 _hasUntrackedDirty = true;
+            if (_document != null && timelineDurationText != null)
+                timelineDurationText.Text = $"{_document.TotalDuration.ToString(CultureInfo.InvariantCulture)} ms";
             UpdateDirtyState();
             RenderPreview();
         }
@@ -2016,6 +2035,12 @@ namespace HaCreator.GUI.FrameAnimation
         {
             System.Windows.Point point = e.GetPosition(previewCanvas);
             coordinateText.Text = $"X: {point.X - 800:0}, Y: {point.Y - 500:0}";
+            if (_pixelDrawing && (e.LeftButton == MouseButtonState.Pressed || e.RightButton == MouseButtonState.Pressed))
+            {
+                DrawPixelAt(point);
+                e.Handled = true;
+                return;
+            }
             if (!_draggingOrigin || e.LeftButton != MouseButtonState.Pressed || _document?.SelectedFrame?.SelectedLayer is not AnimationLayerModel layer || layer.Canvas == null)
                 return;
             Vector delta = point - _dragStart;
@@ -2030,6 +2055,18 @@ namespace HaCreator.GUI.FrameAnimation
             AnimationLayerModel layer = _document?.SelectedFrame?.SelectedLayer;
             if (layer?.Canvas == null || layer.IsLinked)
                 return;
+            if (pixelEditToggleButton.IsChecked == true)
+            {
+                if (Keyboard.Modifiers == ModifierKeys.Alt)
+                {
+                    PickPixelColor(layer, e.GetPosition(previewCanvas));
+                    e.Handled = true;
+                    return;
+                }
+                BeginPixelEdit(layer, false, e.GetPosition(previewCanvas));
+                e.Handled = true;
+                return;
+            }
             BeginTrackedEdit();
             _draggingOrigin = true;
             _dragStart = e.GetPosition(previewCanvas);
@@ -2040,6 +2077,12 @@ namespace HaCreator.GUI.FrameAnimation
 
         private void Preview_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
         {
+            if (_pixelDrawing)
+            {
+                EndPixelEdit();
+                e.Handled = true;
+                return;
+            }
             if (!_draggingOrigin || _document?.SelectedFrame?.SelectedLayer is not AnimationLayerModel layer)
                 return;
             _draggingOrigin = false;
@@ -2054,6 +2097,132 @@ namespace HaCreator.GUI.FrameAnimation
                     AnimationEditorTextExtension.Get("AnimationEditor_MoveOrigin")));
             }
             EndTrackedEdit();
+        }
+
+        private void Preview_MouseRightButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            AnimationLayerModel layer = _document?.SelectedFrame?.SelectedLayer;
+            if (pixelEditToggleButton.IsChecked == true && layer?.Canvas != null && !layer.IsLinked)
+            {
+                BeginPixelEdit(layer, true, e.GetPosition(previewCanvas));
+                e.Handled = true;
+            }
+        }
+
+        private void Preview_MouseRightButtonUp(object sender, MouseButtonEventArgs e)
+        {
+            if (_pixelDrawing)
+            {
+                EndPixelEdit();
+                e.Handled = true;
+            }
+        }
+
+        private void PixelEdit_Changed(object sender, RoutedEventArgs e)
+        {
+            if (pixelEditToggleButton.IsChecked != true && _pixelDrawing)
+                EndPixelEdit();
+            if (previewCanvas != null)
+                previewCanvas.Cursor = pixelEditToggleButton.IsChecked == true ? Cursors.Cross : Cursors.Arrow;
+        }
+
+        private void PixelColor_Click(object sender, RoutedEventArgs e)
+        {
+            using System.Windows.Forms.ColorDialog dialog = new() { Color = _pixelColor, FullOpen = true };
+            if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+            {
+                _pixelColor = dialog.Color;
+                pixelColorButton.Background = new SolidColorBrush(MediaColor.FromArgb(_pixelColor.A, _pixelColor.R, _pixelColor.G, _pixelColor.B));
+            }
+        }
+
+        private void PickPixelColor(AnimationLayerModel layer, System.Windows.Point point)
+        {
+            if (layer.Bitmap == null)
+                return;
+            int x = (int)Math.Floor(point.X - 800 + layer.OriginX);
+            int y = (int)Math.Floor(point.Y - 500 + layer.OriginY);
+            if (x < 0 || y < 0 || x >= layer.Width || y >= layer.Height)
+                return;
+            using DrawingBitmap bitmap = BitmapSourceToDrawingBitmap(layer.Bitmap);
+            _pixelColor = bitmap.GetPixel(x, y);
+            pixelColorButton.Background = new SolidColorBrush(MediaColor.FromArgb(_pixelColor.A, _pixelColor.R, _pixelColor.G, _pixelColor.B));
+        }
+
+        private void BeginPixelEdit(AnimationLayerModel layer, bool erase, System.Windows.Point point)
+        {
+            _pixelBeforeBitmap?.Dispose();
+            _pixelWorkingBitmap?.Dispose();
+            if (layer.Bitmap == null)
+                return;
+            _pixelBeforeFrame = _document.SelectedFrame.WorkingFrame.DeepClone();
+            _pixelFrame = _document.SelectedFrame;
+            _pixelBeforeBitmap = BitmapSourceToDrawingBitmap(layer.Bitmap);
+            _pixelWorkingBitmap = new DrawingBitmap(_pixelBeforeBitmap);
+            _pixelErase = erase;
+            _pixelChanged = false;
+            _pixelDrawing = true;
+            BeginTrackedEdit();
+            previewCanvas.CaptureMouse();
+            DrawPixelAt(point);
+        }
+
+        private void DrawPixelAt(System.Windows.Point point)
+        {
+            AnimationLayerModel layer = _document?.SelectedFrame?.SelectedLayer;
+            if (!_pixelDrawing || layer == null || _pixelWorkingBitmap == null)
+                return;
+            int x = (int)Math.Floor(point.X - 800 + layer.OriginX);
+            int y = (int)Math.Floor(point.Y - 500 + layer.OriginY);
+            if (x < 0 || y < 0 || x >= _pixelWorkingBitmap.Width || y >= _pixelWorkingBitmap.Height)
+                return;
+            int size = int.TryParse((pixelBrushSizeComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString(), out int parsed) ? parsed : 1;
+            using System.Drawing.Graphics graphics = System.Drawing.Graphics.FromImage(_pixelWorkingBitmap);
+            graphics.CompositingMode = System.Drawing.Drawing2D.CompositingMode.SourceCopy;
+            using System.Drawing.Brush brush = new System.Drawing.SolidBrush(_pixelErase ? System.Drawing.Color.Transparent : _pixelColor);
+            graphics.FillRectangle(brush, x, y, size, size);
+            _pixelChanged = true;
+            layer.ReplaceBitmap(new DrawingBitmap(_pixelWorkingBitmap));
+            RenderPreview();
+        }
+
+        private void EndPixelEdit()
+        {
+            if (!_pixelDrawing || _pixelFrame == null)
+                return;
+            _pixelDrawing = false;
+            previewCanvas.ReleaseMouseCapture();
+            AnimationFrameModel editedFrame = _pixelFrame;
+            WzImageProperty before = _pixelBeforeFrame;
+            WzImageProperty after = editedFrame.WorkingFrame.DeepClone();
+            _pixelBeforeBitmap?.Dispose();
+            _pixelWorkingBitmap?.Dispose();
+            _pixelBeforeBitmap = null;
+            _pixelWorkingBitmap = null;
+            _pixelBeforeFrame = null;
+            _pixelFrame = null;
+            if (!_pixelChanged)
+            {
+                EndTrackedEdit();
+                return;
+            }
+            PushExecuted(new EditOperation(
+                () => { ReplaceFrameProperty(editedFrame, before.DeepClone()); },
+                () => { ReplaceFrameProperty(editedFrame, after.DeepClone()); },
+                AnimationEditorTextExtension.Get("AnimationEditor_PixelEdit")));
+            EndTrackedEdit();
+        }
+
+        private void ApplyDelayAll_Click(object sender, RoutedEventArgs e)
+        {
+            if (_document == null || !int.TryParse(allFramesDelayTextBox.Text, NumberStyles.Integer, CultureInfo.InvariantCulture, out int delay) || delay < 1)
+                return;
+            List<(AnimationLayerModel Layer, int Old)> changes = _document.Frames.SelectMany(frame => frame.Layers).Select(layer => (layer, layer.Delay)).ToList();
+            Execute(new EditOperation(
+                () => { foreach (var change in changes) change.Layer.Delay = change.Old; },
+                () => { foreach (var change in changes) change.Layer.Delay = delay; },
+                AnimationEditorTextExtension.Get("AnimationEditor_ApplyDelayAllTooltip")));
+            timelineDurationText.Text = $"{_document.TotalDuration.ToString(CultureInfo.InvariantCulture)} ms";
         }
 
         private void BeginTrackedEdit() => _trackedEditDepth++;
@@ -2140,6 +2309,13 @@ namespace HaCreator.GUI.FrameAnimation
                 return;
             }
 
+            if (Keyboard.Modifiers == ModifierKeys.None && e.Key == Key.P)
+            {
+                pixelEditToggleButton.IsChecked = pixelEditToggleButton.IsChecked != true;
+                e.Handled = true;
+                return;
+            }
+
             ModifierKeys nudgeModifiers = Keyboard.Modifiers;
             if (moveFrameArrowKeysRadioButton.IsChecked == true &&
                 (nudgeModifiers == ModifierKeys.None || nudgeModifiers == ModifierKeys.Shift))
@@ -2149,6 +2325,16 @@ namespace HaCreator.GUI.FrameAnimation
                 if (e.Key == Key.Right) { Nudge(distance, 0); e.Handled = true; return; }
                 if (e.Key == Key.Up) { Nudge(0, -distance); e.Handled = true; return; }
                 if (e.Key == Key.Down) { Nudge(0, distance); e.Handled = true; return; }
+            }
+
+            if (panArrowKeysRadioButton.IsChecked == true &&
+                (nudgeModifiers == ModifierKeys.None || nudgeModifiers == ModifierKeys.Shift))
+            {
+                double distance = nudgeModifiers == ModifierKeys.Shift ? 160 : 40;
+                if (e.Key == Key.Left) { previewScrollViewer.ScrollToHorizontalOffset(Math.Max(0, previewScrollViewer.HorizontalOffset - distance)); e.Handled = true; return; }
+                if (e.Key == Key.Right) { previewScrollViewer.ScrollToHorizontalOffset(previewScrollViewer.HorizontalOffset + distance); e.Handled = true; return; }
+                if (e.Key == Key.Up) { previewScrollViewer.ScrollToVerticalOffset(Math.Max(0, previewScrollViewer.VerticalOffset - distance)); e.Handled = true; return; }
+                if (e.Key == Key.Down) { previewScrollViewer.ScrollToVerticalOffset(previewScrollViewer.VerticalOffset + distance); e.Handled = true; return; }
             }
 
             if (focused != previewCanvas)

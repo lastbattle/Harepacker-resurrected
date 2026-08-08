@@ -170,5 +170,13 @@ Open AI Settings now?</value></data>
   <data name="AnimationEditor_UI" xml:space="preserve"><value>UI animations</value></data>
   <data name="AnimationEditor_Etc" xml:space="preserve"><value>Other animations</value></data>
   <data name="AnimationEditor_MapTiles" xml:space="preserve"><value>Map tiles</value></data>
-  <data name="AnimationEditor_MapParticles" xml:space="preserve"><value>Map particles</value></data>
+    <data name="AnimationEditor_MapParticles" xml:space="preserve"><value>Map particles</value></data>
+    <data name="AnimationEditor_PixelEdit" xml:space="preserve"><value>Pixel edit (P)</value></data>
+    <data name="AnimationEditor_PixelEditTooltip" xml:space="preserve"><value>Draw directly on the selected layer (P); right-click erases, Alt-click samples a color.</value></data>
+    <data name="AnimationEditor_Brush" xml:space="preserve"><value>Brush</value></data>
+    <data name="AnimationEditor_BrushSizeTooltip" xml:space="preserve"><value>Pixel brush size</value></data>
+    <data name="AnimationEditor_BrushColorTooltip" xml:space="preserve"><value>Choose pixel brush color</value></data>
+    <data name="AnimationEditor_DelayShort" xml:space="preserve"><value>Delay</value></data>
+    <data name="AnimationEditor_ApplyAll" xml:space="preserve"><value>Apply all</value></data>
+    <data name="AnimationEditor_ApplyDelayAllTooltip" xml:space="preserve"><value>Apply this delay to every frame</value></data>
 </root>

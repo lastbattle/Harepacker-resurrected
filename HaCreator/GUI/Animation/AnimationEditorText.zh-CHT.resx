@@ -77,4 +77,12 @@
   <data name="AnimationEditor_MapParticles" xml:space="preserve"><value>地圖粒子</value></data>
   <data name="AnimationEditor_AIUpscale" xml:space="preserve"><value>AI 放大所選圖層…</value></data>
   <data name="AnimationEditor_AIUpscaleTooltip" xml:space="preserve"><value>增強所選畫格圖層，與原圖比較，並僅在接受結果後套用。</value></data>
+  <data name="AnimationEditor_PixelEdit" xml:space="preserve"><value>像素編輯 (P)</value></data>
+  <data name="AnimationEditor_PixelEditTooltip" xml:space="preserve"><value>直接在選取的圖層上繪製（P）。右鍵清除，Alt 點擊取色。</value></data>
+  <data name="AnimationEditor_Brush" xml:space="preserve"><value>畫筆</value></data>
+  <data name="AnimationEditor_BrushSizeTooltip" xml:space="preserve"><value>像素畫筆大小</value></data>
+  <data name="AnimationEditor_BrushColorTooltip" xml:space="preserve"><value>選擇像素畫筆顏色</value></data>
+  <data name="AnimationEditor_DelayShort" xml:space="preserve"><value>延遲</value></data>
+  <data name="AnimationEditor_ApplyAll" xml:space="preserve"><value>套用全部</value></data>
+  <data name="AnimationEditor_ApplyDelayAllTooltip" xml:space="preserve"><value>將此延遲套用到每個影格</value></data>
 </root>

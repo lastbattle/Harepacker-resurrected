@@ -77,4 +77,12 @@
   <data name="AnimationEditor_MapParticles" xml:space="preserve"><value>맵 파티클</value></data>
   <data name="AnimationEditor_AIUpscale" xml:space="preserve"><value>선택한 레이어 AI 업스케일…</value></data>
   <data name="AnimationEditor_AIUpscaleTooltip" xml:space="preserve"><value>선택한 프레임 레이어를 향상하고 원본과 비교한 뒤, 승인한 경우에만 적용합니다.</value></data>
+  <data name="AnimationEditor_PixelEdit" xml:space="preserve"><value>픽셀 편집 (P)</value></data>
+  <data name="AnimationEditor_PixelEditTooltip" xml:space="preserve"><value>선택한 레이어에 직접 그립니다(P). 마우스 오른쪽 버튼으로 지우고 Alt 클릭으로 색상을 추출합니다.</value></data>
+  <data name="AnimationEditor_Brush" xml:space="preserve"><value>브러시</value></data>
+  <data name="AnimationEditor_BrushSizeTooltip" xml:space="preserve"><value>픽셀 브러시 크기</value></data>
+  <data name="AnimationEditor_BrushColorTooltip" xml:space="preserve"><value>픽셀 브러시 색상 선택</value></data>
+  <data name="AnimationEditor_DelayShort" xml:space="preserve"><value>지연</value></data>
+  <data name="AnimationEditor_ApplyAll" xml:space="preserve"><value>모두 적용</value></data>
+  <data name="AnimationEditor_ApplyDelayAllTooltip" xml:space="preserve"><value>모든 프레임에 이 지연 적용</value></data>
 </root>

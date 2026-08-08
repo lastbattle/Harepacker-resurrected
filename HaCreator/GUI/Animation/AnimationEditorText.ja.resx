@@ -77,4 +77,12 @@
   <data name="AnimationEditor_MapParticles" xml:space="preserve"><value>マップパーティクル</value></data>
   <data name="AnimationEditor_AIUpscale" xml:space="preserve"><value>選択レイヤーを AI 高画質化…</value></data>
   <data name="AnimationEditor_AIUpscaleTooltip" xml:space="preserve"><value>選択したフレームレイヤーを高画質化し、元画像と比較して、承認した場合のみ適用します。</value></data>
+  <data name="AnimationEditor_PixelEdit" xml:space="preserve"><value>ピクセル編集 (P)</value></data>
+  <data name="AnimationEditor_PixelEditTooltip" xml:space="preserve"><value>選択したレイヤーに直接描画します（P）。右クリックで消去、Altクリックで色を取得します。</value></data>
+  <data name="AnimationEditor_Brush" xml:space="preserve"><value>ブラシ</value></data>
+  <data name="AnimationEditor_BrushSizeTooltip" xml:space="preserve"><value>ピクセルブラシのサイズ</value></data>
+  <data name="AnimationEditor_BrushColorTooltip" xml:space="preserve"><value>ピクセルブラシの色を選択</value></data>
+  <data name="AnimationEditor_DelayShort" xml:space="preserve"><value>遅延</value></data>
+  <data name="AnimationEditor_ApplyAll" xml:space="preserve"><value>すべてに適用</value></data>
+  <data name="AnimationEditor_ApplyDelayAllTooltip" xml:space="preserve"><value>この遅延をすべてのフレームに適用</value></data>
 </root>

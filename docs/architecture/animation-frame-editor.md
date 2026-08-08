@@ -44,6 +44,8 @@ Map placement coordinates are a different layer of data. Object `x/y/z/zM/f` and
 - Layered frames are composited by numeric `z`; each Canvas layer can be inspected independently.
 - Playback follows each frame's delay and supports speed scaling and looping.
 - Frames can be imported, exported, bitmap-replaced, duplicated, deleted, and reordered.
+- **Pixel edit** mode (toggle in the preview or press `P`) provides crisp nearest-neighbor painting on the selected, independent Canvas layer. Choose a 1/2/4/8-pixel brush and color; left-click paints and right-click erases alpha. Each stroke is one undoable operation and linked UOL layers remain protected.
+- The timeline exposes a bulk delay field. **Apply all** writes the same delay to every layer in the track and reports the resulting total duration.
 - Dragging in the preview changes the selected layer origin. The explicit arrow-key mode switches between scrolling the preview and moving the selected layer; move mode nudges by one pixel, or ten with Shift.
 
 ## AI frame studio
@@ -74,6 +76,7 @@ The **AI** inspector tab uses the OpenAI-compatible endpoint configured in **Too
 | `M` | Switch between Pan and Move frame arrow-key modes |
 | `G`, `O`, `B` | Toggle grid, onion skin, bounds |
 | `F`, `0` | Fit, 100% zoom |
+| `P` | Toggle pixel edit mode |
 
 ## Manual verification
 
@@ -81,6 +84,8 @@ The **AI** inspector tab uses the OpenAI-compatible endpoint configured in **Too
 2. Preview a multi-frame action, a one-frame background, a UOL frame, and a layered skill effect.
 3. Change origin, delay, Z, alpha, and a raw property; verify playback and overlays update immediately. Confirm Pan mode scrolls with arrow keys, Move frame mode nudges by 1/10 pixels, and All frames overlays the complete animation while keeping the selected frame prominent.
 4. Import, duplicate, reorder, delete, undo, and redo frames.
+5. Toggle Pixel edit, paint a short stroke, erase with the right mouse button, change brush size/color, and verify the stroke is atomic in undo/redo. Confirm linked UOL layers cannot be painted.
+6. Apply a bulk delay and verify every frame/layer updates, playback timing changes, and undo restores the previous values.
 5. Save in IMG filesystem mode, reopen the track, and verify all changes persisted without changing sibling tracks.
 6. Repeat with a WZ data source and verify the owning WZ is marked for repack.
 7. Check layout and splitter behavior at 100%, 125%, and 150% scaling and at the 1280×720 minimum size.

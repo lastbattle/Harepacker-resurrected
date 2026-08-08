@@ -60,6 +60,25 @@
                 </Style.Triggers>
             </Style>
 
+            <Style x:Key="PixelEditToggleStyle" TargetType="ToggleButton">
+                <Setter Property="Background" Value="{DynamicResource HareSurfaceBrush}"/>
+                <Setter Property="BorderBrush" Value="{DynamicResource HareBorderBrush}"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="Foreground" Value="{DynamicResource HareTextBrush}"/>
+                <Setter Property="Padding" Value="8,0"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Style.Triggers>
+                    <Trigger Property="IsChecked" Value="True">
+                        <Setter Property="Background" Value="#DCFCE7"/>
+                        <Setter Property="BorderBrush" Value="#22C55E"/>
+                        <Setter Property="Foreground" Value="#166534"/>
+                    </Trigger>
+                    <Trigger Property="IsMouseOver" Value="True">
+                        <Setter Property="BorderBrush" Value="#60A5FA"/>
+                    </Trigger>
+                </Style.Triggers>
+            </Style>
+
             <Style x:Key="InspectorLabel" TargetType="TextBlock">
                 <Setter Property="Foreground" Value="{DynamicResource HareMutedTextBrush}"/>
                 <Setter Property="VerticalAlignment" Value="Center"/>
@@ -150,7 +169,7 @@
             </Grid.ColumnDefinitions>
 
             <Border Grid.Column="0" Margin="6,6,0,6" Style="{StaticResource HareCardStyle}">
-                <Grid Margin="12">
+                <Grid Margin="0">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
@@ -239,8 +258,28 @@
                         <Canvas x:Name="previewCanvas" Width="1600" Height="1000" Background="Transparent" Focusable="True"
                                 SnapsToDevicePixels="True" UseLayoutRounding="True" RenderOptions.EdgeMode="Aliased"
                                 AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_Preview}"
-                                MouseMove="Preview_MouseMove" MouseLeftButtonDown="Preview_MouseLeftButtonDown" MouseLeftButtonUp="Preview_MouseLeftButtonUp"/>
+                                MouseMove="Preview_MouseMove" MouseLeftButtonDown="Preview_MouseLeftButtonDown" MouseLeftButtonUp="Preview_MouseLeftButtonUp"
+                                MouseRightButtonDown="Preview_MouseRightButtonDown" MouseRightButtonUp="Preview_MouseRightButtonUp"/>
                     </ScrollViewer>
+                </Border>
+
+                <Border Grid.Row="1" Panel.ZIndex="20" HorizontalAlignment="Left" VerticalAlignment="Top"
+                        Margin="6" Padding="2,2" CornerRadius="6"
+                        Background="{DynamicResource HareSurfaceBrush}" BorderBrush="{DynamicResource HareBorderBrush}" BorderThickness="1">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <ToggleButton x:Name="pixelEditToggleButton" Width="118" Height="28" FontWeight="SemiBold" Style="{StaticResource PixelEditToggleStyle}"
+                                      Content="{local:AnimationEditorText AnimationEditor_PixelEdit}"
+                                      ToolTip="{local:AnimationEditorText AnimationEditor_PixelEditTooltip}"
+                                      Checked="PixelEdit_Changed" Unchecked="PixelEdit_Changed"/>
+                        <TextBlock Margin="10,0,4,0" VerticalAlignment="Center" Text="{local:AnimationEditorText AnimationEditor_Brush}"/>
+                        <ComboBox x:Name="pixelBrushSizeComboBox" Width="54" Height="26" SelectedIndex="0"
+                                  ToolTip="{local:AnimationEditorText AnimationEditor_BrushSizeTooltip}">
+                            <ComboBoxItem Content="1" Tag="1"/><ComboBoxItem Content="2" Tag="2"/>
+                            <ComboBoxItem Content="4" Tag="4"/><ComboBoxItem Content="8" Tag="8"/>
+                        </ComboBox>
+                        <Button x:Name="pixelColorButton" Width="30" Height="26" Margin="6,0,0,0" Background="#FFFFFFFF"
+                                ToolTip="{local:AnimationEditorText AnimationEditor_BrushColorTooltip}" Click="PixelColor_Click"/>
+                    </StackPanel>
                 </Border>
 
                 <GridSplitter Grid.Row="2" Height="5" HorizontalAlignment="Stretch" Background="Transparent"
@@ -295,6 +334,11 @@
                                         ToolTip="{local:AnimationEditorText AnimationEditor_MoveFrameRight}" AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_MoveFrameRight}"/>
                                 <Button Style="{StaticResource HareButtonStyle}" Margin="6,0,0,0" Content="{local:AnimationEditorText AnimationEditor_Duplicate}" Click="DuplicateFrame_Click"/>
                                 <Button Style="{StaticResource HareDangerButtonStyle}" Margin="6,0,0,0" Content="{local:AnimationEditorText AnimationEditor_Delete}" Click="DeleteFrame_Click"/>
+                                <TextBlock Margin="14,0,4,0" VerticalAlignment="Center" Foreground="{DynamicResource HareMutedTextBrush}" Text="{local:AnimationEditorText AnimationEditor_DelayShort}"/>
+                                <TextBox x:Name="allFramesDelayTextBox" Width="52" Height="26" VerticalContentAlignment="Center" Text="100"/>
+                                <Button Style="{StaticResource HareButtonStyle}" Margin="4,0,0,0" Content="{local:AnimationEditorText AnimationEditor_ApplyAll}" Click="ApplyDelayAll_Click"
+                                        ToolTip="{local:AnimationEditorText AnimationEditor_ApplyDelayAllTooltip}"/>
+                                <TextBlock x:Name="timelineDurationText" Margin="12,0,0,0" VerticalAlignment="Center" Foreground="{DynamicResource HareMutedTextBrush}" Text="0 ms"/>
                             </StackPanel>
                         </Grid>
                         <ListBox x:Name="timelineListBox" Grid.Row="1" SelectionChanged="Timeline_SelectionChanged"
