@@ -67,9 +67,15 @@ namespace HaCreator.GUI.Cutscene
         }
 
         public static IReadOnlyList<CutsceneEventModel> FindActiveVisuals(IReadOnlyList<CutsceneEventModel> events, double time) => events
-            .Where(item => item.Type == (int)ReservedSceneEventType.Visual
-                && item.Start <= time
-                && time < GetVisualEnd(events, item)
+            .Where(item => item.Type == (int)ReservedSceneEventType.Visual && item.Start <= time)
+            .GroupBy(item => item.Z)
+            .SelectMany(group => group.Key == 0
+                ? group
+                : group
+                    .OrderByDescending(item => item.Start)
+                    .ThenByDescending(item => ParseIndex(item.Id))
+                    .Take(1))
+            .Where(item => time < GetVisualEnd(events, item)
                 && !string.IsNullOrWhiteSpace(item.Visual))
             .OrderBy(item => item.Z)
             .ThenBy(item => item.Start)
