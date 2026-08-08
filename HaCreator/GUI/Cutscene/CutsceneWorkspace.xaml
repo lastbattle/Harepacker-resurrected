@@ -46,6 +46,7 @@
                         <ComboBoxItem Content="800 × 600" IsSelected="True"/>
                         <ComboBoxItem Content="1024 × 768"/>
                         <ComboBoxItem Content="1366 × 768"/>
+                        <ComboBoxItem Content="1920 × 1080"/>
                     </ComboBox>
                 </StackPanel>
             </DockPanel>
