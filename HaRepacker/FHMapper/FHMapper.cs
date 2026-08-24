@@ -20,7 +20,8 @@ namespace HaRepacker.FHMapper
 {
     public class FHMapper
     {
-        public static string SettingsPath = Path.Combine(ConfigurationManager.GetLocalFolderPath(), "Settings.ini");
+        public static string SettingsPath =
+            HaSharedLibrary.Configuration.UserDataPaths.HaRepackerFhMapperSettingsFile;
         public List<Object> settings = new List<object>();
         private readonly MainPanel MainPanel;
         private TreeNode node;

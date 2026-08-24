@@ -47,11 +47,8 @@ namespace HaCreator.MapSimulator.Managers
 
         public QuestAlarmStore(string storageFilePath = null)
         {
-            _storageFilePath = storageFilePath ?? Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "HaCreator",
-                "MapSimulator",
-                "quest-alarm.json");
+            _storageFilePath = storageFilePath ??
+                HaSharedLibrary.Configuration.UserDataPaths.GetHaCreatorSimulatorFile("quest-alarm.json");
 
             string directoryPath = Path.GetDirectoryName(_storageFilePath);
             if (!string.IsNullOrWhiteSpace(directoryPath))

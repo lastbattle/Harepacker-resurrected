@@ -125,11 +125,8 @@ namespace HaCreator.MapSimulator.Managers
 
         public StorageAccountStore(string storageFilePath = null)
         {
-            _storageFilePath = storageFilePath ?? Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "HaCreator",
-                "MapSimulator",
-                "storage-accounts.json");
+            _storageFilePath = storageFilePath ??
+                HaSharedLibrary.Configuration.UserDataPaths.GetHaCreatorSimulatorFile("storage-accounts.json");
 
             string directoryPath = Path.GetDirectoryName(_storageFilePath);
             if (!string.IsNullOrWhiteSpace(directoryPath))

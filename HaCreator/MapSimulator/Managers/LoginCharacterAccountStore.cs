@@ -142,11 +142,8 @@ namespace HaCreator.MapSimulator.Managers
             ILoginAccountBillingAuthorityClient billingAuthorityClient = null)
         {
             _billingAuthorityClient = billingAuthorityClient;
-            _storageFilePath = storageFilePath ?? Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "HaCreator",
-                "MapSimulator",
-                "login-character-accounts.json");
+            _storageFilePath = storageFilePath ??
+                HaSharedLibrary.Configuration.UserDataPaths.GetHaCreatorSimulatorFile("login-character-accounts.json");
 
             string directoryPath = Path.GetDirectoryName(_storageFilePath);
             if (!string.IsNullOrWhiteSpace(directoryPath))

@@ -30,7 +30,7 @@ namespace HaCreator.MapEditor
 
         private string GetBasePath()
         {
-            return Path.Combine(Program.GetLocalSettingsFolder(), "Backups");
+            return HaSharedLibrary.Configuration.UserDataPaths.HaCreatorBackupsDirectory;
         }
 
         public void Start()

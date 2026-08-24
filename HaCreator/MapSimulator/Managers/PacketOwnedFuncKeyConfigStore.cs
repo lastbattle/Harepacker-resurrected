@@ -41,12 +41,8 @@ namespace HaCreator.MapSimulator.Managers
 
         public PacketOwnedFuncKeyConfigStore(string filePath = null)
         {
-            string configDirectory = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "HaCreator",
-                "MapSimulator");
-            Directory.CreateDirectory(configDirectory);
-            _filePath = filePath ?? Path.Combine(configDirectory, "packet-owned-funckey-config.json");
+            _filePath = filePath ??
+                HaSharedLibrary.Configuration.UserDataPaths.GetHaCreatorSimulatorFile("packet-owned-funckey-config.json");
         }
 
         public Snapshot Load()

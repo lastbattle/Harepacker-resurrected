@@ -33,9 +33,8 @@ namespace HaCreator.MapEditor.AI
         private static int maxOutputTokens = 100000;
         private static bool loaded;
 
-        private static readonly string SettingsFilePath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "HaCreator", "Settings_AI.json");
+        private static readonly string SettingsFilePath =
+            HaSharedLibrary.Configuration.UserDataPaths.HaCreatorAiSettingsFile;
 
         public static AIProvider Provider
         {

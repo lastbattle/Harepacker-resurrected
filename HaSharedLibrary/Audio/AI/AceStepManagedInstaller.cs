@@ -9,6 +9,7 @@ using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
+using HaSharedLibrary.Configuration;
 
 namespace HaSharedLibrary.Audio.AI;
 
@@ -23,9 +24,7 @@ public sealed class AceStepManagedInstaller
     private const string UvZip = "https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-pc-windows-msvc.zip";
     private readonly HttpClient client = new() { Timeout = TimeSpan.FromMinutes(30) };
 
-    public string InstallRoot => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "HaCreator", "AudioAI", "ACE-Step-1.5");
+    public string InstallRoot => UserDataPaths.AceStepInstallDirectory;
 
     public string RepositoryRoot => Path.Combine(InstallRoot, "repository");
     public string UvExecutable => Path.Combine(InstallRoot, "uv.exe");
@@ -118,10 +117,10 @@ public sealed class AceStepManagedInstaller
 
     private void MigrateLegacyInstallIfNeeded(IProgress<string>? progress)
     {
-        string legacyRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "Harepacker", "AudioAI", "ACE-Step-1.5");
+        string legacyRoot = UserDataPaths.GetLegacyLocalPath(
+            "HaCreator", "AudioAI", "ACE-Step-1.5");
         if (Directory.Exists(InstallRoot) || !Directory.Exists(legacyRoot)) return;
-        progress?.Report("Moving the existing ACE-Step model cache to the HaCreator folder…");
+        progress?.Report("Moving the existing ACE-Step model cache to the shared Harepacker folder…");
         Directory.CreateDirectory(Path.GetDirectoryName(InstallRoot)!);
         Directory.Move(legacyRoot, InstallRoot);
     }

@@ -7,7 +7,6 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Data.SQLite;
 using System.Drawing;
 using System.IO;
 using System.Linq;
@@ -19,6 +18,7 @@ using System.Windows.Interop;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using HaCreator.GUI.WorldMap;
+using HaSharedLibrary.Configuration;
 
 namespace HaCreator.CustomControls
 {
@@ -37,9 +37,14 @@ namespace HaCreator.CustomControls
         private DispatcherTimer townScanTimer;
         private int townMatchesSinceRefresh;
 
-        private static readonly string PrimaryHistoryDatabasePath =
-            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "hacreator.db");
-        private const string SQLITE_DB_HISTORY_TABLE_NAME = "LoadedMapsHistory";
+        private static readonly MapHistoryStore HistoryStore = new(
+            UserDataPaths.HaCreatorMapHistoryDatabase,
+            new[]
+            {
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "hacreator.db"),
+                Path.Combine(Environment.CurrentDirectory, "hacreator.db")
+            },
+            UserDataPaths.GetRoamingMigrationMarker(UserDataPaths.HaCreator, "map-history-v1"));
 
         public MapBrowserWpf()
         {
@@ -248,53 +253,14 @@ namespace HaCreator.CustomControls
             }
 
             _bMapsLoaded = true;
-            HashSet<string> loadedHistoryNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-            foreach (string databasePath in GetHistoryDatabasePaths(includeMissingPrimary: true))
-            {
-                using (var connection = new SQLiteConnection(GetSqliteDbConnectionString(databasePath)))
-                {
-                    connection.Open();
-                    EnsureHistoryTable(connection);
-
-                    string sql_select = string.Format("SELECT * FROM {0};", SQLITE_DB_HISTORY_TABLE_NAME);
-                    SQLiteCommand command = new SQLiteCommand(sql_select, connection);
-                    SQLiteDataReader reader = command.ExecuteReader();
-
-                    while (reader.Read())
-                    {
-                        string OpenedMapName = (string)reader["OpenedMapName"];
-                        if (string.IsNullOrWhiteSpace(OpenedMapName))
-                        {
-                            continue;
-                        }
-
-                        if (!loadedHistoryNames.Add(OpenedMapName))
-                        {
-                            continue;
-                        }
-
-                        maps.Add(OpenedMapName);
-
-                    }
-                }
-            }
+            maps.AddRange(HistoryStore.Load());
 
             RebuildVisibleItems();
         }
 
         public void AddLoadedMapToHistory(string loadedMapName)
         {
-            using (var connection = new SQLiteConnection(GetSqliteDbConnectionString(PrimaryHistoryDatabasePath)))
-            {
-                connection.Open();
-                EnsureHistoryTable(connection);
-
-                string sqlInsert = string.Format("INSERT INTO {0} (OpenedMapName) VALUES (@OpenedMapName)", SQLITE_DB_HISTORY_TABLE_NAME);
-                SQLiteCommand insertCommand = new SQLiteCommand(sqlInsert, connection);
-                insertCommand.Parameters.AddWithValue("@OpenedMapName", loadedMapName);
-                insertCommand.ExecuteNonQuery();
-            }
+            HistoryStore.Add(loadedMapName);
 
             if (!maps.Contains(loadedMapName))
             {
@@ -306,18 +272,7 @@ namespace HaCreator.CustomControls
 
         public void ClearLoadedMapHistory()
         {
-            foreach (string databasePath in GetHistoryDatabasePaths(includeMissingPrimary: true))
-            {
-                using (var connection = new SQLiteConnection(GetSqliteDbConnectionString(databasePath)))
-                {
-                    connection.Open();
-                    EnsureHistoryTable(connection);
-
-                    string sql = string.Format("DELETE FROM {0};", SQLITE_DB_HISTORY_TABLE_NAME);
-                    SQLiteCommand sqlDelCommand = new SQLiteCommand(sql, connection);
-                    sqlDelCommand.ExecuteNonQuery();
-                }
-            }
+            HistoryStore.Clear();
 
             maps.Clear();
             RebuildVisibleItems();
@@ -331,21 +286,7 @@ namespace HaCreator.CustomControls
                 return false;
             }
 
-            foreach (string databasePath in GetHistoryDatabasePaths(includeMissingPrimary: true))
-            {
-                using (var connection = new SQLiteConnection(GetSqliteDbConnectionString(databasePath)))
-                {
-                    connection.Open();
-                    EnsureHistoryTable(connection);
-
-                    string sql = string.Format(
-                        "DELETE FROM {0} WHERE Id = (SELECT Id FROM {0} WHERE OpenedMapName = @OpenedMapName LIMIT 1);",
-                        SQLITE_DB_HISTORY_TABLE_NAME);
-                    SQLiteCommand sqlDelCommand = new SQLiteCommand(sql, connection);
-                    sqlDelCommand.Parameters.AddWithValue("@OpenedMapName", selectedItem);
-                    sqlDelCommand.ExecuteNonQuery();
-                }
-            }
+            HistoryStore.Remove(selectedItem);
 
             maps.Remove(selectedItem);
             RebuildVisibleItems();
@@ -631,49 +572,6 @@ namespace HaCreator.CustomControls
             if (minimapBox != null)
             {
                 minimapBox.Source = null;
-            }
-        }
-
-        private static IEnumerable<string> GetHistoryDatabasePaths(bool includeMissingPrimary)
-        {
-            HashSet<string> paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-            if (includeMissingPrimary || File.Exists(PrimaryHistoryDatabasePath))
-            {
-                paths.Add(PrimaryHistoryDatabasePath);
-            }
-
-            string workingDirectoryPath = Path.Combine(Environment.CurrentDirectory, "hacreator.db");
-            if (File.Exists(workingDirectoryPath))
-            {
-                paths.Add(workingDirectoryPath);
-            }
-
-            return paths;
-        }
-
-        private static string GetSqliteDbConnectionString(string databasePath)
-        {
-            SQLiteConnectionStringBuilder builder = new SQLiteConnectionStringBuilder
-            {
-                DataSource = databasePath,
-                Version = 3
-            };
-
-            return builder.ToString();
-        }
-
-        private static void EnsureHistoryTable(SQLiteConnection connection)
-        {
-            string sqlCreate =
-                string.Format(
-                    "CREATE TABLE IF NOT EXISTS {0} (" +
-                    "Id INTEGER PRIMARY KEY AUTOINCREMENT," +
-                    "OpenedMapName TEXT);", SQLITE_DB_HISTORY_TABLE_NAME);
-
-            using (SQLiteCommand command = new SQLiteCommand(sqlCreate, connection))
-            {
-                command.ExecuteNonQuery();
             }
         }
 
