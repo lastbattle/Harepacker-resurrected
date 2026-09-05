@@ -873,7 +873,7 @@ namespace HaCreator.MapEditor.AI
 
         private static JObject CreateMapViewTool()
         {
-            return CreateQueryTool("get_map_view", "See a rendered map image with world coordinates and optional foothold/rope overlays. Use before edits and again to verify the result. Omit all crop fields for the whole map; otherwise supply all four.",
+            return CreateQueryTool("get_map_view", "See map artwork including rear/front backgrounds, transparency, tiling and crop-center camera parallax, with world coordinates and optional foothold/rope overlays. Use a viewport-sized crop to judge scenic composition; moving backgrounds use time zero. Use before edits and again to verify the result. Omit all crop fields for the whole map; otherwise supply all four.",
                 new JObject
                 {
                     ["x"] = new JObject { ["type"] = "integer", ["description"] = "Crop left in map coordinates." },

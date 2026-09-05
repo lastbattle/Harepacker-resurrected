@@ -14,6 +14,57 @@ namespace UnitTest_MapSimulator;
 public class AIVisualRendererTests
 {
     [Fact]
+    public void BackgroundsRepeatBehindArtworkAndForegroundBlendsOverIt() => OnSta(() =>
+    {
+        var board = CreateBoard();
+        using var blue = new Bitmap(10, 10);
+        using (var g = Graphics.FromImage(blue)) g.Clear(Color.Blue);
+        var back = new BackgroundInfo(null, blue, Point.Empty, "synthetic", BackgroundInfoType.Background, "0", null, null);
+        board.BoardItems.Add(back.CreateInstance(board, 0, 0, 0, 0, 0, 0, 0,
+            BackgroundType.HVTiling, 255, false, false, 0, 0, null, false), true);
+        using var red = new Bitmap(10, 10);
+        using (var g = Graphics.FromImage(red)) g.Clear(Color.Red);
+        var obj = new ObjectInfo(red, Point.Empty, "synthetic", "0", "0", "0", null);
+        board.BoardItems.Add(obj.CreateInstance(board.Layers[0], board, 50, 25, 0, false), true);
+        var front = new BackgroundInfo(null, blue, Point.Empty, "synthetic", BackgroundInfoType.Background, "1", null, null);
+        board.BoardItems.Add(front.CreateInstance(board, 0, 0, 1, 0, 0, 0, 0,
+            BackgroundType.Regular, 128, true, false, 0, 0, null, false), true);
+        var result = MapAIVisualRenderer.RenderMap(board, new JObject
+            { ["x"] = 0, ["y"] = 0, ["width"] = 100, ["height"] = 50, ["overlays"] = false });
+        using var stream = new MemoryStream(Convert.FromBase64String((string)result[1]["data"]!));
+        using var image = new Bitmap(stream);
+        Assert.Equal(Color.Blue.ToArgb(), image.GetPixel(1, 1).ToArgb());
+        Assert.Equal(Color.Blue.ToArgb(), image.GetPixel(98, 48).ToArgb());
+        var blended = image.GetPixel(52, 27);
+        Assert.InRange(blended.R, 126, 128);
+        Assert.InRange(blended.B, 127, 129);
+        Assert.Empty((JArray)JObject.Parse((string)result[0]["text"]!)["skippedItems"]!);
+    });
+
+    [Theory]
+    [InlineData(0, 48)]
+    [InlineData(-100, 18)]
+    public void BackgroundCameraUsesCropAndNativeFlippedOrigin(int rx, int expectedLeft) => OnSta(() =>
+    {
+        var board = CreateBoard();
+        using var art = new Bitmap(10, 10);
+        using (var g = Graphics.FromImage(art))
+        {
+            g.Clear(Color.Blue);
+            g.FillRectangle(Brushes.Red, 0, 0, 5, 10);
+        }
+        var info = new BackgroundInfo(null, art, new Point(2, 0), "synthetic", BackgroundInfoType.Background, "0", null, null);
+        board.BoardItems.Add(info.CreateInstance(board, 6, 0, 0, rx, 0, 0, 0,
+            BackgroundType.Regular, 255, false, true, 0, 0, null, false), true);
+        var result = MapAIVisualRenderer.RenderMap(board, new JObject
+            { ["x"] = -20, ["y"] = -25, ["width"] = 100, ["height"] = 50, ["overlays"] = false });
+        using var stream = new MemoryStream(Convert.FromBase64String((string)result[1]["data"]!));
+        using var image = new Bitmap(stream);
+        Assert.Equal(Color.Blue.ToArgb(), image.GetPixel(expectedLeft + 1, 26).ToArgb());
+        Assert.Equal(Color.Red.ToArgb(), image.GetPixel(expectedLeft + 8, 26).ToArgb());
+    });
+
+    [Fact]
     public void ArtworkUsesNativeOriginFlipAndLayerOrder() => OnSta(() =>
     {
         var board = CreateBoard();
