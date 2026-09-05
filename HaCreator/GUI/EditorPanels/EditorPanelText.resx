@@ -59,7 +59,7 @@
   <data name="Enhanced" xml:space="preserve"><value>Enhanced</value></data>
   <data name="Essential" xml:space="preserve"><value>Essential</value></data>
   <data name="Field type" xml:space="preserve"><value>Field type</value></data>
-  <data name="Filter assets by name" xml:space="preserve"><value>Filter assets by name</value></data>
+  <data name="Filter assets by name or ID" xml:space="preserve"><value>Filter assets by name or ID</value></data>
   <data name="First-user script" xml:space="preserve"><value>First-user script</value></data>
   <data name="Forced return here" xml:space="preserve"><value>Forced return here</value></data>
   <data name="Force-move level" xml:space="preserve"><value>Force-move level</value></data>

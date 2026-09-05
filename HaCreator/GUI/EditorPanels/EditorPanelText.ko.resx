@@ -59,7 +59,7 @@
   <data name="Enhanced" xml:space="preserve"><value>향상됨</value></data>
   <data name="Essential" xml:space="preserve"><value>기본 정보</value></data>
   <data name="Field type" xml:space="preserve"><value>필드 유형</value></data>
-  <data name="Filter assets by name" xml:space="preserve"><value>이름으로 리소스 필터링</value></data>
+  <data name="Filter assets by name or ID" xml:space="preserve"><value>이름 또는 ID로 리소스 필터링</value></data>
   <data name="First-user script" xml:space="preserve"><value>첫 사용자 스크립트</value></data>
   <data name="Forced return here" xml:space="preserve"><value>여기로 강제 귀환</value></data>
   <data name="Force-move level" xml:space="preserve"><value>강제 이동 레벨</value></data>

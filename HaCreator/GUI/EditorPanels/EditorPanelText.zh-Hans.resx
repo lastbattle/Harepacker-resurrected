@@ -59,7 +59,7 @@
   <data name="Enhanced" xml:space="preserve"><value>增强后</value></data>
   <data name="Essential" xml:space="preserve"><value>基本信息</value></data>
   <data name="Field type" xml:space="preserve"><value>场景类型</value></data>
-  <data name="Filter assets by name" xml:space="preserve"><value>按名称筛选资源</value></data>
+  <data name="Filter assets by name or ID" xml:space="preserve"><value>按名称或 ID 筛选资源</value></data>
   <data name="First-user script" xml:space="preserve"><value>首位用户脚本</value></data>
   <data name="Forced return here" xml:space="preserve"><value>强制返回此处</value></data>
   <data name="Force-move level" xml:space="preserve"><value>强制移动等级</value></data>

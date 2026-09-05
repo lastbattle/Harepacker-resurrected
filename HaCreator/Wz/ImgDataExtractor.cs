@@ -117,8 +117,12 @@ namespace HaCreator.Wz
             }
         }
 
-        private void ExtractRemainingStringData()
+        /// <summary>Loads only localized mob names for the life asset picker.</summary>
+        public void ExtractMobStringData()
         {
+            if (_infoManager.MobNameCache.Count != 0)
+                return;
+
             // Mob strings
             var mobImg = _dataSource.GetImage("String", "Mob.img");
             if (mobImg != null)
@@ -133,6 +137,12 @@ namespace HaCreator.Wz
                         _infoManager.MobNameCache[mobId] = mobName;
                 }
             }
+
+        }
+
+        private void ExtractRemainingStringData()
+        {
+            ExtractMobStringData();
 
             // Skill strings
             var skillImg = _dataSource.GetImage("String", "Skill.img");
