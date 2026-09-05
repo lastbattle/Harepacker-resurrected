@@ -80,7 +80,7 @@ namespace HaCreator.MapEditor.AI
         /// <summary>
         /// Whether there are commands available to execute
         /// </summary>
-        public bool HasCommands => LastAssistantMessage?.HasCommands == true;
+        public bool HasCommands => LastAssistantMessage?.HasCommands == true && !LastAssistantMessage.CommandsApplied;
 
         /// <summary>
         /// Check if there are any messages
@@ -149,7 +149,7 @@ namespace HaCreator.MapEditor.AI
                 // For assistant messages, include commands in the content for context
                 if (msg.Role == ChatRole.Assistant && !string.IsNullOrEmpty(msg.CommandsContent))
                 {
-                    content = $"{content}\n\n## Generated Commands\n{msg.CommandsContent}";
+                    content = $"{content}\n\n## Commands ({(msg.CommandsApplied ? "already applied; do not repeat" : "proposed; not applied")})\n{msg.CommandsContent}";
                 }
 
                 apiMessages.Add(new JObject
@@ -177,7 +177,7 @@ namespace HaCreator.MapEditor.AI
 
                 if (msg.Role == ChatRole.Assistant && !string.IsNullOrEmpty(msg.CommandsContent))
                 {
-                    content = $"{content}\n\n## Generated Commands\n{msg.CommandsContent}";
+                    content = $"{content}\n\n## Commands ({(msg.CommandsApplied ? "already applied; do not repeat" : "proposed; not applied")})\n{msg.CommandsContent}";
                 }
 
                 history.Add(new JObject

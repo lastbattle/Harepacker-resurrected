@@ -9,6 +9,9 @@ using System.Windows;
 using System.Windows.Input;
 using HaCreator.MapEditor;
 using HaCreator.MapEditor.AI;
+using Newtonsoft.Json.Linq;
+using System.IO;
+using System.Windows.Media.Imaging;
 
 namespace HaCreator.GUI.EditorPanels
 {
@@ -24,6 +27,9 @@ namespace HaCreator.GUI.EditorPanels
         private readonly ChatSession _chatSession;
         private readonly MapMcpToolServer mapMcpServer;
         private bool isProcessing = false;
+        private CancellationTokenSource requestCancellation;
+        private JObject previewMetadata;
+        private HaCreator.MapEditor.UndoRedo.UndoRedoBatch lastSessionUndo;
 
         /// <summary>
         /// Loopback MCP endpoint for the active map window.
@@ -47,9 +53,11 @@ namespace HaCreator.GUI.EditorPanels
                     Dispatcher.BeginInvoke(new Action(() => McpCommandReceived?.Invoke(this, command)));
             };
             mapMcpServer.CommandExecutor = ApplyMcpCommand;
+            mapMcpServer.RichQueryExecutor = QueryMap;
 
             InitializeComponent();
             EditorPanelLocalizer.Attach(this);
+            RefreshApplyMode();
 
             // Bind chat messages to ItemsControl
             chatItemsControl.ItemsSource = _chatSession.Messages;
@@ -151,6 +159,7 @@ namespace HaCreator.GUI.EditorPanels
             {
                 instances.Remove(board);
                 window.Closing -= window.Window_Closing;
+                window.requestCancellation?.Cancel();
                 window.Close();
                 window.mapMcpServer?.Dispose();
             }
@@ -164,6 +173,7 @@ namespace HaCreator.GUI.EditorPanels
             foreach (var window in instances.Values)
             {
                 window.Closing -= window.Window_Closing;
+                window.requestCancellation?.Cancel();
                 window.Close();
                 window.mapMcpServer?.Dispose();
             }
@@ -214,11 +224,76 @@ namespace HaCreator.GUI.EditorPanels
 
                 // Update chat session with current map context
                 _chatSession.CurrentMapContext = text;
+                RefreshVisualContext();
             }
             catch (Exception ex)
             {
                 txtMapContext.Text = EditorPanelLocalizer.Format("AI_MapLoadError", ex.Message);
             }
+        }
+
+        private JArray QueryMap(string name, JObject args)
+        {
+            if (!Dispatcher.CheckAccess())
+                return Dispatcher.Invoke(() => QueryMap(name, args));
+            lock (board.ParentControl)
+            {
+                return name switch
+                {
+                    "get_map_state" => new JArray(new JObject { ["type"] = "text", ["text"] = new MapAISerializer(board).GenerateSpatialState(args) }),
+                    "get_map_view" => MapAIVisualRenderer.RenderMap(board, args),
+                    "get_asset_preview" => MapAIVisualRenderer.RenderAssets(args),
+                    _ => new JArray(new JObject { ["type"] = "text", ["text"] = MapEditorFunctions.ExecuteQueryFunction(name, args) })
+                };
+            }
+        }
+
+        private JArray RefreshVisualContext()
+        {
+            var args = new JObject();
+            var state = JObject.Parse(new MapAISerializer(board).GenerateSpatialState(new JObject { ["limit"] = 1 }));
+            if (state["globalGeometryBounds"] is JArray bounds)
+            {
+                const int padding = 64;
+                args["x"] = bounds[0].Value<long>() - padding;
+                args["y"] = bounds[1].Value<long>() - padding;
+                args["width"] = Math.Max(1, bounds[2].Value<long>() - bounds[0].Value<long>() + padding * 2);
+                args["height"] = Math.Max(1, bounds[3].Value<long>() - bounds[1].Value<long>() + padding * 2);
+            }
+            var content = MapAIVisualRenderer.RenderMap(board, args);
+            previewMetadata = JObject.Parse(content.OfType<JObject>().First(b => b["type"]?.ToString() == "text")["text"].ToString());
+            var image = content.OfType<JObject>().FirstOrDefault(b => b["type"]?.ToString() == "image");
+            if (image != null)
+            {
+                using var stream = new MemoryStream(Convert.FromBase64String(image["data"].ToString()));
+                var source = new BitmapImage();
+                source.BeginInit();
+                source.CacheOption = BitmapCacheOption.OnLoad;
+                source.StreamSource = stream;
+                source.EndInit();
+                source.Freeze();
+                imgMapPreview.Source = source;
+            }
+            return content;
+        }
+
+        private void MapPreview_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (previewMetadata == null || imgMapPreview.Source is not BitmapSource source) return;
+            double zoom = Math.Min(imgMapPreview.ActualWidth / source.PixelWidth, imgMapPreview.ActualHeight / source.PixelHeight);
+            if (zoom <= 0) return;
+            var point = e.GetPosition(imgMapPreview);
+            double pixelX = (point.X - (imgMapPreview.ActualWidth - source.PixelWidth * zoom) / 2) / zoom;
+            double pixelY = (point.Y - (imgMapPreview.ActualHeight - source.PixelHeight * zoom) / 2) / zoom;
+            if (pixelX < 0 || pixelY < 0 || pixelX >= source.PixelWidth || pixelY >= source.PixelHeight) return;
+            double scale = previewMetadata["pixelsPerWorldUnit"].Value<double>();
+            int x = (int)Math.Round(previewMetadata["worldBounds"]["x"].Value<double>() + pixelX / scale);
+            int y = (int)Math.Round(previewMetadata["worldBounds"]["y"].Value<double>() + pixelY / scale);
+            string coordinate = $" at ({x}, {y}) ";
+            int insertionStart = txtMessageInput.SelectionStart;
+            txtMessageInput.SelectedText = coordinate;
+            txtMessageInput.CaretIndex = insertionStart + coordinate.Length;
+            txtMessageInput.Focus();
         }
 
         #endregion
@@ -283,8 +358,15 @@ namespace HaCreator.GUI.EditorPanels
             try
             {
                 isProcessing = true;
+                lastSessionUndo = null;
+                requestCancellation = new CancellationTokenSource();
                 btnSend.IsEnabled = false;
                 btnExecute.IsEnabled = false;
+                btnStop.IsEnabled = true;
+                btnClearChat.IsEnabled = false;
+                chkLiveEdits.IsEnabled = false;
+                var history = _chatSession.ToConversationHistory();
+                bool applyChanges = AISettings.AutoApplyCommands;
 
                 // Clear input
                 txtMessageInput.Clear();
@@ -299,32 +381,44 @@ namespace HaCreator.GUI.EditorPanels
                 var serializer = new MapAISerializer(board);
                 _chatSession.CurrentMapContext = serializer.GenerateAISummary();
 
-                // Process with AI using conversation history (uses configured provider)
-                var orchestrator = new AgentOrchestrator();
-
-                // Use conversation-aware processing
-                string result = await orchestrator.ProcessWithConversationAsync(
-                    _chatSession.CurrentMapContext,
-                    _chatSession.ToConversationHistory(),
-                    userInput);
+                var visualContext = RefreshVisualContext();
+                using var sessionTools = new MapMcpToolServer
+                {
+                    RichQueryExecutor = QueryMap,
+                    CommandExecutor = applyChanges ? ApplySessionCommand : null
+                };
+                using var client = new OpenAICompatibleClient(AISettings.CreateMapEditorOptions(), sessionTools);
+                client.Progress += status => Dispatcher.BeginInvoke(new Action(() => txtProgress.Text = status));
+                client.ToolCompleted += result => Dispatcher.Invoke(() =>
+                {
+                    if (result.Success && !string.IsNullOrWhiteSpace(result.Command))
+                    {
+                        assistantMessage.CommandsContent += result.Command + Environment.NewLine;
+                        assistantMessage.CommandsApplied = applyChanges;
+                    }
+                });
+                string result = await client.ProcessConversationAsync(_chatSession.CurrentMapContext,
+                    userInput, history, visualContext, applyChanges, requestCancellation.Token);
 
                 // Parse response to separate explanation from commands
                 var (explanation, commands) = ParseAIResponse(result);
 
                 // Update assistant message
                 assistantMessage.IsProcessing = false;
-                await StreamAssistantTextAsync(assistantMessage, explanation, CancellationToken.None);
-                assistantMessage.CommandsContent = commands;
-
-                if (AISettings.AutoApplyCommands && !string.IsNullOrWhiteSpace(commands))
+                assistantMessage.Content = explanation;
+                // Only successful tool calls are executable. Prose that resembles a command is not.
+                assistantMessage.CommandsApplied = applyChanges;
+                txtProgress.Text = applyChanges ? "Finished • map refreshed" : "Ready to review • changes have not been applied";
+                LoadMapContext();
+            }
+            catch (OperationCanceledException)
+            {
+                if (_chatSession.LastAssistantMessage != null)
                 {
-                    var execution = ExecuteCommandText(commands);
-                    if (execution != null && execution.SuccessCount > 0)
-                    {
-                        assistantMessage.Content += Environment.NewLine + Environment.NewLine +
-                            $"Applied automatically: {execution.SuccessCount} succeeded, {execution.FailCount} failed.";
-                    }
+                    _chatSession.LastAssistantMessage.IsProcessing = false;
+                    _chatSession.LastAssistantMessage.Content = "Stopped. Any changes already applied remain on the map and can be undone.";
                 }
+                txtProgress.Text = "Stopped";
             }
             catch (Exception ex)
             {
@@ -336,12 +430,19 @@ namespace HaCreator.GUI.EditorPanels
                 }
 
                 MaybeOpenAISettingsForError(ex);
+                txtProgress.Text = "Request failed • see details in the conversation";
             }
             finally
             {
                 isProcessing = false;
-                btnSend.IsEnabled = true;
-                btnExecute.IsEnabled = _chatSession.HasCommands && !AISettings.AutoApplyCommands;
+                requestCancellation?.Dispose();
+                requestCancellation = null;
+                btnStop.IsEnabled = false;
+                btnClearChat.IsEnabled = true;
+                chkLiveEdits.IsEnabled = true;
+                btnSend.IsEnabled = !string.IsNullOrWhiteSpace(txtMessageInput.Text);
+                btnExecute.IsEnabled = _chatSession.HasCommands;
+                btnExecute.Visibility = _chatSession.HasCommands ? Visibility.Visible : Visibility.Collapsed;
                 txtMessageInput.Focus();
             }
         }
@@ -400,6 +501,7 @@ namespace HaCreator.GUI.EditorPanels
 
         private void BtnClearChat_Click(object sender, RoutedEventArgs e)
         {
+            if (isProcessing) return;
             if (_chatSession.HasMessages)
             {
                 var result = MessageBox.Show(
@@ -427,6 +529,7 @@ namespace HaCreator.GUI.EditorPanels
 
         private void BtnExecute_Click(object sender, RoutedEventArgs e)
         {
+            if (isProcessing || !_chatSession.HasCommands) return;
             if (board == null)
             {
                 MessageBox.Show(EditorPanelLocalizer.Text("AI_NoMapLoaded", "No map is currently loaded."), EditorPanelLocalizer.Text("AI_ExecuteCommandsTitle", "Execute Commands"),
@@ -445,6 +548,9 @@ namespace HaCreator.GUI.EditorPanels
             try
             {
                 var result = ExecuteCommandText(commandText);
+                // Never replay a partially applied batch: retries must be generated from fresh state.
+                _chatSession.LastAssistantMessage.CommandsApplied = true;
+                btnExecute.IsEnabled = false;
                 if (result == null)
                 {
                     MessageBox.Show(EditorPanelLocalizer.Text("AI_NoValidCommands", "No valid commands found in the generated output."),
@@ -486,8 +592,9 @@ namespace HaCreator.GUI.EditorPanels
                 return null;
 
             var executor = new MapAIExecutor(board);
+            int undoCount = board.UndoRedoMan.UndoList.Count;
             var result = executor.ExecuteCommands(commands);
-            if (result.SuccessCount > 0)
+            if (result.SuccessCount > 0 || board.UndoRedoMan.UndoList.Count != undoCount)
             {
                 board.Dirty = true;
                 LoadMapContext();
@@ -498,6 +605,13 @@ namespace HaCreator.GUI.EditorPanels
 
         private string ApplyMcpCommand(string commandText)
         {
+            return Dispatcher.Invoke(() => isProcessing
+                ? "# ERROR: The built-in AI is editing this map. Wait or stop it before external edits."
+                : ApplySessionCommand(commandText));
+        }
+
+        private string ApplySessionCommand(string commandText)
+        {
             ExecutionResult result = null;
             Exception error = null;
 
@@ -505,7 +619,19 @@ namespace HaCreator.GUI.EditorPanels
             {
                 try
                 {
+                    requestCancellation?.Token.ThrowIfCancellationRequested();
+                    var undo = board.UndoRedoMan;
+                    int previousCount = undo.UndoList.Count;
+                    bool followsSession = isProcessing && previousCount > 0 &&
+                        ReferenceEquals(undo.UndoList[previousCount - 1], lastSessionUndo);
                     result = ExecuteCommandText(commandText);
+                    if (isProcessing && undo.UndoList.Count > previousCount)
+                    {
+                        // Merge only consecutive AI operations. Never absorb a manual edit
+                        // made in the map editor while the model was awaiting its next turn.
+                        if (followsSession) undo.CollapseUndoBatches(previousCount - 1);
+                        lastSessionUndo = undo.UndoList.Last();
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -525,7 +651,30 @@ namespace HaCreator.GUI.EditorPanels
             if (result.FailCount > 0)
                 return $"# ERROR: {result.SuccessCount} succeeded, {result.FailCount} failed. {string.Join("; ", result.Log)}";
 
-            return $"Applied {result.SuccessCount} map command(s).";
+            return $"Applied {result.SuccessCount} map command(s). {string.Join("; ", result.Log)}";
+        }
+
+        private void BtnStop_Click(object sender, RoutedEventArgs e) => requestCancellation?.Cancel();
+
+        private void RefreshApplyMode()
+        {
+            chkLiveEdits.IsChecked = AISettings.AutoApplyCommands;
+            btnExecute.Visibility = _chatSession.HasCommands ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        private void LiveEdits_Click(object sender, RoutedEventArgs e)
+        {
+            AISettings.AutoApplyCommands = chkLiveEdits.IsChecked == true;
+            RefreshApplyMode();
+        }
+
+        private void BtnUndo_Click(object sender, RoutedEventArgs e)
+        {
+            if (isProcessing || board.UndoRedoMan.UndoList.Count == 0) return;
+            board.UndoRedoMan.Undo();
+            board.Dirty = true;
+            LoadMapContext();
+            txtProgress.Text = "Undid the latest map operation";
         }
 
         private void BtnMcpConnection_Click(object sender, RoutedEventArgs e)
@@ -536,222 +685,6 @@ namespace HaCreator.GUI.EditorPanels
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
         }
-
-        private async void BtnRunTests_Click(object sender, RoutedEventArgs e)
-        {
-            if (isProcessing)
-            {
-                return;
-            }
-
-            if (!EnsureAIConfiguration())
-            {
-                return;
-            }
-
-            if (board == null)
-            {
-                MessageBox.Show(EditorPanelLocalizer.Text("AI_NoMapLoaded", "No map is currently loaded."), EditorPanelLocalizer.Text("AI_RunTestsTitle", "Run Tests"),
-                    MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-
-            try
-            {
-                isProcessing = true;
-                menuRunTests.IsEnabled = false;
-                btnSend.IsEnabled = false;
-
-                // Load test prompt
-                var testPrompt = MapEditorPromptBuilder.LoadPromptFile("ComprehensiveTestPrompt.txt");
-
-                // Clear chat and add test prompt as user message
-                _chatSession.Clear();
-                _chatSession.AddUserMessage("=== RUNNING AUTOMATED TESTS ===\n\n" + testPrompt);
-
-                // Add placeholder assistant message
-                var assistantMessage = _chatSession.AddAssistantMessage();
-
-                // Get map context
-                var serializer = new MapAISerializer(board);
-                _chatSession.CurrentMapContext = serializer.GenerateAISummary();
-
-                // Run AI processing (uses configured provider)
-                var orchestrator = new AgentOrchestrator();
-                string result = await orchestrator.ProcessWithConversationAsync(
-                    _chatSession.CurrentMapContext,
-                    _chatSession.ToConversationHistory(),
-                    testPrompt);
-
-                // Parse and update assistant message
-                var (explanation, commands) = ParseAIResponse(result);
-                assistantMessage.IsProcessing = false;
-                await StreamAssistantTextAsync(assistantMessage, explanation, CancellationToken.None);
-                assistantMessage.CommandsContent = commands;
-
-                // Calculate and display test score
-                var testResults = CalculateTestScore(commands);
-                DisplayTestResults(testResults);
-            }
-            catch (Exception ex)
-            {
-                if (_chatSession.LastAssistantMessage != null)
-                {
-                    _chatSession.LastAssistantMessage.IsProcessing = false;
-                    _chatSession.LastAssistantMessage.HasError = true;
-                    _chatSession.LastAssistantMessage.ErrorMessage = BuildAIErrorMessage(ex, "Test error");
-                }
-
-                MaybeOpenAISettingsForError(ex);
-            }
-            finally
-            {
-                isProcessing = false;
-                menuRunTests.IsEnabled = true;
-                btnSend.IsEnabled = true;
-                btnExecute.IsEnabled = _chatSession.HasCommands && !AISettings.AutoApplyCommands;
-            }
-        }
-
-        #endregion
-
-        #region Test Scoring
-
-        private TestResults CalculateTestScore(string output)
-        {
-            var results = new TestResults();
-            var lines = output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-
-            foreach (var line in lines)
-            {
-                // Query functions
-                if (line.Contains("# QUERY: get_mob_list")) results.QueryMobList = true;
-                if (line.Contains("# QUERY: get_npc_list")) results.QueryNpcList = true;
-                if (line.Contains("# QUERY: get_object_info")) results.QueryObjectInfo = true;
-                if (line.Contains("# QUERY: get_background_info")) results.QueryBackgroundInfo = true;
-                if (line.Contains("# QUERY: get_bgm_list")) results.QueryBgmList = true;
-
-                // Warnings (query violations)
-                if (line.Contains("# WARNING:")) results.QueryViolations++;
-
-                // Platforms
-                if (line.StartsWith("ADD PLATFORM")) results.PlatformsCreated++;
-
-                // Tiles
-                if (line.StartsWith("TILE STRUCTURE") || line.StartsWith("TILE PLATFORM")) results.TilesCreated++;
-
-                // Mobs with patrol ranges
-                if (line.StartsWith("ADD MOB") && line.Contains("rx0=") && line.Contains("rx1=")) results.MobsWithPatrol++;
-                else if (line.StartsWith("ADD MOB")) results.MobsWithoutPatrol++;
-
-                // NPCs
-                if (line.StartsWith("ADD NPC")) results.NpcsCreated++;
-
-                // Objects
-                if (line.StartsWith("ADD OBJECT")) results.ObjectsCreated++;
-
-                // Backgrounds
-                if (line.StartsWith("ADD BACKGROUND")) results.BackgroundsCreated++;
-
-                // Portals
-                if (line.StartsWith("ADD PORTAL")) results.PortalsCreated++;
-
-                // Walls, Ropes, Ladders
-                if (line.StartsWith("ADD WALL")) results.WallsCreated++;
-                if (line.StartsWith("ADD ROPE")) results.RopesCreated++;
-                if (line.StartsWith("ADD LADDER")) results.LaddersCreated++;
-
-                // Settings
-                if (line.StartsWith("SET MAP_SIZE")) results.MapSizeSet = true;
-                if (line.StartsWith("SET VR")) results.VRSet = true;
-                if (line.Contains("SET MAP_OPTION") && line.Contains("snow")) results.SnowEnabled = true;
-                if (line.Contains("SET MAP_OPTION") && line.Contains("town")) results.TownSet = true;
-                if (line.StartsWith("SET MOB_RATE")) results.MobRateSet = true;
-                if (line.StartsWith("SET RETURN_MAP")) results.ReturnMapSet = true;
-                if (line.StartsWith("SET LEVEL_LIMIT")) results.LevelLimitSet = true;
-                if (line.StartsWith("SET FIELD_LIMIT")) results.FieldLimitSet = true;
-                if (line.StartsWith("SET MAP_DESC")) results.MapDescSet = true;
-                if (line.StartsWith("SET HELP")) results.HelpSet = true;
-                if (line.StartsWith("ADD TOOLTIP")) results.TooltipAdded = true;
-                if (line.StartsWith("SET BGM")) results.BgmSet = true;
-            }
-
-            return results;
-        }
-
-        private void DisplayTestResults(TestResults results)
-        {
-            int passed = 0;
-            int total = 0;
-
-            // Count passed tests
-            passed += (results.QueryMobList ? 1 : 0); total++;
-            passed += (results.QueryNpcList ? 1 : 0); total++;
-            passed += (results.QueryObjectInfo ? 1 : 0); total++;
-            passed += (results.QueryBackgroundInfo ? 1 : 0); total++;
-            passed += (results.QueryBgmList ? 1 : 0); total++;
-            passed += (results.QueryViolations == 0 ? 1 : 0); total++;
-            passed += (results.PlatformsCreated >= 3 ? 1 : 0); total++;
-            passed += (results.TilesCreated >= 1 ? 1 : 0); total++;
-            passed += (results.WallsCreated >= 2 ? 1 : 0); total++;
-            passed += (results.RopesCreated >= 1 ? 1 : 0); total++;
-            passed += (results.LaddersCreated >= 1 ? 1 : 0); total++;
-            passed += (results.MobsWithPatrol >= 5 ? 1 : 0); total++;
-            passed += (results.MobsWithoutPatrol == 0 ? 1 : 0); total++;
-            passed += (results.NpcsCreated >= 2 ? 1 : 0); total++;
-            passed += (results.ObjectsCreated >= 3 ? 1 : 0); total++;
-            passed += (results.BackgroundsCreated >= 2 ? 1 : 0); total++;
-            passed += (results.PortalsCreated >= 3 ? 1 : 0); total++;
-            passed += (results.MapSizeSet ? 1 : 0); total++;
-            passed += (results.VRSet ? 1 : 0); total++;
-            passed += (results.SnowEnabled ? 1 : 0); total++;
-            passed += (results.TownSet ? 1 : 0); total++;
-            passed += (results.MobRateSet ? 1 : 0); total++;
-            passed += (results.ReturnMapSet ? 1 : 0); total++;
-            passed += (results.LevelLimitSet ? 1 : 0); total++;
-            passed += (results.FieldLimitSet ? 1 : 0); total++;
-            passed += (results.MapDescSet ? 1 : 0); total++;
-            passed += (results.HelpSet ? 1 : 0); total++;
-            passed += (results.TooltipAdded ? 1 : 0); total++;
-            passed += (results.BgmSet ? 1 : 0); total++;
-
-            double percentage = total > 0 ? (double)passed / total * 100 : 0;
-            string grade = percentage >= 95 ? "A+" :
-                          percentage >= 90 ? "A" :
-                          percentage >= 85 ? "B+" :
-                          percentage >= 80 ? "B" :
-                          percentage >= 70 ? "C" :
-                          percentage >= 60 ? "D" : "F";
-
-            MessageBox.Show(
-                $"Test Results: {passed}/{total} passed ({percentage:F1}%)\n\nGrade: {grade}\n\n" +
-                $"Query Functions: {(results.QueryMobList && results.QueryNpcList && results.QueryObjectInfo && results.QueryBackgroundInfo && results.QueryBgmList ? "All called" : "Some missing")}\n" +
-                $"Query Violations: {results.QueryViolations}\n" +
-                $"Mobs with Patrol: {results.MobsWithPatrol}\n" +
-                $"Settings Applied: {CountSettings(results)}/12",
-                "Test Results",
-                MessageBoxButton.OK,
-                percentage >= 90 ? MessageBoxImage.Information : MessageBoxImage.Warning);
-        }
-
-        private int CountSettings(TestResults results)
-        {
-            int count = 0;
-            if (results.MapSizeSet) count++;
-            if (results.VRSet) count++;
-            if (results.SnowEnabled) count++;
-            if (results.TownSet) count++;
-            if (results.MobRateSet) count++;
-            if (results.ReturnMapSet) count++;
-            if (results.LevelLimitSet) count++;
-            if (results.FieldLimitSet) count++;
-            if (results.MapDescSet) count++;
-            if (results.HelpSet) count++;
-            if (results.TooltipAdded) count++;
-            if (results.BgmSet) count++;
-            return count;
-        }
-
 
         private void BtnAISettings_Click(object sender, RoutedEventArgs e)
         {
@@ -795,6 +728,7 @@ namespace HaCreator.GUI.EditorPanels
                 StartPosition = System.Windows.Forms.FormStartPosition.CenterParent
             };
             dialog.ShowDialog();
+            RefreshApplyMode();
         }
 
         private static string BuildAIErrorMessage(Exception ex, string prefix = "Error")
@@ -802,85 +736,6 @@ namespace HaCreator.GUI.EditorPanels
             var message = $"{prefix}: {ex.Message}";
 
             return message;
-        }
-
-        private async Task StreamAssistantTextAsync(ChatMessage message, string text, CancellationToken cancellationToken)
-        {
-            if (message == null)
-            {
-                return;
-            }
-
-            if (string.IsNullOrWhiteSpace(text))
-            {
-                message.Content = text ?? string.Empty;
-                return;
-            }
-
-            var fullText = text;
-            var length = fullText.Length;
-            var updatesTarget = 60;
-            var chunkSize = Math.Max(1, length / updatesTarget);
-            var delayMs = length > 1500 ? 8 : 14;
-
-            message.Content = string.Empty;
-
-            for (int i = chunkSize; i < length; i += chunkSize)
-            {
-                if (cancellationToken.IsCancellationRequested)
-                {
-                    break;
-                }
-
-                message.Content = fullText.Substring(0, i);
-                await Task.Delay(delayMs, cancellationToken);
-            }
-
-            message.Content = fullText;
-        }
-
-        private class TestResults
-        {
-            // Query functions called
-            public bool QueryMobList { get; set; }
-            public bool QueryNpcList { get; set; }
-            public bool QueryObjectInfo { get; set; }
-            public bool QueryBackgroundInfo { get; set; }
-            public bool QueryBgmList { get; set; }
-            public int QueryViolations { get; set; }
-
-            // Structure
-            public int PlatformsCreated { get; set; }
-            public int TilesCreated { get; set; }
-            public int WallsCreated { get; set; }
-            public int RopesCreated { get; set; }
-            public int LaddersCreated { get; set; }
-
-            // Life
-            public int MobsWithPatrol { get; set; }
-            public int MobsWithoutPatrol { get; set; }
-            public int NpcsCreated { get; set; }
-
-            // Decoration
-            public int ObjectsCreated { get; set; }
-            public int BackgroundsCreated { get; set; }
-
-            // Portals
-            public int PortalsCreated { get; set; }
-
-            // Settings
-            public bool MapSizeSet { get; set; }
-            public bool VRSet { get; set; }
-            public bool SnowEnabled { get; set; }
-            public bool TownSet { get; set; }
-            public bool MobRateSet { get; set; }
-            public bool ReturnMapSet { get; set; }
-            public bool LevelLimitSet { get; set; }
-            public bool FieldLimitSet { get; set; }
-            public bool MapDescSet { get; set; }
-            public bool HelpSet { get; set; }
-            public bool TooltipAdded { get; set; }
-            public bool BgmSet { get; set; }
         }
 
         #endregion

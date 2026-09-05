@@ -267,7 +267,7 @@
 
                             <!-- Commands section (collapsible) -->
                             <Expander Header="Generated Commands"
-                                      IsExpanded="True"
+                                      IsExpanded="False"
                                       Margin="0,8,0,0"
                                       FontSize="11">
                                 <Expander.Style>
@@ -321,9 +321,6 @@
                           ToolTip="Configure the AI endpoint, model, and API key"/>
                 <MenuItem x:Name="menuMcpConnection" Header="_MCP Connection" Click="BtnMcpConnection_Click"
                           ToolTip="Show the local MCP endpoint and authorization token for external clients"/>
-                <Separator/>
-                <MenuItem x:Name="menuRunTests" Header="_Run Tests" Click="BtnRunTests_Click"
-                          ToolTip="Run automated tests to verify AI agent capabilities"/>
             </MenuItem>
         </Menu>
 
@@ -355,7 +352,19 @@
                             Click="BtnRefresh_Click"
                             ToolTip="Refresh map context after making changes"/>
                 </Grid>
-                <TextBox x:Name="txtMapContext" Grid.Row="1"
+                <TabControl Grid.Row="1" Margin="0,6,0,0">
+                    <TabItem Header="Map view">
+                        <Grid Background="#20242A">
+                            <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                            <Image x:Name="imgMapPreview" Stretch="Uniform" Margin="4"
+                                   MouseLeftButtonDown="MapPreview_MouseLeftButtonDown" Cursor="Cross"
+                                   ToolTip="Click artwork to insert an exact world coordinate into your request"/>
+                            <TextBlock Grid.Row="1" Text="Fit to content • green: footholds • cyan: ropes&#x0a;Static artwork; backgrounds and effects omitted"
+                                       Foreground="#CBD5E1" FontSize="11" Margin="8" TextWrapping="Wrap"/>
+                        </Grid>
+                    </TabItem>
+                    <TabItem Header="Geometry">
+                <TextBox x:Name="txtMapContext"
                          IsReadOnly="True"
                          AcceptsReturn="True"
                          TextWrapping="Wrap"
@@ -365,6 +374,8 @@
                          FontSize="10"
                          Padding="10"
                          Background="White" BorderBrush="{StaticResource DividerBrush}"/>
+                    </TabItem>
+                </TabControl>
             </Grid>
 
             <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Center"
@@ -385,6 +396,15 @@
                             Style="{StaticResource ToolbarButtonStyle}"
                             Click="BtnClearChat_Click"
                             ToolTip="Start a new conversation"/>
+                    <Button x:Name="btnUndo" Content="Undo"
+                            Style="{StaticResource ToolbarButtonStyle}" Click="BtnUndo_Click"
+                            ToolTip="Undo the latest map operation"/>
+                    <Button x:Name="btnStop" Content="Stop" IsEnabled="False"
+                            Style="{StaticResource ToolbarButtonStyle}" Click="BtnStop_Click"
+                            ToolTip="Stop after the current map operation"/>
+                    <CheckBox x:Name="chkLiveEdits" Content="Apply as it works" VerticalAlignment="Center"
+                              Margin="8,0,0,0" Click="LiveEdits_Click"
+                              ToolTip="Apply changes immediately with undo. Turn off to review commands before applying."/>
                 </StackPanel>
 
                 <!-- Chat Messages Area -->
@@ -436,12 +456,16 @@
                 </Grid>
 
                 <!-- Execute Commands Button -->
-                <Button x:Name="btnExecute" Grid.Row="3"
+                <StackPanel Grid.Row="3">
+                    <TextBlock x:Name="txtProgress" Text="GPT-6 Astra • Describe a change, or click the map to choose a location."
+                               TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,6,0,0"/>
+                <Button x:Name="btnExecute" IsEnabled="False"
                         Content="Apply Latest Commands"
                         Style="{StaticResource SuccessButtonStyle}"
                         Margin="0,8,0,0"
                         Click="BtnExecute_Click"
                         ToolTip="Apply the commands from the last AI response"/>
+                </StackPanel>
             </Grid>
         </Grid>
     </Grid>

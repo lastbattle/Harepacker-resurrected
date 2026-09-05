@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using HaCreator.MapEditor.Info;
@@ -19,6 +19,8 @@ namespace HaCreator.MapEditor.AI
     {
         private readonly Board board;
         private readonly List<string> executionLog;
+        private bool generateTileFootholds;
+        private Dictionary<(int x, int y, int layer, int platform), FootholdAnchor> structureAnchors;
 
         public MapAIExecutor(Board board)
         {
@@ -493,6 +495,13 @@ namespace HaCreator.MapEditor.AI
             int x = Convert.ToInt32(xObj);
             int topY = Convert.ToInt32(topYObj);
             int bottomY = Convert.ToInt32(bottomYObj);
+            if (topY > bottomY)
+                (topY, bottomY) = (bottomY, topY);
+            if (topY == bottomY)
+            {
+                Log("Rope/ladder endpoints must have different Y coordinates");
+                return false;
+            }
 
             // Get layer (default to 0)
             int layer = 0;
@@ -553,11 +562,24 @@ namespace HaCreator.MapEditor.AI
             int x = Convert.ToInt32(xObj);
             int topY = Convert.ToInt32(topYObj);
             int bottomY = Convert.ToInt32(bottomYObj);
+            if (topY > bottomY)
+                (topY, bottomY) = (bottomY, topY);
+            if (topY == bottomY)
+            {
+                Log("Rope/ladder endpoints must have different Y coordinates");
+                return false;
+            }
 
             // Get layer (default to 0)
             int layer = 0;
             if (command.Parameters.TryGetValue("layer", out var layerObj))
                 layer = Convert.ToInt32(layerObj);
+
+            if (layer < 0 || layer >= board.Layers.Count)
+            {
+                Log($"Invalid rope/ladder layer: {layer}");
+                return false;
+            }
 
             // Get uf (upper foothold) - default to true
             bool uf = true;
@@ -798,10 +820,11 @@ namespace HaCreator.MapEditor.AI
                 {
                     // Create the object instance using the simple overload
                     var obj = (ObjectInstance)objectInfo.CreateInstance(layer, board, x, adjustedY, z, flip);
-                    board.BoardItems.TileObjs.Add(obj);
-
-                    // Record for undo
-                    board.UndoRedoMan.AddUndoBatch(new List<UndoRedoAction> { UndoRedoManager.ItemAdded(obj) });
+                    // Include bound native footholds/chairs in the same undo operation.
+                    var actions = new List<UndoRedoAction>();
+                    RecordPlacement(obj, actions);
+                    obj.AddToBoard(null);
+                    board.UndoRedoMan.AddUndoBatch(actions);
                 }
 
                 Log($"Added object oS={oS} l0={l0} l1={l1} l2={l2} at ({x}, {adjustedY}) layer={layerNum}");
@@ -932,213 +955,17 @@ namespace HaCreator.MapEditor.AI
 
         private bool ExecuteTilePlatform(MapAICommand command)
         {
-            // Get required parameters
-            if (!command.Parameters.TryGetValue("tileset", out var tilesetObj))
+            // Use the same grid, origin handling and collision geometry as flat structures.
+            var structure = new MapAICommand
             {
-                Log("TILE PLATFORM requires tileset parameter");
-                return false;
-            }
-            if (!command.Parameters.TryGetValue("start_x", out var startXObj))
-            {
-                Log("TILE PLATFORM requires start_x parameter");
-                return false;
-            }
-            if (!command.Parameters.TryGetValue("end_x", out var endXObj))
-            {
-                Log("TILE PLATFORM requires end_x parameter");
-                return false;
-            }
-            if (!command.Parameters.TryGetValue("y", out var yObj))
-            {
-                Log("TILE PLATFORM requires y parameter");
-                return false;
-            }
-
-            string tileset = tilesetObj.ToString();
-            int startX = Convert.ToInt32(startXObj);
-            int endX = Convert.ToInt32(endXObj);
-            int y = Convert.ToInt32(yObj);
-
-            // Ensure start_x < end_x
-            if (startX > endX)
-            {
-                int temp = startX;
-                startX = endX;
-                endX = temp;
-            }
-
-            // Get layer (default to 0)
-            int layerNum = 0;
-            if (command.Parameters.TryGetValue("layer", out var layerObj))
-                layerNum = Convert.ToInt32(layerObj);
-
-            // Validate tileset exists
-            if (!Program.InfoManager.TileSets.ContainsKey(tileset))
-            {
-                var availableTilesets = Program.InfoManager.TileSets.Keys.Take(20).ToList();
-                var tilesetList = string.Join(", ", availableTilesets);
-                Log($"Tileset '{tileset}' not found. Available: {tilesetList}");
-                return false;
-            }
-
-            try
-            {
-                // Get the layer
-                if (layerNum < 0 || layerNum >= board.Layers.Count)
-                {
-                    Log($"Invalid layer number: {layerNum}");
-                    return false;
-                }
-                Layer layer = board.Layers[layerNum];
-
-                // Set the layer's tileset
-                if (string.IsNullOrEmpty(layer.tS))
-                {
-                    layer.tS = tileset;
-                }
-                else if (layer.tS != tileset)
-                {
-                    // Find a compatible layer
-                    bool found = false;
-                    for (int i = 0; i < board.Layers.Count; i++)
-                    {
-                        if (board.Layers[i].tS == tileset || string.IsNullOrEmpty(board.Layers[i].tS))
-                        {
-                            layer = board.Layers[i];
-                            if (string.IsNullOrEmpty(layer.tS)) layer.tS = tileset;
-                            layerNum = i;
-                            found = true;
-                            break;
-                        }
-                    }
-                    if (!found)
-                    {
-                        Log($"No available layer for tileset '{tileset}'");
-                        return false;
-                    }
-                }
-
-                // Tile categories for a complete platform structure:
-                // Top row: enH0 (horizontal enclosure top) - caps the top
-                // Middle: bsc (basic fill) - only if platform is tall enough
-                // Bottom row: enH1 (horizontal enclosure bottom) - caps the bottom
-                // Left edge: enV0 (vertical enclosure left)
-                // Right edge: enV1 (vertical enclosure right)
-
-                TileInfo topTile = null;      // enH0
-                TileInfo bottomTile = null;   // enH1
-                TileInfo fillTile = null;     // bsc
-                TileInfo leftTile = null;     // enV0
-                TileInfo rightTile = null;    // enV1
-
-                try { topTile = TileInfo.Get(tileset, "enH0", "0"); } catch { }
-                try { bottomTile = TileInfo.Get(tileset, "enH1", "0"); } catch { }
-                try { fillTile = TileInfo.Get(tileset, "bsc", "0"); } catch { }
-                try { leftTile = TileInfo.Get(tileset, "enV0", "0"); } catch { }
-                try { rightTile = TileInfo.Get(tileset, "enV1", "0"); } catch { }
-
-                // We need at least enH0 for top and bsc or enH1 for structure
-                if (topTile == null && fillTile == null)
-                {
-                    Log($"Tileset '{tileset}' doesn't have required categories (enH0, bsc). Cannot auto-tile.");
-                    return false;
-                }
-
-                int tilesAdded = 0;
-                int platformWidth = endX - startX;
-
-                // Determine tile dimensions
-                int tileWidth = fillTile?.Width ?? topTile?.Width ?? 90;
-                int tileHeight = fillTile?.Height ?? topTile?.Height ?? 90;
-
-                // For a proper platform, we create 2 rows:
-                // Row 1 (top): enH0 tiles to cap the top
-                // Row 2 (bottom): enH1 tiles to cap the bottom
-                // The Y coordinate given is the platform surface, so:
-                // - Top row is at y (surface level)
-                // - If we have a bottom row, it's below
-
-                // Lock the board during tile additions to prevent concurrent access from render thread
-                lock (board.ParentControl)
-                {
-                    // === TOP ROW (enH0) - at the surface Y ===
-                    if (topTile != null)
-                    {
-                        int currentX = startX;
-                        int topTileWidth = topTile.Width;
-
-                        // Place left cap if available
-                        if (leftTile != null)
-                        {
-                            var tile = (TileInstance)leftTile.CreateInstance(layer, board, currentX, y, 0, layer.zMDefault, false, true);
-                            board.BoardItems.TileObjs.Add(tile);
-                            currentX += leftTile.Width;
-                            tilesAdded++;
-                        }
-
-                        // Fill with top tiles
-                        int rightWidth = rightTile?.Width ?? 0;
-                        while (currentX + topTileWidth <= endX - rightWidth)
-                        {
-                            var tile = (TileInstance)topTile.CreateInstance(layer, board, currentX, y, 0, layer.zMDefault, false, true);
-                            board.BoardItems.TileObjs.Add(tile);
-                            currentX += topTileWidth;
-                            tilesAdded++;
-                        }
-
-                        // Place right cap if available
-                        if (rightTile != null && currentX < endX)
-                        {
-                            var tile = (TileInstance)rightTile.CreateInstance(layer, board, currentX, y, 0, layer.zMDefault, false, true);
-                            board.BoardItems.TileObjs.Add(tile);
-                            tilesAdded++;
-                        }
-                    }
-
-                    // === BOTTOM ROW (enH1) - below the top row ===
-                    if (bottomTile != null && topTile != null)
-                    {
-                        int bottomY = y + topTile.Height;
-                        int currentX = startX;
-                        int bottomTileWidth = bottomTile.Width;
-
-                        // Place left cap if available
-                        if (leftTile != null)
-                        {
-                            var tile = (TileInstance)leftTile.CreateInstance(layer, board, currentX, bottomY, 0, layer.zMDefault, false, true);
-                            board.BoardItems.TileObjs.Add(tile);
-                            currentX += leftTile.Width;
-                            tilesAdded++;
-                        }
-
-                        // Fill with bottom tiles
-                        int rightWidth = rightTile?.Width ?? 0;
-                        while (currentX + bottomTileWidth <= endX - rightWidth)
-                        {
-                            var tile = (TileInstance)bottomTile.CreateInstance(layer, board, currentX, bottomY, 0, layer.zMDefault, false, true);
-                            board.BoardItems.TileObjs.Add(tile);
-                            currentX += bottomTileWidth;
-                            tilesAdded++;
-                        }
-
-                        // Place right cap if available
-                        if (rightTile != null && currentX < endX)
-                        {
-                            var tile = (TileInstance)rightTile.CreateInstance(layer, board, currentX, bottomY, 0, layer.zMDefault, false, true);
-                            board.BoardItems.TileObjs.Add(tile);
-                            tilesAdded++;
-                        }
-                    }
-                } // End lock
-
-                Log($"Auto-tiled platform from x={startX} to x={endX} at y={y} with {tilesAdded} tiles (2 rows) using '{tileset}'");
-                return true;
-            }
-            catch (Exception ex)
-            {
-                Log($"Failed to tile platform: {ex.Message}");
-                return false;
-            }
+                Type = CommandType.TileStructure,
+                ElementType = ElementType.Tile,
+                IsValid = true,
+                OriginalText = command.OriginalText,
+                Parameters = new Dictionary<string, object>(command.Parameters)
+            };
+            structure.Parameters["structure_type"] = "flat";
+            return ExecuteTileStructure(structure);
         }
 
         private bool ExecuteTileStructure(MapAICommand command)
@@ -1178,11 +1005,11 @@ namespace HaCreator.MapEditor.AI
             }
             else if (command.Parameters.TryGetValue("width", out var widthObj))
             {
-                endX = startX + Convert.ToInt32(widthObj);
+                endX = checked(startX + Convert.ToInt32(widthObj));
             }
             else
             {
-                endX = startX + 200; // Default width
+                endX = checked(startX + 200); // Default width
             }
 
             int height = command.Parameters.TryGetValue("height", out var heightObj) ? Convert.ToInt32(heightObj) : 3;
@@ -1193,6 +1020,12 @@ namespace HaCreator.MapEditor.AI
                 int temp = startX;
                 startX = endX;
                 endX = temp;
+            }
+
+            if (startX == endX || (long)endX - startX > 100000 || height < 1 || height > 1000)
+            {
+                Log("Structure requires a nonzero width up to 100000 pixels and height between 1 and 1000 rows");
+                return false;
             }
 
             // Get layer (default to 0)
@@ -1209,6 +1042,7 @@ namespace HaCreator.MapEditor.AI
                 return false;
             }
 
+            int firstUndoBatch = board.UndoRedoMan.UndoList.Count;
             try
             {
                 // Get or prepare layer
@@ -1217,13 +1051,6 @@ namespace HaCreator.MapEditor.AI
                     Log($"Invalid layer number: {layerNum}");
                     return false;
                 }
-                Layer layer = GetOrPrepareLayer(tileset, layerNum);
-                if (layer == null)
-                {
-                    Log($"No available layer for tileset '{tileset}'");
-                    return false;
-                }
-
                 // Load all possible tile types
                 var tiles = LoadTileTypes(tileset);
                 if (tiles.enH0 == null && tiles.bsc == null)
@@ -1232,19 +1059,62 @@ namespace HaCreator.MapEditor.AI
                     return false;
                 }
 
+                string requiredSlope = structureType switch
+                {
+                    "slope_up_left" => "slRU",
+                    "slope_up_right" => "slLU",
+                    "slope_down_left" => "slLU",
+                    "slope_down_right" => "slRU",
+                    _ => null
+                };
+                if (requiredSlope != null && (TryGetTile(tileset, requiredSlope) == null || tiles.bsc == null ||
+                    (long)endX - startX < (long)height * tiles.TileWidth))
+                {
+                    Log($"Slope requires '{requiredSlope}', bsc fill, and width of at least {height * tiles.TileWidth} pixels");
+                    return false;
+                }
+                if (tiles.enH0 == null ||
+                    ((structureType == "flat" || structureType == "tall") && (long)endX - startX < tiles.TileWidth))
+                {
+                    Log($"Structure requires enH0 surface tiles and flat/tall width of at least {tiles.TileWidth} pixels");
+                    return false;
+                }
+                if (((long)endX - startX) / tiles.TileWidth * height > 20000)
+                {
+                    Log("Structure exceeds 20000 tile positions; split it into smaller structures");
+                    return false;
+                }
+
+                Layer layer = GetOrPrepareLayer(tileset, layerNum);
+                if (layer == null)
+                {
+                    Log($"No available layer for tileset '{tileset}'");
+                    return false;
+                }
+
+                layerNum = layer.LayerNumber;
+
                 int tilesAdded = 0;
 
-                // Offset tiles to the right by half edU width to align with foothold
-                int tileOffset = (tiles.edU?.Width ?? tiles.TileWidth) / 2;
-                int adjustedStartX = startX + tileOffset;
-                int adjustedEndX = endX + tileOffset;
-
-                // Foothold Y position adjusted to align with edU visual top
-                // Move up by edU origin.Y to match the walking surface at the top of the tile
+                // Structure coordinates describe the base walking surface in world coordinates.
+                // Native tile collision offsets are independent of bitmap origins (grass
+                // can extend above the walkable ground), so prefer the asset's footholds.
+                bool flatSurface = structureType == "flat" || structureType == "tall";
+                int adjustedStartX = startX;
+                int adjustedEndX = endX;
                 int footholdY = y;
-                if (tiles.edU != null)
+                bool createFootholds = !command.Parameters.TryGetValue("create_foothold", out var createFootholdValue)
+                    || Convert.ToBoolean(createFootholdValue);
+                generateTileFootholds = !flatSurface && createFootholds;
+                structureAnchors = generateTileFootholds ? new() : null;
+                if (tiles.enH0 != null)
                 {
-                    footholdY = y - tiles.edU.Origin.Y;
+                    var offsets = tiles.enH0.FootholdOffsets;
+                    int surfaceOffsetY = offsets.Count > 0 ? offsets.Min(point => point.Y) : -tiles.enH0.Origin.Y;
+                    int surfaceOffsetX = offsets.Count > 0 ? offsets.Min(point => point.X) : -tiles.enH0.Origin.X;
+                    adjustedStartX = checked(startX - surfaceOffsetX);
+                    adjustedEndX = checked(endX - surfaceOffsetX);
+                    y = checked(y - surfaceOffsetY);
                 }
 
                 switch (structureType)
@@ -1264,16 +1134,16 @@ namespace HaCreator.MapEditor.AI
                         tilesAdded = BuildPillar(layer, tiles, adjustedStartX, y, height);
                         break;
                     case "slope_up_left":
-                        tilesAdded = BuildSlopeUpLeft(layer, tiles, adjustedStartX, adjustedEndX, y, height);
+                        tilesAdded = BuildWalkableSlope(layer, tiles, adjustedStartX, adjustedEndX, y, height, true, false);
                         break;
                     case "slope_up_right":
-                        tilesAdded = BuildSlopeUpRight(layer, tiles, adjustedStartX, adjustedEndX, y, height);
+                        tilesAdded = BuildWalkableSlope(layer, tiles, adjustedStartX, adjustedEndX, y, height, false, true);
                         break;
                     case "slope_down_left":
-                        tilesAdded = BuildSlopeDownLeft(layer, tiles, adjustedStartX, adjustedEndX, y, height);
+                        tilesAdded = BuildWalkableSlope(layer, tiles, adjustedStartX, adjustedEndX, y, height, true, true);
                         break;
                     case "slope_down_right":
-                        tilesAdded = BuildSlopeDownRight(layer, tiles, adjustedStartX, adjustedEndX, y, height);
+                        tilesAdded = BuildWalkableSlope(layer, tiles, adjustedStartX, adjustedEndX, y, height, false, false);
                         break;
                     case "staircase_right":
                         tilesAdded = BuildStaircaseRight(layer, tiles, adjustedStartX, y, height);
@@ -1287,18 +1157,24 @@ namespace HaCreator.MapEditor.AI
                 }
 
                 // Automatically create a foothold for flat/tall platforms at the correct Y position
-                if (tilesAdded > 0 && (structureType == "flat" || structureType == "tall"))
+                if (tilesAdded > 0 && flatSurface && createFootholds)
                 {
                     CreateFootholdForTileStructure(layerNum, startX, endX, footholdY);
                 }
 
-                Log($"Built {structureType} structure at x={startX} y={y} with {tilesAdded} tiles using '{tileset}'");
+                Log($"Built {structureType} structure at x={startX}, base surface y={footholdY} (tile anchor y={y}) with {tilesAdded} tiles using '{tileset}'");
                 return tilesAdded > 0;
             }
             catch (Exception ex)
             {
                 Log($"Failed to build tile structure: {ex.Message}");
                 return false;
+            }
+            finally
+            {
+                generateTileFootholds = false;
+                structureAnchors = null;
+                board.UndoRedoMan.CollapseUndoBatches(firstUndoBatch);
             }
         }
 
@@ -1447,6 +1323,9 @@ namespace HaCreator.MapEditor.AI
             }
             catch { tiles.mag = 1; }
 
+            if (tiles.mag <= 0 || tiles.mag > 1000)
+                throw new InvalidOperationException($"Invalid tileset magnification: {tiles.mag}");
+
             // Try to load each tile type, logging failures
             tiles.enH0 = TryGetTile(tileset, "enH0");
             tiles.enH1 = TryGetTile(tileset, "enH1");
@@ -1502,30 +1381,49 @@ namespace HaCreator.MapEditor.AI
         private Layer GetOrPrepareLayer(string tileset, int preferredLayer)
         {
             Layer layer = board.Layers[preferredLayer];
-
-            if (string.IsNullOrEmpty(layer.tS))
+            if (!string.IsNullOrEmpty(layer.tS) && layer.tS != tileset)
             {
+                // Reuse an existing matching layer before assigning an empty layer.
+                layer = board.Layers.FirstOrDefault(candidate => candidate.tS == tileset)
+                    ?? board.Layers.FirstOrDefault(candidate => string.IsNullOrEmpty(candidate.tS));
+            }
+            if (layer != null && string.IsNullOrEmpty(layer.tS))
+            {
+                string previousTileset = layer.tS;
                 layer.tS = tileset;
-                return layer;
-            }
-            else if (layer.tS == tileset)
-            {
-                return layer;
-            }
-
-            // Find a compatible layer
-            for (int i = 0; i < board.Layers.Count; i++)
-            {
-                if (board.Layers[i].tS == tileset)
-                    return board.Layers[i];
-                if (string.IsNullOrEmpty(board.Layers[i].tS))
+                board.UndoRedoMan.AddUndoBatch(new List<UndoRedoAction>
                 {
-                    board.Layers[i].tS = tileset;
-                    return board.Layers[i];
-                }
+                    UndoRedoManager.LayerTSChanged(layer, previousTileset, tileset)
+                });
             }
+            return layer;
+        }
 
-            return null;
+        private static void RecordPlacement(BoardItem item, List<UndoRedoAction> actions, IEnumerable<MapleLine> nativeLines = null)
+        {
+            var lines = new HashSet<MapleLine>();
+            if (nativeLines != null)
+                foreach (var line in nativeLines)
+                    if (lines.Add(line))
+                        actions.Add(UndoRedoManager.LineAdded(line, line.FirstDot, line.SecondDot));
+            void RecordItem(BoardItem current)
+            {
+                foreach (var binding in current.BoundItems.ToList())
+                {
+                    RecordItem(binding.Key);
+                    actions.Add(UndoRedoManager.ItemsLinked(current, binding.Key, binding.Value));
+                }
+                if (current is MapleDot dot)
+                {
+                    foreach (var line in dot.connectedLines)
+                        if (lines.Add(line))
+                            actions.Add(UndoRedoManager.LineAdded(line, line.FirstDot, line.SecondDot));
+                }
+                actions.Add(UndoRedoManager.ItemAdded(current));
+            }
+            // A native segment is bound to both endpoint anchors. Record it once,
+            // otherwise redo inserts the same line twice into the board collection.
+            RecordItem(item);
         }
 
         private int PlaceTile(Layer layer, TileInfo tileInfo, int x, int y, List<UndoRedoAction> undoActions = null)
@@ -1533,18 +1431,31 @@ namespace HaCreator.MapEditor.AI
             if (tileInfo == null) return 0;
             lock (board.ParentControl)
             {
-                var tile = (TileInstance)tileInfo.CreateInstance(layer, board, x, y, 0, layer.zMDefault, false, false);
+                // Slopes/stairs/pillars use each asset's own collision geometry.
+                var tile = (TileInstance)tileInfo.CreateInstance(layer, board, x, y, 0, layer.zMDefault, false, generateTileFootholds);
+                var nativeLines = tile.BoundItemsList.OfType<FootholdAnchor>()
+                    .SelectMany(anchor => anchor.connectedLines).Distinct().ToList();
+                if (structureAnchors != null)
+                {
+                    // Saving prev/next uses shared anchor references, not equal coordinates.
+                    // Join only anchors created by this structure before capturing undo state.
+                    foreach (var anchor in tile.BoundItemsList.OfType<FootholdAnchor>().ToList())
+                    {
+                        var key = (anchor.X, anchor.Y, anchor.LayerNumber, anchor.PlatformNumber);
+                        if (structureAnchors.TryGetValue(key, out var shared))
+                        {
+                            FootholdAnchor.MergeAnchors(shared, anchor);
+                            anchor.RemoveItem(null);
+                        }
+                        else
+                            structureAnchors[key] = anchor;
+                    }
+                }
+                var actions = undoActions ?? new List<UndoRedoAction>();
+                RecordPlacement(tile, actions, nativeLines);
                 tile.AddToBoard(null);
-
-                // Track for undo if list provided, otherwise create individual undo entry
-                if (undoActions != null)
-                {
-                    undoActions.Add(UndoRedoManager.ItemAdded(tile));
-                }
-                else
-                {
-                    board.UndoRedoMan.AddUndoBatch(new List<UndoRedoAction> { UndoRedoManager.ItemAdded(tile) });
-                }
+                if (undoActions == null)
+                    board.UndoRedoMan.AddUndoBatch(actions);
             }
             return 1;
         }
@@ -1613,7 +1524,7 @@ namespace HaCreator.MapEditor.AI
             int tileWidth = tiles.TileWidth;  // Use standard tile width (90 * mag)
 
             // Fill the entire row with the fill tile
-            while (currentX + tileWidth < endX)
+            while ((long)currentX + tileWidth <= endX)
             {
                 count += PlaceTile(layer, fillTile, currentX, y);
                 currentX += tileWidth;
@@ -1656,7 +1567,7 @@ namespace HaCreator.MapEditor.AI
             int lastFillX = startX;
 
             // Fill entire row with enH0 first
-            while (currentX + tileWidth < endX)
+            while ((long)currentX + tileWidth <= endX)
             {
                 count += PlaceTile(layer, tiles.enH0, currentX, enH0Y);
                 enH0Count++;
@@ -1690,7 +1601,7 @@ namespace HaCreator.MapEditor.AI
             // Fill entire row with bsc first
             currentX = startX;
             lastFillX = startX;
-            while (currentX + tileWidth < endX)
+            while ((long)currentX + tileWidth <= endX)
             {
                 count += PlaceTile(layer, middleTile, currentX, bscY);
                 bscCount++;
@@ -1723,7 +1634,7 @@ namespace HaCreator.MapEditor.AI
                 // Fill entire row with enH1 first
                 currentX = startX;
                 lastFillX = startX;
-                while (currentX + tileWidth < endX)
+                while ((long)currentX + tileWidth <= endX)
                 {
                     count += PlaceTile(layer, tiles.enH1, currentX, enH1Y);
                     enH1Count++;
@@ -1874,115 +1785,60 @@ namespace HaCreator.MapEditor.AI
             return count;
         }
 
-        /// <summary>
-        /// Build a platform with slope going UP on the LEFT side
-        /// The slope extends upward from the left edge of the main platform
-        /// </summary>
-        private int BuildSlopeUpLeft(Layer layer, TileSet tiles, int startX, int endX, int y, int slopeHeight)
+        /// <summary>Join native top-slope endpoints and fill down to one shared base.</summary>
+        private int BuildWalkableSlope(Layer layer, TileSet tiles, int startX, int endX, int y,
+            int segments, bool slopeOnLeft, bool risesRight)
         {
-            if (slopeHeight < 1) slopeHeight = 2;
-            int count = 0;
-
-            // The main platform is at y, the slope goes up (decreasing Y)
-            // Build from bottom to top
-
-            // Bottom row of main platform (full width)
-            count += PlaceRow(layer, tiles, tiles.enH1, startX, endX, y + tiles.RowHeight);
-
-            // Main platform top row
-            count += PlaceRow(layer, tiles, tiles.enH0, startX + tiles.TileWidth * slopeHeight, endX, y);
-
-            // Slope tiles going up-left
-            for (int i = 0; i < slopeHeight; i++)
+            // slLU/slRU name the artwork corner, not the direction of travel.
+            // Select by the actual collision gradient so alternate tilesets work too.
+            TileInfo slope = new[] { tiles.slLU, tiles.slRU }.FirstOrDefault(candidate =>
             {
-                int slopeX = startX + tiles.TileWidth * (slopeHeight - 1 - i);
-                int slopeY = y - tiles.RowHeight * i;
-                count += PlaceTile(layer, tiles.slLU, slopeX, slopeY);
-            }
-
-            return count;
-        }
-
-        /// <summary>
-        /// Build a platform with slope going UP on the RIGHT side
-        /// </summary>
-        private int BuildSlopeUpRight(Layer layer, TileSet tiles, int startX, int endX, int y, int slopeHeight)
-        {
-            if (slopeHeight < 1) slopeHeight = 2;
-            int count = 0;
-
-            // Bottom row of main platform (full width)
-            count += PlaceRow(layer, tiles, tiles.enH1, startX, endX, y + tiles.RowHeight);
-
-            // Main platform top row (shortened on right)
-            count += PlaceRow(layer, tiles, tiles.enH0, startX, endX - tiles.TileWidth * slopeHeight, y);
-
-            // Slope tiles going up-right
-            for (int i = 0; i < slopeHeight; i++)
+                if (candidate?.FootholdOffsets.Count < 2) return false;
+                if (candidate == null) return false;
+                var points = candidate.FootholdOffsets.OrderBy(point => point.X).ToList();
+                return points[^1].X > points[0].X &&
+                    (risesRight ? points[^1].Y < points[0].Y : points[^1].Y > points[0].Y);
+            });
+            if (slope == null)
+                throw new InvalidOperationException("Tileset has no native walkable slope in the requested direction");
+            var endpoints = slope.FootholdOffsets.OrderBy(point => point.X).ToList();
+            var left = endpoints[0];
+            var right = endpoints[^1];
+            int span = right.X - left.X;
+            int rise = right.Y - left.Y;
+            int slopeWidth = checked(span * segments);
+            if (slopeWidth > endX - startX)
+                throw new InvalidOperationException("Slope segments do not fit the requested width");
+            int surfaceOffset = tiles.enH0.FootholdOffsets.Min(point => point.Y);
+            int baseSurfaceY = checked(y + surfaceOffset);
+            int slopeStartX = slopeOnLeft ? startX : endX - slopeWidth;
+            int surfaceY = slopeOnLeft ? checked(baseSurfaceY - rise * segments) : baseSurfaceY;
+            var tops = new List<(TileInfo info, int x, int y, int columnX)>();
+            for (int i = 0; i < segments; i++)
             {
-                int slopeX = endX - tiles.TileWidth * (slopeHeight - i);
-                int slopeY = y - tiles.RowHeight * i;
-                count += PlaceTile(layer, tiles.slRU, slopeX, slopeY);
+                int columnX = checked(slopeStartX + i * span);
+                tops.Add((slope, checked(columnX - left.X), checked(surfaceY - left.Y), columnX));
+                surfaceY = checked(surfaceY + rise);
             }
+            int flatStart = slopeOnLeft ? startX + slopeWidth : startX;
+            int flatEnd = slopeOnLeft ? endX : endX - slopeWidth;
+            for (int x = flatStart; (long)x + tiles.TileWidth <= flatEnd; x += tiles.TileWidth)
+                tops.Add((tiles.enH0, x, y, x));
 
-            return count;
-        }
-
-        /// <summary>
-        /// Build a platform with slope going DOWN on the LEFT side
-        /// </summary>
-        private int BuildSlopeDownLeft(Layer layer, TileSet tiles, int startX, int endX, int y, int slopeHeight)
-        {
-            if (slopeHeight < 1) slopeHeight = 2;
+            int baseY = checked(tops.Max(top => ReferenceEquals(top.info, tiles.enH0) ? top.y : top.y - top.info.Origin.Y + top.info.Height) + tiles.RowHeight);
             int count = 0;
-            var middleTile = tiles.bsc ?? tiles.enH0;  // Fallback to enH0 if bsc not available
-
-            // Top row of main platform (full width)
-            count += PlaceRow(layer, tiles, tiles.enH0, startX, endX, y);
-
-            // Middle fill row
-            count += PlaceRow(layer, tiles, middleTile, startX + tiles.TileWidth * slopeHeight, endX, y + tiles.RowHeight);
-
-            // Bottom row (shortened, starting after slope)
-            count += PlaceRow(layer, tiles, tiles.enH1, startX + tiles.TileWidth * slopeHeight, endX, y + tiles.RowHeight * 2);
-
-            // Slope tiles going down-left
-            for (int i = 0; i < slopeHeight; i++)
+            foreach (var top in tops)
             {
-                int slopeX = startX + tiles.TileWidth * i;
-                int slopeY = y + tiles.RowHeight * (i + 1);
-                count += PlaceTile(layer, tiles.slLD, slopeX, slopeY);
+                // Fill first so the native grassy edge remains above the body artwork.
+                int fillTop = ReferenceEquals(top.info, tiles.enH0) ? top.y : top.y - top.info.Origin.Y + top.info.Height;
+                int fillHeight = Math.Max(1, tiles.bsc.Height);
+                for (int fillY = fillTop; fillY < baseY; fillY += fillHeight)
+                    count += PlaceTile(layer, tiles.bsc, top.columnX + tiles.bsc.Origin.X,
+                        fillY + tiles.bsc.Origin.Y);
+                count += PlaceTile(layer, tiles.enH1, top.columnX + (tiles.enH1?.Origin.X ?? 0),
+                    baseY + (tiles.enH1?.Origin.Y ?? 0));
+                count += PlaceTile(layer, top.info, top.x, top.y);
             }
-
-            return count;
-        }
-
-        /// <summary>
-        /// Build a platform with slope going DOWN on the RIGHT side
-        /// </summary>
-        private int BuildSlopeDownRight(Layer layer, TileSet tiles, int startX, int endX, int y, int slopeHeight)
-        {
-            if (slopeHeight < 1) slopeHeight = 2;
-            int count = 0;
-            var middleTile = tiles.bsc ?? tiles.enH0;  // Fallback to enH0 if bsc not available
-
-            // Top row of main platform (full width)
-            count += PlaceRow(layer, tiles, tiles.enH0, startX, endX, y);
-
-            // Middle fill row (shortened on right)
-            count += PlaceRow(layer, tiles, middleTile, startX, endX - tiles.TileWidth * slopeHeight, y + tiles.RowHeight);
-
-            // Bottom row (shortened on right)
-            count += PlaceRow(layer, tiles, tiles.enH1, startX, endX - tiles.TileWidth * slopeHeight, y + tiles.RowHeight * 2);
-
-            // Slope tiles going down-right
-            for (int i = 0; i < slopeHeight; i++)
-            {
-                int slopeX = endX - tiles.TileWidth * (slopeHeight - i);
-                int slopeY = y + tiles.RowHeight * (i + 1);
-                count += PlaceTile(layer, tiles.slRD, slopeX, slopeY);
-            }
-
             return count;
         }
 
@@ -2059,10 +1915,10 @@ namespace HaCreator.MapEditor.AI
 
             lock (board.ParentControl)
             {
+                var actions = new List<UndoRedoAction>();
                 foreach (var target in targets)
-                {
-                    target.RemoveItem(null);
-                }
+                    target.RemoveItem(actions);
+                board.UndoRedoMan.AddUndoBatch(actions);
             }
 
             Log($"Removed {targets.Count} element(s)");
@@ -2079,17 +1935,21 @@ namespace HaCreator.MapEditor.AI
 
             int x = command.TargetX.Value;
             int y = command.TargetY.Value;
-            int tolerance = 20;
 
             // Find footholds near the specified coordinates
             var linesToRemove = new List<FootholdLine>();
             foreach (var line in board.BoardItems.FootholdLines)
             {
-                // Check if either anchor is near the target
-                bool nearFirst = Math.Abs(line.FirstDot.X - x) <= tolerance && Math.Abs(line.FirstDot.Y - y) <= tolerance;
-                bool nearSecond = Math.Abs(line.SecondDot.X - x) <= tolerance && Math.Abs(line.SecondDot.Y - y) <= tolerance;
-
-                if (nearFirst || nearSecond)
+                // Select a point on the segment, including its interior. Shared endpoints
+                // remain ambiguous and are rejected instead of deleting both segments.
+                double dx = (double)line.SecondDot.X - line.FirstDot.X;
+                double dy = (double)line.SecondDot.Y - line.FirstDot.Y;
+                double lengthSquared = dx * dx + dy * dy;
+                double position = lengthSquared == 0 ? 0 : Math.Clamp(
+                    (((double)x - line.FirstDot.X) * dx + ((double)y - line.FirstDot.Y) * dy) / lengthSquared, 0, 1);
+                double offsetX = x - (line.FirstDot.X + position * dx);
+                double offsetY = y - (line.FirstDot.Y + position * dy);
+                if (offsetX * offsetX + offsetY * offsetY <= 1)
                 {
                     // Filter by wall/platform type if specified
                     if (command.ElementType == ElementType.Wall && !line.IsWall)
@@ -2101,6 +1961,13 @@ namespace HaCreator.MapEditor.AI
                 }
             }
 
+            if (command.Parameters.TryGetValue("layer", out var requestedLayer))
+                linesToRemove.RemoveAll(line => ((FootholdAnchor)line.FirstDot).LayerNumber != Convert.ToInt32(requestedLayer));
+            if (linesToRemove.Count > 1)
+            {
+                Log("Ambiguous foothold selector; specify a position and layer matching one segment");
+                return false;
+            }
             if (linesToRemove.Count == 0)
             {
                 Log($"No footholds found near ({x}, {y})");
@@ -2109,10 +1976,10 @@ namespace HaCreator.MapEditor.AI
 
             lock (board.ParentControl)
             {
+                var actions = new List<UndoRedoAction>();
                 foreach (var line in linesToRemove)
-                {
-                    line.Remove(false, null);  // Don't remove dots, they may be shared
-                }
+                    line.Remove(false, actions); // Keep shared anchors.
+                board.UndoRedoMan.AddUndoBatch(actions);
             }
 
             Log($"Removed {linesToRemove.Count} foothold(s)");
@@ -2129,7 +1996,6 @@ namespace HaCreator.MapEditor.AI
 
             int x = command.TargetX.Value;
             int y = command.TargetY.Value;
-            int tolerance = 20;
 
             bool isLadder = command.ElementType == ElementType.Ladder;
 
@@ -2142,12 +2008,12 @@ namespace HaCreator.MapEditor.AI
                     continue;
 
                 // Check if the rope X is near the target X
-                bool nearX = Math.Abs(rope.FirstAnchor.X - x) <= tolerance;
+                bool nearX = rope.FirstAnchor.X == x;
 
                 // Check if the target Y is within the rope's Y range
                 int topY = Math.Min(rope.FirstAnchor.Y, rope.SecondAnchor.Y);
                 int bottomY = Math.Max(rope.FirstAnchor.Y, rope.SecondAnchor.Y);
-                bool nearY = (y >= topY - tolerance && y <= bottomY + tolerance);
+                bool nearY = (y >= topY && y <= bottomY);
 
                 if (nearX && nearY)
                 {
@@ -2155,6 +2021,13 @@ namespace HaCreator.MapEditor.AI
                 }
             }
 
+            if (command.Parameters.TryGetValue("layer", out var requestedLayer))
+                ropesToRemove.RemoveAll(rope => rope.LayerNumber != Convert.ToInt32(requestedLayer));
+            if (ropesToRemove.Count > 1)
+            {
+                Log("Ambiguous rope/ladder selector; specify a position and layer matching one element");
+                return false;
+            }
             if (ropesToRemove.Count == 0)
             {
                 Log($"No {(isLadder ? "ladders" : "ropes")} found near ({x}, {y})");
@@ -2163,10 +2036,10 @@ namespace HaCreator.MapEditor.AI
 
             lock (board.ParentControl)
             {
+                var actions = new List<UndoRedoAction>();
                 foreach (var rope in ropesToRemove)
-                {
-                    rope.Remove(null);
-                }
+                    rope.Remove(actions);
+                board.UndoRedoMan.AddUndoBatch(actions);
             }
 
             Log($"Removed {ropesToRemove.Count} {(isLadder ? "ladder" : "rope")}(s)");
@@ -2254,6 +2127,32 @@ namespace HaCreator.MapEditor.AI
                 return false;
             }
 
+            if (command.ElementType == ElementType.Portal)
+            {
+                if (targets.Count != 1 || targets[0] is not PortalInstance portal)
+                {
+                    Log("Portal modification requires exactly one matching portal.");
+                    return false;
+                }
+                bool hasMap = command.Parameters.TryGetValue("target_map", out var mapValue);
+                bool hasName = command.Parameters.TryGetValue("target_name", out var nameValue);
+                bool hasScript = command.Parameters.TryGetValue("script", out var scriptValue);
+                // Convert everything before mutating so an invalid later field cannot leave a partial edit.
+                int targetMap = hasMap ? Convert.ToInt32(mapValue) : portal.tm;
+                string targetName = hasName ? nameValue?.ToString() : portal.tn;
+                string script = hasScript ? scriptValue?.ToString() : portal.script;
+                var actions = new List<UndoRedoAction>();
+                lock (board.ParentControl)
+                {
+                    if (hasMap) ChangeValue(portal.tm, targetMap, value => portal.tm = value, actions);
+                    if (hasName) ChangeValue(portal.tn, targetName, value => portal.tn = value, actions);
+                    if (hasScript) ChangeValue(portal.script, script, value => portal.script = value, actions);
+                    board.UndoRedoMan.AddUndoBatch(actions);
+                }
+                Log("Updated portal properties.");
+                return hasMap || hasName || hasScript;
+            }
+
             int modifiedCount = 0;
             foreach (var target in targets)
             {
@@ -2275,13 +2174,19 @@ namespace HaCreator.MapEditor.AI
             }
 
             int flippedCount = 0;
-            foreach (var target in targets)
+            lock (board.ParentControl)
             {
-                if (target is IFlippable flippable)
+                var actions = new List<UndoRedoAction>();
+                foreach (var target in targets)
                 {
-                    flippable.Flip = !flippable.Flip;
-                    flippedCount++;
+                    if (target is IFlippable flippable)
+                    {
+                        actions.Add(UndoRedoManager.ItemFlipped(flippable));
+                        flippable.Flip = !flippable.Flip;
+                        flippedCount++;
+                    }
                 }
+                board.UndoRedoMan.AddUndoBatch(actions);
             }
 
             Log($"Flipped {flippedCount} element(s)");
@@ -2298,6 +2203,7 @@ namespace HaCreator.MapEditor.AI
         private bool ExecuteClear(MapAICommand command)
         {
             int clearedCount = 0;
+            var actions = new List<UndoRedoAction>();
 
             lock (board.ParentControl)
             {
@@ -2306,31 +2212,31 @@ namespace HaCreator.MapEditor.AI
                     case ElementType.Mob:
                         clearedCount = board.BoardItems.Mobs.Count;
                         foreach (var mob in board.BoardItems.Mobs.ToList())
-                            mob.RemoveItem(null);
+                            mob.RemoveItem(actions);
                         break;
 
                     case ElementType.NPC:
                         clearedCount = board.BoardItems.NPCs.Count;
                         foreach (var npc in board.BoardItems.NPCs.ToList())
-                            npc.RemoveItem(null);
+                            npc.RemoveItem(actions);
                         break;
 
                     case ElementType.Portal:
                         clearedCount = board.BoardItems.Portals.Count;
                         foreach (var portal in board.BoardItems.Portals.ToList())
-                            portal.RemoveItem(null);
+                            portal.RemoveItem(actions);
                         break;
 
                     case ElementType.Reactor:
                         clearedCount = board.BoardItems.Reactors.Count;
                         foreach (var reactor in board.BoardItems.Reactors.ToList())
-                            reactor.RemoveItem(null);
+                            reactor.RemoveItem(actions);
                         break;
 
                     case ElementType.Chair:
                         clearedCount = board.BoardItems.Chairs.Count;
                         foreach (var chair in board.BoardItems.Chairs.ToList())
-                            chair.RemoveItem(null);
+                            chair.RemoveItem(actions);
                         break;
 
                     case ElementType.Foothold:
@@ -2339,7 +2245,7 @@ namespace HaCreator.MapEditor.AI
                         // Remove all foothold lines and anchors
                         clearedCount = board.BoardItems.FootholdLines.Count;
                         foreach (var line in board.BoardItems.FootholdLines.ToList())
-                            line.Remove(true, null);  // removeDots=true to also remove orphaned anchors
+                            line.Remove(true, actions);  // removeDots=true to also remove orphaned anchors
                         break;
 
                     case ElementType.Tile:
@@ -2347,7 +2253,7 @@ namespace HaCreator.MapEditor.AI
                         var tiles = board.BoardItems.TileObjs.OfType<TileInstance>().ToList();
                         clearedCount = tiles.Count;
                         foreach (var tile in tiles)
-                            tile.RemoveItem(null);
+                            tile.RemoveItem(actions);
                         break;
 
                     case ElementType.Object:
@@ -2355,7 +2261,7 @@ namespace HaCreator.MapEditor.AI
                         var objects = board.BoardItems.TileObjs.OfType<ObjectInstance>().ToList();
                         clearedCount = objects.Count;
                         foreach (var obj in objects)
-                            obj.RemoveItem(null);
+                            obj.RemoveItem(actions);
                         break;
 
                     case ElementType.Background:
@@ -2364,9 +2270,9 @@ namespace HaCreator.MapEditor.AI
                         var frontBgs = board.BoardItems.FrontBackgrounds.ToList();
                         clearedCount = backBgs.Count + frontBgs.Count;
                         foreach (var bg in backBgs)
-                            bg.RemoveItem(null);
+                            bg.RemoveItem(actions);
                         foreach (var bg in frontBgs)
-                            bg.RemoveItem(null);
+                            bg.RemoveItem(actions);
                         break;
 
                     case ElementType.Rope:
@@ -2374,7 +2280,7 @@ namespace HaCreator.MapEditor.AI
                         var ropes = board.BoardItems.Ropes.Where(r => !r.ladder).ToList();
                         clearedCount = ropes.Count;
                         foreach (var rope in ropes)
-                            rope.Remove(null);
+                            rope.Remove(actions);
                         break;
 
                     case ElementType.Ladder:
@@ -2382,7 +2288,7 @@ namespace HaCreator.MapEditor.AI
                         var ladders = board.BoardItems.Ropes.Where(r => r.ladder).ToList();
                         clearedCount = ladders.Count;
                         foreach (var ladder in ladders)
-                            ladder.Remove(null);
+                            ladder.Remove(actions);
                         break;
 
                     default:
@@ -2391,6 +2297,7 @@ namespace HaCreator.MapEditor.AI
                 }
             }
 
+            board.UndoRedoMan.AddUndoBatch(actions);
             Log($"Cleared {clearedCount} {command.ElementType} element(s)");
             return true;
         }
@@ -2422,6 +2329,34 @@ namespace HaCreator.MapEditor.AI
             return true;
         }
 
+        private void ChangeValue<T>(T oldValue, T newValue, Action<T> restore, List<UndoRedoAction> actions = null)
+        {
+            if (EqualityComparer<T>.Default.Equals(oldValue, newValue))
+                return;
+            lock (board.ParentControl)
+            {
+                restore(newValue);
+                var action = UndoRedoManager.ValueChanged(
+                    () => restore(oldValue), () => restore(newValue));
+                if (actions != null) actions.Add(action);
+                else board.UndoRedoMan.AddUndoBatch(new List<UndoRedoAction> { action });
+            }
+        }
+
+        private Microsoft.Xna.Framework.Rectangle? GetVRBounds()
+        {
+            var vr = board.VRRectangle;
+            return vr == null ? null : new Microsoft.Xna.Framework.Rectangle(vr.Left, vr.Top, vr.Width, vr.Height);
+        }
+
+        private void RestoreVRBounds(Microsoft.Xna.Framework.Rectangle? bounds)
+        {
+            board.VRRectangle?.RemoveItem(null);
+            if (bounds.HasValue)
+                board.VRRectangle = new VRRectangle(board, bounds.Value);
+            board.ParentControl.RequestRender();
+        }
+
         private bool ExecuteSetBgm(MapAICommand command)
         {
             if (!command.Parameters.TryGetValue("bgm", out var bgmObj))
@@ -2448,7 +2383,16 @@ namespace HaCreator.MapEditor.AI
 
             // Set the BGM
             string oldBgm = board.MapInfo.bgm;
-            board.MapInfo.SetPrimaryBgm(bgm);
+            var info = board.MapInfo;
+            var oldAudio = info.audio;
+            var newAudio = oldAudio ?? new MapAudioInfo();
+            ChangeValue((legacy: oldBgm, audio: oldAudio, primary: oldAudio?.PrimaryBgm),
+                (legacy: bgm, audio: newAudio, primary: bgm), state =>
+                {
+                    info.bgm = state.legacy;
+                    info.audio = state.audio;
+                    if (state.audio != null) state.audio.PrimaryBgm = state.primary;
+                });
 
             Log($"Changed BGM from '{oldBgm}' to '{bgm}'");
             return true;
@@ -2475,29 +2419,29 @@ namespace HaCreator.MapEditor.AI
             // Use reflection-like switch to set the appropriate property
             switch (option.ToLower())
             {
-                case "cloud": info.cloud = value; break;
-                case "snow": info.snow = value; break;
-                case "rain": info.rain = value; break;
-                case "swim": info.swim = value; break;
-                case "fly": info.fly = value; break;
-                case "town": info.town = value; break;
-                case "partyonly": info.partyOnly = value; break;
-                case "expeditiononly": info.expeditionOnly = value; break;
-                case "nomapcmd": info.noMapCmd = value; break;
-                case "hideminimap": info.hideMinimap = value; break;
-                case "minimaponoff": info.miniMapOnOff = value; break;
-                case "personalshop": info.personalShop = value; break;
-                case "entrustedshop": info.entrustedShop = value; break;
-                case "noregenmap": info.noRegenMap = value; break;
-                case "blockpbosschange": info.blockPBossChange = value; break;
-                case "everlast": info.everlast = value; break;
-                case "damagecheckfree": info.damageCheckFree = value; break;
-                case "scrolldisable": info.scrollDisable = value; break;
-                case "needskillforfly": info.needSkillForFly = value; break;
-                case "zakum2hack": info.zakum2Hack = value; break;
-                case "allmovecheck": info.allMoveCheck = value; break;
-                case "vrlimit": info.VRLimit = value; break;
-                case "mirror_bottom": info.mirror_Bottom = value; break;
+                case "cloud": ChangeValue<bool>(info.cloud, value, changed => info.cloud = changed); break;
+                case "snow": ChangeValue<MapleBool>(info.snow, value, changed => info.snow = changed); break;
+                case "rain": ChangeValue<MapleBool>(info.rain, value, changed => info.rain = changed); break;
+                case "swim": ChangeValue<bool>(info.swim, value, changed => info.swim = changed); break;
+                case "fly": ChangeValue<MapleBool>(info.fly, value, changed => info.fly = changed); break;
+                case "town": ChangeValue<bool>(info.town, value, changed => info.town = changed); break;
+                case "partyonly": ChangeValue<MapleBool>(info.partyOnly, value, changed => info.partyOnly = changed); break;
+                case "expeditiononly": ChangeValue<MapleBool>(info.expeditionOnly, value, changed => info.expeditionOnly = changed); break;
+                case "nomapcmd": ChangeValue<MapleBool>(info.noMapCmd, value, changed => info.noMapCmd = changed); break;
+                case "hideminimap": ChangeValue<bool>(info.hideMinimap, value, changed => info.hideMinimap = changed); break;
+                case "minimaponoff": ChangeValue<MapleBool>(info.miniMapOnOff, value, changed => info.miniMapOnOff = changed); break;
+                case "personalshop": ChangeValue<MapleBool>(info.personalShop, value, changed => info.personalShop = changed); break;
+                case "entrustedshop": ChangeValue<MapleBool>(info.entrustedShop, value, changed => info.entrustedShop = changed); break;
+                case "noregenmap": ChangeValue<MapleBool>(info.noRegenMap, value, changed => info.noRegenMap = changed); break;
+                case "blockpbosschange": ChangeValue<MapleBool>(info.blockPBossChange, value, changed => info.blockPBossChange = changed); break;
+                case "everlast": ChangeValue<MapleBool>(info.everlast, value, changed => info.everlast = changed); break;
+                case "damagecheckfree": ChangeValue<MapleBool>(info.damageCheckFree, value, changed => info.damageCheckFree = changed); break;
+                case "scrolldisable": ChangeValue<MapleBool>(info.scrollDisable, value, changed => info.scrollDisable = changed); break;
+                case "needskillforfly": ChangeValue<MapleBool>(info.needSkillForFly, value, changed => info.needSkillForFly = changed); break;
+                case "zakum2hack": ChangeValue<MapleBool>(info.zakum2Hack, value, changed => info.zakum2Hack = changed); break;
+                case "allmovecheck": ChangeValue<MapleBool>(info.allMoveCheck, value, changed => info.allMoveCheck = changed); break;
+                case "vrlimit": ChangeValue<MapleBool>(info.VRLimit, value, changed => info.VRLimit = changed); break;
+                case "mirror_bottom": ChangeValue<MapleBool>(info.mirror_Bottom, value, changed => info.mirror_Bottom = changed); break;
                 default:
                     Log($"Unknown map option: {option}");
                     return false;
@@ -2534,16 +2478,8 @@ namespace HaCreator.MapEditor.AI
             int bitPosition = (int)limitType;
             long currentLimit = board.MapInfo.fieldLimit;
 
-            if (enabled)
-            {
-                // Set the bit
-                board.MapInfo.fieldLimit = currentLimit | (1L << bitPosition);
-            }
-            else
-            {
-                // Clear the bit
-                board.MapInfo.fieldLimit = currentLimit & ~(1L << bitPosition);
-            }
+            ChangeValue(currentLimit, enabled ? currentLimit | (1L << bitPosition) : currentLimit & ~(1L << bitPosition),
+                value => board.MapInfo.fieldLimit = value);
 
             Log($"Set field limit '{limitName}' to {enabled} (fieldLimit = {board.MapInfo.fieldLimit})");
             return true;
@@ -2574,7 +2510,7 @@ namespace HaCreator.MapEditor.AI
             }
 
             var oldSize = board.MapSize;
-            board.MapSize = new Microsoft.Xna.Framework.Point(width, height);
+            ChangeValue(oldSize, new Microsoft.Xna.Framework.Point(width, height), value => board.MapSize = value);
 
             Log($"Changed map size from ({oldSize.X}, {oldSize.Y}) to ({width}, {height})");
             return true;
@@ -2609,20 +2545,9 @@ namespace HaCreator.MapEditor.AI
             }
 
             // Calculate dimensions from bounds
-            int width = right - left;
-            int height = bottom - top;
-
-            lock (board.ParentControl)
-            {
-                // Remove existing VR if present (VRRectangle properties are read-only, so recreate)
-                if (board.VRRectangle != null)
-                {
-                    board.VRRectangle.RemoveItem(null);
-                }
-
-                // Create new VR rectangle
-                board.VRRectangle = new VRRectangle(board, new Microsoft.Xna.Framework.Rectangle(left, top, width, height));
-            }
+            int width = checked(right - left);
+            int height = checked(bottom - top);
+            ChangeValue(GetVRBounds(), (Microsoft.Xna.Framework.Rectangle?)new Microsoft.Xna.Framework.Rectangle(left, top, width, height), RestoreVRBounds);
 
             Log($"Set VR to left={left}, top={top}, right={right}, bottom={bottom} (width={width}, height={height})");
             return true;
@@ -2636,11 +2561,7 @@ namespace HaCreator.MapEditor.AI
                 return true;
             }
 
-            lock (board.ParentControl)
-            {
-                // Remove VR rectangle properly
-                board.VRRectangle.RemoveItem(null);
-            }
+            ChangeValue(GetVRBounds(), (Microsoft.Xna.Framework.Rectangle?)null, RestoreVRBounds);
 
             Log("Cleared VR (viewing range)");
             return true;
@@ -2653,20 +2574,25 @@ namespace HaCreator.MapEditor.AI
         private bool ExecuteSetReturnMap(MapAICommand command)
         {
             var info = board.MapInfo;
-
-            if (command.Parameters.TryGetValue("return", out var returnObj))
+            bool hasReturn = command.Parameters.TryGetValue("return", out var returnObj);
+            bool hasForced = command.Parameters.TryGetValue("forced", out var forcedObj);
+            int returnMap = hasReturn ? Convert.ToInt32(returnObj) : info.returnMap;
+            int forcedReturn = hasForced ? Convert.ToInt32(forcedObj) : info.forcedReturn;
+            var actions = new List<UndoRedoAction>();
+            if (hasReturn)
             {
-                info.returnMap = Convert.ToInt32(returnObj);
+                ChangeValue(info.returnMap, returnMap, value => info.returnMap = value, actions);
                 Log($"Set returnMap to {info.returnMap}");
             }
 
-            if (command.Parameters.TryGetValue("forced", out var forcedObj))
+            if (hasForced)
             {
-                info.forcedReturn = Convert.ToInt32(forcedObj);
+                ChangeValue(info.forcedReturn, forcedReturn, value => info.forcedReturn = value, actions);
                 Log($"Set forcedReturn to {info.forcedReturn}");
             }
 
-            return true;
+            board.UndoRedoMan.AddUndoBatch(actions);
+            return hasReturn || hasForced;
         }
 
         private bool ExecuteSetMobRate(MapAICommand command)
@@ -2677,7 +2603,7 @@ namespace HaCreator.MapEditor.AI
                 return false;
             }
 
-            board.MapInfo.mobRate = Convert.ToSingle(rateObj);
+            ChangeValue(board.MapInfo.mobRate, Convert.ToSingle(rateObj), value => board.MapInfo.mobRate = value);
             Log($"Set mobRate to {board.MapInfo.mobRate}");
             return true;
         }
@@ -2729,19 +2655,25 @@ namespace HaCreator.MapEditor.AI
 
         private bool ExecuteSetLevelLimit(MapAICommand command)
         {
-            if (command.Parameters.TryGetValue("min", out var minObj))
+            bool hasMin = command.Parameters.TryGetValue("min", out var minObj);
+            bool hasForce = command.Parameters.TryGetValue("force", out var forceObj);
+            int? minimum = hasMin ? Convert.ToInt32(minObj) : board.MapInfo.lvLimit;
+            int? forced = hasForce ? Convert.ToInt32(forceObj) : board.MapInfo.lvForceMove;
+            var actions = new List<UndoRedoAction>();
+            if (hasMin)
             {
-                board.MapInfo.lvLimit = Convert.ToInt32(minObj);
+                ChangeValue(board.MapInfo.lvLimit, minimum, value => board.MapInfo.lvLimit = value, actions);
                 Log($"Set lvLimit to {board.MapInfo.lvLimit}");
             }
 
-            if (command.Parameters.TryGetValue("force", out var forceObj))
+            if (hasForce)
             {
-                board.MapInfo.lvForceMove = Convert.ToInt32(forceObj);
+                ChangeValue(board.MapInfo.lvForceMove, forced, value => board.MapInfo.lvForceMove = value, actions);
                 Log($"Set lvForceMove to {board.MapInfo.lvForceMove}");
             }
 
-            return true;
+            board.UndoRedoMan.AddUndoBatch(actions);
+            return hasMin || hasForce;
         }
 
         private bool ExecuteSetScript(MapAICommand command)
@@ -2782,7 +2714,7 @@ namespace HaCreator.MapEditor.AI
                 return false;
             }
 
-            board.MapInfo.help = textObj?.ToString();
+            ChangeValue(board.MapInfo.help, textObj?.ToString(), value => board.MapInfo.help = value);
             Log($"Set help text to \"{board.MapInfo.help}\"");
             return true;
         }
@@ -2795,7 +2727,7 @@ namespace HaCreator.MapEditor.AI
                 return false;
             }
 
-            board.MapInfo.mapDesc = descObj?.ToString();
+            ChangeValue(board.MapInfo.mapDesc, descObj?.ToString(), value => board.MapInfo.mapDesc = value);
             Log($"Set map description to \"{board.MapInfo.mapDesc}\"");
             return true;
         }
@@ -3272,14 +3204,17 @@ namespace HaCreator.MapEditor.AI
                 }
             }
 
-            // Filter by coordinates (for "at (x, y)" targeting)
-            if (!excludeCoordinates && command.TargetX.HasValue && command.TargetY.HasValue)
+            // Source and destination are distinct for MOVE; selectors use exact native origins.
+            int? selectorX = excludeCoordinates ? null : command.TargetX;
+            int? selectorY = excludeCoordinates ? null : command.TargetY;
+            if (excludeCoordinates && command.Parameters.TryGetValue("source_x", out var sourceX) &&
+                command.Parameters.TryGetValue("source_y", out var sourceY))
             {
-                int tolerance = 10; // pixels
-                source = source.Where(item =>
-                    Math.Abs(item.X - command.TargetX.Value) <= tolerance &&
-                    Math.Abs(item.Y - command.TargetY.Value) <= tolerance);
+                selectorX = Convert.ToInt32(sourceX);
+                selectorY = Convert.ToInt32(sourceY);
             }
+            if (selectorX.HasValue && selectorY.HasValue)
+                source = source.Where(item => item.X == selectorX.Value && item.Y == selectorY.Value);
 
             // Filter by layer
             if (command.Parameters.TryGetValue("layer", out var layerObj))
@@ -3294,6 +3229,12 @@ namespace HaCreator.MapEditor.AI
             }
 
             results.AddRange(source);
+            if ((command.Type == CommandType.Move || command.Type == CommandType.Remove || command.Type == CommandType.Flip) &&
+                results.Count > 1)
+            {
+                Log("Ambiguous selector: more than one element matches. Specify an exact position and layer, or use CLEAR for bulk removal.");
+                results.Clear();
+            }
             return results;
         }
 

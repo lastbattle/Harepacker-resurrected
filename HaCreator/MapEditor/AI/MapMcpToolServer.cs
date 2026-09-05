@@ -56,6 +56,9 @@ namespace HaCreator.MapEditor.AI
         /// </summary>
         public Func<string, JObject, string> QueryExecutor { get; set; }
 
+        /// <summary>Optional query callback returning standard MCP text and image blocks. Return null to use the text callback.</summary>
+        public Func<string, JObject, JArray> RichQueryExecutor { get; set; }
+
         /// <summary>
         /// Optional board-aware action callback supplied by the editor window.
         /// </summary>
@@ -193,13 +196,19 @@ namespace HaCreator.MapEditor.AI
                 var properties = result["properties"] as JObject;
                 if (properties != null)
                 {
+                    var required = new HashSet<string>((result["required"] as JArray ?? new JArray()).Values<string>());
                     result["additionalProperties"] = false;
                     result["required"] = new JArray(properties.Properties().Select(property => property.Name));
 
                     foreach (var property in properties.Properties().ToList())
                     {
                         if (property.Value is JObject propertySchema)
-                            property.Value = CreateStrictSchema(propertySchema);
+                        {
+                            var normalized = CreateStrictSchema(propertySchema);
+                            if (!required.Contains(property.Name))
+                                normalized = new JObject { ["anyOf"] = new JArray(normalized, new JObject { ["type"] = "null" }) };
+                            property.Value = normalized;
+                        }
                     }
                 }
             }
@@ -225,26 +234,75 @@ namespace HaCreator.MapEditor.AI
         public MapMcpToolCallResult CallTool(string toolName, JObject arguments, bool enforceQueryOrder = true)
         {
             arguments ??= new JObject();
+            // Strict API schemas represent omitted optional fields as null.
+            // Preserve the existing command builders' absent-property semantics.
+            arguments = (JObject)arguments.DeepClone();
+            foreach (var property in arguments.Properties().Where(p => p.Value.Type == JTokenType.Null).ToList())
+                property.Remove();
 
-            if (!GetMcpTools().OfType<JObject>().Any(t => string.Equals(
-                    t["name"]?.ToString(), toolName, StringComparison.Ordinal)))
+            var definition = GetMcpTools().OfType<JObject>().FirstOrDefault(t => string.Equals(
+                t["name"]?.ToString(), toolName, StringComparison.Ordinal));
+            if (definition == null)
             {
                 return MapMcpToolCallResult.Error(toolName, $"Unknown map tool: {toolName}");
             }
+
+            var requiredArguments = definition["inputSchema"]?["required"] as JArray;
+            var missing = requiredArguments?.Values<string>().Where(name => arguments[name] == null).ToArray();
+            if (missing?.Length > 0)
+                return MapMcpToolCallResult.Error(toolName, $"Error: Missing required arguments: {string.Join(", ", missing)}.");
+            var properties = definition["inputSchema"]?["properties"] as JObject;
+            foreach (var argument in arguments.Properties())
+            {
+                if (properties?[argument.Name] is not JObject schema)
+                    return MapMcpToolCallResult.Error(toolName, $"Error: Unknown argument '{argument.Name}'.");
+                var type = schema["type"]?.ToString();
+                var validType = type switch
+                {
+                    "integer" => argument.Value.Type == JTokenType.Integer,
+                    "number" => argument.Value.Type == JTokenType.Integer || argument.Value.Type == JTokenType.Float,
+                    "boolean" => argument.Value.Type == JTokenType.Boolean,
+                    "string" => argument.Value.Type == JTokenType.String,
+                    "array" => argument.Value.Type == JTokenType.Array,
+                    "object" => argument.Value.Type == JTokenType.Object,
+                    _ => true
+                };
+                if (!validType)
+                    return MapMcpToolCallResult.Error(toolName, $"Error: '{argument.Name}' must be {type}.");
+                if (argument.Value.Type == JTokenType.String && !MapEditorFunctions.IsQueryFunction(toolName) &&
+                    argument.Value.Value<string>().IndexOfAny(new[] { '\r', '\n', '"' }) >= 0)
+                    return MapMcpToolCallResult.Error(toolName, $"Error: '{argument.Name}' cannot contain line breaks or double quotes in a map command.");
+                if (schema["enum"] is JArray allowed && !allowed.Any(value => JToken.DeepEquals(value, argument.Value)))
+                    return MapMcpToolCallResult.Error(toolName, $"Error: Invalid value for '{argument.Name}'. Allowed: {string.Join(", ", allowed)}.");
+                if (argument.Value.Type == JTokenType.Integer || argument.Value.Type == JTokenType.Float)
+                {
+                    var value = argument.Value.Value<double>();
+                    if (schema["minimum"] != null && value < schema["minimum"].Value<double>() ||
+                        schema["maximum"] != null && value > schema["maximum"].Value<double>())
+                        return MapMcpToolCallResult.Error(toolName, $"Error: '{argument.Name}' is outside the allowed range.");
+                }
+            }
+
+            var selectorError = MapEditorFunctions.ValidateActionSelector(toolName, arguments);
+            if (selectorError != null)
+                return MapMcpToolCallResult.Error(toolName, "Error: " + selectorError);
 
             try
             {
                 if (MapEditorFunctions.IsQueryFunction(toolName))
                 {
-                    lock (queryLock)
+                    var content = RichQueryExecutor?.Invoke(toolName, arguments);
+                    var result = content != null
+                        ? MapMcpToolCallResult.Query(toolName, content)
+                        : MapMcpToolCallResult.Query(toolName, QueryExecutor != null
+                            ? QueryExecutor(toolName, arguments)
+                            : MapEditorFunctions.ExecuteQueryFunction(toolName, arguments));
+                    if (result.Success)
                     {
-                        calledQueries.Add(toolName);
+                        lock (queryLock)
+                            calledQueries.Add(toolName);
                     }
-
-                    var query = QueryExecutor != null
-                        ? QueryExecutor(toolName, arguments)
-                        : MapEditorFunctions.ExecuteQueryFunction(toolName, arguments);
-                    return MapMcpToolCallResult.Query(toolName, query ?? string.Empty);
+                    return result;
                 }
 
                 var requiredQuery = MapEditorFunctions.GetRequiredQuery(toolName);
@@ -418,10 +476,7 @@ namespace HaCreator.MapEditor.AI
                         ["result"] = new JObject
                         {
                             ["isError"] = !call.Success,
-                            ["content"] = new JArray
-                            {
-                                new JObject { ["type"] = "text", ["text"] = call.Text ?? string.Empty }
-                            }
+                            ["content"] = call.Content
                         }
                     };
 
@@ -498,15 +553,25 @@ namespace HaCreator.MapEditor.AI
         public bool IsQuery { get; private set; }
         public string Text { get; private set; }
         public string Command { get; private set; }
+        public JArray Content { get; private set; }
 
         public static MapMcpToolCallResult Query(string toolName, string text)
         {
+            return Query(toolName, new JArray(new JObject { ["type"] = "text", ["text"] = text ?? string.Empty }));
+        }
+
+        public static MapMcpToolCallResult Query(string toolName, JArray content)
+        {
+            var text = string.Join("\n", content.OfType<JObject>().Where(block => block["type"]?.ToString() == "text")
+                .Select(block => block["text"]?.ToString() ?? string.Empty));
             return new MapMcpToolCallResult
             {
                 ToolName = toolName,
-                Success = true,
+                Success = !text.TrimStart().StartsWith("Error:", StringComparison.OrdinalIgnoreCase) &&
+                    !text.TrimStart().StartsWith("# ERROR", StringComparison.OrdinalIgnoreCase),
                 IsQuery = true,
-                Text = text
+                Text = text,
+                Content = (JArray)content.DeepClone()
             };
         }
 
@@ -520,7 +585,7 @@ namespace HaCreator.MapEditor.AI
                     ? $"Command staged: {command}"
                     : executionResult,
                 Command = command
-            };
+            }.WithTextContent();
         }
 
         public static MapMcpToolCallResult Error(string toolName, string text)
@@ -530,7 +595,13 @@ namespace HaCreator.MapEditor.AI
                 ToolName = toolName,
                 Success = false,
                 Text = text
-            };
+            }.WithTextContent();
+        }
+
+        private MapMcpToolCallResult WithTextContent()
+        {
+            Content = new JArray(new JObject { ["type"] = "text", ["text"] = Text ?? string.Empty });
+            return this;
         }
     }
 }

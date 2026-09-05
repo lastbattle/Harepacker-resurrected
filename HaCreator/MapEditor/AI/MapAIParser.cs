@@ -71,6 +71,18 @@ namespace HaCreator.MapEditor.AI
                     command.TargetY = int.Parse(coords.Groups[2].Value);
                 }
 
+                if (command.Type == CommandType.Move)
+                {
+                    var positions = CoordinatePattern.Matches(commandText);
+                    if (positions.Count > 1)
+                    {
+                        command.Parameters["source_x"] = command.TargetX.Value;
+                        command.Parameters["source_y"] = command.TargetY.Value;
+                        command.TargetX = int.Parse(positions[^1].Groups[1].Value);
+                        command.TargetY = int.Parse(positions[^1].Groups[2].Value);
+                    }
+                }
+
                 // Parse quoted strings (for names like portal names)
                 var quotedMatches = QuotedStringPattern.Matches(commandText);
                 if (quotedMatches.Count > 0)
@@ -96,27 +108,21 @@ namespace HaCreator.MapEditor.AI
                 // Parse property assignments
                 ParseProperties(commandText, command);
 
-                // Parse direction/flip
-                if (normalized.Contains("FLIP") ||
-                    normalized.Contains("FACING LEFT") ||
-                    normalized.Contains("FLIPPED"))
-                {
-                    command.Parameters["flip"] = true;
-                }
-                else if (normalized.Contains("FACING RIGHT") || normalized.Contains("NOT FLIPPED"))
-                {
+                // Explicit negation must be tested before the positive flip keywords.
+                if (Regex.IsMatch(normalized, @"\b(?:FACING RIGHT|NOT FLIPPED)\b"))
                     command.Parameters["flip"] = false;
-                }
+                else if (Regex.IsMatch(normalized, @"\b(?:FLIP(?!\s*[=:])|FLIPPED|FACING LEFT)\b"))
+                    command.Parameters["flip"] = true;
 
                 // Parse layer
-                var layerMatch = Regex.Match(normalized, @"LAYER\s*[=:]?\s*(\d+)");
+                var layerMatch = Regex.Match(normalized, @"\bLAYER\s*[=:]?\s*(-?\d+)");
                 if (layerMatch.Success)
                 {
                     command.Parameters["layer"] = int.Parse(layerMatch.Groups[1].Value);
                 }
 
                 // Parse Z-order
-                var zMatch = Regex.Match(normalized, @"Z\s*[=:]?\s*(-?\d+)");
+                var zMatch = Regex.Match(normalized, @"\bZ\s*[=:]?\s*(-?\d+)");
                 if (zMatch.Success)
                 {
                     command.Parameters["z"] = int.Parse(zMatch.Groups[1].Value);
@@ -632,7 +638,7 @@ namespace HaCreator.MapEditor.AI
             }
 
             // Parse raw_position flag (disable ground-snapping)
-            if (Regex.IsMatch(commandText, @"\bRAW_POSITION\b", RegexOptions.IgnoreCase))
+            if (Regex.IsMatch(commandText, @"\bRAW_POSITION\b(?!\s*[=:])", RegexOptions.IgnoreCase))
             {
                 command.Parameters["raw_position"] = true;
             }

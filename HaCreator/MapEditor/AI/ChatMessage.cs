@@ -26,6 +26,13 @@ namespace HaCreator.MapEditor.AI
         private bool _isProcessing;
         private bool _hasError;
         private string _errorMessage;
+        private bool _commandsApplied;
+
+        public bool CommandsApplied
+        {
+            get => _commandsApplied;
+            set { _commandsApplied = value; OnPropertyChanged(nameof(CommandsApplied)); }
+        }
 
         public ChatMessage(ChatRole role, string content)
         {

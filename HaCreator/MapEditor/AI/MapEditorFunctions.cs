@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -36,6 +36,19 @@ namespace HaCreator.MapEditor.AI
                 CreateFlipElementTool(),
                 CreateClearElementsTool(),
                 CreateGetObjectInfoTool(),
+                CreateGetTileInfoTool(),
+                CreateQueryTool("get_map_state", "Read bounded current map geometry with world bounds and asset paths. Paginate with offset/limit or filter by region/type. Supply all four crop fields or omit all. Diagnostic source indices are not stable editing IDs.", new JObject
+                {
+                    ["x"] = new JObject { ["type"] = "integer" },
+                    ["y"] = new JObject { ["type"] = "integer" },
+                    ["width"] = new JObject { ["type"] = "integer", ["minimum"] = 1 },
+                    ["height"] = new JObject { ["type"] = "integer", ["minimum"] = 1 },
+                    ["element_type"] = new JObject { ["type"] = "string", ["enum"] = new JArray("all", "tile", "object", "foothold", "rope", "ladder", "mob", "npc", "portal") },
+                    ["offset"] = new JObject { ["type"] = "integer", ["minimum"] = 0 },
+                    ["limit"] = new JObject { ["type"] = "integer", ["minimum"] = 1, ["maximum"] = 200, ["description"] = "Default 100, maximum 200." }
+                }),
+                CreateMapViewTool(),
+                CreateAssetPreviewTool(),
                 CreateGetBackgroundInfoTool(),
                 CreateGetBgmListTool(),
                 CreateSetBgmTool(),
@@ -62,6 +75,10 @@ namespace HaCreator.MapEditor.AI
         public static bool IsQueryFunction(string functionName)
         {
             return functionName == "get_object_info" ||
+                   functionName == "get_tile_info" ||
+                   functionName == "get_map_state" ||
+                   functionName == "get_map_view" ||
+                   functionName == "get_asset_preview" ||
                    functionName == "get_background_info" ||
                    functionName == "get_bgm_list" ||
                    functionName == "get_mob_list" ||
@@ -125,6 +142,15 @@ namespace HaCreator.MapEditor.AI
         {
             switch (functionName)
             {
+                case "get_map_state":
+                case "get_map_view":
+                case "get_asset_preview":
+                    return "Error: This visual/spatial query requires an active map editor query handler.";
+                case "get_tile_info":
+                    return MapAssetCatalog.GetTileSetDetails(arguments["tileset"]?.ToString(),
+                        arguments["category"]?.ToString(), arguments["limit"]?.Value<int>() ?? 80,
+                        arguments["offset"]?.Value<int>() ?? 0);
+
                 case "get_object_info":
                     var oS = arguments["oS"]?.ToString();
                     if (string.IsNullOrEmpty(oS))
@@ -612,16 +638,17 @@ namespace HaCreator.MapEditor.AI
                 ["function"] = new JObject
                 {
                     ["name"] = "remove_element",
-                    ["description"] = "Remove an element from the map by type and location or name",
+                    ["description"] = "Remove exactly one element by its current origin coordinate pair, or portal name. Refresh get_map_state first; provide layer to disambiguate overlapping layers. Incomplete or ambiguous selectors fail without changes.",
                     ["parameters"] = new JObject
                     {
                         ["type"] = "object",
                         ["properties"] = new JObject
                         {
+                            ["layer"] = new JObject { ["type"] = "integer", ["minimum"] = 0, ["maximum"] = 7, ["description"] = "Optional layer filter for layered elements." },
                             ["element_type"] = new JObject
                             {
                                 ["type"] = "string",
-                                ["enum"] = new JArray { "mob", "npc", "portal", "reactor", "chair", "object", "foothold", "rope", "ladder" },
+                                ["enum"] = new JArray { "mob", "npc", "portal", "reactor", "chair", "object", "tile", "foothold", "rope", "ladder" },
                                 ["description"] = "Type of element to remove"
                             },
                             ["x"] = new JObject
@@ -654,16 +681,17 @@ namespace HaCreator.MapEditor.AI
                 ["function"] = new JObject
                 {
                     ["name"] = "move_element",
-                    ["description"] = "Move an element to a new position",
+                    ["description"] = "Move exactly one element selected by its current stored editor origin from_x/from_y, or a portal name. For objects and portals, to_y is the desired BOTTOM world Y (ground level), not the stored origin Y. For other types to_y is the origin Y. Refresh get_map_state first; provide layer to disambiguate. Ropes and ladders must be removed/re-added.",
                     ["parameters"] = new JObject
                     {
                         ["type"] = "object",
                         ["properties"] = new JObject
                         {
+                            ["layer"] = new JObject { ["type"] = "integer", ["minimum"] = 0, ["maximum"] = 7, ["description"] = "Optional layer filter for layered elements." },
                             ["element_type"] = new JObject
                             {
                                 ["type"] = "string",
-                                ["enum"] = new JArray { "mob", "npc", "portal", "reactor", "chair", "object", "rope", "ladder" },
+                                ["enum"] = new JArray { "mob", "npc", "portal", "reactor", "chair", "object", "tile" },
                                 ["description"] = "Type of element to move"
                             },
                             ["from_x"] = new JObject
@@ -689,7 +717,7 @@ namespace HaCreator.MapEditor.AI
                             ["to_y"] = new JObject
                             {
                                 ["type"] = "integer",
-                                ["description"] = "New Y coordinate"
+                                ["description"] = "Desired bottom world Y for objects/portals; origin Y for other types. Use bounds[3] from get_map_state to preserve object/portal ground height."
                             }
                         },
                         ["required"] = new JArray { "element_type", "to_x", "to_y" }
@@ -747,12 +775,13 @@ namespace HaCreator.MapEditor.AI
                 ["function"] = new JObject
                 {
                     ["name"] = "flip_element",
-                    ["description"] = "Flip an element horizontally (change facing direction)",
+                    ["description"] = "Flip exactly one element at its current editor origin. Use get_map_state coordinates and layer to disambiguate overlapping layers.",
                     ["parameters"] = new JObject
                     {
                         ["type"] = "object",
                         ["properties"] = new JObject
                         {
+                            ["layer"] = new JObject { ["type"] = "integer", ["minimum"] = 0, ["maximum"] = 7, ["description"] = "Optional layer filter for layered elements." },
                             ["element_type"] = new JObject
                             {
                                 ["type"] = "string",
@@ -798,6 +827,107 @@ namespace HaCreator.MapEditor.AI
                             }
                         },
                         ["required"] = new JArray { "element_type" }
+                    }
+                }
+            };
+        }
+
+        private static JObject CreateGetTileInfoTool()
+        {
+            return CreateQueryTool("get_tile_info", "Inspect actual tile variants, sizes, origins, magnification and collision offsets before placing tiles. Results are paginated.",
+                new JObject
+                {
+                    ["tileset"] = new JObject { ["type"] = "string", ["description"] = "Loaded tileset name." },
+                    ["category"] = new JObject { ["type"] = "string", ["description"] = "Optional category filter, e.g. enH0. Omit or use empty string for all." },
+                    ["offset"] = new JObject { ["type"] = "integer", ["minimum"] = 0, ["description"] = "Pagination offset, default 0." },
+                    ["limit"] = new JObject { ["type"] = "integer", ["minimum"] = 1, ["maximum"] = 200, ["description"] = "Maximum variants, default 80." }
+                }, "tileset");
+        }
+
+        /// <summary>Single-element mutations must never degrade to an unfiltered type-wide operation.</summary>
+        public static string ValidateActionSelector(string functionName, JObject arguments)
+        {
+            if (functionName == "modify_portal")
+                return string.IsNullOrWhiteSpace(arguments["name"]?.ToString())
+                    ? "A nonempty portal name is required." : null;
+            if (functionName != "move_element" && functionName != "remove_element" && functionName != "flip_element")
+                return null;
+            bool moving = functionName == "move_element";
+            var x = arguments[moving ? "from_x" : "x"];
+            var y = arguments[moving ? "from_y" : "y"];
+            bool hasX = x != null && x.Type != JTokenType.Null;
+            bool hasY = y != null && y.Type != JTokenType.Null;
+            bool hasName = arguments["name"] != null && arguments["name"].Type != JTokenType.Null;
+            if (hasName)
+            {
+                if (arguments["element_type"]?.ToString() != "portal" || string.IsNullOrWhiteSpace(arguments["name"].ToString()))
+                    return "Only portals support a name selector, and the name must not be empty.";
+                if (hasX || hasY)
+                    return "Use either a portal name or a coordinate pair, not both selectors.";
+                return null;
+            }
+            return hasX && hasY ? null : moving
+                ? "Provide both from_x and from_y, or a nonempty portal name. No elements were changed."
+                : "Provide both x and y, or a nonempty portal name. No elements were changed.";
+        }
+
+        private static JObject CreateMapViewTool()
+        {
+            return CreateQueryTool("get_map_view", "See a rendered map image with world coordinates and optional foothold/rope overlays. Use before edits and again to verify the result. Omit all crop fields for the whole map; otherwise supply all four.",
+                new JObject
+                {
+                    ["x"] = new JObject { ["type"] = "integer", ["description"] = "Crop left in map coordinates." },
+                    ["y"] = new JObject { ["type"] = "integer", ["description"] = "Crop top in map coordinates." },
+                    ["width"] = new JObject { ["type"] = "integer", ["minimum"] = 1 },
+                    ["height"] = new JObject { ["type"] = "integer", ["minimum"] = 1 },
+                    ["maxDimension"] = new JObject { ["type"] = "integer", ["minimum"] = 256, ["maximum"] = 1600, ["description"] = "Maximum output image side; default 1200." },
+                    ["overlays"] = new JObject { ["type"] = "boolean", ["description"] = "Show collision and climbing geometry; default true." }
+                });
+        }
+
+        private static JObject CreateAssetPreviewTool()
+        {
+            return CreateQueryTool("get_asset_preview", "See a contact sheet of exact loaded assets with their placement origins. First discover valid paths with get_tile_info/get_object_info/get_background_info; do not guess asset paths. Previews use the first animation frame.",
+                new JObject
+                {
+                    ["assets"] = new JObject
+                    {
+                        ["type"] = "array", ["minItems"] = 1, ["maxItems"] = 16,
+                        ["items"] = new JObject
+                        {
+                            ["anyOf"] = new JArray
+                            {
+                                AssetSchema("tile", "tS", "u", "no"),
+                                AssetSchema("object", "oS", "l0", "l1", "l2"),
+                                AssetSchema("background", "bS", "backgroundType", "no")
+                            }
+                        }
+                    },
+                    ["maxDimension"] = new JObject { ["type"] = "integer", ["minimum"] = 256, ["maximum"] = 1600 }
+                }, "assets");
+        }
+
+        private static JObject AssetSchema(string type, params string[] fields)
+        {
+            var properties = new JObject { ["type"] = new JObject { ["type"] = "string", ["enum"] = new JArray(type) } };
+            foreach (var field in fields)
+                properties[field] = field == "backgroundType"
+                    ? new JObject { ["type"] = "string", ["enum"] = new JArray("back", "ani") }
+                    : new JObject { ["type"] = "string" };
+            return new JObject { ["type"] = "object", ["properties"] = properties, ["required"] = new JArray(new[] { "type" }.Concat(fields)) };
+        }
+
+        private static JObject CreateQueryTool(string name, string description, JObject properties, params string[] required)
+        {
+            return new JObject
+            {
+                ["type"] = "function",
+                ["function"] = new JObject
+                {
+                    ["name"] = name, ["description"] = description,
+                    ["parameters"] = new JObject
+                    {
+                        ["type"] = "object", ["properties"] = properties, ["required"] = new JArray(required)
                     }
                 }
             };
@@ -959,12 +1089,13 @@ namespace HaCreator.MapEditor.AI
                 ["function"] = new JObject
                 {
                     ["name"] = "tile_platform",
-                    ["description"] = "Automatically tile an entire horizontal platform with proper spacing. Places end tiles at the edges and fill tiles in the middle. Use this instead of manually placing multiple add_tile calls.",
+                    ["description"] = "Tile a horizontal walking surface. start_x/end_x/y describe world collision surface coordinates; native tile foothold offsets determine image origins. Inspect get_tile_info first and verify with get_map_view.",
                     ["parameters"] = new JObject
                     {
                         ["type"] = "object",
                         ["properties"] = new JObject
                         {
+                            ["create_foothold"] = new JObject { ["type"] = "boolean", ["description"] = "Create matching collision footholds, default true. Set false when decorating existing collision geometry." },
                             ["tileset"] = new JObject
                             {
                                 ["type"] = "string",
@@ -1005,12 +1136,13 @@ namespace HaCreator.MapEditor.AI
                 ["function"] = new JObject
                 {
                     ["name"] = "tile_structure",
-                    ["description"] = "Build a complete tile structure with proper tile connections. The code handles all tile placement rules automatically. Just specify position, size, and structure type.",
+                    ["description"] = "Build a tile structure from native asset geometry. For flat/tall structures start_x/end_x/y describe world walking surface coordinates; native collision offsets determine origins. Inspect variants and verify the resulting geometry visually.",
                     ["parameters"] = new JObject
                     {
                         ["type"] = "object",
                         ["properties"] = new JObject
                         {
+                            ["create_foothold"] = new JObject { ["type"] = "boolean", ["description"] = "Create matching collision footholds, default true. Set false when decorating existing collision geometry." },
                             ["tileset"] = new JObject
                             {
                                 ["type"] = "string",
@@ -1617,6 +1749,9 @@ namespace HaCreator.MapEditor.AI
         /// </summary>
         public static string FunctionCallToCommand(string functionName, JObject arguments)
         {
+            var selectorError = ValidateActionSelector(functionName, arguments);
+            if (selectorError != null)
+                return "# ERROR: " + selectorError;
             switch (functionName)
             {
                 case "add_mob":
@@ -1714,6 +1849,8 @@ namespace HaCreator.MapEditor.AI
                     var tilePlatformCmd = $"TILE PLATFORM tileset=\"{arguments["tileset"]}\" from x={arguments["start_x"]} to x={arguments["end_x"]} at y={arguments["y"]}";
                     if (arguments["layer"] != null)
                         tilePlatformCmd += $" layer={arguments["layer"]}";
+                    if (arguments["create_foothold"] != null)
+                        tilePlatformCmd += arguments["create_foothold"].Value<bool>() ? " create_foothold=true" : " create_foothold=false";
                     return tilePlatformCmd;
 
                 case "tile_structure":
@@ -1726,22 +1863,26 @@ namespace HaCreator.MapEditor.AI
                         tileStructCmd += $" height={arguments["height"]}";
                     if (arguments["layer"] != null)
                         tileStructCmd += $" layer={arguments["layer"]}";
+                    if (arguments["create_foothold"] != null)
+                        tileStructCmd += arguments["create_foothold"].Value<bool>() ? " create_foothold=true" : " create_foothold=false";
                     return tileStructCmd;
 
                 case "remove_element":
                     var removeType = arguments["element_type"]?.ToString().ToUpper();
+                    var removeLayer = arguments["layer"] != null ? $" layer={arguments["layer"]}" : string.Empty;
                     if (arguments["name"] != null)
-                        return $"DELETE {removeType} \"{arguments["name"]}\"";
+                        return $"DELETE {removeType} \"{arguments["name"]}\"{removeLayer}";
                     else if (arguments["x"] != null && arguments["y"] != null)
-                        return $"DELETE {removeType} at ({arguments["x"]}, {arguments["y"]})";
+                        return $"DELETE {removeType} at ({arguments["x"]}, {arguments["y"]}){removeLayer}";
                     return $"# Could not parse remove_element: {arguments}";
 
                 case "move_element":
                     var moveType = arguments["element_type"]?.ToString().ToUpper();
+                    var moveLayer = arguments["layer"] != null ? $" layer={arguments["layer"]}" : string.Empty;
                     if (arguments["name"] != null)
-                        return $"MOVE {moveType} \"{arguments["name"]}\" to ({arguments["to_x"]}, {arguments["to_y"]})";
+                        return $"MOVE {moveType} \"{arguments["name"]}\" to ({arguments["to_x"]}, {arguments["to_y"]}){moveLayer}";
                     else if (arguments["from_x"] != null && arguments["from_y"] != null)
-                        return $"MOVE {moveType} at ({arguments["from_x"]}, {arguments["from_y"]}) to ({arguments["to_x"]}, {arguments["to_y"]})";
+                        return $"MOVE {moveType} at ({arguments["from_x"]}, {arguments["from_y"]}) to ({arguments["to_x"]}, {arguments["to_y"]}){moveLayer}";
                     return $"# Could not parse move_element: {arguments}";
 
                 case "modify_portal":
@@ -1755,7 +1896,8 @@ namespace HaCreator.MapEditor.AI
                     return modifyCmd;
 
                 case "flip_element":
-                    return $"FLIP {arguments["element_type"]?.ToString().ToUpper()} at ({arguments["x"]}, {arguments["y"]})";
+                    var flipLayer = arguments["layer"] != null ? $" layer={arguments["layer"]}" : string.Empty;
+                    return $"FLIP {arguments["element_type"]?.ToString().ToUpper()} at ({arguments["x"]}, {arguments["y"]}){flipLayer}";
 
                 case "clear_elements":
                     return $"CLEAR ALL {arguments["element_type"]?.ToString().ToUpper()}S";

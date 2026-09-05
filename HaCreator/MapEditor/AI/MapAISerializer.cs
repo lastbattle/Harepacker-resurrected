@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -8,6 +8,7 @@ using HaCreator.MapEditor.Instance.Shapes;
 using HaCreator.Wz;
 using MapleLib.WzLib.WzStructure;
 using MapleLib.WzLib.WzStructure.Data;
+using Newtonsoft.Json.Linq;
 
 namespace HaCreator.MapEditor.AI
 {
@@ -30,6 +31,105 @@ namespace HaCreator.MapEditor.AI
             this.sb = new StringBuilder();
         }
 
+        /// <summary>Bounded, paginated world geometry for iterative visual editing.</summary>
+        public string GenerateSpatialState(JObject args)
+        {
+            var cropKeys = new[] { "x", "y", "width", "height" };
+            int cropCount = cropKeys.Count(key => args[key] != null && args[key].Type != JTokenType.Null);
+            if (cropCount != 0 && cropCount != 4)
+                return "Error: Supply all of x, y, width and height for a region, or omit all four.";
+            long cropX = args["x"]?.Value<int>() ?? 0, cropY = args["y"]?.Value<int>() ?? 0;
+            long cropWidth = args["width"]?.Value<int>() ?? 0, cropHeight = args["height"]?.Value<int>() ?? 0;
+            if (cropCount == 4 && (cropWidth <= 0 || cropHeight <= 0))
+                return "Error: Region width and height must be positive.";
+            int offset = Math.Max(0, args["offset"]?.Value<int>() ?? 0);
+            int limit = Math.Clamp(args["limit"]?.Value<int>() ?? 100, 1, 200);
+            string type = args["element_type"]?.ToString() ?? "all";
+            var entries = new List<JObject>();
+            int index = 0;
+            foreach (var item in board.BoardItems.TileObjs)
+            {
+                var entry = SpatialItem(item, item is TileInstance ? "tile" : "object", index++);
+                if (item is TileInstance tile)
+                {
+                    var info = (HaCreator.MapEditor.Info.TileInfo)tile.BaseInfo;
+                    entry["asset"] = new JObject { ["tS"] = info.tS, ["u"] = info.u, ["no"] = info.no };
+                }
+                else if (item is ObjectInstance obj)
+                {
+                    var info = (HaCreator.MapEditor.Info.ObjectInfo)obj.BaseInfo;
+                    entry["asset"] = new JObject { ["oS"] = info.oS, ["l0"] = info.l0, ["l1"] = info.l1, ["l2"] = info.l2 };
+                }
+                entry["layer"] = item.LayerNumber;
+                entry["z"] = item.Z;
+                entries.Add(entry);
+            }
+            index = 0;
+            foreach (var fh in board.BoardItems.FootholdLines)
+                entries.Add(new JObject
+                {
+                    ["type"] = "foothold", ["sourceIndex"] = index++, ["layer"] = fh.LayerNumber,
+                    ["platform"] = fh.PlatformNumber, ["wall"] = fh.IsWall,
+                    ["first"] = new JArray(fh.FirstDot.X, fh.FirstDot.Y), ["second"] = new JArray(fh.SecondDot.X, fh.SecondDot.Y),
+                    ["bounds"] = new JArray(Math.Min(fh.FirstDot.X, fh.SecondDot.X), Math.Min(fh.FirstDot.Y, fh.SecondDot.Y),
+                        Math.Max(fh.FirstDot.X, fh.SecondDot.X), Math.Max(fh.FirstDot.Y, fh.SecondDot.Y))
+                });
+            index = 0;
+            foreach (var rope in board.BoardItems.Ropes)
+                entries.Add(new JObject
+                {
+                    ["type"] = rope.ladder ? "ladder" : "rope", ["sourceIndex"] = index++, ["layer"] = rope.LayerNumber,
+                    ["first"] = new JArray(rope.FirstAnchor.X, rope.FirstAnchor.Y), ["second"] = new JArray(rope.SecondAnchor.X, rope.SecondAnchor.Y),
+                    ["bounds"] = new JArray(Math.Min(rope.FirstAnchor.X, rope.SecondAnchor.X), Math.Min(rope.FirstAnchor.Y, rope.SecondAnchor.Y),
+                        Math.Max(rope.FirstAnchor.X, rope.SecondAnchor.X), Math.Max(rope.FirstAnchor.Y, rope.SecondAnchor.Y))
+                });
+            index = 0;
+            foreach (var mob in board.BoardItems.Mobs)
+            {
+                var entry = SpatialItem(mob, "mob", index++); entry["id"] = mob.MobInfo.ID; entries.Add(entry);
+            }
+            index = 0;
+            foreach (var npc in board.BoardItems.NPCs)
+            {
+                var entry = SpatialItem(npc, "npc", index++); entry["id"] = npc.NpcInfo.ID; entries.Add(entry);
+            }
+            index = 0;
+            foreach (var portal in board.BoardItems.Portals)
+            {
+                var entry = SpatialItem(portal, "portal", index++); entry["name"] = portal.pn; entries.Add(entry);
+            }
+            var matches = entries.Where(entry => (type == "all" || entry["type"]?.ToString() == type) &&
+                (cropCount == 0 || entry["bounds"][2].Value<long>() >= cropX && entry["bounds"][0].Value<long>() <= cropX + cropWidth &&
+                    entry["bounds"][3].Value<long>() >= cropY && entry["bounds"][1].Value<long>() <= cropY + cropHeight)).ToList();
+            var result = new JObject
+            {
+                ["coordinates"] = "Map pixels: +X right, +Y down. Bounds are [left,top,right,bottom]. Image positions use editor origin anchors; collision endpoints use world coordinates.",
+                ["indexScope"] = "Diagnostic sourceIndex values refer to current collections, not persistent editing IDs. Tile and object indices share TileObjs; rope and ladder indices share Ropes. Refresh after edits.",
+                ["mapSize"] = new JArray(board.MapSize.X, board.MapSize.Y),
+                ["center"] = new JArray(board.CenterPoint.X, board.CenterPoint.Y),
+                ["totalGeometryElements"] = entries.Count,
+                ["globalGeometryBounds"] = entries.Count == 0 ? JValue.CreateNull() : new JArray(
+                    entries.Min(e => e["bounds"][0].Value<int>()), entries.Min(e => e["bounds"][1].Value<int>()),
+                    entries.Max(e => e["bounds"][2].Value<int>()), entries.Max(e => e["bounds"][3].Value<int>())),
+                ["matched"] = matches.Count, ["offset"] = offset, ["limit"] = limit,
+                ["nextOffset"] = (long)offset + limit < matches.Count ? new JValue(offset + limit) : JValue.CreateNull(),
+                ["elements"] = new JArray(matches.Skip(offset).Take(limit)),
+                ["omittedTypes"] = "Backgrounds, chairs, reactors and tooltips are not included in this geometry query."
+            };
+            return result.ToString(Newtonsoft.Json.Formatting.None);
+        }
+
+        private static JObject SpatialItem(BoardItem item, string type, int index)
+        {
+            return new JObject
+            {
+                ["type"] = type, ["sourceIndex"] = index, ["x"] = item.X, ["y"] = item.Y,
+                ["selected"] = item.Selected,
+                ["origin"] = new JArray(item.Origin.X, item.Origin.Y),
+                ["bounds"] = new JArray(item.Left, item.Top, item.Right, item.Bottom), ["flipped"] = item.IsFlipped()
+            };
+        }
+
         // ASCII map configuration
         private const int ASCII_MAP_WIDTH = 80;  // Characters wide
         private const int ASCII_MAP_HEIGHT = 30; // Characters tall (max)
@@ -45,7 +145,12 @@ namespace HaCreator.MapEditor.AI
             WriteLine("# Map Summary for AI Editing");
             WriteLine($"Map: \"{board.MapInfo.strMapName}\" (ID: {board.MapInfo.id})");
             WriteLine($"Size: {board.MapSize.X}x{board.MapSize.Y}, Center: ({board.CenterPoint.X}, {board.CenterPoint.Y})");
-            WriteLine($"Grid: 90x60px tiles (90px horizontal spacing, 60px vertical spacing)");
+            WriteLine("Coordinates: map pixels, +X right and +Y down. Positions are origin anchors, not image top-left corners. Inspect get_tile_info for actual tile geometry; 90x60 is only a common grid.");
+            WriteLine($"Selected items: {board.SelectedItems.Count}");
+            foreach (var selected in board.SelectedItems.Take(30))
+                WriteLine($"  Selected {selected.GetType().Name} at ({selected.X}, {selected.Y})");
+            if (board.SelectedItems.Count > 30)
+                WriteLine("  Selection list truncated; inspect selected flags in paginated get_map_state results.");
 
             // Calculate actual content bounds from existing elements
             int minX = int.MaxValue, maxX = int.MinValue;
@@ -79,10 +184,25 @@ namespace HaCreator.MapEditor.AI
                 hasElements = true;
             }
 
+            foreach (var item in board.BoardItems.TileObjs)
+            {
+                minX = Math.Min(minX, item.Left); maxX = Math.Max(maxX, item.Right);
+                minY = Math.Min(minY, item.Top); maxY = Math.Max(maxY, item.Bottom);
+                hasElements = true;
+            }
+            foreach (var rope in board.BoardItems.Ropes)
+            {
+                minX = Math.Min(minX, Math.Min(rope.FirstAnchor.X, rope.SecondAnchor.X));
+                maxX = Math.Max(maxX, Math.Max(rope.FirstAnchor.X, rope.SecondAnchor.X));
+                minY = Math.Min(minY, Math.Min(rope.FirstAnchor.Y, rope.SecondAnchor.Y));
+                maxY = Math.Max(maxY, Math.Max(rope.FirstAnchor.Y, rope.SecondAnchor.Y));
+                hasElements = true;
+            }
+
             if (hasElements)
             {
                 WriteLine($"Content Bounds: X=[{minX} to {maxX}], Y=[{minY} to {maxY}]");
-                WriteLine($"** IMPORTANT: Place new elements within these bounds! **");
+                WriteLine("Content bounds describe existing elements, not a placement constraint. Check map/VR bounds when extending the layout.");
             }
             WriteLine();
 
@@ -199,7 +319,7 @@ namespace HaCreator.MapEditor.AI
             if (board.BoardItems.FootholdLines.Count > 0)
             {
                 WriteLine("## Platforms (Footholds)");
-                WriteLine("Note: Standard tile grid is 90px wide x 60px tall");
+                WriteLine("Foothold endpoints are collision geometry; tile imagery may extend beyond them.");
                 var fhByLayer = board.BoardItems.FootholdLines.GroupBy(fh => fh.LayerNumber);
                 foreach (var layerGroup in fhByLayer.OrderBy(g => g.Key))
                 {
@@ -245,7 +365,7 @@ namespace HaCreator.MapEditor.AI
                     foreach (var tile in layerGroup.OrderBy(t => t.X).ThenBy(t => t.Y))
                     {
                         var tileInfo = (HaCreator.MapEditor.Info.TileInfo)tile.BaseInfo;
-                        WriteLine($"- ({tile.X}, {tile.Y}): {tileInfo.u}/{tileInfo.no}, Z={tile.Z}");
+                        WriteLine($"- ({tile.X}, {tile.Y}): {tileInfo.u}/{tileInfo.no}, Z={tile.Z}, bounds=[{tile.Left},{tile.Top},{tile.Right},{tile.Bottom}], origin=({tile.Origin.X},{tile.Origin.Y})");
                     }
                 }
                 WriteLine();
@@ -267,7 +387,7 @@ namespace HaCreator.MapEditor.AI
                         if (obj.Flip) props.Add("Flipped");
                         if (obj.hide == true) props.Add("Hidden");
                         var propsStr = props.Count > 0 ? $" [{string.Join(", ", props)}]" : "";
-                        WriteLine($"- ({obj.X}, {obj.Y}): {objInfo.oS}/{objInfo.l0}/{objInfo.l1}/{objInfo.l2}, Z={obj.Z}{propsStr}");
+                        WriteLine($"- ({obj.X}, {obj.Y}): {objInfo.oS}/{objInfo.l0}/{objInfo.l1}/{objInfo.l2}, Z={obj.Z}{propsStr}, bounds=[{obj.Left},{obj.Top},{obj.Right},{obj.Bottom}], origin=({obj.Origin.X},{obj.Origin.Y})");
                     }
                 }
                 WriteLine();
@@ -367,6 +487,14 @@ namespace HaCreator.MapEditor.AI
             // Add contextual analysis for better AI understanding
             SerializeContextualAnalysis();
 
+            const int maximumSummaryLength = 48000;
+            if (sb.Length > maximumSummaryLength)
+            {
+                var text = sb.ToString(0, maximumSummaryLength);
+                int lastLine = text.LastIndexOf('\n');
+                return text.Substring(0, lastLine >= 0 ? lastLine : text.Length) +
+                    "\n[Summary truncated: remaining elements omitted. Call get_map_state with region/type filters and offset/limit to inspect exact geometry.]\n";
+            }
             return sb.ToString();
         }
 

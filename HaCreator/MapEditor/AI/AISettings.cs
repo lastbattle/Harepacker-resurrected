@@ -15,9 +15,9 @@ namespace HaCreator.MapEditor.AI
     public static class AISettings
     {
         private const string DefaultBaseUrl = "https://openrouter.ai/api/v1";
-        private const string DefaultModel = "openai/gpt-5.6-luna:xhigh";
+        private const string DefaultModel = "openai/gpt-6-astra";
         private const string DefaultImageModel = "gpt-image-2";
-        private const AIEndpointProtocol DefaultProtocol = AIEndpointProtocol.ChatCompletions;
+        private const AIEndpointProtocol DefaultProtocol = AIEndpointProtocol.Responses;
 
         private static string apiKey = string.Empty;
         private static string baseUrl = DefaultBaseUrl;
@@ -187,8 +187,45 @@ namespace HaCreator.MapEditor.AI
 
         public static readonly string[] AvailableReasoningEfforts =
         {
-            "minimal", "low", "medium", "high", "xhigh"
+            "minimal", "low", "medium", "high", "xhigh", "max", "ultra"
         };
+
+        public static bool IsAstraModel(string modelId)
+        {
+            var id = modelId?.Trim();
+            return string.Equals(id, "gpt-6-astra", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(id, "openai/gpt-6-astra", StringComparison.OrdinalIgnoreCase);
+        }
+
+        public static string NormalizeModelId(string endpoint, string modelId)
+        {
+            var id = modelId?.Trim() ?? string.Empty;
+            if (!IsAstraModel(id)) return id;
+            return Uri.TryCreate(endpoint, UriKind.Absolute, out var uri) &&
+                uri.Host.Equals("openrouter.ai", StringComparison.OrdinalIgnoreCase)
+                ? "openai/gpt-6-astra" : "gpt-6-astra";
+        }
+
+        public static readonly string[] AstraReasoningEfforts =
+            { "low", "medium", "high", "xhigh", "max", "ultra" };
+
+        public static OpenAICompatibleOptions CreateMapEditorOptions()
+        {
+            var options = CreateOptions();
+            // Map editing is designed and validated for Astra's multimodal Responses loop.
+            // Keep the user's endpoint/key and permit endpoint-qualified Astra model IDs.
+            if (!options.Model.Contains("gpt-6-astra", StringComparison.OrdinalIgnoreCase))
+            {
+                options.Model = Uri.TryCreate(options.BaseUrl, UriKind.Absolute, out var uri) &&
+                    uri.Host.Equals("openrouter.ai", StringComparison.OrdinalIgnoreCase)
+                    ? "openai/gpt-6-astra" : "gpt-6-astra";
+                options.ReasoningEffort = "low";
+            }
+            if (string.IsNullOrWhiteSpace(options.ReasoningEffort)) options.ReasoningEffort = "low";
+            options.Protocol = AIEndpointProtocol.Responses;
+            options.MaxOutputTokens = Math.Min(options.MaxOutputTokens, 16000);
+            return options;
+        }
 
         public static OpenAICompatibleOptions CreateOptions()
         {
@@ -197,8 +234,8 @@ namespace HaCreator.MapEditor.AI
             {
                 BaseUrl = baseUrl,
                 ApiKey = apiKey,
-                Model = model,
-                Protocol = protocol,
+                Model = NormalizeModelId(baseUrl, model),
+                Protocol = IsAstraModel(model) ? AIEndpointProtocol.Responses : protocol,
                 ReasoningEffort = reasoningEffort,
                 StrictSchemas = strictSchemas,
                 MaxToolTurns = maxToolTurns,

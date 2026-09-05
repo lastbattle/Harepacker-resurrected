@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -13,6 +13,43 @@ namespace HaCreator.MapEditor.AI
     /// </summary>
     public static class MapAssetCatalog
     {
+        public static string GetTileSetDetails(string tileset, string category = null, int limit = 80, int offset = 0)
+        {
+            if (string.IsNullOrWhiteSpace(tileset))
+                return "Error: tileset is required.";
+            var image = Program.InfoManager.GetTileSet(tileset);
+            if (image == null)
+                return $"Error: Tileset '{tileset}' was not found.";
+
+            limit = Math.Clamp(limit, 1, 200);
+            offset = Math.Max(0, offset);
+            var categories = image.WzProperties.OfType<WzSubProperty>()
+                .Where(p => p.Name != "info").OrderBy(p => p.Name).ToList();
+            if (!string.IsNullOrEmpty(category) && !categories.Any(p => p.Name == category))
+                return $"Error: Category '{category}' not found. Available: {string.Join(", ", categories.Select(p => p.Name))}";
+            var variants = categories.Where(p => string.IsNullOrEmpty(category) || p.Name == category)
+                .SelectMany(p => p.WzProperties.OfType<WzCanvasProperty>().OrderBy(v => v.Name)
+                    .Select(v => (category: p.Name, canvas: v))).ToList();
+            var sb = new StringBuilder();
+            sb.AppendLine($"Tileset: {tileset}; categories: {string.Join(", ", categories.Select(p => p.Name))}");
+            sb.AppendLine($"info/mag: {image["info"]?["mag"]?.WzValue ?? 1}; variants: {variants.Count}; offset: {offset}");
+            sb.AppendLine("Coordinates are map pixels, +X right, +Y down. Placement is the origin anchor, not the image top-left. Unflipped visible bounds: [x-originX,y-originY,width,height]. Foothold vectors are offsets from the placement anchor, not image coordinates. Inspect actual variants; a 90x60 grid is not universal.");
+            foreach (var variant in variants.Skip(offset).Take(limit))
+            {
+                var info = GetObjectInfo(variant.canvas);
+                sb.Append($"category={variant.category} tile_no={variant.canvas.Name}");
+                if (info.HasValue)
+                    sb.Append($" size={info.Value.width}x{info.Value.height} origin=({info.Value.originX},{info.Value.originY})");
+                sb.Append($" z={variant.canvas["z"]?.WzValue ?? 0}");
+                if (variant.canvas["foothold"] is WzConvexProperty foothold)
+                    sb.Append(" footholdOffsets=" + string.Join(" -> ", foothold.WzProperties.OfType<WzVectorProperty>().Select(p => $"({p.X.Value},{p.Y.Value})")));
+                sb.AppendLine();
+            }
+            if ((long)offset + limit < variants.Count)
+                sb.AppendLine($"More variants available: call get_tile_info with offset={offset + limit}.");
+            return sb.ToString();
+        }
+
         /// <summary>
         /// Tile category descriptions for AI understanding
         /// </summary>
@@ -290,16 +327,17 @@ namespace HaCreator.MapEditor.AI
         /// </summary>
         public static string GetObjectSetDetails(string oS)
         {
-            if (!Program.InfoManager.ObjectSets.TryGetValue(oS, out var wzImage) || wzImage == null)
+            var wzImage = Program.InfoManager.GetObjectSet(oS);
+            if (wzImage == null)
             {
                 // Check if it's actually a tileset (common mistake)
                 if (Program.InfoManager.TileSets.ContainsKey(oS))
                 {
-                    return $"'{oS}' is a TILESET, not an object set. " +
+                    return $"Error: '{oS}' is a TILESET, not an object set. " +
                            $"For tilesets, use tile_platform() or tile_structure() directly with tileset=\"{oS}\". " +
-                           $"You don't need to query tileset info - just use the name directly.";
+                           $"Call get_tile_info to inspect actual tile variants and geometry first.";
                 }
-                return $"Object set '{oS}' not found. Available object sets are listed in the map context. " +
+                return $"Error: Object set '{oS}' not found. Available object sets are listed in the map context. " +
                        $"Note: This is for OBJECTS (Obj.wz), not tiles. For tiles, use tile_platform/tile_structure directly.";
             }
 
@@ -390,8 +428,11 @@ namespace HaCreator.MapEditor.AI
 
                 if (canvas != null)
                 {
-                    int width = canvas.PngProperty.Width;
-                    int height = canvas.PngProperty.Height;
+                    var linked = canvas.GetLinkedWzImageProperty();
+                    var png = linked is WzCanvasProperty linkedCanvas ? linkedCanvas.PngProperty :
+                        linked as WzPngProperty ?? canvas.PngProperty;
+                    int width = png.Width;
+                    int height = png.Height;
                     int originX = 0;
                     int originY = 0;
 
@@ -418,8 +459,9 @@ namespace HaCreator.MapEditor.AI
         /// </summary>
         public static string GetBackgroundSetDetails(string bS)
         {
-            if (!Program.InfoManager.BackgroundSets.TryGetValue(bS, out var wzImage) || wzImage == null)
-                return $"[HaCreator Connected] Background set '{bS}' not found. Available sets are listed in the map context.";
+            var wzImage = Program.InfoManager.GetBackgroundSet(bS);
+            if (wzImage == null)
+                return $"Error: Background set '{bS}' not found. Available sets are listed in the map context.";
 
             var sb = new StringBuilder();
             sb.AppendLine($"## Background Set: {bS}");
@@ -488,8 +530,11 @@ namespace HaCreator.MapEditor.AI
 
                 if (canvas != null)
                 {
-                    int width = canvas.PngProperty.Width;
-                    int height = canvas.PngProperty.Height;
+                    var linked = canvas.GetLinkedWzImageProperty();
+                    var png = linked is WzCanvasProperty linkedCanvas ? linkedCanvas.PngProperty :
+                        linked as WzPngProperty ?? canvas.PngProperty;
+                    int width = png.Width;
+                    int height = png.Height;
                     int originX = 0;
                     int originY = 0;
 

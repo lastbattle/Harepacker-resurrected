@@ -29,7 +29,7 @@ namespace UnitTest_MapSimulator
                     .ToArray();
 
                 Assert.Equal(expected, actual);
-                Assert.Equal(34, actual.Length);
+                Assert.Equal(38, actual.Length);
                 Assert.All(server.GetMcpTools().OfType<JObject>(), tool =>
                 {
                     Assert.Equal("object", tool["inputSchema"]?["type"]?.ToString());
@@ -47,7 +47,9 @@ namespace UnitTest_MapSimulator
                 {
                     ["mob_id"] = "100100",
                     ["x"] = 0,
-                    ["y"] = 0
+                    ["y"] = 0,
+                    ["rx0"] = -100,
+                    ["rx1"] = 100
                 });
 
                 Assert.False(result.Success);
