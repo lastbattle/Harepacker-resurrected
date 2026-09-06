@@ -10,12 +10,13 @@ using MapleLib.MapleCryptoLib;
 using MapleLib.PacketLib;
 using MapleLib.WzLib;
 using MapleLib.WzLib.Util;
+using HaSharedLibrary.Configuration;
 
 namespace HaSharedLibrary.GUI
 {
     public partial class SharedCustomWzEncryptionInputBox : Window, IDisposable
     {
-        private readonly ConfigurationManager _configurationManager;
+        private readonly HaRepackerSettingsStore _configurationManager;
         private readonly BindingList<EncryptionKey> _encryptionKeys;
         private readonly TextBox[] _ivBoxes;
         private readonly TextBox[] _userKeyBoxes;
@@ -37,7 +38,7 @@ namespace HaSharedLibrary.GUI
                 textBox_AESUserKey29, textBox_AESUserKey30, textBox_AESUserKey31, textBox_AESUserKey32
             };
 
-            _configurationManager = new ConfigurationManager();
+            _configurationManager = new HaRepackerSettingsStore();
             _configurationManager.Load();
             _encryptionKeys = new BindingList<EncryptionKey>(_configurationManager.CustomKeys);
             nameBox.ItemsSource = _encryptionKeys;
@@ -65,7 +66,7 @@ namespace HaSharedLibrary.GUI
 
         private void SaveForm_Load(object sender, RoutedEventArgs e)
         {
-            ApplicationSettings settings = _configurationManager.ApplicationSettings;
+            HaRepackerApplicationSettings settings = _configurationManager.ApplicationSettings;
             string[] ivBytes = settings.MapleVersion_CustomEncryptionBytes.Split(' ');
             if (ivBytes.Length == 4 && Array.TrueForAll(ivBytes, CheckHexDigits))
                 SetTextBoxes(_ivBoxes, ivBytes);
@@ -170,7 +171,7 @@ namespace HaSharedLibrary.GUI
                 return;
             }
 
-            ApplicationSettings settings = _configurationManager.ApplicationSettings;
+            HaRepackerApplicationSettings settings = _configurationManager.ApplicationSettings;
             settings.MapleVersion_CustomEncryptionName = nameBox.Text;
             settings.MapleVersion_CustomEncryptionBytes = string.Join(" ", ivBytes);
             settings.MapleVersion_CustomAESUserKey = string.Join(" ", userKey);

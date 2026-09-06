@@ -99,7 +99,11 @@ namespace HaCreator.GUI
                 return;
             try
             {
-                string[] paths = { Program.GetLocalSettingsPath(), HaCreatorPaths.DefaultConfigPath };
+                string[] paths =
+                {
+                    Program.GetLocalSettingsPath(),
+                    HaSharedLibrary.Configuration.UserDataPaths.HaCreatorConfigFile
+                };
                 foreach (string path in paths) if (System.IO.File.Exists(path)) System.IO.File.Delete(path);
                 Program.SkipSettingsSave = true;
                 MessageBox.Show(this, UserSettingsTextExtension.Get("ResetRestart"),

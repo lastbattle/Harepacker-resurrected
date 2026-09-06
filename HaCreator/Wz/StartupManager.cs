@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using HaSharedLibrary.Configuration;
 
 namespace HaCreator.Wz
 {
@@ -99,7 +100,7 @@ namespace HaCreator.Wz
         /// </summary>
         public StartupManager()
         {
-            _config = HaCreatorConfig.Load();
+            _config = HaCreatorConfig.Load(UserDataPaths.HaCreatorConfigFile);
             _config.EnsureDirectoriesExist();
 
             _versionManager = new VersionManager(_config.VersionsPath);
@@ -155,7 +156,7 @@ namespace HaCreator.Wz
             EnableHotSwapForDataSource(imgDataSource);
 
             _config.LastUsedVersion = version.Version;
-            _config.Save();
+            _config.Save(UserDataPaths.HaCreatorConfigFile);
 
             return _dataSource;
         }
@@ -179,7 +180,7 @@ namespace HaCreator.Wz
             _dataSource?.Dispose();
 
             _config.Legacy.WzFilePath = wzPath;
-            _config.Save();
+            _config.Save(UserDataPaths.HaCreatorConfigFile);
 
             var wzDataSource = new WzFileDataSource(wzPath, _config);
             wzDataSource.Initialize();
@@ -210,7 +211,7 @@ namespace HaCreator.Wz
                 _config.Legacy.WzFilePath = versionOrPath;
             }
 
-            _config.Save();
+            _config.Save(UserDataPaths.HaCreatorConfigFile);
             return _dataSource;
         }
 
@@ -235,7 +236,7 @@ namespace HaCreator.Wz
             // Update last used version
             string versionName = Path.GetFileName(imgVersionPath);
             _config.LastUsedVersion = versionName;
-            _config.Save();
+            _config.Save(UserDataPaths.HaCreatorConfigFile);
 
             return _dataSource;
         }
@@ -246,7 +247,7 @@ namespace HaCreator.Wz
         public void SetDataSourceMode(DataSourceMode mode)
         {
             _config.DataSourceMode = mode;
-            _config.Save();
+            _config.Save(UserDataPaths.HaCreatorConfigFile);
         }
 
         /// <summary>
@@ -263,7 +264,7 @@ namespace HaCreator.Wz
         /// </summary>
         public void SaveConfig()
         {
-            _config.Save();
+            _config.Save(UserDataPaths.HaCreatorConfigFile);
         }
 
         /// <summary>

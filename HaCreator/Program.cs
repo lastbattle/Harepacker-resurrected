@@ -14,6 +14,7 @@ using System.Reflection;
 using HaCreator.Wz;
 using HaCreator.Audio;
 using HaSharedLibrary;
+using HaSharedLibrary.Configuration;
 using MapleLib;
 using MapleLib.Img;
 using MapleLib.WzLib.WzProperties;
@@ -218,16 +219,12 @@ namespace HaCreator
         public static bool SkipSettingsSave { get; set; }
         public static string GetLocalSettingsFolder()
         {
-            string appdata = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-            string our_folder = Path.Combine(appdata, APP_NAME);
-            if (!Directory.Exists(our_folder))
-                Directory.CreateDirectory(our_folder);
-            return our_folder;
+            return UserDataPaths.HaCreatorDirectory;
         }
 
         public static string GetLocalSettingsPath()
         {
-            return Path.Combine(GetLocalSettingsFolder(), "Settings.json");
+            return UserDataPaths.HaCreatorSettingsFile;
         }
         #endregion
 

@@ -459,6 +459,18 @@ namespace HaCreator.Wz
             }
         }
 
+        /// <summary>Loads localized mob names when the life asset picker needs them.</summary>
+        public void EnsureMobStringData()
+        {
+            if (Program.DataSource == null || MobNameCache.Count != 0)
+                return;
+            lock (deferredExtractionLock)
+            {
+                if (MobNameCache.Count == 0)
+                    new ImgDataExtractor(Program.DataSource, this).ExtractMobStringData();
+            }
+        }
+
         /// <summary>Loads only localized NPC names when map NPC tooltips need them.</summary>
         public void EnsureNpcStringData()
         {

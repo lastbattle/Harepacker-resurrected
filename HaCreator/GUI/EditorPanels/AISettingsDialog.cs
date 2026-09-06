@@ -129,6 +129,8 @@ namespace HaCreator.GUI.EditorPanels
             }
 
             var modelId = selectedChoice?.ModelId ?? cboModel.Text.Trim();
+            if (AISettings.IsAstraModel(modelId))
+                cboApiDialect.SelectedIndex = 1;
             _lastModelId = modelId;
             if (!_reasoningByModel.TryGetValue(modelId, out var remembered))
                 remembered = AISettings.GetReasoningEffortForModel(modelId);
@@ -148,6 +150,8 @@ namespace HaCreator.GUI.EditorPanels
                  string.Equals(enteredText, selectedChoice.ToString(), StringComparison.OrdinalIgnoreCase))
                     ? selectedChoice.ModelId
                     : enteredText;
+            if (AISettings.IsAstraModel(modelId))
+                cboApiDialect.SelectedIndex = 1;
             _lastModelId = modelId;
             if (!_reasoningByModel.TryGetValue(modelId, out var remembered))
                 remembered = AISettings.GetReasoningEffortForModel(modelId);
@@ -355,7 +359,7 @@ namespace HaCreator.GUI.EditorPanels
             var selectedReasoning = preferredReasoning ?? GetSelectedReasoningEffort();
             var detectedEfforts = choice != null && choice.ReasoningEfforts.Count > 0
                 ? choice.ReasoningEfforts
-                : InferReasoningEfforts(choice?.ModelId);
+                : InferReasoningEfforts(choice?.ModelId ?? cboModel.Text);
             var efforts = AISettings.AvailableReasoningEfforts
                 .Where(effort => detectedEfforts.Contains(effort, StringComparer.OrdinalIgnoreCase))
                 .ToList();
@@ -397,6 +401,9 @@ namespace HaCreator.GUI.EditorPanels
         {
             if (string.IsNullOrWhiteSpace(modelId))
                 return Array.Empty<string>();
+
+            if (AISettings.IsAstraModel(modelId))
+                return AISettings.AstraReasoningEfforts;
 
             var normalized = modelId.Trim().ToLowerInvariant();
             var supportsReasoning = normalized.Contains("gpt-5") ||
@@ -496,7 +503,7 @@ namespace HaCreator.GUI.EditorPanels
                 {
                     BaseUrl = baseUrl,
                     ApiKey = txtApiKey.Password.Trim(),
-                    Model = model,
+                    Model = AISettings.NormalizeModelId(baseUrl, model),
                     Protocol = GetSelectedProtocol(),
                     ReasoningEffort = GetSelectedReasoningEffort(),
                     StrictSchemas = chkStrictSchemas.IsChecked == true
@@ -540,7 +547,7 @@ namespace HaCreator.GUI.EditorPanels
 
         private AIEndpointProtocol GetSelectedProtocol()
         {
-            return cboApiDialect.SelectedIndex == 1
+            return AISettings.IsAstraModel(GetSelectedModelId()) || cboApiDialect.SelectedIndex == 1
                 ? AIEndpointProtocol.Responses
                 : AIEndpointProtocol.ChatCompletions;
         }
@@ -555,9 +562,12 @@ namespace HaCreator.GUI.EditorPanels
 
         private string GetSelectedModelId()
         {
-            return cboModel.SelectedItem is ModelChoice choice
+            var text = cboModel.Text.Trim();
+            return cboModel.SelectedItem is ModelChoice choice &&
+                (string.Equals(text, choice.ModelId, StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(text, choice.ToString(), StringComparison.OrdinalIgnoreCase))
                 ? choice.ModelId
-                : cboModel.Text.Trim();
+                : text;
         }
 
         private void BtnSave_Click(object sender, RoutedEventArgs e)
@@ -567,7 +577,7 @@ namespace HaCreator.GUI.EditorPanels
 
             AISettings.BaseUrl = txtBaseUrl.Text.Trim();
             AISettings.ApiKey = txtApiKey.Password.Trim();
-            AISettings.Model = GetSelectedModelId();
+            AISettings.Model = AISettings.NormalizeModelId(AISettings.BaseUrl, GetSelectedModelId());
             AISettings.ImageModel = cboImageModel.Text.Trim();
             AISettings.Protocol = GetSelectedProtocol();
             AISettings.ReasoningEffort = GetSelectedReasoningEffort();

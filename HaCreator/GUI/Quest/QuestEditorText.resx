@@ -619,4 +619,10 @@ Overwrite them?</value>
   <data name="QuestEditor_GraphErrorCycle" xml:space="preserve"><value>The relationship would create a quest cycle.</value></data>
   <data name="QuestEditor_GraphErrorUnsupported" xml:space="preserve"><value>The source relationship data cannot be changed losslessly. Edit and save its Act or Check section first.</value></data>
   <data name="QuestEditor_GraphErrorApplyFailed" xml:space="preserve"><value>The relationship could not be applied. No history state was advanced.</value></data>
+  <data name="QuestEditor_Property" xml:space="preserve"><value>Property</value></data>
+  <data name="QuestEditor_NestedPath" xml:space="preserve"><value>Nested path</value></data>
+  <data name="QuestEditor_WzType" xml:space="preserve"><value>WZ type</value></data>
+  <data name="QuestEditor_ExtendedProperties" xml:space="preserve"><value>Extended Properties</value></data>
+  <data name="QuestEditor_ExtendedPropertiesDescription" xml:space="preserve"><value>Properties without a dedicated control in this section. Values retain their WZ type and nested path when saved.</value></data>
+  <data name="QuestEditor_PropertyCompatibilityNotice" xml:space="preserve"><value>This property is not recognized in known post-Big Bang or V/64-bit quest structures and might not be used by the game. You can still edit it, and it will be preserved when saved.</value></data>
 </root>

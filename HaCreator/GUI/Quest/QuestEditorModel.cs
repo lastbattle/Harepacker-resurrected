@@ -6,7 +6,7 @@ using System.Windows.Threading;
 
 namespace HaCreator.GUI.Quest
 {
-    public class QuestEditorModel : INotifyPropertyChanged
+    public partial class QuestEditorModel : INotifyPropertyChanged
     {
         // wz based properties
         private int _id;

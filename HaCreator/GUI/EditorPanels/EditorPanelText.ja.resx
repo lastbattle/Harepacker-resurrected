@@ -59,7 +59,7 @@
   <data name="Enhanced" xml:space="preserve"><value>強化後</value></data>
   <data name="Essential" xml:space="preserve"><value>基本情報</value></data>
   <data name="Field type" xml:space="preserve"><value>フィールドタイプ</value></data>
-  <data name="Filter assets by name" xml:space="preserve"><value>名前でアセットを絞り込み</value></data>
+  <data name="Filter assets by name or ID" xml:space="preserve"><value>名前またはIDでアセットを絞り込み</value></data>
   <data name="First-user script" xml:space="preserve"><value>最初のユーザースクリプト</value></data>
   <data name="Forced return here" xml:space="preserve"><value>ここへ強制帰還</value></data>
   <data name="Force-move level" xml:space="preserve"><value>強制移動レベル</value></data>

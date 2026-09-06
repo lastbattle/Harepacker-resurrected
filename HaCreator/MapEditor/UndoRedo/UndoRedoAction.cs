@@ -39,6 +39,9 @@ namespace HaCreator.MapEditor.UndoRedo
             Board board;
             switch (type)
             {
+                case UndoRedoType.ValueChanged:
+                    ((Action)ParamA)();
+                    break;
                 case UndoRedoType.ItemDeleted:
                     //item.Board.BoardItems.Add(item, true);
                     item.InsertItem();
@@ -112,7 +115,11 @@ namespace HaCreator.MapEditor.UndoRedo
                     ((Rope)ParamA).Remove(null);
                     break;
                 case UndoRedoType.RopeRemoved:
-                    ((Rope)ParamA).Create();
+                    var restoredRope = (Rope)ParamA;
+                    restoredRope.Create();
+                    board = restoredRope.FirstAnchor.Board;
+                    if (!board.BoardItems.Ropes.Contains(restoredRope))
+                        board.BoardItems.Ropes.Add(restoredRope);
                     break;
                 case UndoRedoType.ItemZChanged:
                     item.Z = (int)ParamA;
@@ -199,11 +206,14 @@ namespace HaCreator.MapEditor.UndoRedo
                 case UndoRedoType.ItemsLayerChanged:
                 case UndoRedoType.ItemLayerPlatChanged:
                 case UndoRedoType.ItemMoved:
+                case UndoRedoType.BackgroundMoved:
+                case UndoRedoType.ItemZChanged:
                 case UndoRedoType.MapCenterChanged:
                 case UndoRedoType.VRChanged:
                 case UndoRedoType.LayerTSChanged:
                 case UndoRedoType.zMChanged:
                 case UndoRedoType.BackgroundPropertiesChanged: // Add new type
+                case UndoRedoType.ValueChanged:
                     object ParamBTemp = ParamB;
                     object ParamATemp = ParamA;
                     ParamA = ParamBTemp;

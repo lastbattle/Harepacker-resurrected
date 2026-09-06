@@ -8,14 +8,6 @@ namespace UnitTest_AudioEditor;
 public class AudioAiTests
 {
     [Fact]
-    public void AceStepManagedInstaller_UsesHaCreatorLocalApplicationData()
-    {
-        string expected = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "HaCreator", "AudioAI", "ACE-Step-1.5");
-        Assert.Equal(expected, new AceStepManagedInstaller().InstallRoot);
-    }
-
-    [Fact]
     public void PromptCompiler_DefaultsBgmToInstrumentalAndLoop()
     {
         var brief = new AudioAiPromptCompiler().Compile("gentle forest town theme", "Town", "Maple forest", true, 30);

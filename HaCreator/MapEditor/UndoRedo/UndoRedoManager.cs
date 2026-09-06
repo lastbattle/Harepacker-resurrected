@@ -42,18 +42,22 @@ namespace HaCreator.MapEditor.UndoRedo
                 if (firstBatchIndex < 0 || firstBatchIndex >= UndoList.Count - 1)
                     return;
 
-                var mergedActions = new List<UndoRedoAction>();
-                for (var batchIndex = UndoList.Count - 1; batchIndex >= firstBatchIndex; batchIndex--)
-                    mergedActions.AddRange(UndoList[batchIndex].Actions);
-
+                var merged = UndoRedoBatch.Combine(UndoList.Skip(firstBatchIndex));
                 UndoList.RemoveRange(firstBatchIndex, UndoList.Count - firstBatchIndex);
-                UndoList.Add(new UndoRedoBatch { Actions = mergedActions });
+                UndoList.Add(merged);
                 parentBoard.ParentControl.UndoListChanged();
                 parentBoard.ParentControl.RedoListChanged();
             }
         }
 
         #region Undo Actions Creation
+
+        public static UndoRedoAction ValueChanged(Action undo, Action redo)
+        {
+            return new UndoRedoAction(null, UndoRedoType.ValueChanged,
+                undo ?? throw new ArgumentNullException(nameof(undo)),
+                redo ?? throw new ArgumentNullException(nameof(redo)));
+        }
         public static UndoRedoAction ItemAdded(BoardItem item)
         {
             return new UndoRedoAction(item, UndoRedoType.ItemAdded, null, null);

@@ -36,11 +36,8 @@ namespace HaCreator.MapSimulator.Managers
 
         public SkillMacroStore(string storageFilePath = null)
         {
-            _storageFilePath = storageFilePath ?? Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "HaCreator",
-                "MapSimulator",
-                "skill-macros.json");
+            _storageFilePath = storageFilePath ??
+                HaSharedLibrary.Configuration.UserDataPaths.GetHaCreatorSimulatorFile("skill-macros.json");
 
             string directoryPath = Path.GetDirectoryName(_storageFilePath);
             if (!string.IsNullOrWhiteSpace(directoryPath))

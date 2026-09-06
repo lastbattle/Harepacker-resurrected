@@ -228,11 +228,8 @@ namespace HaCreator.MapSimulator.Managers
 
         public ItemMakerProgressionStore(string storageFilePath = null)
         {
-            _storageFilePath = storageFilePath ?? Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "HaCreator",
-                "MapSimulator",
-                "item-maker-progression.json");
+            _storageFilePath = storageFilePath ??
+                HaSharedLibrary.Configuration.UserDataPaths.GetHaCreatorSimulatorFile("item-maker-progression.json");
 
             string directoryPath = Path.GetDirectoryName(_storageFilePath);
             if (!string.IsNullOrWhiteSpace(directoryPath))

@@ -67,6 +67,7 @@ namespace HaCreator.GUI.Quest
             set
             {
                 _selectedQuest = value;
+                EnsureAdditionalProperties(_selectedQuest);
                 OnPropertyChanged(nameof(SelectedQuest));
             }
         }
@@ -196,6 +197,8 @@ namespace HaCreator.GUI.Quest
                     case "medalCategory":
                         break;
                     default:
+                        if (QuestEditorKnownPropertyCatalog.IsKnownName("QuestInfo", questImgProp.Name))
+                            break;
                         string error = string.Format("[QuestEditor] Unhandled quest image property. Name='{0}', QuestId={1}", questImgProp.Name, questId);
                         ErrorLogger.Log(ErrorLevel.MissingFeature, error);
                         break;
@@ -351,6 +354,7 @@ namespace HaCreator.GUI.Quest
                 if (questCheckEnd1Prop != null)
                     parseQuestCheck(questCheckEnd1Prop, quest.CheckEndInfo, quest); // end quest
             }
+
             return quest;
         }
 
@@ -457,6 +461,8 @@ namespace HaCreator.GUI.Quest
                                             break;
                                         default:
                                             {
+                                                if (QuestEditorKnownPropertyCatalog.IsKnownName("Check", itemSubProperties.Name))
+                                                    break;
                                                 string error = string.Format("[QuestEditor] Unhandled quest Check.img item property. Name='{0}', QuestId={1}", itemSubProperties.Name, quest.Id);
                                                 ErrorLogger.Log(ErrorLevel.MissingFeature, error);
                                                 break;
@@ -646,6 +652,8 @@ namespace HaCreator.GUI.Quest
                                             break;
                                         default:
                                             {
+                                                if (QuestEditorKnownPropertyCatalog.IsKnownName("Check", itemSubProperties.Name))
+                                                    break;
                                                 string error = string.Format("[QuestEditor] Unhandled quest Check.img skill property. Name='{0}', QuestId={1}", itemSubProperties.Name, quest.Id);
                                                 ErrorLogger.Log(ErrorLevel.MissingFeature, error);
                                                 break;
@@ -927,6 +935,8 @@ namespace HaCreator.GUI.Quest
                         }
                     default:
                         {
+                            if (QuestEditorKnownPropertyCatalog.IsKnownName("Check", checkTypeProp.Name))
+                                break;
                             string error = string.Format("[QuestEditor] Unhandled quest check type. Name='{0}', QuestId={1}", checkTypeProp.Name, quest.Id);
                             ErrorLogger.Log(ErrorLevel.MissingFeature, error);
                             break;
@@ -985,6 +995,8 @@ namespace HaCreator.GUI.Quest
                                             break;
                                         default:
                                             {
+                                                if (QuestEditorKnownPropertyCatalog.IsKnownName("Act", itemSubProperties.Name))
+                                                    break;
                                                 string error = string.Format("[QuestEditor] Unhandled quest Act.img item property. Name='{0}', QuestId={1}", itemSubProperties.Name, quest.Id);
                                                 ErrorLogger.Log(ErrorLevel.MissingFeature, error);
                                                 break;
@@ -1433,6 +1445,8 @@ namespace HaCreator.GUI.Quest
                             }
                             else
                             {
+                                if (QuestEditorKnownPropertyCatalog.IsKnownName("Act", actTypeProp.Name))
+                                    break;
                                 string error = string.Format("[QuestEditor] Unhandled quest act type. Name='{0}', QuestId={1}", actTypeProp.Name, quest.Id);
                                 ErrorLogger.Log(ErrorLevel.MissingFeature, error);
                             }
@@ -1604,6 +1618,8 @@ namespace HaCreator.GUI.Quest
                     }
                     else
                     {
+                        if (QuestEditorKnownPropertyCatalog.IsKnownName("Say", questStopProp.Name))
+                            continue;
                         string error = string.Format("[QuestEditor] Unhandled quest stop type. Name='{0}', QuestId={1}", questStopProp.Name, quest.Id);
                         ErrorLogger.Log(ErrorLevel.MissingFeature, error);
                     }
@@ -1878,7 +1894,7 @@ namespace HaCreator.GUI.Quest
                     string questId = kvp.Key;
                     var (info, say, act, check) = kvp.Value;
 
-                    if (UsesPerQuestStorage())
+                    if (UsesPerQuestStorage(questId))
                     {
                         StorePerQuestData(questId, info, say, act, check);
 
@@ -2035,7 +2051,7 @@ namespace HaCreator.GUI.Quest
                     {
                         questWzSubProp.AddProperty(new WzStringProperty("name", name));
 
-                        if (UsesPerQuestStorage())
+                        if (UsesPerQuestStorage(questId.ToString()))
                         {
                             StorePerQuestData(
                                 questId.ToString(),
@@ -3939,6 +3955,8 @@ namespace HaCreator.GUI.Quest
                 SaveCheck(quest.CheckStartInfo, check_startSubProperty, quest);
                 SaveCheck(quest.CheckEndInfo, check_endSubProperty, quest);
             }
+
+            RestoreAdditionalProperties(quest, questWzSubProp, newSayWzProp, questAct_New, questCheck_New);
 
             return new Tuple<WzSubProperty, WzSubProperty, WzSubProperty, WzSubProperty>(
                 questWzSubProp, newSayWzProp, questAct_New, questCheck_New

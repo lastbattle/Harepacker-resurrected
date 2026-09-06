@@ -45,6 +45,82 @@
         <converter:BoolToTemplateConverter x:Key="BoolToTemplateConverter"/>
         <converter:JobBitfieldToJobNamesConverter x:Key="jobBitfieldToJobNamesConverter"/>
 
+        <DataTemplate x:Key="ExtendedPropertyGridTemplate">
+            <Grid Margin="8">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <TextBlock Margin="0,0,0,8"
+                           Foreground="Gray"
+                           TextWrapping="Wrap"
+                           Text="{local:QuestText QuestEditor_ExtendedPropertiesDescription}"/>
+                <DataGrid Grid.Row="1"
+                          ItemsSource="{Binding}"
+                          AutoGenerateColumns="False"
+                          CanUserAddRows="False"
+                          CanUserDeleteRows="False"
+                          IsReadOnly="False"
+                          RowHeaderWidth="0"
+                          RowDetailsVisibilityMode="VisibleWhenSelected">
+                    <DataGrid.RowDetailsTemplate>
+                        <DataTemplate>
+                            <Border Margin="8,2,8,6"
+                                    Padding="8,5"
+                                    Background="#FFF7E6"
+                                    BorderBrush="#F59E0B"
+                                    BorderThickness="1"
+                                    CornerRadius="3"
+                                    Visibility="{Binding RequiresCompatibilityNotice, Converter={StaticResource booleanToVisibility2Converter}}">
+                                <TextBlock Text="{local:QuestText QuestEditor_PropertyCompatibilityNotice}"
+                                           Foreground="#92400E"
+                                           TextWrapping="Wrap"/>
+                            </Border>
+                        </DataTemplate>
+                    </DataGrid.RowDetailsTemplate>
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="{local:QuestText QuestEditor_Property}" Binding="{Binding DisplayName}" IsReadOnly="True" Width="180"/>
+                        <DataGridTemplateColumn Header="{local:QuestText QuestEditor_Value}" Width="3*">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Grid>
+                                        <CheckBox IsChecked="{Binding BooleanValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                  VerticalAlignment="Center">
+                                            <CheckBox.Style>
+                                                <Style TargetType="CheckBox">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding EditorKind}" Value="Boolean">
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </CheckBox.Style>
+                                        </CheckBox>
+                                        <TextBox Text="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=LostFocus, ValidatesOnExceptions=True}"
+                                                 VerticalContentAlignment="Center">
+                                            <TextBox.Style>
+                                                <Style TargetType="TextBox">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding EditorKind}" Value="Boolean">
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBox.Style>
+                                        </TextBox>
+                                    </Grid>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                        <DataGridTextColumn Header="{local:QuestText QuestEditor_WzType}" Binding="{Binding Type}" IsReadOnly="True" Width="80"/>
+                        <DataGridTextColumn Header="{local:QuestText QuestEditor_NestedPath}" Binding="{Binding Path}" IsReadOnly="True" Width="2*"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </Grid>
+        </DataTemplate>
+
         <Style x:Key="FocusVisual">
             <Setter Property="Control.Template">
                 <Setter.Value>
@@ -3172,6 +3248,16 @@
 
                                     </StackPanel>
 
+                                    <Expander Header="{local:QuestText QuestEditor_ExtendedProperties}"
+                                              Margin="0,14,0,0"
+                                              IsExpanded="False"
+                                              Visibility="{Binding SelectedQuest.HasQuestInfoExtendedProperties, Converter={StaticResource booleanToVisibility2Converter}}">
+                                        <ContentControl Height="360"
+                                                        Margin="0,6,0,0"
+                                                        Content="{Binding SelectedQuest.QuestInfoExtendedProperties}"
+                                                        ContentTemplate="{StaticResource ExtendedPropertyGridTemplate}"/>
+                                    </Expander>
+
                                     <!-- bottom padding-->
                                     <Grid Margin="0,0,0,30"/>
                                 </StackPanel>
@@ -3263,6 +3349,13 @@
                                             </ContentControl>
                                         </Grid>
                                     </TabItem>
+
+                                    <TabItem Header="{local:QuestText QuestEditor_ExtendedProperties}"
+                                             FontWeight="Normal"
+                                             Visibility="{Binding SelectedQuest.HasSayExtendedProperties, Converter={StaticResource booleanToVisibility2Converter}}">
+                                        <ContentControl Content="{Binding SelectedQuest.SayExtendedProperties}"
+                                                        ContentTemplate="{StaticResource ExtendedPropertyGridTemplate}"/>
+                                    </TabItem>
                                 </TabControl>
                             </Grid>
                     </TabItem>
@@ -3347,13 +3440,20 @@
                                         </Grid>
                                     </TabItem>
 
+                                    <TabItem Header="{local:QuestText QuestEditor_ExtendedProperties}"
+                                             FontWeight="Normal"
+                                             Visibility="{Binding SelectedQuest.HasCheckExtendedProperties, Converter={StaticResource booleanToVisibility2Converter}}">
+                                        <ContentControl Content="{Binding SelectedQuest.CheckExtendedProperties}"
+                                                        ContentTemplate="{StaticResource ExtendedPropertyGridTemplate}"/>
+                                    </TabItem>
+
                                 </TabControl>
                             </ScrollViewer>
                         </Grid>
                     </TabItem>
 
                     <!-- Act Requirements Tab -->
-                        <TabItem Header="{local:QuestText QuestEditor_ActRequirementsTab}" FontWeight="Normal">
+                    <TabItem Header="{local:QuestText QuestEditor_ActRequirementsTab}" FontWeight="Normal">
                         <Grid>
                             <ScrollViewer>
 
@@ -3432,10 +3532,18 @@
                                         </Grid>
                                     </TabItem>
 
+                                    <TabItem Header="{local:QuestText QuestEditor_ExtendedProperties}"
+                                             FontWeight="Normal"
+                                             Visibility="{Binding SelectedQuest.HasActExtendedProperties, Converter={StaticResource booleanToVisibility2Converter}}">
+                                        <ContentControl Content="{Binding SelectedQuest.ActExtendedProperties}"
+                                                        ContentTemplate="{StaticResource ExtendedPropertyGridTemplate}"/>
+                                    </TabItem>
+
                                 </TabControl>
                             </ScrollViewer>
                         </Grid>
                     </TabItem>
+
                 </TabControl>
 
                 <GridSplitter x:Name="ConversationStudioSplitter"

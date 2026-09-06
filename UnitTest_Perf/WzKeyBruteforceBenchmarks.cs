@@ -1,7 +1,6 @@
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
 using BenchmarkDotNet.Order;
-using BenchmarkDotNet.Running;
 using HaRepacker.GUI;
 using MapleLib.WzLib;
 using MapleLib.WzLib.Util;
@@ -140,24 +139,6 @@ public class WzKeyBruteforceParallelBenchmarks
 [TestClass]
 public class WzKeyBruteforceBenchmarkTests
 {
-    [TestMethod]
-    public void RunLiveBenchmark()
-    {
-        if (!string.Equals(Environment.GetEnvironmentVariable("RUN_WZ_KEY_BENCHMARK"), "1", StringComparison.Ordinal))
-            return;
-
-        BenchmarkRunner.Run<WzKeyBruteforceBenchmarks>();
-    }
-
-    [TestMethod]
-    public void RunLiveParallelBenchmark()
-    {
-        if (!string.Equals(Environment.GetEnvironmentVariable("RUN_WZ_KEY_PARALLEL_BENCHMARK"), "1", StringComparison.Ordinal))
-            return;
-
-        BenchmarkRunner.Run<WzKeyBruteforceParallelBenchmarks>();
-    }
-
     [TestMethod]
     public void FindsExpectedKeyInLiveFile()
     {

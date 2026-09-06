@@ -7,6 +7,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -55,6 +56,9 @@ namespace HaCreator.MapEditor.AI
         /// Optional board-aware query callback supplied by the editor window.
         /// </summary>
         public Func<string, JObject, string> QueryExecutor { get; set; }
+
+        /// <summary>Optional query callback returning standard MCP text and image blocks. Return null to use the text callback.</summary>
+        public Func<string, JObject, JArray> RichQueryExecutor { get; set; }
 
         /// <summary>
         /// Optional board-aware action callback supplied by the editor window.
@@ -107,13 +111,15 @@ namespace HaCreator.MapEditor.AI
         /// <summary>
         /// Return the MCP tools/list representation.
         /// </summary>
-        public JArray GetMcpTools()
+        private static readonly Lazy<JObject> CompactDefinition = new(CompactMapEdits.Definition);
+
+        public JArray GetMcpTools(bool compactOnly = false)
         {
             var result = new JArray();
             foreach (var tool in MapEditorFunctions.GetToolDefinitions().OfType<JObject>())
             {
                 var function = tool["function"] as JObject;
-                if (function == null)
+                if (function == null || (compactOnly && !MapEditorFunctions.IsQueryFunction((string)function["name"])))
                     continue;
 
                 result.Add(new JObject
@@ -127,6 +133,8 @@ namespace HaCreator.MapEditor.AI
                     }
                 });
             }
+            result.Add(CompactDefinition.Value.DeepClone());
+            result.Add(CompactMapEdits.HelpDefinition());
             return result;
         }
 
@@ -141,9 +149,9 @@ namespace HaCreator.MapEditor.AI
         /// <summary>
         /// Return Chat Completions tools, optionally normalized for strict schemas.
         /// </summary>
-        public JArray GetChatCompletionTools(bool strict)
+        public JArray GetChatCompletionTools(bool strict, bool compactOnly = false)
         {
-            var result = (JArray)MapEditorFunctions.GetToolDefinitions().DeepClone();
+            var result = new JArray(GetMcpTools(compactOnly).Select(t => new JObject { ["type"] = "function", ["function"] = new JObject { ["name"] = t["name"], ["description"] = t["description"], ["parameters"] = t["inputSchema"] } }));
             if (!strict)
                 return result;
 
@@ -163,10 +171,10 @@ namespace HaCreator.MapEditor.AI
         /// <summary>
         /// Return the standard Responses API function-tool representation.
         /// </summary>
-        public JArray GetResponsesTools(bool strict)
+        public JArray GetResponsesTools(bool strict, bool compactOnly = false)
         {
             var result = new JArray();
-            foreach (var tool in GetMcpTools().OfType<JObject>())
+            foreach (var tool in GetMcpTools(compactOnly).OfType<JObject>())
             {
                 result.Add(new JObject
                 {
@@ -193,13 +201,19 @@ namespace HaCreator.MapEditor.AI
                 var properties = result["properties"] as JObject;
                 if (properties != null)
                 {
+                    var required = new HashSet<string>((result["required"] as JArray ?? new JArray()).Values<string>());
                     result["additionalProperties"] = false;
                     result["required"] = new JArray(properties.Properties().Select(property => property.Name));
 
                     foreach (var property in properties.Properties().ToList())
                     {
                         if (property.Value is JObject propertySchema)
-                            property.Value = CreateStrictSchema(propertySchema);
+                        {
+                            var normalized = CreateStrictSchema(propertySchema);
+                            if (!required.Contains(property.Name))
+                                normalized = new JObject { ["anyOf"] = new JArray(normalized, new JObject { ["type"] = "null" }) };
+                            property.Value = normalized;
+                        }
                     }
                 }
             }
@@ -222,29 +236,85 @@ namespace HaCreator.MapEditor.AI
         /// <summary>
         /// Invoke a tool using the same semantics as the MCP tools/call method.
         /// </summary>
-        public MapMcpToolCallResult CallTool(string toolName, JObject arguments, bool enforceQueryOrder = true)
+        public MapMcpToolCallResult CallTool(string toolName, JObject arguments, bool enforceQueryOrder = true, CancellationToken cancellationToken = default, Action<MapMcpToolCallResult> onEdit = null, bool validateOnly = false)
         {
+            if (toolName == "edit_map") return CallBatch(arguments, enforceQueryOrder, cancellationToken, onEdit);
+            if (toolName == "get_edit_help")
+                return MapMcpToolCallResult.Query(toolName, arguments?.Count == 1 && arguments["op"]?.Type == JTokenType.String
+                    ? CompactMapEdits.Help((string)arguments["op"]) : "Error: Supply only a string op argument.");
             arguments ??= new JObject();
+            // Strict API schemas represent omitted optional fields as null.
+            // Preserve the existing command builders' absent-property semantics.
+            arguments = (JObject)arguments.DeepClone();
+            foreach (var property in arguments.Properties().Where(p => p.Value.Type == JTokenType.Null).ToList())
+                property.Remove();
 
-            if (!GetMcpTools().OfType<JObject>().Any(t => string.Equals(
-                    t["name"]?.ToString(), toolName, StringComparison.Ordinal)))
+            var definition = GetMcpTools().OfType<JObject>().FirstOrDefault(t => string.Equals(
+                t["name"]?.ToString(), toolName, StringComparison.Ordinal));
+            if (definition == null)
             {
                 return MapMcpToolCallResult.Error(toolName, $"Unknown map tool: {toolName}");
             }
 
+            var requiredArguments = definition["inputSchema"]?["required"] as JArray;
+            var missing = requiredArguments?.Values<string>().Where(name => arguments[name] == null).ToArray();
+            if (missing?.Length > 0)
+                return MapMcpToolCallResult.Error(toolName, $"Error: Missing required arguments: {string.Join(", ", missing)}.");
+            var properties = definition["inputSchema"]?["properties"] as JObject;
+            foreach (var argument in arguments.Properties())
+            {
+                if (properties?[argument.Name] is not JObject schema)
+                    return MapMcpToolCallResult.Error(toolName, $"Error: Unknown argument '{argument.Name}'.");
+                var nestedError = ValidateValue(argument.Name, argument.Value, schema);
+                if (nestedError != null) return MapMcpToolCallResult.Error(toolName, "Error: " + nestedError);
+                var type = schema["type"]?.ToString();
+                var validType = type switch
+                {
+                    "integer" => argument.Value.Type == JTokenType.Integer,
+                    "number" => argument.Value.Type == JTokenType.Integer || argument.Value.Type == JTokenType.Float,
+                    "boolean" => argument.Value.Type == JTokenType.Boolean,
+                    "string" => argument.Value.Type == JTokenType.String,
+                    "array" => argument.Value.Type == JTokenType.Array,
+                    "object" => argument.Value.Type == JTokenType.Object,
+                    _ => true
+                };
+                if (!validType)
+                    return MapMcpToolCallResult.Error(toolName, $"Error: '{argument.Name}' must be {type}.");
+                if (argument.Value.Type == JTokenType.String && !MapEditorFunctions.IsQueryFunction(toolName) &&
+                    argument.Value.Value<string>().IndexOfAny(new[] { '\r', '\n', '"' }) >= 0)
+                    return MapMcpToolCallResult.Error(toolName, $"Error: '{argument.Name}' cannot contain line breaks or double quotes in a map command.");
+                if (schema["enum"] is JArray allowed && !allowed.Any(value => JToken.DeepEquals(value, argument.Value)))
+                    return MapMcpToolCallResult.Error(toolName, $"Error: Invalid value for '{argument.Name}'. Allowed: {string.Join(", ", allowed)}.");
+                if (argument.Value.Type == JTokenType.Integer || argument.Value.Type == JTokenType.Float)
+                {
+                    var value = argument.Value.Value<double>();
+                    if (schema["minimum"] != null && value < schema["minimum"].Value<double>() ||
+                        schema["maximum"] != null && value > schema["maximum"].Value<double>())
+                        return MapMcpToolCallResult.Error(toolName, $"Error: '{argument.Name}' is outside the allowed range.");
+                }
+            }
+
+            var selectorError = MapEditorFunctions.ValidateActionSelector(toolName, arguments);
+            if (selectorError != null)
+                return MapMcpToolCallResult.Error(toolName, "Error: " + selectorError);
+
+            string attemptedCommand = null;
             try
             {
                 if (MapEditorFunctions.IsQueryFunction(toolName))
                 {
-                    lock (queryLock)
+                    var content = RichQueryExecutor?.Invoke(toolName, arguments);
+                    var result = content != null
+                        ? MapMcpToolCallResult.Query(toolName, content)
+                        : MapMcpToolCallResult.Query(toolName, QueryExecutor != null
+                            ? QueryExecutor(toolName, arguments)
+                            : MapEditorFunctions.ExecuteQueryFunction(toolName, arguments));
+                    if (result.Success)
                     {
-                        calledQueries.Add(toolName);
+                        lock (queryLock)
+                            calledQueries.Add(toolName);
                     }
-
-                    var query = QueryExecutor != null
-                        ? QueryExecutor(toolName, arguments)
-                        : MapEditorFunctions.ExecuteQueryFunction(toolName, arguments);
-                    return MapMcpToolCallResult.Query(toolName, query ?? string.Empty);
+                    return result;
                 }
 
                 var requiredQuery = MapEditorFunctions.GetRequiredQuery(toolName);
@@ -261,6 +331,14 @@ namespace HaCreator.MapEditor.AI
                     }
                 }
 
+                if (validateOnly)
+                {
+                    var validatedCommand = MapEditorFunctions.FunctionCallToCommand(toolName, arguments);
+                    return string.IsNullOrWhiteSpace(validatedCommand) || validatedCommand.StartsWith("#")
+                        ? MapMcpToolCallResult.Error(toolName, validatedCommand ?? "No command")
+                        : MapMcpToolCallResult.Action(toolName, validatedCommand);
+                }
+
                 var command = ActionExecutor != null
                     ? ActionExecutor(toolName, arguments)
                     : MapEditorFunctions.FunctionCallToCommand(toolName, arguments);
@@ -271,22 +349,86 @@ namespace HaCreator.MapEditor.AI
                 string executionResult = null;
                 if (CommandExecutor != null)
                 {
+                    attemptedCommand = command;
                     executionResult = CommandExecutor(command);
                     if (!string.IsNullOrWhiteSpace(executionResult) &&
                         executionResult.StartsWith("# ERROR", StringComparison.OrdinalIgnoreCase))
                     {
-                        return MapMcpToolCallResult.Error(toolName, executionResult);
+                        return MapMcpToolCallResult.FailedAction(toolName, command, arguments, executionResult);
                     }
                 }
 
                 CommandReceived?.Invoke(this, command);
-                return MapMcpToolCallResult.Action(toolName, command, executionResult);
+                return MapMcpToolCallResult.Action(toolName, command, executionResult).WithArguments(arguments);
             }
             catch (Exception ex)
             {
                 Debug.WriteLine($"[MapMcpToolServer] {toolName} failed: {ex}");
-                return MapMcpToolCallResult.Error(toolName, ex.Message);
+                return attemptedCommand == null ? MapMcpToolCallResult.Error(toolName, ex.Message)
+                    : MapMcpToolCallResult.FailedAction(toolName, attemptedCommand, arguments, ex.Message);
             }
+        }
+
+        private static string ValidateValue(string path, JToken value, JObject schema)
+        {
+            if (schema["type"]?.ToString() == "integer" && value.Type == JTokenType.Integer &&
+                (!long.TryParse(value.ToString(), out var integer) || integer < int.MinValue || integer > int.MaxValue))
+                return path + " must fit a 32-bit integer.";
+            if (value.Type == JTokenType.Float && !double.IsFinite(value.Value<double>())) return path + " must be finite.";
+            if (value is JArray array && schema["items"] is JObject itemSchema)
+                for (int i = 0; i < array.Count; i++)
+                {
+                    var error = ValidateValue(path + "[" + i + "]", array[i], itemSchema);
+                    if (error != null) return error;
+                }
+            if (schema["type"]?.ToString() == "object")
+            {
+                if (value is not JObject obj) return path + " must be an object.";
+                if (schema["required"] is JArray required)
+                    foreach (var key in required.Values<string>())
+                        if (obj[key] == null) return path + " is missing " + key;
+                if (schema["properties"] is JObject properties)
+                    foreach (var property in obj.Properties())
+                    {
+                        if (properties[property.Name] is not JObject child) return path + " has unknown field " + property.Name;
+                        var error = ValidateValue(path + "." + property.Name, property.Value, child);
+                        if (error != null) return error;
+                        if (child["type"]?.ToString() == "integer" && property.Value.Type != JTokenType.Integer)
+                            return path + "." + property.Name + " must be an integer.";
+                    }
+            }
+            return null;
+        }
+
+        private MapMcpToolCallResult CallBatch(JObject arguments, bool enforceQueryOrder,
+            CancellationToken token, Action<MapMcpToolCallResult> onEdit)
+        {
+            IReadOnlyList<CompactMapEdits.Edit> edits;
+            try
+            {
+                if (arguments == null || arguments.Count != 1 || arguments["code"]?.Type != JTokenType.String)
+                    return MapMcpToolCallResult.Error("edit_map", "Supply only a string code argument.");
+                edits = CompactMapEdits.Decode((string)arguments["code"]);
+                for (int i = 0; i < edits.Count; i++)
+                {
+                    token.ThrowIfCancellationRequested();
+                    var check = CallTool(edits[i].Tool, edits[i].Arguments, enforceQueryOrder, validateOnly: true);
+                    if (!check.Success) return MapMcpToolCallResult.Error("edit_map", $"Edit {i + 1}: {check.Text} No edits executed.");
+                }
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex) { return MapMcpToolCallResult.Error("edit_map", ex.Message + " No edits executed."); }
+            var results = new List<MapMcpToolCallResult>();
+            foreach (var edit in edits)
+            {
+                token.ThrowIfCancellationRequested();
+                var result = CallTool(edit.Tool, edit.Arguments, enforceQueryOrder);
+                results.Add(result);
+                // Deliver before the next cancellation check so successfully applied edits never disappear from review.
+                onEdit?.Invoke(result);
+                if (!result.Success) break;
+            }
+            return MapMcpToolCallResult.Batch(results, edits.Count, CommandExecutor != null);
         }
 
         private async Task ListenLoopAsync(CancellationToken cancellationToken)
@@ -418,10 +560,7 @@ namespace HaCreator.MapEditor.AI
                         ["result"] = new JObject
                         {
                             ["isError"] = !call.Success,
-                            ["content"] = new JArray
-                            {
-                                new JObject { ["type"] = "text", ["text"] = call.Text ?? string.Empty }
-                            }
+                            ["content"] = call.Content
                         }
                     };
 
@@ -498,15 +637,58 @@ namespace HaCreator.MapEditor.AI
         public bool IsQuery { get; private set; }
         public string Text { get; private set; }
         public string Command { get; private set; }
+        public JArray Content { get; private set; }
+        public JObject Arguments { get; private set; }
+        public IReadOnlyList<MapMcpToolCallResult> Children { get; private set; }
+        public MapMcpToolCallResult WithArguments(JObject arguments)
+        {
+            Arguments = (JObject)arguments.DeepClone(); return this;
+        }
+        /// <summary>Remove repeated asset identifiers from successful placement receipts, preserving actual anchors, variants and all diagnostics.</summary>
+        public string CompactFeedback()
+        {
+            if (!Success || IsQuery) return Text;
+            if (Text.StartsWith("Command staged:")) return "Staged.";
+            return string.Join("\n", Text.Split('\n').Select(line =>
+            {
+                var match = Regex.Match(line, @"^Added (tile|object|background) .*? at (.*)$");
+                if (!match.Success) return line;
+                var variant = match.Groups[1].Value == "tile" ? Regex.Match(line, @" no=([^ ]+)").Value : "";
+                return "Placed" + variant + " at " + match.Groups[2].Value;
+            }));
+        }
+
+        public static MapMcpToolCallResult Batch(IReadOnlyList<MapMcpToolCallResult> children, int total, bool applied)
+        {
+            var succeeded = children.Count(c => c.Success);
+            var failed = children.FirstOrDefault(c => !c.Success);
+            var text = $"{succeeded}/{total} edits {(applied ? "applied" : "staged")}.";
+            if (failed != null) text += $" Stopped at edit {succeeded + 1}: {failed.Text} Remaining edits not executed.";
+            // Keep actual layer/placement feedback and warnings, but not a repeated command echo.
+            var details = children.Where(c => c.Success && !c.Text.StartsWith("Command staged:"))
+                .Select((c, i) => $"{i + 1}: {c.CompactFeedback()}");
+            text += "\n" + string.Join("\n", details);
+            return new MapMcpToolCallResult { ToolName = "edit_map", Success = failed == null,
+                Text = text.TrimEnd(), Children = children }.WithTextContent();
+        }
 
         public static MapMcpToolCallResult Query(string toolName, string text)
         {
+            return Query(toolName, new JArray(new JObject { ["type"] = "text", ["text"] = text ?? string.Empty }));
+        }
+
+        public static MapMcpToolCallResult Query(string toolName, JArray content)
+        {
+            var text = string.Join("\n", content.OfType<JObject>().Where(block => block["type"]?.ToString() == "text")
+                .Select(block => block["text"]?.ToString() ?? string.Empty));
             return new MapMcpToolCallResult
             {
                 ToolName = toolName,
-                Success = true,
+                Success = !text.TrimStart().StartsWith("Error:", StringComparison.OrdinalIgnoreCase) &&
+                    !text.TrimStart().StartsWith("# ERROR", StringComparison.OrdinalIgnoreCase),
                 IsQuery = true,
-                Text = text
+                Text = text,
+                Content = (JArray)content.DeepClone()
             };
         }
 
@@ -520,7 +702,14 @@ namespace HaCreator.MapEditor.AI
                     ? $"Command staged: {command}"
                     : executionResult,
                 Command = command
-            };
+            }.WithTextContent();
+        }
+
+        public static MapMcpToolCallResult FailedAction(string toolName, string command, JObject arguments, string text)
+        {
+            var result = Error(toolName, text).WithArguments(arguments);
+            result.Command = command;
+            return result;
         }
 
         public static MapMcpToolCallResult Error(string toolName, string text)
@@ -530,7 +719,13 @@ namespace HaCreator.MapEditor.AI
                 ToolName = toolName,
                 Success = false,
                 Text = text
-            };
+            }.WithTextContent();
+        }
+
+        private MapMcpToolCallResult WithTextContent()
+        {
+            Content = new JArray(new JObject { ["type"] = "text", ["text"] = Text ?? string.Empty });
+            return this;
         }
     }
 }

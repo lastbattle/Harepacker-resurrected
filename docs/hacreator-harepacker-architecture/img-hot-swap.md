@@ -865,3 +865,19 @@ var watcher = new FileSystemWatcher(directoryPath)
 - [ ] External modify during tree navigation → no crash
 - [ ] Multiple .img files modified simultaneously → all notifications queued
 - [ ] Reload during background parsing → proper cancellation
+
+### Life asset picker names and filtering
+
+The Assets panel's Mobs, NPCs, and Reactors gallery displays and sorts name-first
+labels (`Name (ID)`), with the seven-digit IMG ID retained for disambiguation.
+Unnamed entries fall back to their ID. The search box matches partial names or
+IDs, case-insensitively; NPC descriptions are searchable too. Filters remain
+active when switching life types or refreshing after a hot swap.
+Reactor metadata is resolved when rebuilding the reactor list so name searches
+also include reactors whose thumbnails have never been displayed. Thumbnail
+loading remains deferred until entries are realized.
+
+The life picker explicitly loads `String/Mob.img` and `String/Npc.img` before
+reading their name caches. IMG startup defers those catalogs, so reading the
+caches alone would produce ID-only labels until another editor loaded names.
+These targeted loads leave unrelated item, skill, and quest catalogs deferred.

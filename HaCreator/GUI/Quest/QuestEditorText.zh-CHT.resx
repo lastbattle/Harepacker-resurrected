@@ -619,4 +619,10 @@
   <data name="QuestEditor_GraphErrorCycle" xml:space="preserve"><value>此關係會形成任務循環。</value></data>
   <data name="QuestEditor_GraphErrorUnsupported" xml:space="preserve"><value>無法無損修改來源關係資料。請先編輯並儲存對應的 Act 或 Check 區段。</value></data>
   <data name="QuestEditor_GraphErrorApplyFailed" xml:space="preserve"><value>無法套用此關係。操作歷程未發生變更。</value></data>
+  <data name="QuestEditor_Property" xml:space="preserve"><value>屬性</value></data>
+  <data name="QuestEditor_NestedPath" xml:space="preserve"><value>巢狀路徑</value></data>
+  <data name="QuestEditor_WzType" xml:space="preserve"><value>WZ 類型</value></data>
+  <data name="QuestEditor_ExtendedProperties" xml:space="preserve"><value>擴充屬性</value></data>
+  <data name="QuestEditor_ExtendedPropertiesDescription" xml:space="preserve"><value>此區段中沒有專用控制項的屬性。儲存時會保留其 WZ 類型和巢狀路徑。</value></data>
+  <data name="QuestEditor_PropertyCompatibilityNotice" xml:space="preserve"><value>此屬性未在已知的 Big Bang 更新後或 V/64 位元任務結構中發現，遊戲可能不會使用。您仍可編輯，儲存時也會保留。</value></data>
 </root>

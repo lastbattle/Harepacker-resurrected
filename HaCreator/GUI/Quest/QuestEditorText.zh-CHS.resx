@@ -607,4 +607,10 @@
   <data name="QuestEditor_GraphErrorCycle" xml:space="preserve"><value>此关系会形成任务循环。</value></data>
   <data name="QuestEditor_GraphErrorUnsupported" xml:space="preserve"><value>无法无损修改源关系数据。请先编辑并保存对应的 Act 或 Check 部分。</value></data>
   <data name="QuestEditor_GraphErrorApplyFailed" xml:space="preserve"><value>无法应用该关系。操作历史记录未发生变化。</value></data>
+  <data name="QuestEditor_Property" xml:space="preserve"><value>属性</value></data>
+  <data name="QuestEditor_NestedPath" xml:space="preserve"><value>嵌套路径</value></data>
+  <data name="QuestEditor_WzType" xml:space="preserve"><value>WZ 类型</value></data>
+  <data name="QuestEditor_ExtendedProperties" xml:space="preserve"><value>扩展属性</value></data>
+  <data name="QuestEditor_ExtendedPropertiesDescription" xml:space="preserve"><value>此区域中没有专用控件的属性。保存时会保留其 WZ 类型和嵌套路径。</value></data>
+  <data name="QuestEditor_PropertyCompatibilityNotice" xml:space="preserve"><value>此属性未在已知的 Big Bang 更新后或 V/64 位任务结构中发现，游戏可能不会使用它。您仍可编辑，保存时也会保留。</value></data>
 </root>

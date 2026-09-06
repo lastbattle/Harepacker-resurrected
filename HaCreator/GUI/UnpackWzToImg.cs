@@ -241,7 +241,7 @@ namespace HaCreator.GUI
 
         private static List<EncryptionSelectionItem> BuildEncryptionOptions(bool includeAutoDetect)
         {
-            var configManager = new ConfigurationManager();
+            var configManager = new HaSharedLibrary.Configuration.HaRepackerSettingsStore();
             configManager.Load();
             string customName = configManager.ApplicationSettings?.MapleVersion_CustomEncryptionName ?? "Default";
 
@@ -367,7 +367,7 @@ namespace HaCreator.GUI
 
         private static void ConfigureCustomEncryptionFromSettings()
         {
-            var configManager = new ConfigurationManager();
+            var configManager = new HaSharedLibrary.Configuration.HaRepackerSettingsStore();
             configManager.Load();
             configManager.SetCustomWzUserKeyFromConfig();
         }

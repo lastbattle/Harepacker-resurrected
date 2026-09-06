@@ -1,9 +1,10 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
+using Newtonsoft.Json.Linq;
 
 namespace HaCreator.MapEditor.AI
 {
@@ -13,6 +14,81 @@ namespace HaCreator.MapEditor.AI
     /// </summary>
     public static class MapAssetCatalog
     {
+        /// <summary>Discover exact loaded set names without parsing asset images or relying on prompt summaries.</summary>
+        public static string GetAssetSets(string type = "all", string search = null, int offset = 0, int limit = 100)
+        {
+            type = (type ?? "all").Trim().ToLowerInvariant();
+            if (type != "all" && type != "tile" && type != "object" && type != "background")
+                return "Error: type must be all, tile, object, or background.";
+
+            offset = Math.Max(0, offset);
+            limit = Math.Clamp(limit, 1, 200);
+            var manager = Program.InfoManager;
+            var sets = new List<(string type, string name)>();
+            if (manager != null)
+            {
+                if (type == "all" || type == "tile")
+                    sets.AddRange(manager.TileSets.Keys.Select(name => ("tile", name)));
+                if (type == "all" || type == "object")
+                    sets.AddRange(manager.ObjectSets.Keys.Select(name => ("object", name)));
+                if (type == "all" || type == "background")
+                    sets.AddRange(manager.BackgroundSets.Keys.Select(name => ("background", name)));
+            }
+            var matches = sets.Where(set => string.IsNullOrEmpty(search) || set.name.Contains(search, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(set => set.type, StringComparer.Ordinal).ThenBy(set => set.name, StringComparer.Ordinal).ToList();
+            var page = matches.Skip(offset).Take(limit).ToList();
+            bool hasMore = (long)offset + page.Count < matches.Count;
+            return new JObject
+            {
+                ["type"] = type,
+                ["search"] = search,
+                ["total"] = matches.Count,
+                ["offset"] = offset,
+                ["limit"] = limit,
+                ["hasMore"] = hasMore,
+                ["nextOffset"] = hasMore ? new JValue(offset + page.Count) : JValue.CreateNull(),
+                ["sets"] = new JArray(page.Select(set => new JObject { ["type"] = set.type, ["name"] = set.name })),
+                ["guidance"] = "Names are exact loaded asset set keys. Search matches names only, not visual themes. If a theme search is empty, browse without search and inspect candidates with get_tile_info, get_object_info or get_background_info, then get_asset_preview. Follow nextOffset until hasMore is false; do not guess names."
+            }.ToString();
+        }
+
+        public static string GetTileSetDetails(string tileset, string category = null, int limit = 80, int offset = 0)
+        {
+            if (string.IsNullOrWhiteSpace(tileset))
+                return "Error: tileset is required.";
+            var image = Program.InfoManager.GetTileSet(tileset);
+            if (image == null)
+                return $"Error: Tileset '{tileset}' was not found.";
+
+            limit = Math.Clamp(limit, 1, 200);
+            offset = Math.Max(0, offset);
+            var categories = image.WzProperties.OfType<WzSubProperty>()
+                .Where(p => p.Name != "info").OrderBy(p => p.Name).ToList();
+            if (!string.IsNullOrEmpty(category) && !categories.Any(p => p.Name == category))
+                return $"Error: Category '{category}' not found. Available: {string.Join(", ", categories.Select(p => p.Name))}";
+            var variants = categories.Where(p => string.IsNullOrEmpty(category) || p.Name == category)
+                .SelectMany(p => p.WzProperties.OfType<WzCanvasProperty>().OrderBy(v => v.Name)
+                    .Select(v => (category: p.Name, canvas: v))).ToList();
+            var sb = new StringBuilder();
+            sb.AppendLine($"Tileset: {tileset}; categories: {string.Join(", ", categories.Select(p => p.Name))}");
+            sb.AppendLine($"info/mag: {image["info"]?["mag"]?.WzValue ?? 1}; variants: {variants.Count}; offset: {offset}");
+            sb.AppendLine("Coordinates are map pixels, +X right, +Y down. Placement is the origin anchor, not the image top-left. Unflipped visible bounds: [x-originX,y-originY,width,height]. Foothold vectors are offsets from the placement anchor, not image coordinates. Inspect actual variants; a 90x60 grid is not universal.");
+            foreach (var variant in variants.Skip(offset).Take(limit))
+            {
+                var info = GetObjectInfo(variant.canvas);
+                sb.Append($"category={variant.category} tile_no={variant.canvas.Name}");
+                if (info.HasValue)
+                    sb.Append($" size={info.Value.width}x{info.Value.height} origin=({info.Value.originX},{info.Value.originY})");
+                sb.Append($" z={variant.canvas["z"]?.WzValue ?? 0}");
+                if (variant.canvas["foothold"] is WzConvexProperty foothold)
+                    sb.Append(" footholdOffsets=" + string.Join(" -> ", foothold.WzProperties.OfType<WzVectorProperty>().Select(p => $"({p.X.Value},{p.Y.Value})")));
+                sb.AppendLine();
+            }
+            if ((long)offset + limit < variants.Count)
+                sb.AppendLine($"More variants available: call get_tile_info with offset={offset + limit}.");
+            return sb.ToString();
+        }
+
         /// <summary>
         /// Tile category descriptions for AI understanding
         /// </summary>
@@ -207,30 +283,10 @@ namespace HaCreator.MapEditor.AI
             sb.AppendLine("# Available Map Assets");
             sb.AppendLine();
 
-            // Tilesets - list all
-            sb.AppendLine("## Tilesets");
-            var tilesets = Program.InfoManager.TileSets.Keys.OrderBy(k => k).ToList();
-            sb.AppendLine($"Available ({tilesets.Count}): {string.Join(", ", tilesets)}");
-            sb.AppendLine();
-
-            // Tile categories
-            sb.AppendLine("Tile categories: bsc (fill), enH0 (top), enH1 (bottom), enV0 (left edge), enV1 (right edge), edU (top corners), edD (bottom corners), slLU/slRU/slLD/slRD (slopes)");
-            sb.AppendLine();
-
-            // Object sets - just list names, use get_object_info for details
-            sb.AppendLine("## Object Sets");
-            sb.AppendLine("Use get_object_info(oS) to query available paths and dimensions for a specific set.");
-            var objectSets = Program.InfoManager.ObjectSets.Keys.OrderBy(k => k).ToList();
-            sb.AppendLine($"Available ({objectSets.Count}): {string.Join(", ", objectSets)}");
-            sb.AppendLine();
-
-            // Background sets - just list names, use get_background_info for details
-            sb.AppendLine("## Background Sets");
-            sb.AppendLine("Use get_background_info(bS) to query available items and dimensions for a specific set.");
-            var bgSets = Program.InfoManager.BackgroundSets.Keys.OrderBy(k => k).ToList();
-            sb.AppendLine($"Available ({bgSets.Count}): {string.Join(", ", bgSets)}");
-            sb.AppendLine();
-
+            sb.AppendLine("This summary lists counts only. Discover exact loaded names with get_asset_sets(type, search, offset, limit); follow nextOffset while hasMore is true.");
+            sb.AppendLine($"Tilesets: {Program.InfoManager.TileSets.Count}; object sets: {Program.InfoManager.ObjectSets.Count}; background sets: {Program.InfoManager.BackgroundSets.Count}.");
+            sb.AppendLine("Search matches names, not visual themes. For an unfamiliar theme, browse without a search and inspect candidates; do not guess names or request asset lists from the user.");
+            sb.AppendLine("Use get_tile_info(tileset), get_object_info(oS), or get_background_info(bS) for exact items, then get_asset_preview to assess artwork.");
             return sb.ToString();
         }
 
@@ -290,16 +346,17 @@ namespace HaCreator.MapEditor.AI
         /// </summary>
         public static string GetObjectSetDetails(string oS)
         {
-            if (!Program.InfoManager.ObjectSets.TryGetValue(oS, out var wzImage) || wzImage == null)
+            var wzImage = Program.InfoManager.GetObjectSet(oS);
+            if (wzImage == null)
             {
                 // Check if it's actually a tileset (common mistake)
                 if (Program.InfoManager.TileSets.ContainsKey(oS))
                 {
-                    return $"'{oS}' is a TILESET, not an object set. " +
+                    return $"Error: '{oS}' is a TILESET, not an object set. " +
                            $"For tilesets, use tile_platform() or tile_structure() directly with tileset=\"{oS}\". " +
-                           $"You don't need to query tileset info - just use the name directly.";
+                           $"Call get_tile_info to inspect actual tile variants and geometry first.";
                 }
-                return $"Object set '{oS}' not found. Available object sets are listed in the map context. " +
+                return $"Error: Object set '{oS}' not found. Available object sets are listed in the map context. " +
                        $"Note: This is for OBJECTS (Obj.wz), not tiles. For tiles, use tile_platform/tile_structure directly.";
             }
 
@@ -390,8 +447,11 @@ namespace HaCreator.MapEditor.AI
 
                 if (canvas != null)
                 {
-                    int width = canvas.PngProperty.Width;
-                    int height = canvas.PngProperty.Height;
+                    var linked = canvas.GetLinkedWzImageProperty();
+                    var png = linked is WzCanvasProperty linkedCanvas ? linkedCanvas.PngProperty :
+                        linked as WzPngProperty ?? canvas.PngProperty;
+                    int width = png.Width;
+                    int height = png.Height;
                     int originX = 0;
                     int originY = 0;
 
@@ -418,8 +478,9 @@ namespace HaCreator.MapEditor.AI
         /// </summary>
         public static string GetBackgroundSetDetails(string bS)
         {
-            if (!Program.InfoManager.BackgroundSets.TryGetValue(bS, out var wzImage) || wzImage == null)
-                return $"[HaCreator Connected] Background set '{bS}' not found. Available sets are listed in the map context.";
+            var wzImage = Program.InfoManager.GetBackgroundSet(bS);
+            if (wzImage == null)
+                return $"Error: Background set '{bS}' not found. Available sets are listed in the map context.";
 
             var sb = new StringBuilder();
             sb.AppendLine($"## Background Set: {bS}");
@@ -488,8 +549,11 @@ namespace HaCreator.MapEditor.AI
 
                 if (canvas != null)
                 {
-                    int width = canvas.PngProperty.Width;
-                    int height = canvas.PngProperty.Height;
+                    var linked = canvas.GetLinkedWzImageProperty();
+                    var png = linked is WzCanvasProperty linkedCanvas ? linkedCanvas.PngProperty :
+                        linked as WzPngProperty ?? canvas.PngProperty;
+                    int width = png.Width;
+                    int height = png.Height;
                     int originX = 0;
                     int originY = 0;
 

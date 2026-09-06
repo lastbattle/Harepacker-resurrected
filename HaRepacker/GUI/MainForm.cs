@@ -18,7 +18,7 @@ using MapleLib.WzLib;
 using MapleLib.WzLib.Util;
 using MapleLib.PacketLib;
 using MapleLib.MapleCryptoLib;
-using static MapleLib.Configuration.UserSettings;
+using static HaSharedLibrary.Configuration.HaRepackerUserSettings;
 
 using HaRepacker.GUI.Panels;
 using HaRepacker.GUI.Interaction;

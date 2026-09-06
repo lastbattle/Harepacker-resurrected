@@ -15,6 +15,14 @@ namespace HaCreator.GUI.Quest
                 .Any(IsPerQuestStorageImage);
         }
 
+        private static bool UsesPerQuestStorage(string questId)
+        {
+            if (Program.InfoManager.QuestInfos.TryGetValue(questId, out WzSubProperty existing))
+                return IsPerQuestStorageImage(existing?.ParentImage);
+
+            return UsesPerQuestStorage();
+        }
+
         private static bool IsPerQuestStorageImage(WzImage image)
         {
             if (image == null)

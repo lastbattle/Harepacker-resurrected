@@ -153,7 +153,7 @@ namespace HaCreator.GUI
             comboBox_encryption.Items.Clear();
 
             WzMapleVersion manifestEncryption = GetRecommendedEncryption();
-            var configManager = new ConfigurationManager();
+            var configManager = new HaSharedLibrary.Configuration.HaRepackerSettingsStore();
             configManager.Load();
             string customName = configManager.ApplicationSettings?.MapleVersion_CustomEncryptionName ?? "Default";
             var sharedKeys = WzEncryptionOptionsFactory.CreateEncryptionKeys(customName)

@@ -607,4 +607,10 @@
   <data name="QuestEditor_GraphErrorCycle" xml:space="preserve"><value>この関連を追加するとクエストが循環します。</value></data>
   <data name="QuestEditor_GraphErrorUnsupported" xml:space="preserve"><value>元の関連データを損失なく変更できません。先に Act または Check セクションを編集して保存してください。</value></data>
   <data name="QuestEditor_GraphErrorApplyFailed" xml:space="preserve"><value>関連を適用できませんでした。操作履歴は変更されていません。</value></data>
+  <data name="QuestEditor_Property" xml:space="preserve"><value>プロパティ</value></data>
+  <data name="QuestEditor_NestedPath" xml:space="preserve"><value>ネストされたパス</value></data>
+  <data name="QuestEditor_WzType" xml:space="preserve"><value>WZ タイプ</value></data>
+  <data name="QuestEditor_ExtendedProperties" xml:space="preserve"><value>拡張プロパティ</value></data>
+  <data name="QuestEditor_ExtendedPropertiesDescription" xml:space="preserve"><value>このセクションに専用コントロールがないプロパティです。保存時に WZ タイプとネストされたパスが維持されます。</value></data>
+  <data name="QuestEditor_PropertyCompatibilityNotice" xml:space="preserve"><value>このプロパティは既知のポスト Big Bang または V／64 ビット版のクエスト構造では確認されておらず、ゲームで使用されない可能性があります。編集は可能で、保存時にも維持されます。</value></data>
 </root>

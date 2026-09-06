@@ -607,4 +607,10 @@
   <data name="QuestEditor_GraphErrorCycle" xml:space="preserve"><value>이 관계는 퀘스트 순환을 만듭니다.</value></data>
   <data name="QuestEditor_GraphErrorUnsupported" xml:space="preserve"><value>원본 관계 데이터를 손실 없이 변경할 수 없습니다. 먼저 Act 또는 Check 섹션을 편집하고 저장하세요.</value></data>
   <data name="QuestEditor_GraphErrorApplyFailed" xml:space="preserve"><value>관계를 적용할 수 없습니다. 작업 기록은 변경되지 않았습니다.</value></data>
+  <data name="QuestEditor_Property" xml:space="preserve"><value>속성</value></data>
+  <data name="QuestEditor_NestedPath" xml:space="preserve"><value>중첩 경로</value></data>
+  <data name="QuestEditor_WzType" xml:space="preserve"><value>WZ 형식</value></data>
+  <data name="QuestEditor_ExtendedProperties" xml:space="preserve"><value>확장 속성</value></data>
+  <data name="QuestEditor_ExtendedPropertiesDescription" xml:space="preserve"><value>이 섹션에 전용 컨트롤이 없는 속성입니다. 저장할 때 WZ 형식과 중첩 경로가 유지됩니다.</value></data>
+  <data name="QuestEditor_PropertyCompatibilityNotice" xml:space="preserve"><value>이 속성은 알려진 빅뱅 이후 또는 V/64비트 퀘스트 구조에서 확인되지 않아 게임에서 사용되지 않을 수 있습니다. 그래도 편집할 수 있으며 저장 시 그대로 유지됩니다.</value></data>
 </root>

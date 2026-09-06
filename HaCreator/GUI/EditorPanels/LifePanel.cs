@@ -24,7 +24,13 @@ namespace HaCreator.GUI.EditorPanels
             Reactor
         }
 
-        private sealed record LifeEntry(string Id, string DisplayName, LifeEntryType Type);
+        private sealed record LifeEntry(string Id, string Name, LifeEntryType Type)
+        {
+            // Keep the IMG ID visible/searchable, including its usual leading zeros.
+            public string DisplayName => string.IsNullOrWhiteSpace(Name)
+                ? Id.PadLeft(7, '0')
+                : $"{Name} ({Id.PadLeft(7, '0')})";
+        }
 
         private readonly List<LifeEntry> reactors = new();
         private readonly List<LifeEntry> npcs = new();
@@ -299,19 +305,21 @@ namespace HaCreator.GUI.EditorPanels
 
         private void RefreshMobSource()
         {
+            Program.InfoManager.EnsureMobStringData();
             mobs.Clear();
             mobs.AddRange(Program.InfoManager.GetMobIds()
                 .Select(id => new LifeEntry(
                     id,
                     Program.InfoManager.MobNameCache.TryGetValue(id, out string name)
-                        ? $"{id} - {name}"
-                        : id,
+                        ? name
+                        : string.Empty,
                     LifeEntryType.Mob))
                 .OrderBy(item => item.DisplayName, StringComparer.OrdinalIgnoreCase));
         }
 
         private void RefreshNpcSource()
         {
+            Program.InfoManager.EnsureNpcStringData();
             npcs.Clear();
             npcs.AddRange(Program.InfoManager.GetNpcIds()
                 .Select(id =>
@@ -319,9 +327,9 @@ namespace HaCreator.GUI.EditorPanels
                     if (Program.InfoManager.NpcNameCache.TryGetValue(id, out var info))
                     {
                         string description = string.IsNullOrEmpty(info.Item2) ? string.Empty : $" ({info.Item2})";
-                        return new LifeEntry(id, $"{id} - {info.Item1}{description}", LifeEntryType.Npc);
+                        return new LifeEntry(id, $"{info.Item1}{description}", LifeEntryType.Npc);
                     }
-                    return new LifeEntry(id, id, LifeEntryType.Npc);
+                    return new LifeEntry(id, string.Empty, LifeEntryType.Npc);
                 })
                 .OrderBy(item => item.DisplayName, StringComparer.OrdinalIgnoreCase));
         }
@@ -332,10 +340,9 @@ namespace HaCreator.GUI.EditorPanels
             reactors.AddRange(Program.InfoManager.GetReactorIds()
                 .Select(id =>
                 {
-                    string name = Program.InfoManager.Reactors.TryGetValue(id, out ReactorInfo info) &&
-                        !string.IsNullOrEmpty(info.Name)
-                        ? $"{id} ({info.Name})"
-                        : id;
+                    // IMG-directory startup only indexes IDs. Resolve metadata here so
+                    // every reactor can be found by name before its thumbnail is realized.
+                    string name = Program.InfoManager.GetReactor(id)?.Name;
                     return new LifeEntry(id, name, LifeEntryType.Reactor);
                 })
                 .OrderBy(item => item.DisplayName, StringComparer.OrdinalIgnoreCase));

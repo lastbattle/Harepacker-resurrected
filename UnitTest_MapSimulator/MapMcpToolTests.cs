@@ -14,6 +14,7 @@ namespace UnitTest_MapSimulator
                 .OfType<JObject>()
                 .Select(tool => tool["function"]?["name"]?.ToString())
                 .Where(name => !string.IsNullOrWhiteSpace(name))
+                .Append("edit_map").Append("get_edit_help")
                 .Distinct()
                 .OrderBy(name => name)
                 .ToArray();
@@ -29,7 +30,7 @@ namespace UnitTest_MapSimulator
                     .ToArray();
 
                 Assert.Equal(expected, actual);
-                Assert.Equal(34, actual.Length);
+                Assert.Equal(43, actual.Length);
                 Assert.All(server.GetMcpTools().OfType<JObject>(), tool =>
                 {
                     Assert.Equal("object", tool["inputSchema"]?["type"]?.ToString());
@@ -47,7 +48,9 @@ namespace UnitTest_MapSimulator
                 {
                     ["mob_id"] = "100100",
                     ["x"] = 0,
-                    ["y"] = 0
+                    ["y"] = 0,
+                    ["rx0"] = -100,
+                    ["rx1"] = 100
                 });
 
                 Assert.False(result.Success);

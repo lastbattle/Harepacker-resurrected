@@ -15,7 +15,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
-using static MapleLib.Configuration.UserSettings;
+using static HaSharedLibrary.Configuration.HaRepackerUserSettings;
 using System.IO;
 using HaRepacker.GUI.Panels.SubPanels;
 using HaRepacker.GUI.Controls;
