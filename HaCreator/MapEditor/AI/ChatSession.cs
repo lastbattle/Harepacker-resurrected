@@ -80,7 +80,7 @@ namespace HaCreator.MapEditor.AI
         /// <summary>
         /// Whether there are commands available to execute
         /// </summary>
-        public bool HasCommands => LastAssistantMessage?.HasCommands == true && !LastAssistantMessage.CommandsApplied;
+        public bool HasCommands => _messages.Any(m => m.Edits.Any(e => e.IsPending && e.IsSelected));
 
         /// <summary>
         /// Check if there are any messages
@@ -149,7 +149,7 @@ namespace HaCreator.MapEditor.AI
                 // For assistant messages, include commands in the content for context
                 if (msg.Role == ChatRole.Assistant && !string.IsNullOrEmpty(msg.CommandsContent))
                 {
-                    content = $"{content}\n\n## Commands ({(msg.CommandsApplied ? "already applied; do not repeat" : "proposed; not applied")})\n{msg.CommandsContent}";
+                    content = $"{content}\n\n{msg.HistorySummary}";
                 }
 
                 apiMessages.Add(new JObject
@@ -177,7 +177,7 @@ namespace HaCreator.MapEditor.AI
 
                 if (msg.Role == ChatRole.Assistant && !string.IsNullOrEmpty(msg.CommandsContent))
                 {
-                    content = $"{content}\n\n## Commands ({(msg.CommandsApplied ? "already applied; do not repeat" : "proposed; not applied")})\n{msg.CommandsContent}";
+                    content = $"{content}\n\n{msg.HistorySummary}";
                 }
 
                 history.Add(new JObject
@@ -188,6 +188,17 @@ namespace HaCreator.MapEditor.AI
             }
 
             return history;
+        }
+
+        /// <summary>Import user-supplied compact edits for review only; asset resolution happens at apply time.</summary>
+        public ChatMessage ImportCompactEdits(string code)
+        {
+            using var server = new MapMcpToolServer();
+            var result = server.CallTool("edit_map", new JObject { ["code"] = code }, enforceQueryOrder: false);
+            if (!result.Success) throw new ArgumentException(result.Text);
+            var message = AddAssistantMessage("Imported changes ready for review. Assets and placement will be checked when applied.");
+            foreach (var edit in result.Children) message.AddEdit(edit, false);
+            return message;
         }
 
         /// <summary>

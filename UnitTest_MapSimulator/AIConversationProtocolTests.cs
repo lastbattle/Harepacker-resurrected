@@ -72,11 +72,12 @@ public class AIConversationProtocolTests
                 JObject payload = protocol == AIEndpointProtocol.Responses
                     ? new JObject { ["output"] = turn == 0 ? new JArray(
                         new JObject { ["type"] = "function_call", ["call_id"] = "view", ["name"] = "get_map_view", ["arguments"] = "{}" },
-                        new JObject { ["type"] = "function_call", ["call_id"] = "chair", ["name"] = "add_chair", ["arguments"] = "{\"x\":120,\"y\":80}" })
+                        new JObject { ["type"] = "reasoning", ["id"] = "reason-1", ["summary"] = new JArray() },
+                        new JObject { ["type"] = "function_call", ["call_id"] = "chair", ["name"] = "edit_map", ["arguments"] = new JObject { ["code"] = "[\"c\",{\"x\":120,\"y\":80}]" }.ToString() })
                         : new JArray(new JObject { ["type"] = "message", ["role"] = "assistant", ["content"] = new JArray(new JObject { ["type"] = "output_text", ["text"] = "Placed the chair." }) }) }
                     : new JObject { ["choices"] = new JArray(new JObject { ["message"] = turn == 0
                         ? new JObject { ["role"] = "assistant", ["tool_calls"] = new JArray(
-                            ChatCall("view", "get_map_view", "{}"), ChatCall("chair", "add_chair", "{\"x\":120,\"y\":80}")) }
+                            ChatCall("view", "get_map_view", "{}"), ChatCall("chair", "edit_map", new JObject { ["code"] = "[\"c\",{\"x\":120,\"y\":80}]" }.ToString())) }
                         : new JObject { ["role"] = "assistant", ["content"] = "Placed the chair." } }) };
                 byte[] bytes = Encoding.UTF8.GetBytes(payload.ToString());
                 context.Response.ContentType = "application/json";
@@ -99,11 +100,14 @@ public class AIConversationProtocolTests
             ReasoningEffort = "low", MaxToolTurns = 3
         }, tools);
         var history = new JArray(new JObject { ["role"] = "user", ["content"] = "Keep the existing scenery." });
+        var completed = new List<MapMcpToolCallResult>();
+        client.ToolCompleted += completed.Add;
         string result = await client.ProcessConversationAsync("Map geometry", "Place a chair", history, visual, true, timeout.Token);
         await serve;
         Assert.Equal(1, applied);
         Assert.Contains("Placed the chair.", result);
-        Assert.Contains("ADD CHAIR", result);
+        Assert.DoesNotContain("ADD CHAIR", result);
+        Assert.Single(completed.Where(c => c.Command != null));
         Assert.Contains("Keep the existing scenery.", requests[0].ToString());
         Assert.Contains("data:image/png;base64,aW1hZ2U=", requests[0].ToString());
         Assert.Contains("Applied one chair", requests[1].ToString());
@@ -113,6 +117,7 @@ public class AIConversationProtocolTests
         if (protocol == AIEndpointProtocol.Responses)
         {
             Assert.Null(requests[0]["reasoning_effort"]);
+            Assert.Contains(((JArray)requests[1]["input"]!).OfType<JObject>(), i => (string?)i["id"] == "reason-1");
             var output = ((JArray)requests[1]["input"]!).OfType<JObject>().Single(i => i["call_id"]?.ToString() == "view" && i["type"]?.ToString() == "function_call_output");
             Assert.Contains(((JArray)output["output"]!).OfType<JObject>(), b => b["type"]?.ToString() == "input_image");
         }

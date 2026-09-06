@@ -6,6 +6,25 @@ internal static class Program
     [STAThread]
     private static int Main()
     {
+        if (Environment.GetEnvironmentVariable("HACREATOR_COMPACT_BENCHMARK") is string benchmarkDirectory)
+        {
+            Directory.CreateDirectory(benchmarkDirectory);
+            using var server = new HaCreator.MapEditor.AI.MapMcpToolServer();
+            var legacy = server.GetResponsesTools(true);
+            foreach (var tool in legacy.Where(t => (string)t["name"] is "edit_map" or "get_edit_help").ToList()) tool.Remove();
+            File.WriteAllText(Path.Combine(benchmarkDirectory, "legacy-tools.json"), legacy.ToString(Newtonsoft.Json.Formatting.None));
+            File.WriteAllText(Path.Combine(benchmarkDirectory, "compact-tools.json"), server.GetResponsesTools(true, compactOnly: true).ToString(Newtonsoft.Json.Formatting.None));
+            if (Environment.GetEnvironmentVariable("HACREATOR_COMPACT_CORPUS") is string corpus)
+            {
+                var calls = File.ReadLines(corpus).Select(JObject.Parse).Where(c => (string)c["kind"] == "command").ToList();
+                var actions = File.ReadLines(corpus).Select(JObject.Parse).Where(c => (string)c["kind"] == "action" && c["detail"]["arguments"] is JObject).ToList();
+                File.WriteAllText(Path.Combine(benchmarkDirectory, "grouped-edits.txt"), HaCreator.MapEditor.AI.CompactMapEdits.Encode(actions.Select(c => new HaCreator.MapEditor.AI.CompactMapEdits.Edit((string)c["name"], (JObject)c["detail"]["arguments"]))));
+                var receipts = calls.Select(c => HaCreator.MapEditor.AI.MapMcpToolCallResult.Action("action", (string)c["name"], string.Join("\n", ((JArray)c["detail"]["Log"]).Values<string>()))).ToList();
+                File.WriteAllText(Path.Combine(benchmarkDirectory, "legacy-receipts.txt"), string.Join("\n", receipts.Select(r => r.Text)));
+                File.WriteAllText(Path.Combine(benchmarkDirectory, "compact-receipts.txt"), string.Join("\n", receipts.Select(r => r.CompactFeedback())));
+            }
+            return 0;
+        }
         if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("HACREATOR_AI_TEST_DATA")) ||
             string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("HACREATOR_EXISTING_MAP_OUTPUT")))
         {

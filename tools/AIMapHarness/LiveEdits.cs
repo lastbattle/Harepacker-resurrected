@@ -93,12 +93,23 @@ static class LiveEdits
             ["maxOutputTokens"] = options.MaxOutputTokens
         }.ToString());
         using var client = new OpenAICompatibleClient(options, server);
+        var reviewResults = new List<MapMcpToolCallResult>();
+        client.RequestMeasured += metrics => Log("request_metrics", "client", metrics);
+        client.ToolCompleted += result =>
+        {
+            if (result.Success && result.Arguments != null) reviewResults.Add(result);
+            if (result.Arguments != null) Log("action", result.ToolName, new { arguments = result.Arguments,
+                compact = CompactMapEdits.Encode(result.ToolName, result.Arguments), command = result.Command, result.Success });
+        };
         client.Progress += message => Log("progress", "client", message);
         var replay = Environment.GetEnvironmentVariable("HACREATOR_REPLAY_DIRECTORY");
         if (!string.IsNullOrEmpty(replay))
             foreach (var line in File.ReadAllLines(Path.Combine(replay, id + "-live-calls.jsonl")))
             {
-                var call = JObject.Parse(line); if ((string)call["kind"] == "command") server.CommandExecutor((string)call["name"]);
+                var call = JObject.Parse(line);
+                if ((string)call["kind"] == "command") server.CommandExecutor((string)call["name"]);
+                if ((string)call["kind"] == "action" && (bool?)call["detail"]["Success"] == true)
+                    reviewResults.Add(MapMcpToolCallResult.Action((string)call["name"], (string)call["detail"]["command"]).WithArguments((JObject)call["detail"]["arguments"]));
             }
         string context = serializer.GenerateAISummary();
         File.WriteAllText(Path.Combine(output, id + "-context.txt"), context);
@@ -132,7 +143,17 @@ static class LiveEdits
         var redoView = MapAIVisualRenderer.RenderMap(board, new JObject { ["overlays"] = false });
         File.WriteAllBytes(Path.Combine(output, id + "-redo.png"), Convert.FromBase64String((string)redoView[1]["data"]));
         bool redone = redo == after;
+        JObject review = null;
+        if (reviewResults.Count > 0 && restored && redone)
+        {
+            for (int i = 0; i < batches; i++) board.UndoRedoMan.Undo();
+            review = ReviewWorkflow.Run(board, reviewResults, id, prompt);
+            review["matchesLiveResult"] = Snapshot() == after;
+            File.WriteAllText(Path.Combine(output, id + "-review.json"), review.ToString());
+            if (review.Properties().Any(p => p.Value.Type == JTokenType.Boolean && !(bool)p.Value))
+                error ??= "Review workflow verification failed.";
+        }
         // Leave the verified result on this disposable board for the actual dialog screenshot.
-        return new JObject { ["elapsedSeconds"] = timer.Elapsed.TotalSeconds, ["commands"] = commands, ["error"] = error, ["undoRestored"] = restored, ["redoRestored"] = redone, ["undoBatches"] = batches, ["changed"] = before != after, ["comparison"] = comparison, ["pngRedoIdentical"] = File.ReadAllBytes(Path.Combine(output, id + "-after.png")).SequenceEqual(File.ReadAllBytes(Path.Combine(output, id + "-redo.png"))) };
+        return new JObject { ["elapsedSeconds"] = timer.Elapsed.TotalSeconds, ["review"] = review, ["commands"] = commands, ["error"] = error, ["undoRestored"] = restored, ["redoRestored"] = redone, ["undoBatches"] = batches, ["changed"] = before != after, ["comparison"] = comparison, ["pngRedoIdentical"] = File.ReadAllBytes(Path.Combine(output, id + "-after.png")).SequenceEqual(File.ReadAllBytes(Path.Combine(output, id + "-redo.png"))) };
     }
 }

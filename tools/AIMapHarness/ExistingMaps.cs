@@ -155,7 +155,7 @@ static class ExistingMaps
         var meta = JObject.Parse((string)view[0]["text"]); meta["pngBytes"] = bytes.Length; meta["file"] = name + ".png";
         File.WriteAllText(Path.Combine(Output, name + ".json"), meta.ToString()); return meta;
     }
-    static void SaveUi(AIMapEditWindow w, string name)
+    internal static void SaveUi(AIMapEditWindow w, string name)
     {
         var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
         var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap((int)w.ActualWidth, (int)w.ActualHeight, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);

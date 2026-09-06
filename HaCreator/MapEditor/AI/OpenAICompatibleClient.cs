@@ -62,11 +62,14 @@ namespace HaCreator.MapEditor.AI
         public string LastTestError { get; private set; } = string.Empty;
         public event Action<string> Progress;
         public event Action<MapMcpToolCallResult> ToolCompleted;
+        /// <summary>Numeric diagnostics only; never exposes endpoint, authorization or request contents.</summary>
+        public event Action<JObject> RequestMeasured;
 
         /// <summary>Run one grounded conversation against the supplied live board tools.</summary>
         public Task<string> ProcessConversationAsync(string mapContext, string userInstructions,
             JArray history, JArray visualContext, bool applyChanges, CancellationToken cancellationToken = default)
         {
+            structuredConversation = true;
             ValidateConfiguration();
             toolServer.ResetConversationState();
             var prompt = MapEditorPromptBuilder.LoadSystemPrompt() + "\n\n" +
@@ -95,6 +98,7 @@ namespace HaCreator.MapEditor.AI
             string userInstructions,
             CancellationToken cancellationToken = default)
         {
+            structuredConversation = false;
             ValidateConfiguration();
             toolServer.ResetConversationState();
 
@@ -379,7 +383,7 @@ namespace HaCreator.MapEditor.AI
                 {
                     ["model"] = options.Model,
                     ["messages"] = messages,
-                    ["tools"] = toolServer.GetChatCompletionTools(options.StrictSchemas),
+                    ["tools"] = toolServer.GetChatCompletionTools(options.StrictSchemas, compactOnly: true),
                     ["tool_choice"] = "auto",
                     ["max_tokens"] = options.MaxOutputTokens
                 };
@@ -409,8 +413,10 @@ namespace HaCreator.MapEditor.AI
                         continue;
 
                     Progress?.Invoke($"Using {name}…");
-                    var result = CallTool(name, function?["arguments"]?.ToString());
-                    ToolCompleted?.Invoke(result);
+                    var result = CallTool(name, function?["arguments"]?.ToString(), cancellationToken);
+                    if (result.Children == null) ToolCompleted?.Invoke(result);
+                    if (result.Children != null)
+                        commands.AddRange(result.Children.Where(c => c.Success && !string.IsNullOrEmpty(c.Command)).Select(c => c.Command));
                     if (!result.Success && !result.IsQuery)
                         commands.Add($"# {name}: {result.Text}");
                     else if (!string.IsNullOrWhiteSpace(result.Command))
@@ -451,7 +457,7 @@ namespace HaCreator.MapEditor.AI
                     ["model"] = options.Model,
                     ["instructions"] = systemPrompt,
                     ["input"] = input,
-                    ["tools"] = toolServer.GetResponsesTools(options.StrictSchemas),
+                    ["tools"] = toolServer.GetResponsesTools(options.StrictSchemas, compactOnly: true),
                     ["max_output_tokens"] = options.MaxOutputTokens
                 };
                 AddReasoningEffort(body);
@@ -477,8 +483,10 @@ namespace HaCreator.MapEditor.AI
                     var name = item["name"]?.ToString();
                     var callId = item["call_id"]?.ToString();
                     Progress?.Invoke($"Using {name}…");
-                    var result = CallTool(name, item["arguments"]?.ToString());
-                    ToolCompleted?.Invoke(result);
+                    var result = CallTool(name, item["arguments"]?.ToString(), cancellationToken);
+                    if (result.Children == null) ToolCompleted?.Invoke(result);
+                    if (result.Children != null)
+                        commands.AddRange(result.Children.Where(c => c.Success && !string.IsNullOrEmpty(c.Command)).Select(c => c.Command));
                     if (!result.Success && !result.IsQuery)
                         commands.Add($"# {name}: {result.Text}");
                     else if (!string.IsNullOrWhiteSpace(result.Command))
@@ -502,7 +510,10 @@ namespace HaCreator.MapEditor.AI
             return FinishResponse("Stopped at the tool-turn limit; the request may be incomplete.", commands);
         }
 
-        private static string FinishResponse(string text, List<string> commands) =>
+        private bool structuredConversation;
+
+        private string FinishResponse(string text, List<string> commands) =>
+            structuredConversation ? (text ?? string.Empty) :
             string.Join(Environment.NewLine, new[] { text ?? string.Empty, string.Join(Environment.NewLine, commands) }.Where(s => !string.IsNullOrWhiteSpace(s)));
 
         private static void AppendHistory(JArray destination, JArray history)
@@ -541,9 +552,9 @@ namespace HaCreator.MapEditor.AI
             return result;
         }
 
-        private MapMcpToolCallResult CallTool(string name, string arguments)
+        private MapMcpToolCallResult CallTool(string name, string arguments, CancellationToken cancellationToken)
         {
-            try { return toolServer.CallTool(name, ParseArguments(arguments)); }
+            try { return toolServer.CallTool(name, ParseArguments(arguments), cancellationToken: cancellationToken, onEdit: result => ToolCompleted?.Invoke(result)); }
             catch (InvalidOperationException ex) { return MapMcpToolCallResult.Error(name, ex.Message); }
         }
 
@@ -562,7 +573,14 @@ namespace HaCreator.MapEditor.AI
 
                 try
                 {
-                    return JObject.Parse(content);
+                    var parsed = JObject.Parse(content);
+                    RequestMeasured?.Invoke(new JObject
+                    {
+                        ["requestBytes"] = Encoding.UTF8.GetByteCount(body.ToString(Formatting.None)),
+                        ["toolSchemaBytes"] = Encoding.UTF8.GetByteCount(body["tools"]?.ToString(Formatting.None) ?? ""),
+                        ["usage"] = NumericUsage(parsed["usage"] as JObject)
+                    });
+                    return parsed;
                 }
                 catch (JsonException ex)
                 {
@@ -573,6 +591,21 @@ namespace HaCreator.MapEditor.AI
                         ex);
                 }
             }
+        }
+
+        private static JObject NumericUsage(JObject usage)
+        {
+            if (usage == null) return null;
+            var result = new JObject();
+            foreach (var name in new[] { "input_tokens", "output_tokens", "total_tokens", "prompt_tokens", "completion_tokens",
+                "input_tokens_details", "output_tokens_details", "prompt_tokens_details", "completion_tokens_details" })
+            {
+                var value = usage[name];
+                if (value?.Type == JTokenType.Integer) result[name] = value.DeepClone();
+                else if (value is JObject details)
+                    result[name] = new JObject(details.Properties().Where(p => p.Value.Type == JTokenType.Integer).Select(p => new JProperty(p.Name, p.Value.DeepClone())));
+            }
+            return result;
         }
 
         private async Task<HttpResponseMessage> SendAsync(JObject body, CancellationToken cancellationToken)

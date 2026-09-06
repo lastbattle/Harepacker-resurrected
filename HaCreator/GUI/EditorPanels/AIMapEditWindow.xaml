@@ -141,13 +141,7 @@
             <Setter Property="MaxWidth" Value="450"/>
         </Style>
 
-        <!-- Commands Box Style -->
-        <Style x:Key="CommandsBoxStyle" TargetType="Border">
-            <Setter Property="Background" Value="#2D2D2D"/>
-            <Setter Property="CornerRadius" Value="6"/>
-            <Setter Property="Padding" Value="8"/>
-            <Setter Property="Margin" Value="0,8,0,0"/>
-        </Style>
+
 
         <!-- Chat Message Data Template -->
         <DataTemplate x:Key="ChatMessageTemplate" DataType="{x:Type ai:ChatMessage}">
@@ -266,8 +260,8 @@
                             </RichTextBox>
 
                             <!-- Commands section (collapsible) -->
-                            <Expander Header="Generated Commands"
-                                      IsExpanded="False"
+                            <Expander Header="{Binding EditSummary}"
+                                      IsExpanded="True"
                                       Margin="0,8,0,0"
                                       FontSize="11">
                                 <Expander.Style>
@@ -280,19 +274,36 @@
                                         </Style.Triggers>
                                     </Style>
                                 </Expander.Style>
-                                <Border Style="{StaticResource CommandsBoxStyle}">
-                                    <TextBox Text="{Binding CommandsContent, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                             IsReadOnly="False"
-                                             AcceptsReturn="True"
-                                             TextWrapping="Wrap"
-                                             FontFamily="Consolas"
-                                             FontSize="11"
-                                             Foreground="#FFFFFF"
-                                             Background="Transparent"
-                                             BorderThickness="0"
-                                             MaxHeight="200"
-                                             VerticalScrollBarVisibility="Auto"/>
-                                </Border>
+                                <StackPanel>
+                                    <TextBlock Text="Choose changes to keep. Edits apply in order; omitting a prerequisite can affect later changes."
+                                               TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" Margin="0,6"/>
+                                    <WrapPanel Margin="0,0,0,6">
+                                        <Button Content="Select all" Tag="all" Click="SelectReview_Click" Style="{StaticResource ToolbarButtonStyle}"/>
+                                        <Button Content="Select none" Tag="none" Click="SelectReview_Click" Style="{StaticResource ToolbarButtonStyle}"/>
+                                        <Button Content="Copy selected" Click="CopyReview_Click" Style="{StaticResource ToolbarButtonStyle}" ToolTip="Copy selected changes as editable map commands"/>
+                                        <Button Content="Copy compact" Tag="compact" Click="CopyReview_Click" Style="{StaticResource ToolbarButtonStyle}" ToolTip="Copy the compact edit format"/>
+                                    </WrapPanel>
+                                    <ListBox ItemsSource="{Binding Edits}" MaxHeight="280" Background="Transparent" BorderThickness="0"
+                                             ScrollViewer.HorizontalScrollBarVisibility="Disabled" VirtualizingPanel.IsVirtualizing="True">
+                                        <ListBox.ItemContainerStyle>
+                                            <Style TargetType="ListBoxItem"><Setter Property="HorizontalContentAlignment" Value="Stretch"/></Style>
+                                        </ListBox.ItemContainerStyle>
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Margin="0,4">
+                                                    <Grid.ColumnDefinitions><ColumnDefinition Width="26"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                                    <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" VerticalAlignment="Top"
+                                                              Checked="ReviewSelection_Changed" Unchecked="ReviewSelection_Changed" ToolTip="Include in apply or copy"/>
+                                                    <StackPanel Grid.Column="1">
+                                                        <TextBlock Text="{Binding Title}" Foreground="#1E293B" FontWeight="SemiBold"/>
+                                                        <TextBlock Text="{Binding Details}" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" Margin="0,3"/>
+                                                        <TextBlock Text="{Binding Status}" Foreground="#2563EB" ToolTip="{Binding Result}"/>
+                                                    </StackPanel>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+                                </StackPanel>
                             </Expander>
 
                             <TextBlock Text="{Binding TimestampDisplay}"
@@ -391,7 +402,9 @@
                 </Grid.RowDefinitions>
 
                 <!-- Toolbar -->
-                <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,5">
+                <WrapPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,5">
+                    <Button Content="Paste changes" Click="PasteReview_Click" Style="{StaticResource ToolbarButtonStyle}"
+                            ToolTip="Import copied compact edits into a review checklist"/>
                     <Button x:Name="btnClearChat" Content="New Chat"
                             Style="{StaticResource ToolbarButtonStyle}"
                             Click="BtnClearChat_Click"
@@ -405,7 +418,7 @@
                     <CheckBox x:Name="chkLiveEdits" Content="Apply as it works" VerticalAlignment="Center"
                               Margin="8,0,0,0" Click="LiveEdits_Click"
                               ToolTip="Apply changes immediately with undo. Turn off to review commands before applying."/>
-                </StackPanel>
+                </WrapPanel>
 
                 <!-- Chat Messages Area -->
                 <Border Grid.Row="1" BorderBrush="{StaticResource DividerBrush}" BorderThickness="1" CornerRadius="7" Background="White">
@@ -460,11 +473,11 @@
                     <TextBlock x:Name="txtProgress" Text="GPT-6 Astra • Describe a change, or click the map to choose a location."
                                TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,6,0,0"/>
                 <Button x:Name="btnExecute" IsEnabled="False"
-                        Content="Apply Latest Commands"
+                        Content="Apply selected changes"
                         Style="{StaticResource SuccessButtonStyle}"
                         Margin="0,8,0,0"
                         Click="BtnExecute_Click"
-                        ToolTip="Apply the commands from the last AI response"/>
+                        ToolTip="Apply selected pending changes in conversation order; already applied changes are never repeated"/>
                 </StackPanel>
             </Grid>
         </Grid>

@@ -8,13 +8,32 @@ Allow a user to prompt HaCreator to create or edit a MapleStory map through any 
 
 ### One tool registry
 
-`MapEditorFunctions` remains the canonical registry for the 38 map tools. `MapMcpToolServer` projects that registry into:
+`MapEditorFunctions` remains the canonical registry for 41 legacy map tools. The MCP host adds `edit_map` and `get_edit_help` as compatible adapters. Embedded GPT-6 sessions advertise 13 tools: the 11 board/asset queries plus these two adapters. Individual action tools remain callable for existing integrations. `MapMcpToolServer` projects that registry into:
 
 - MCP `tools/list` and `tools/call` JSON-RPC messages.
 - Chat Completions function tools.
 - Responses API function tools.
 
 The parity test compares MCP names and schemas against the registry so a tool cannot silently disappear from one interface.
+
+### Compact edits and local review
+
+`edit_map(code)` accepts version 1 JSON-lines. Each line is `[opcode,{arguments}]`, or `[opcode,{shared arguments},[[x,y],...]]` for repeated placements. For example:
+
+```text
+["t",{"s":"snowyLightrock","u":"enH0","l":0},[[5637,371],[5661,395],[5683,419],[5707,443],[5728,467]]]
+["ts",{"s":"snowyLightrock","k":"tall","sx":4133,"y":124,"w":90,"h":6,"l":0,"fh":false}]
+```
+
+The compact reference is generated from canonical schemas; `get_edit_help(op)` supplies detailed parameter descriptions and defaults on demand. Full action names and argument names remain accepted inside the compact format. No hidden mutable defaults or coordinate scaling are introduced. Expansion is bounded to 512 operations and 128 KiB per call. All expanded actions pass schema/selector/query-prerequisite validation and command generation before the first mutation. Runtime failures stop the batch; prior successes remain. Cancellation is checked between actions, with each completed child delivered to local review before checking cancellation again. This is preflight validation, not a transactional rollback guarantee.
+
+The model receives concise placement receipts with actual anchors, variants, layers and diagnostics. The editor retains complete commands/results locally. Conversation responses no longer append raw command text, and later conversation history carries applied/pending/failed counts rather than repeating the whole script. Complete Responses reasoning items and tool call/output pairs remain intact.
+
+The dialog shows a readable checklist with selected counts and per-edit status. Apply executes selected pending rows in conversation order; omitted prerequisites can affect later edits. An attempted row is marked before mutation so an uncertain or partially failed operation cannot replay accidentally. Failed rows retain their command and diagnostic. Copy selected exports legacy commands; Copy compact groups consecutive equivalent placements. Paste changes accepts the compact format into a new checklist without modifying the board. Imports validate syntax/selectors first and resolve actual assets during Apply. Already applied rows can be copied intentionally but never reapplied by the same checklist.
+
+Review mode still queries the original map until Apply; it does not render a proposed draft scene. A draft-board architecture is a separate optimization target. See [measurements and architecture audit](AI-Compact-Edits-Benchmarks.md).
+
+Manual verification: open Henesys, disable Apply as it works, request edits, deselect some rows and apply the selection. Confirm remaining rows stay Ready; select and apply those rows, then confirm another Apply cannot duplicate completed rows. Copy compact, use Paste changes, and inspect the imported checklist before applying. In live mode, use Stop during a batch and verify completed rows and Undo remain available. Check the review list and toolbar at the minimum window width.
 
 ### Visual and spatial queries
 

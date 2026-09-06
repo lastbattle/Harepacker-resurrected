@@ -391,9 +391,9 @@ namespace HaCreator.GUI.EditorPanels
                 client.Progress += status => Dispatcher.BeginInvoke(new Action(() => txtProgress.Text = status));
                 client.ToolCompleted += result => Dispatcher.Invoke(() =>
                 {
-                    if (result.Success && !string.IsNullOrWhiteSpace(result.Command))
+                    if (!string.IsNullOrWhiteSpace(result.Command))
                     {
-                        assistantMessage.CommandsContent += result.Command + Environment.NewLine;
+                        assistantMessage.AddEdit(result, applyChanges);
                         assistantMessage.CommandsApplied = applyChanges;
                     }
                 });
@@ -441,8 +441,7 @@ namespace HaCreator.GUI.EditorPanels
                 btnClearChat.IsEnabled = true;
                 chkLiveEdits.IsEnabled = true;
                 btnSend.IsEnabled = !string.IsNullOrWhiteSpace(txtMessageInput.Text);
-                btnExecute.IsEnabled = _chatSession.HasCommands;
-                btnExecute.Visibility = _chatSession.HasCommands ? Visibility.Visible : Visibility.Collapsed;
+                RefreshApplyMode();
                 txtMessageInput.Focus();
             }
         }
@@ -527,61 +526,86 @@ namespace HaCreator.GUI.EditorPanels
             LoadMapContext();
         }
 
-        private void BtnExecute_Click(object sender, RoutedEventArgs e)
+        private async void BtnExecute_Click(object sender, RoutedEventArgs e)
         {
-            if (isProcessing || !_chatSession.HasCommands) return;
-            if (board == null)
-            {
-                MessageBox.Show(EditorPanelLocalizer.Text("AI_NoMapLoaded", "No map is currently loaded."), EditorPanelLocalizer.Text("AI_ExecuteCommandsTitle", "Execute Commands"),
-                    MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-
-            var commandText = _chatSession.GetLatestCommands();
-            if (string.IsNullOrWhiteSpace(commandText))
-            {
-                MessageBox.Show(EditorPanelLocalizer.Text("AI_NoCommands", "No commands to execute. Send a message to generate commands first."),
-                    EditorPanelLocalizer.Text("AI_ExecuteCommandsTitle", "Execute Commands"), MessageBoxButton.OK, MessageBoxImage.Information);
-                return;
-            }
-
+            if (isProcessing || !_chatSession.HasCommands || board == null) return;
+            var selected = _chatSession.Messages.SelectMany(m => m.Edits).Where(e => e.IsPending && e.IsSelected).ToList();
+            isProcessing = true;
+            requestCancellation = new CancellationTokenSource();
+            btnExecute.IsEnabled = false; btnSend.IsEnabled = false; btnStop.IsEnabled = true;
+            btnClearChat.IsEnabled = false; chkLiveEdits.IsEnabled = false;
+            int applied = 0;
             try
             {
-                var result = ExecuteCommandText(commandText);
-                // Never replay a partially applied batch: retries must be generated from fresh state.
-                _chatSession.LastAssistantMessage.CommandsApplied = true;
-                btnExecute.IsEnabled = false;
-                if (result == null)
+                foreach (var edit in selected)
                 {
-                    MessageBox.Show(EditorPanelLocalizer.Text("AI_NoValidCommands", "No valid commands found in the generated output."),
-                        EditorPanelLocalizer.Text("AI_ExecuteCommandsTitle", "Execute Commands"), MessageBoxButton.OK, MessageBoxImage.Warning);
-                    return;
-                }
-
-                // Show execution summary
-                string summary = EditorPanelLocalizer.Format("AI_ExecutionSummary", result.SuccessCount, result.FailCount);
-
-                if (result.FailCount > 0 && result.Log.Count > 0)
-                {
-                    var failedLogs = result.Log.Where(l =>
-                        l.Contains("failed", StringComparison.OrdinalIgnoreCase) ||
-                        l.Contains("error", StringComparison.OrdinalIgnoreCase)).Take(5);
-                    if (failedLogs.Any())
+                    await System.Windows.Threading.Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.Background);
+                    if (requestCancellation.IsCancellationRequested) break;
+                    if (!edit.TryBeginApply()) continue;
+                    try
                     {
-                        summary += "\n\nIssues:\n" + string.Join("\n", failedLogs);
+                        var result = ExecuteCommandText(edit.Command);
+                        bool success = result != null && result.FailCount == 0;
+                        edit.Complete(success, result == null ? "No valid commands." : string.Join("\n", result.Log));
+                        if (!success) break;
+                        applied++;
                     }
+                    catch (Exception ex) { edit.Complete(false, ex.Message); break; }
                 }
-
-                MessageBox.Show(summary, EditorPanelLocalizer.Text("AI_ExecutionResultTitle", "Execution Result"),
-                    MessageBoxButton.OK,
-                    result.FailCount > 0 ? MessageBoxImage.Warning : MessageBoxImage.Information);
-
+                int remaining = _chatSession.Messages.Sum(m => m.Edits.Count(e => e.IsPending));
+                txtProgress.Text = $"Applied {applied} of {selected.Count} selected changes. " +
+                    (remaining > 0 ? $"{remaining} changes remain ready for review." : applied == selected.Count ? "Review complete." : "Inspect failed changes in the review list.");
             }
-            catch (Exception ex)
+            finally
             {
-                MessageBox.Show(EditorPanelLocalizer.Format("AI_ExecutionError", ex.Message), EditorPanelLocalizer.Text("AI_ExecutionErrorTitle", "Execution Error"),
-                    MessageBoxButton.OK, MessageBoxImage.Error);
+                isProcessing = false; requestCancellation.Dispose(); requestCancellation = null;
+                btnSend.IsEnabled = !string.IsNullOrWhiteSpace(txtMessageInput.Text); btnStop.IsEnabled = false;
+                btnClearChat.IsEnabled = true; chkLiveEdits.IsEnabled = true; RefreshApplyMode(); LoadMapContext();
             }
+        }
+
+        private void ReviewSelection_Changed(object sender, RoutedEventArgs e) => RefreshApplyMode();
+
+        private void SelectReview_Click(object sender, RoutedEventArgs e)
+        {
+            if (isProcessing || sender is not System.Windows.Controls.Button button || button.DataContext is not ChatMessage message) return;
+            bool select = (string)button.Tag == "all";
+            foreach (var edit in message.Edits) edit.IsSelected = select;
+            RefreshApplyMode();
+        }
+
+        private void PasteReview_Click(object sender, RoutedEventArgs e)
+        {
+            if (isProcessing) return;
+            var dialog = new Window { Owner = this, Title = "Paste changes for review", Width = 660, Height = 400,
+                MinWidth = 460, MinHeight = 300, WindowStartupLocation = WindowStartupLocation.CenterOwner };
+            var layout = new System.Windows.Controls.DockPanel { Margin = new Thickness(16) };
+            var help = new System.Windows.Controls.TextBlock { Text = "Paste edits copied with Copy compact. This creates a checklist; your map changes only when you apply it.",
+                TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 12) };
+            System.Windows.Controls.DockPanel.SetDock(help, System.Windows.Controls.Dock.Top); layout.Children.Add(help);
+            var import = new System.Windows.Controls.Button { Content = "Review changes", Height = 32, Margin = new Thickness(0, 12, 0, 0) };
+            System.Windows.Controls.DockPanel.SetDock(import, System.Windows.Controls.Dock.Bottom); layout.Children.Add(import);
+            var input = new System.Windows.Controls.TextBox { AcceptsReturn = true, AcceptsTab = true, TextWrapping = TextWrapping.Wrap,
+                VerticalScrollBarVisibility = System.Windows.Controls.ScrollBarVisibility.Auto, FontFamily = new System.Windows.Media.FontFamily("Consolas") };
+            layout.Children.Add(input); dialog.Content = layout;
+            import.Click += (_, _) =>
+            {
+                try { _chatSession.ImportCompactEdits(input.Text); RefreshApplyMode(); dialog.Close(); }
+                catch (ArgumentException ex) { MessageBox.Show(dialog, ex.Message, "Cannot import changes", MessageBoxButton.OK, MessageBoxImage.Warning); }
+            };
+            dialog.ShowDialog();
+        }
+
+        private void CopyReview_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not System.Windows.Controls.Button button || button.DataContext is not ChatMessage message) return;
+            var rows = message.Edits.Where(edit => edit.IsSelected).ToList();
+            var text = (string)button.Tag == "compact" && rows.All(edit => edit.CompactCode != null)
+                ? CompactMapEdits.Encode(rows.SelectMany(edit => CompactMapEdits.Decode(edit.CompactCode)))
+                : string.Join(Environment.NewLine, rows.Select(edit => edit.Command));
+            if (text.Length == 0) { txtProgress.Text = "Select changes to copy."; return; }
+            try { Clipboard.SetText(text); txtProgress.Text = "Selected changes copied."; }
+            catch (System.Runtime.InteropServices.ExternalException) { txtProgress.Text = "Clipboard is busy. Try copying again."; }
         }
 
         private ExecutionResult ExecuteCommandText(string commandText)
@@ -659,7 +683,9 @@ namespace HaCreator.GUI.EditorPanels
         private void RefreshApplyMode()
         {
             chkLiveEdits.IsChecked = AISettings.AutoApplyCommands;
-            btnExecute.Visibility = _chatSession.HasCommands ? Visibility.Visible : Visibility.Collapsed;
+            if (btnExecute == null) return;
+            btnExecute.Visibility = _chatSession.Messages.Any(m => m.Edits.Any(e => e.IsPending)) ? Visibility.Visible : Visibility.Collapsed;
+            btnExecute.IsEnabled = !isProcessing && _chatSession.HasCommands;
         }
 
         private void LiveEdits_Click(object sender, RoutedEventArgs e)
