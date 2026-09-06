@@ -359,7 +359,7 @@
                             <Image x:Name="imgMapPreview" Stretch="Uniform" Margin="4"
                                    MouseLeftButtonDown="MapPreview_MouseLeftButtonDown" Cursor="Cross"
                                    ToolTip="Click artwork to insert an exact world coordinate into your request"/>
-                            <TextBlock Grid.Row="1" Text="Fit to content • green: footholds • cyan: ropes&#x0a;Static artwork; backgrounds and effects omitted"
+                            <TextBlock Grid.Row="1" Text="Fit to content • green: footholds • cyan: ropes&#x0a;Static scenery included; animation and Spine omitted"
                                        Foreground="#CBD5E1" FontSize="11" Margin="8" TextWrapping="Wrap"/>
                         </Grid>
                     </TabItem>

@@ -98,25 +98,86 @@ namespace HaCreator.MapEditor.AI
             {
                 var entry = SpatialItem(portal, "portal", index++); entry["name"] = portal.pn; entries.Add(entry);
             }
+            index = 0;
+            foreach (var reactor in board.BoardItems.Reactors)
+            {
+                var entry = SpatialItem(reactor, "reactor", index++);
+                entry["id"] = reactor.ReactorInfo.ID;
+                entry["name"] = reactor.Name;
+                entry["reactorTime"] = reactor.ReactorTime;
+                entries.Add(entry);
+            }
+            // Background anchors are camera-relative and must never expand world geometry bounds.
+            var worldEntries = entries.ToList();
+            index = 0;
+            foreach (var background in board.BoardItems.BackBackgrounds.Concat(board.BoardItems.FrontBackgrounds))
+                entries.Add(SpatialBackground(background, index++, cropCount == 4, cropX, cropY, cropWidth, cropHeight));
             var matches = entries.Where(entry => (type == "all" || entry["type"]?.ToString() == type) &&
-                (cropCount == 0 || entry["bounds"][2].Value<long>() >= cropX && entry["bounds"][0].Value<long>() <= cropX + cropWidth &&
-                    entry["bounds"][3].Value<long>() >= cropY && entry["bounds"][1].Value<long>() <= cropY + cropHeight)).ToList();
+                (cropCount == 0 || (entry["type"]?.ToString() == "background"
+                    ? entry["intersectsCamera"].Value<bool>()
+                    : entry["bounds"][2].Value<long>() >= cropX && entry["bounds"][0].Value<long>() <= cropX + cropWidth &&
+                      entry["bounds"][3].Value<long>() >= cropY && entry["bounds"][1].Value<long>() <= cropY + cropHeight))).ToList();
             var result = new JObject
             {
                 ["coordinates"] = "Map pixels: +X right, +Y down. Bounds are [left,top,right,bottom]. Image positions use editor origin anchors; collision endpoints use world coordinates.",
-                ["indexScope"] = "Diagnostic sourceIndex values refer to current collections, not persistent editing IDs. Tile and object indices share TileObjs; rope and ladder indices share Ropes. Refresh after edits.",
+                ["indexScope"] = "Diagnostic sourceIndex values refer to current collections, not persistent editing IDs. Tile and object indices share TileObjs; rope and ladder indices share Ropes; backgrounds use BackBackgrounds followed by FrontBackgrounds. Refresh after edits.",
+                ["backgroundCoordinates"] = "Background baseX/baseY are stored editor anchors (flip shift already applied), not world geometry. With a region, cameraBounds is the first sprite in unscaled crop-relative pixels using that region as the camera. Filtering includes intersecting repeated copies regardless of alpha. This matches the static preview, not animated runtime movement or screenMode/page visibility. Without a region no background camera bounds are inferred.",
                 ["mapSize"] = new JArray(board.MapSize.X, board.MapSize.Y),
                 ["center"] = new JArray(board.CenterPoint.X, board.CenterPoint.Y),
-                ["totalGeometryElements"] = entries.Count,
-                ["globalGeometryBounds"] = entries.Count == 0 ? JValue.CreateNull() : new JArray(
-                    entries.Min(e => e["bounds"][0].Value<int>()), entries.Min(e => e["bounds"][1].Value<int>()),
-                    entries.Max(e => e["bounds"][2].Value<int>()), entries.Max(e => e["bounds"][3].Value<int>())),
+                ["worldMapBounds"] = new JArray(-(long)board.CenterPoint.X, -(long)board.CenterPoint.Y,
+                    (long)board.MapSize.X - board.CenterPoint.X, (long)board.MapSize.Y - board.CenterPoint.Y),
+                ["viewingRange"] = board.VRRectangle == null ? JValue.CreateNull() : new JArray(
+                    board.VRRectangle.X, board.VRRectangle.Y,
+                    (long)board.VRRectangle.X + board.VRRectangle.Width, (long)board.VRRectangle.Y + board.VRRectangle.Height),
+                ["totalElements"] = entries.Count,
+                ["backgroundElements"] = entries.Count - worldEntries.Count,
+                ["totalGeometryElements"] = worldEntries.Count,
+                ["globalGeometryBounds"] = worldEntries.Count == 0 ? JValue.CreateNull() : new JArray(
+                    worldEntries.Min(e => e["bounds"][0].Value<int>()), worldEntries.Min(e => e["bounds"][1].Value<int>()),
+                    worldEntries.Max(e => e["bounds"][2].Value<int>()), worldEntries.Max(e => e["bounds"][3].Value<int>())),
                 ["matched"] = matches.Count, ["offset"] = offset, ["limit"] = limit,
                 ["nextOffset"] = (long)offset + limit < matches.Count ? new JValue(offset + limit) : JValue.CreateNull(),
                 ["elements"] = new JArray(matches.Skip(offset).Take(limit)),
-                ["omittedTypes"] = "Backgrounds, chairs, reactors and tooltips are not included in this geometry query."
+                ["omittedTypes"] = "Chairs and tooltips are not included in this geometry query."
             };
             return result.ToString(Newtonsoft.Json.Formatting.None);
+        }
+
+        private static JObject SpatialBackground(BackgroundInstance bg, int index, bool hasCamera,
+            double x, double y, double width, double height)
+        {
+            var info = (HaCreator.MapEditor.Info.BackgroundInfo)bg.BaseInfo;
+            bool repeatX = bg.type is BackgroundType.HorizontalTiling or BackgroundType.HVTiling
+                or BackgroundType.HorizontalMoving or BackgroundType.HorizontalMovingHVTiling or BackgroundType.VerticalMovingHVTiling;
+            bool repeatY = bg.type is BackgroundType.VerticalTiling or BackgroundType.HVTiling
+                or BackgroundType.VerticalMoving or BackgroundType.HorizontalMovingHVTiling or BackgroundType.VerticalMovingHVTiling;
+            int spacingX = bg.cx > 0 ? bg.cx : bg.Width, spacingY = bg.cy > 0 ? bg.cy : bg.Height;
+            double left = bg.BaseX - (double)bg.Origin.X + width / 2 + bg.rx * (x + width / 2) / 100;
+            double top = bg.BaseY - (double)bg.Origin.Y + height / 2 + bg.ry * (y + height / 2) / 100;
+            return new JObject
+            {
+                ["type"] = "background", ["sourceIndex"] = index, ["coordinateSpace"] = "camera-relative",
+                ["bounds"] = JValue.CreateNull(), ["baseX"] = bg.BaseX, ["baseY"] = bg.BaseY,
+                ["unflippedX"] = bg.UnflippedX, ["origin"] = new JArray(bg.Origin.X, bg.Origin.Y),
+                ["size"] = new JArray(bg.Width, bg.Height), ["selected"] = bg.Selected, ["flipped"] = bg.Flip,
+                ["asset"] = new JObject { ["bS"] = info.bS, ["no"] = info.no, ["type"] = info.Type.ToString() },
+                ["backgroundType"] = (int)bg.type, ["backgroundTypeName"] = bg.type.ToString(),
+                ["rx"] = bg.rx, ["ry"] = bg.ry, ["cx"] = bg.cx, ["cy"] = bg.cy,
+                ["repeatX"] = repeatX, ["repeatY"] = repeatY, ["effectiveSpacing"] = new JArray(spacingX, spacingY),
+                ["front"] = bg.front, ["z"] = bg.Z, ["alpha"] = bg.a, ["page"] = bg.Page,
+                ["screenMode"] = bg.screenMode, ["spineAnimation"] = bg.SpineAni, ["spineRandomStart"] = bg.SpineRandomStart,
+                ["cameraBounds"] = hasCamera ? new JArray(left, top, left + bg.Width, top + bg.Height) : JValue.CreateNull(),
+                ["intersectsCamera"] = hasCamera ? new JValue(
+                    BackgroundAxisIntersects(left, bg.Width, width, repeatX, spacingX) &&
+                    BackgroundAxisIntersects(top, bg.Height, height, repeatY, spacingY)) : JValue.CreateNull()
+            };
+        }
+
+        private static bool BackgroundAxisIntersects(double start, int size, double extent, bool repeat, int spacing)
+        {
+            if (size <= 0) return false;
+            if (!repeat || spacing <= 0) return start < extent && start + size > 0;
+            return Math.Floor((-start - size) / spacing) + 1 <= Math.Ceiling((extent - start) / spacing) - 1;
         }
 
         private static JObject SpatialItem(BoardItem item, string type, int index)
@@ -143,6 +204,7 @@ namespace HaCreator.MapEditor.AI
             indentLevel = 0;
 
             WriteLine("# Map Summary for AI Editing");
+            WriteLine("Asset discovery: call get_asset_sets to list/search ALL loaded tile, object and background sets, even when this summary is truncated. Use detail queries and asset previews before placement.");
             WriteLine($"Map: \"{board.MapInfo.strMapName}\" (ID: {board.MapInfo.id})");
             WriteLine($"Size: {board.MapSize.X}x{board.MapSize.Y}, Center: ({board.CenterPoint.X}, {board.CenterPoint.Y})");
             WriteLine("Coordinates: map pixels, +X right and +Y down. Positions are origin anchors, not image top-left corners. Inspect get_tile_info for actual tile geometry; 90x60 is only a common grid.");
@@ -493,7 +555,7 @@ namespace HaCreator.MapEditor.AI
                 var text = sb.ToString(0, maximumSummaryLength);
                 int lastLine = text.LastIndexOf('\n');
                 return text.Substring(0, lastLine >= 0 ? lastLine : text.Length) +
-                    "\n[Summary truncated: remaining elements omitted. Call get_map_state with region/type filters and offset/limit to inspect exact geometry.]\n";
+                    "\n[Summary truncated: remaining elements and asset context omitted. Call get_asset_sets for loaded asset names. Call get_map_state with region/type filters and offset/limit to inspect exact geometry.]\n";
             }
             return sb.ToString();
         }

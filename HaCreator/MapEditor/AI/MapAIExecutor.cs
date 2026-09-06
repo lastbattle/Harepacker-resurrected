@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Instance;
@@ -37,6 +38,14 @@ namespace HaCreator.MapEditor.AI
         /// Execute a single command
         /// </summary>
         public bool ExecuteCommand(MapAICommand command)
+        {
+            bool success = ExecuteCommandCore(command);
+            if (success)
+                board.BoardItems.Sort();
+            return success;
+        }
+
+        private bool ExecuteCommandCore(MapAICommand command)
         {
             if (!command.IsValid)
             {
@@ -123,6 +132,8 @@ namespace HaCreator.MapEditor.AI
                         return ExecuteSetTeam(command);
 
                     // Layer management
+                    case CommandType.ChangeTileset:
+                        return ExecuteChangeTileset(command);
                     case CommandType.SetLayerTileset:
                         return ExecuteSetLayerTileset(command);
 
@@ -771,6 +782,9 @@ namespace HaCreator.MapEditor.AI
             if (command.Parameters.TryGetValue("raw_position", out var rawObj))
                 rawPosition = Convert.ToBoolean(rawObj);
 
+            // Decorative replacements can reuse artwork without adding native collision or chairs.
+            bool createBindings = !command.Parameters.TryGetValue("create_bindings", out var bindingsObj) || Convert.ToBoolean(bindingsObj);
+
             // Validate object set exists
             if (!Program.InfoManager.ObjectSets.ContainsKey(oS))
             {
@@ -818,8 +832,8 @@ namespace HaCreator.MapEditor.AI
 
                 lock (board.ParentControl)
                 {
-                    // Create the object instance using the simple overload
-                    var obj = (ObjectInstance)objectInfo.CreateInstance(layer, board, x, adjustedY, z, flip);
+                    var obj = (ObjectInstance)objectInfo.CreateInstance(layer, board, x, adjustedY, z, layer.zMDefault,
+                        false, false, false, false, null, null, null, null, null, null, null, flip, parseOffsets: createBindings);
                     // Include bound native footholds/chairs in the same undo operation.
                     var actions = new List<UndoRedoAction>();
                     RecordPlacement(obj, actions);
@@ -827,7 +841,7 @@ namespace HaCreator.MapEditor.AI
                     board.UndoRedoMan.AddUndoBatch(actions);
                 }
 
-                Log($"Added object oS={oS} l0={l0} l1={l1} l2={l2} at ({x}, {adjustedY}) layer={layerNum}");
+                Log($"Added object oS={oS} l0={l0} l1={l1} l2={l2} at ({x}, {adjustedY}) layer={layerNum} create_bindings={createBindings}");
                 return true;
             }
             catch (Exception ex)
@@ -922,10 +936,7 @@ namespace HaCreator.MapEditor.AI
                     var bg = (BackgroundInstance)bgInfo.CreateInstance(board, x, y, z, rx, ry, cx, cy,
                         displayType, a, front, flip, 0, null, false);
 
-                    if (front)
-                        board.BoardItems.FrontBackgrounds.Add(bg);
-                    else
-                        board.BoardItems.BackBackgrounds.Add(bg);
+                    board.BoardItems.Add(bg, true);
 
                     // Record for undo
                     board.UndoRedoMan.AddUndoBatch(new List<UndoRedoAction> { UndoRedoManager.ItemAdded(bg) });
@@ -1390,11 +1401,9 @@ namespace HaCreator.MapEditor.AI
             if (layer != null && string.IsNullOrEmpty(layer.tS))
             {
                 string previousTileset = layer.tS;
-                layer.tS = tileset;
-                board.UndoRedoMan.AddUndoBatch(new List<UndoRedoAction>
-                {
-                    UndoRedoManager.LayerTSChanged(layer, previousTileset, tileset)
-                });
+                // This assigns an empty layer, rather than replacing artwork in an existing
+                // tileset. Undo must not remap tile assets to a null tileset.
+                ChangeValue(previousTileset, tileset, value => layer.tS = value);
             }
             return layer;
         }
@@ -2068,6 +2077,21 @@ namespace HaCreator.MapEditor.AI
             {
                 foreach (var target in targets)
                 {
+                    // Background X/Y include the editor camera's parallax offset. Tools use
+                    // the stored base coordinates so edits and history are camera independent.
+                    if (target is BackgroundInstance background)
+                    {
+                        var backgroundActions = new List<UndoRedoAction>
+                        {
+                            UndoRedoManager.BackgroundMoved(background,
+                                new Microsoft.Xna.Framework.Point(background.BaseX, background.BaseY),
+                                new Microsoft.Xna.Framework.Point(newX, newY))
+                        };
+                        background.MoveBase(newX, newY);
+                        board.UndoRedoMan.AddUndoBatch(backgroundActions);
+                        continue;
+                    }
+
                     int adjustedY = newY;
 
                     // Apply ground-snapping for portals
@@ -2603,7 +2627,7 @@ namespace HaCreator.MapEditor.AI
                 return false;
             }
 
-            ChangeValue(board.MapInfo.mobRate, Convert.ToSingle(rateObj), value => board.MapInfo.mobRate = value);
+            ChangeValue(board.MapInfo.mobRate, Convert.ToSingle(rateObj, CultureInfo.InvariantCulture), value => board.MapInfo.mobRate = value);
             Log($"Set mobRate to {board.MapInfo.mobRate}");
             return true;
         }
@@ -2742,7 +2766,7 @@ namespace HaCreator.MapEditor.AI
 
             if (command.Parameters.TryGetValue("rate", out var rateObj))
             {
-                board.MapInfo.dropRate = Convert.ToSingle(rateObj);
+                board.MapInfo.dropRate = Convert.ToSingle(rateObj, CultureInfo.InvariantCulture);
                 Log($"Set dropRate to {board.MapInfo.dropRate}");
             }
 
@@ -2774,7 +2798,7 @@ namespace HaCreator.MapEditor.AI
                 return false;
             }
 
-            board.MapInfo.recovery = Convert.ToSingle(rateObj);
+            board.MapInfo.recovery = Convert.ToSingle(rateObj, CultureInfo.InvariantCulture);
             Log($"Set recovery rate to {board.MapInfo.recovery}");
             return true;
         }
@@ -2935,6 +2959,169 @@ namespace HaCreator.MapEditor.AI
         #endregion
 
         #region Layer Management Commands
+
+        private bool ExecuteChangeTileset(MapAICommand command)
+        {
+            if (!command.Parameters.TryGetValue("tileset", out var value) || string.IsNullOrWhiteSpace(value?.ToString()))
+            {
+                Log("ChangeTileset requires 'tileset'.");
+                return false;
+            }
+            string tileset = value.ToString();
+            bool allowShapeMismatch = command.Parameters.TryGetValue("allow_shape_mismatch", out var mismatchValue) && Convert.ToBoolean(mismatchValue);
+            int? layerNumber = command.Parameters.TryGetValue("layer", out var layerValue) ? Convert.ToInt32(layerValue) : null;
+            if (layerNumber.HasValue && (layerNumber < 0 || layerNumber >= board.Layers.Count))
+            {
+                Log($"Invalid layer number: {layerNumber}");
+                return false;
+            }
+            var targetSet = Program.InfoManager.GetTileSet(tileset);
+            if (targetSet == null)
+            {
+                Log($"Tileset not found: {tileset}");
+                return false;
+            }
+            lock (board.ParentControl)
+            {
+                var tiles = board.BoardItems.TileObjs.OfType<TileInstance>()
+                    .Where(tile => !layerNumber.HasValue || tile.LayerNumber == layerNumber.Value).ToList();
+                if (tiles.Count == 0)
+                {
+                    Log("No existing tiles in the requested layers.");
+                    return false;
+                }
+                var replacements = new List<(TileInstance tile, TileInfo before, TileInfo after, Microsoft.Xna.Framework.Point position, Microsoft.Xna.Framework.Point shift)>();
+                var resolved = new Dictionary<TileInfo, TileInfo>();
+                var incompatible = new Dictionary<TileInfo, string>();
+                var layerFailures = new SortedDictionary<int, HashSet<string>>();
+                int fallbacks = 0;
+                int shapeMismatches = 0;
+                var mismatchCategories = new SortedSet<string>(StringComparer.Ordinal);
+                // Resolve every asset before changing the board. Never use ReplaceTS, which can install null assets.
+                // Inspect every layer so a rejected bulk request still gives actionable, non-destructive next steps.
+                foreach (var tile in tiles)
+                {
+                    var original = (TileInfo)tile.BaseInfo;
+                    if (!resolved.TryGetValue(original, out var replacement))
+                    {
+                        var category = targetSet[original.u];
+                        if (category == null)
+                        {
+                            incompatible[original] = $"{original.tS}/{original.u} (target category missing)";
+                        }
+                        else
+                        {
+                            var variants = new[] { original.no, "0" }.Concat(category.WzProperties
+                                .OfType<MapleLib.WzLib.WzProperties.WzCanvasProperty>().Select(prop => prop.Name)
+                                .OrderBy(name => name, StringComparer.Ordinal)).Distinct();
+                            TileInfo visualFallback = null;
+                            foreach (string variant in variants)
+                            {
+                                var candidate = TileInfo.Get(tileset, original.u, variant);
+                                if (candidate != null && candidate.mag == original.mag && visualFallback == null)
+                                    visualFallback = candidate;
+                                if (candidate != null && candidate.mag == original.mag &&
+                                    TryGetTileAlignment(original, candidate, out _))
+                                {
+                                    replacement = candidate;
+                                    break;
+                                }
+                            }
+                            if (replacement == null && allowShapeMismatch)
+                                replacement = visualFallback;
+                            if (replacement == null)
+                                incompatible[original] = $"{original.tS}/{original.u}/{original.no} (no variant with matching scale and native foothold shape)";
+                        }
+                        resolved.Add(original, replacement);
+                    }
+                    if (replacement == null)
+                    {
+                        if (!layerFailures.TryGetValue(tile.LayerNumber, out var reasons))
+                            layerFailures.Add(tile.LayerNumber, reasons = new HashSet<string>(StringComparer.Ordinal));
+                        reasons.Add(incompatible[original]);
+                        continue;
+                    }
+                    if (replacement.no != original.no) fallbacks++;
+                    if (!TryGetTileAlignment(original, replacement, out var shift))
+                    {
+                        // Explicit visual retexturing preserves the original anchor and actual map collision.
+                        // Native asset footholds are templates; do not pretend they align when their shapes differ.
+                        shapeMismatches++;
+                        mismatchCategories.Add($"layer {tile.LayerNumber}: {original.tS}/{original.u} -> {tileset}/{replacement.u}");
+                    }
+                    // Validate coordinate arithmetic before any mutation.
+                    _ = checked(tile.X + shift.X);
+                    _ = checked(tile.Y + shift.Y);
+                    replacements.Add((tile, original, replacement, new Microsoft.Xna.Framework.Point(tile.X, tile.Y), shift));
+                }
+                if (layerFailures.Count > 0)
+                {
+                    Log($"Cannot change tileset to {tileset}. No tiles changed; all existing terrain and footholds are preserved.");
+                    foreach (var failure in layerFailures)
+                        Log($"Incompatible layer {failure.Key}: {string.Join("; ", failure.Value.OrderBy(reason => reason, StringComparer.Ordinal))}.");
+                    var compatibleLayers = tiles.Select(tile => tile.LayerNumber).Distinct()
+                        .Where(number => !layerFailures.ContainsKey(number)).OrderBy(number => number).ToList();
+                    Log(compatibleLayers.Count > 0
+                        ? $"Compatible layers: {string.Join(", ", compatibleLayers)}. Retry change_tileset with an explicit layer for each of these layers."
+                        : "No requested tile layers are fully compatible with this tileset. Inspect another target tileset.");
+                    Log("Keep incompatible layers intact while selecting compatible replacement artwork. Do not clear or rebuild all terrain to bypass this compatibility failure.");
+                    return false;
+                }
+                var layers = tiles.Select(tile => tile.Layer).Distinct().Select(layer => (layer, before: layer.tS)).ToList();
+                var bindings = tiles.ToDictionary(tile => tile, tile => tile.BoundItems.ToDictionary(
+                    pair => pair.Key, pair => (offset: pair.Value, world: new Microsoft.Xna.Framework.Point(pair.Key.X, pair.Key.Y))));
+                void Apply(bool undo)
+                {
+                    foreach (var replacement in replacements)
+                    {
+                        var tile = replacement.tile;
+                        tile.SetBaseInfo(undo ? replacement.before : replacement.after);
+                        var position = undo ? replacement.position : replacement.position + replacement.shift;
+                        if (replacement.shift != Microsoft.Xna.Framework.Point.Zero)
+                        {
+                            // Move only the artwork anchor. Compensate bindings first so collision stays at its exact world coordinates.
+                            foreach (var binding in bindings[tile])
+                                tile.BoundItems[binding.Key] = binding.Value.world - position;
+                            tile.Move(position.X, position.Y);
+                            if (undo)
+                                foreach (var binding in bindings[tile])
+                                    tile.BoundItems[binding.Key] = binding.Value.offset;
+                        }
+                    }
+                    foreach (var entry in layers)
+                        entry.layer.tS = undo ? entry.before : tileset;
+                }
+                Apply(false);
+                board.UndoRedoMan.AddUndoBatch(new List<UndoRedoAction>
+                {
+                    UndoRedoManager.ValueChanged(() => Apply(true), () => Apply(false))
+                });
+                Log($"Changed {tiles.Count} tiles across {layers.Count} layers to {tileset}; {fallbacks} used a compatible fallback variant. Layers and world footholds preserved; {replacements.Count(entry => entry.shift != Microsoft.Xna.Framework.Point.Zero)} artwork anchors translated to align native collision.");
+                if (shapeMismatches > 0)
+                    Log($"Visual retexture: {shapeMismatches} tiles have different native foothold templates ({string.Join("; ", mismatchCategories)}). Their anchors and all actual map collision were preserved, but native artwork/collision alignment is not guaranteed. Inspect get_map_view crops for these categories before completing the edit.");
+                return true;
+            }
+        }
+
+        private static bool TryGetTileAlignment(TileInfo source, TileInfo target, out Microsoft.Xna.Framework.Point shift)
+        {
+            shift = Microsoft.Xna.Framework.Point.Zero;
+            var before = source.FootholdOffsets;
+            var after = target.FootholdOffsets;
+            if (source.mag != target.mag || before.Count != after.Count)
+                return false;
+            if (before.Count == 0)
+                return true;
+            long dx = (long)before[0].X - after[0].X;
+            long dy = (long)before[0].Y - after[0].Y;
+            if (dx < int.MinValue || dx > int.MaxValue || dy < int.MinValue || dy > int.MaxValue)
+                return false;
+            for (int i = 1; i < before.Count; i++)
+                if ((long)before[i].X - after[i].X != dx || (long)before[i].Y - after[i].Y != dy)
+                    return false;
+            shift = new Microsoft.Xna.Framework.Point((int)dx, (int)dy);
+            return true;
+        }
 
         private bool ExecuteSetLayerTileset(MapAICommand command)
         {
@@ -3214,7 +3401,9 @@ namespace HaCreator.MapEditor.AI
                 selectorY = Convert.ToInt32(sourceY);
             }
             if (selectorX.HasValue && selectorY.HasValue)
-                source = source.Where(item => item.X == selectorX.Value && item.Y == selectorY.Value);
+                source = source.Where(item => item is BackgroundInstance background
+                    ? background.BaseX == selectorX.Value && background.BaseY == selectorY.Value
+                    : item.X == selectorX.Value && item.Y == selectorY.Value);
 
             // Filter by layer
             if (command.Parameters.TryGetValue("layer", out var layerObj))

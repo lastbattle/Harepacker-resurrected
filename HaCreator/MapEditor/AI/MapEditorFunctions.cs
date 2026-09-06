@@ -35,15 +35,23 @@ namespace HaCreator.MapEditor.AI
                 CreateModifyPortalTool(),
                 CreateFlipElementTool(),
                 CreateClearElementsTool(),
+                CreateGetAssetSetsTool(),
+                CreateQueryTool("get_reference_map", "Find named source maps from String/Map.img by map name, street or category, then supply map_id to read the exact tile/object/background artwork and usage counts in that map. For requests like a named town or region, use this authoritative reference before choosing theme assets. Read-only; does not change the active map. Search results and asset usages are paginated.", new JObject
+                {
+                    ["search"] = new JObject { ["type"] = "string", ["description"] = "Optional case-insensitive substring of map name, street, category or ID. Omit to browse names." },
+                    ["map_id"] = new JObject { ["type"] = "string", ["pattern"] = "^[0-9]{1,9}$", ["description"] = "Known map ID; when supplied, returns asset usages instead of name search results." },
+                    ["offset"] = new JObject { ["type"] = "integer", ["minimum"] = 0 },
+                    ["limit"] = new JObject { ["type"] = "integer", ["minimum"] = 1, ["maximum"] = 200, ["description"] = "Default 100; maximum 200. Follow nextOffset while hasMore is true." }
+                }),
                 CreateGetObjectInfoTool(),
                 CreateGetTileInfoTool(),
-                CreateQueryTool("get_map_state", "Read bounded current map geometry with world bounds and asset paths. Paginate with offset/limit or filter by region/type. Supply all four crop fields or omit all. Diagnostic source indices are not stable editing IDs.", new JObject
+                CreateQueryTool("get_map_state", "Read bounded current map geometry (including reactors) and background metadata. World bounds exclude camera-relative backgrounds; background baseX/baseY are stored anchors, cameraBounds describe the supplied crop camera. Paginate with offset/limit or filter by region/type. Supply all four crop fields or omit all. Diagnostic source indices are not stable editing IDs.", new JObject
                 {
                     ["x"] = new JObject { ["type"] = "integer" },
                     ["y"] = new JObject { ["type"] = "integer" },
                     ["width"] = new JObject { ["type"] = "integer", ["minimum"] = 1 },
                     ["height"] = new JObject { ["type"] = "integer", ["minimum"] = 1 },
-                    ["element_type"] = new JObject { ["type"] = "string", ["enum"] = new JArray("all", "tile", "object", "foothold", "rope", "ladder", "mob", "npc", "portal") },
+                    ["element_type"] = new JObject { ["type"] = "string", ["enum"] = new JArray("all", "tile", "object", "foothold", "rope", "ladder", "mob", "npc", "portal", "reactor", "background") },
                     ["offset"] = new JObject { ["type"] = "integer", ["minimum"] = 0 },
                     ["limit"] = new JObject { ["type"] = "integer", ["minimum"] = 1, ["maximum"] = 200, ["description"] = "Default 100, maximum 200." }
                 }),
@@ -52,6 +60,7 @@ namespace HaCreator.MapEditor.AI
                 CreateGetBackgroundInfoTool(),
                 CreateGetBgmListTool(),
                 CreateSetBgmTool(),
+                CreateChangeTilesetTool(),
                 CreateAddRopeTool(),
                 CreateAddLadderTool(),
                 CreateSetMapOptionTool(),
@@ -74,7 +83,9 @@ namespace HaCreator.MapEditor.AI
         /// </summary>
         public static bool IsQueryFunction(string functionName)
         {
-            return functionName == "get_object_info" ||
+            return functionName == "get_asset_sets" ||
+                   functionName == "get_reference_map" ||
+                   functionName == "get_object_info" ||
                    functionName == "get_tile_info" ||
                    functionName == "get_map_state" ||
                    functionName == "get_map_view" ||
@@ -146,6 +157,13 @@ namespace HaCreator.MapEditor.AI
                 case "get_map_view":
                 case "get_asset_preview":
                     return "Error: This visual/spatial query requires an active map editor query handler.";
+                case "get_asset_sets":
+                    return MapAssetCatalog.GetAssetSets(arguments["type"]?.ToString() ?? "all",
+                        arguments["search"]?.ToString(), arguments["offset"]?.Value<int>() ?? 0,
+                        arguments["limit"]?.Value<int>() ?? 100);
+                case "get_reference_map":
+                    return MapAIReferenceCatalog.Query(arguments["search"]?.ToString(), arguments["map_id"]?.ToString(),
+                        arguments["offset"]?.Value<int>() ?? 0, arguments["limit"]?.Value<int>() ?? 100);
                 case "get_tile_info":
                     return MapAssetCatalog.GetTileSetDetails(arguments["tileset"]?.ToString(),
                         arguments["category"]?.ToString(), arguments["limit"]?.Value<int>() ?? 80,
@@ -480,7 +498,7 @@ namespace HaCreator.MapEditor.AI
                 ["function"] = new JObject
                 {
                     ["name"] = "add_object",
-                    ["description"] = "Add a decorative object to the map. Objects are visual elements like trees, rocks, signs, etc. The Y coordinate is where the BOTTOM of the object will be placed (ground-snapped by default). Check 'Object Sets' in map context for available objects.",
+                    ["description"] = "Add a decorative object to the map. Objects are visual elements like trees, rocks, signs, etc. The Y coordinate is where the BOTTOM of the object will be placed (ground-snapped by default). Discover exact set names with get_asset_sets(type=object), then paths with get_object_info. For visual replacements on an existing map, set create_bindings=false to preserve its collision and chairs without creating native geometry.",
                     ["parameters"] = new JObject
                     {
                         ["type"] = "object",
@@ -489,7 +507,7 @@ namespace HaCreator.MapEditor.AI
                             ["oS"] = new JObject
                             {
                                 ["type"] = "string",
-                                ["description"] = "Object set name (e.g., 'acc1', 'Christmas', 'citySG'). Check Available Object Sets in map context."
+                                ["description"] = "Object set name (e.g., 'acc1', 'Christmas', 'citySG'). Use an exact name returned by get_asset_sets(type=object)."
                             },
                             ["l0"] = new JObject
                             {
@@ -531,6 +549,11 @@ namespace HaCreator.MapEditor.AI
                                 ["type"] = "boolean",
                                 ["description"] = "Whether to flip the object horizontally. Default is false."
                             },
+                            ["create_bindings"] = new JObject
+                            {
+                                ["type"] = "boolean",
+                                ["description"] = "Default true creates native footholds and chairs. Set false for purely visual decoration or replacement artwork over existing map geometry; no native bindings will be added."
+                            },
                             ["raw_position"] = new JObject
                             {
                                 ["type"] = "boolean",
@@ -551,7 +574,7 @@ namespace HaCreator.MapEditor.AI
                 ["function"] = new JObject
                 {
                     ["name"] = "add_background",
-                    ["description"] = "Add a background image to the map. Backgrounds can be static, animated, or spine-based. Check 'Background Sets' in map context for available backgrounds.",
+                    ["description"] = "Add a background image to the map. Backgrounds can be static, animated, or spine-based. Discover exact set names with get_asset_sets(type=background), then items with get_background_info.",
                     ["parameters"] = new JObject
                     {
                         ["type"] = "object",
@@ -560,7 +583,7 @@ namespace HaCreator.MapEditor.AI
                             ["bS"] = new JObject
                             {
                                 ["type"] = "string",
-                                ["description"] = "Background set name (e.g., 'Amoria', 'aquarium', 'Christmas'). Check Available Background Sets in map context."
+                                ["description"] = "Background set name (e.g., 'Amoria', 'aquarium', 'Christmas'). Use an exact name returned by get_asset_sets(type=background)."
                             },
                             ["no"] = new JObject
                             {
@@ -586,12 +609,12 @@ namespace HaCreator.MapEditor.AI
                             ["rx"] = new JObject
                             {
                                 ["type"] = "integer",
-                                ["description"] = "Horizontal parallax factor (0=fixed, 100=moves with camera). Default is 0."
+                                ["description"] = "Horizontal parallax factor: 0 locks to camera; -100 anchors to world. x is a base offset from camera center, not a world coordinate unless rx=-100. Default 0."
                             },
                             ["ry"] = new JObject
                             {
                                 ["type"] = "integer",
-                                ["description"] = "Vertical parallax factor (0=fixed, 100=moves with camera). Default is 0."
+                                ["description"] = "Vertical parallax factor: 0 locks to camera; -100 anchors to world. y is a base offset from camera center, not a world coordinate unless ry=-100. Default 0."
                             },
                             ["cx"] = new JObject
                             {
@@ -638,7 +661,7 @@ namespace HaCreator.MapEditor.AI
                 ["function"] = new JObject
                 {
                     ["name"] = "remove_element",
-                    ["description"] = "Remove exactly one element by its current origin coordinate pair, or portal name. Refresh get_map_state first; provide layer to disambiguate overlapping layers. Incomplete or ambiguous selectors fail without changes.",
+                    ["description"] = "Remove exactly one element by its current origin coordinate pair (baseX/baseY for backgrounds), or portal name. Refresh get_map_state first; provide layer to disambiguate overlapping layers. Incomplete or ambiguous selectors fail without changes.",
                     ["parameters"] = new JObject
                     {
                         ["type"] = "object",
@@ -648,7 +671,7 @@ namespace HaCreator.MapEditor.AI
                             ["element_type"] = new JObject
                             {
                                 ["type"] = "string",
-                                ["enum"] = new JArray { "mob", "npc", "portal", "reactor", "chair", "object", "tile", "foothold", "rope", "ladder" },
+                                ["enum"] = new JArray { "mob", "npc", "portal", "reactor", "chair", "object", "tile", "background", "foothold", "rope", "ladder" },
                                 ["description"] = "Type of element to remove"
                             },
                             ["x"] = new JObject
@@ -691,8 +714,8 @@ namespace HaCreator.MapEditor.AI
                             ["element_type"] = new JObject
                             {
                                 ["type"] = "string",
-                                ["enum"] = new JArray { "mob", "npc", "portal", "reactor", "chair", "object", "tile" },
-                                ["description"] = "Type of element to move"
+                                ["enum"] = new JArray { "mob", "npc", "portal", "reactor", "chair", "object", "tile", "background" },
+                                ["description"] = "Type of element to move. Background source and destination use stored baseX/baseY, independent of camera."
                             },
                             ["from_x"] = new JObject
                             {
@@ -785,8 +808,8 @@ namespace HaCreator.MapEditor.AI
                             ["element_type"] = new JObject
                             {
                                 ["type"] = "string",
-                                ["enum"] = new JArray { "mob", "npc", "object" },
-                                ["description"] = "Type of element to flip"
+                                ["enum"] = new JArray { "mob", "npc", "object", "reactor", "background" },
+                                ["description"] = "Type of element to flip. Background coordinates use stored baseX/baseY."
                             },
                             ["x"] = new JObject
                             {
@@ -832,12 +855,24 @@ namespace HaCreator.MapEditor.AI
             };
         }
 
+        private static JObject CreateGetAssetSetsTool()
+        {
+            return CreateQueryTool("get_asset_sets", "Discover exact tile, object and background set names from loaded assets. Use before detail queries; never guess names or ask the user for asset lists. Search is a case-insensitive name substring, not a theme classifier. If no names match a theme, browse unfiltered pages and preview candidates. Follow nextOffset while hasMore is true.",
+                new JObject
+                {
+                    ["type"] = new JObject { ["type"] = "string", ["enum"] = new JArray("all", "tile", "object", "background"), ["description"] = "Asset type, default all." },
+                    ["search"] = new JObject { ["type"] = "string", ["description"] = "Optional case-insensitive set-name substring. Omit to browse all loaded names." },
+                    ["offset"] = new JObject { ["type"] = "integer", ["minimum"] = 0, ["description"] = "Pagination offset, default 0." },
+                    ["limit"] = new JObject { ["type"] = "integer", ["minimum"] = 1, ["maximum"] = 200, ["description"] = "Maximum names, default 100; clamped to 1–200." }
+                });
+        }
+
         private static JObject CreateGetTileInfoTool()
         {
             return CreateQueryTool("get_tile_info", "Inspect actual tile variants, sizes, origins, magnification and collision offsets before placing tiles. Results are paginated.",
                 new JObject
                 {
-                    ["tileset"] = new JObject { ["type"] = "string", ["description"] = "Loaded tileset name." },
+                    ["tileset"] = new JObject { ["type"] = "string", ["description"] = "Exact loaded name returned by get_asset_sets(type=tile)." },
                     ["category"] = new JObject { ["type"] = "string", ["description"] = "Optional category filter, e.g. enH0. Omit or use empty string for all." },
                     ["offset"] = new JObject { ["type"] = "integer", ["minimum"] = 0, ["description"] = "Pagination offset, default 0." },
                     ["limit"] = new JObject { ["type"] = "integer", ["minimum"] = 1, ["maximum"] = 200, ["description"] = "Maximum variants, default 80." }
@@ -880,7 +915,7 @@ namespace HaCreator.MapEditor.AI
                     ["y"] = new JObject { ["type"] = "integer", ["description"] = "Crop top in map coordinates." },
                     ["width"] = new JObject { ["type"] = "integer", ["minimum"] = 1 },
                     ["height"] = new JObject { ["type"] = "integer", ["minimum"] = 1 },
-                    ["maxDimension"] = new JObject { ["type"] = "integer", ["minimum"] = 256, ["maximum"] = 1600, ["description"] = "Maximum output image side; default 1200." },
+                    ["maxDimension"] = new JObject { ["type"] = "integer", ["minimum"] = 256, ["maximum"] = 1000, ["description"] = "Maximum output image side; default and hard cap 1000. Preserves aspect ratio and never enlarges smaller renders. Request a closer crop for detail." },
                     ["overlays"] = new JObject { ["type"] = "boolean", ["description"] = "Show collision and climbing geometry; default true." }
                 });
         }
@@ -899,7 +934,8 @@ namespace HaCreator.MapEditor.AI
                             {
                                 AssetSchema("tile", "tS", "u", "no"),
                                 AssetSchema("object", "oS", "l0", "l1", "l2"),
-                                AssetSchema("background", "bS", "backgroundType", "no")
+                                AssetSchema("background", "bS", "backgroundType", "no"),
+                                AssetSchema("mob", "id"), AssetSchema("npc", "id"), AssetSchema("reactor", "id")
                             }
                         }
                     },
@@ -950,7 +986,7 @@ namespace HaCreator.MapEditor.AI
                             ["oS"] = new JObject
                             {
                                 ["type"] = "string",
-                                ["description"] = "Object set name to query (e.g., 'acc1', 'Christmas', 'citySG'). Must be from the Available Object Sets list."
+                                ["description"] = "Object set name to query (e.g., 'acc1', 'Christmas', 'citySG'). Use an exact name returned by get_asset_sets(type=object)."
                             }
                         },
                         ["required"] = new JArray { "oS" }
@@ -976,7 +1012,7 @@ namespace HaCreator.MapEditor.AI
                             ["bS"] = new JObject
                             {
                                 ["type"] = "string",
-                                ["description"] = "Background set name to query (e.g., 'Amoria', 'aquarium', 'Christmas'). Must be from the Available Background Sets list."
+                                ["description"] = "Background set name to query (e.g., 'Amoria', 'aquarium', 'Christmas'). Use an exact name returned by get_asset_sets(type=background)."
                             }
                         },
                         ["required"] = new JArray { "bS" }
@@ -1003,6 +1039,27 @@ namespace HaCreator.MapEditor.AI
                 }
             };
         }
+
+        private static JObject CreateChangeTilesetTool() => new JObject
+        {
+            ["type"] = "function",
+            ["function"] = new JObject
+            {
+                ["name"] = "change_tileset",
+                ["description"] = "Retheme existing terrain in one undoable operation. Preserves layers, depths and world collision. Requires matching categories, scale and native collision shapes; translates artwork anchors when needed to keep native footholds aligned; chooses compatible fallback variants if needed, and fails without edits when incompatible. With explicit allow_shape_mismatch=true, unmatched native templates can be visually retextured at unchanged anchors while all actual collision is preserved; inspect asset previews and resulting map crops. Missing categories or scale changes still fail. Inspect get_asset_sets(type=tile) and get_tile_info first. Use this for whole-map snow conversions instead of removing/rebuilding terrain.",
+                ["parameters"] = new JObject
+                {
+                    ["type"] = "object",
+                    ["properties"] = new JObject
+                    {
+                        ["tileset"] = new JObject { ["type"] = "string", ["description"] = "Exact target tileset name." },
+                        ["layer"] = new JObject { ["type"] = "integer", ["description"] = "Optional layer; omit to change all existing tile layers." },
+                        ["allow_shape_mismatch"] = new JObject { ["type"] = "boolean", ["description"] = "Default false. Explicitly permit visual retexturing when native foothold templates differ, preserving existing anchors and actual map collision. Preview the target artwork and review resulting map crops; native alignment is not guaranteed." }
+                    },
+                    ["required"] = new JArray { "tileset" }
+                }
+            }
+        };
 
         private static JObject CreateSetBgmTool()
         {
@@ -1047,7 +1104,7 @@ namespace HaCreator.MapEditor.AI
                             ["tileset"] = new JObject
                             {
                                 ["type"] = "string",
-                                ["description"] = "The tileset name (e.g., 'grassySoil', 'deepMine', 'snowyRord'). Check Available Tilesets in map context."
+                                ["description"] = "The tileset name (e.g., 'grassySoil', 'deepMine', 'snowyRord'). Use an exact name returned by get_asset_sets(type=tile)."
                             },
                             ["category"] = new JObject
                             {
@@ -1099,7 +1156,7 @@ namespace HaCreator.MapEditor.AI
                             ["tileset"] = new JObject
                             {
                                 ["type"] = "string",
-                                ["description"] = "The tileset name (e.g., 'grassySoil', 'deepMine', 'snowyRord'). Check Available Tilesets in map context."
+                                ["description"] = "The tileset name (e.g., 'grassySoil', 'deepMine', 'snowyRord'). Use an exact name returned by get_asset_sets(type=tile)."
                             },
                             ["start_x"] = new JObject
                             {
@@ -1146,7 +1203,7 @@ namespace HaCreator.MapEditor.AI
                             ["tileset"] = new JObject
                             {
                                 ["type"] = "string",
-                                ["description"] = "The tileset name (e.g., 'grassySoil', 'deepMine', 'snowyRord'). Check Available Tilesets in map context."
+                                ["description"] = "The tileset name (e.g., 'grassySoil', 'deepMine', 'snowyRord'). Use an exact name returned by get_asset_sets(type=tile)."
                             },
                             ["structure_type"] = new JObject
                             {
@@ -1534,11 +1591,6 @@ namespace HaCreator.MapEditor.AI
                                 ["type"] = "integer",
                                 ["description"] = "Minimum level required to enter (0 for no minimum)"
                             },
-                            ["max_level"] = new JObject
-                            {
-                                ["type"] = "integer",
-                                ["description"] = "Maximum level allowed (0 for no maximum)"
-                            },
                             ["force_level"] = new JObject
                             {
                                 ["type"] = "integer",
@@ -1813,6 +1865,8 @@ namespace HaCreator.MapEditor.AI
                         objCmd += " flip";
                     if (arguments["raw_position"]?.Value<bool>() == true)
                         objCmd += " raw_position";
+                    if (arguments["create_bindings"] != null)
+                        objCmd += arguments["create_bindings"].Value<bool>() ? " create_bindings=true" : " create_bindings=false";
                     return objCmd;
 
                 case "add_background":
@@ -1902,6 +1956,11 @@ namespace HaCreator.MapEditor.AI
                 case "clear_elements":
                     return $"CLEAR ALL {arguments["element_type"]?.ToString().ToUpper()}S";
 
+                case "change_tileset":
+                    return $"CHANGE TILESET tileset=\"{arguments["tileset"]}\"" +
+                        (arguments["layer"] != null ? $" layer={arguments["layer"]}" : "") +
+                        (arguments["allow_shape_mismatch"] != null ? (arguments["allow_shape_mismatch"].Value<bool>() ? " allow_shape_mismatch=true" : " allow_shape_mismatch=false") : "");
+
                 case "set_bgm":
                     return $"SET BGM \"{arguments["bgm"]}\"";
 
@@ -1942,14 +2001,12 @@ namespace HaCreator.MapEditor.AI
                     return returnMapCmd;
 
                 case "set_mob_rate":
-                    return $"SET MOB_RATE rate={arguments["rate"]}";
+                    return "SET MOB_RATE rate=" + arguments["rate"].Value<double>().ToString(System.Globalization.CultureInfo.InvariantCulture);
 
                 case "set_level_limit":
                     var levelLimitCmd = "SET LEVEL_LIMIT";
                     if (arguments["min_level"] != null)
                         levelLimitCmd += $" min={arguments["min_level"]}";
-                    if (arguments["max_level"] != null)
-                        levelLimitCmd += $" max={arguments["max_level"]}";
                     if (arguments["force_level"] != null)
                         levelLimitCmd += $" force={arguments["force_level"]}";
                     return levelLimitCmd;

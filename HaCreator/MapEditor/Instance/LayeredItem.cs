@@ -26,7 +26,7 @@ namespace HaCreator.MapEditor.Instance
         {
             lock (board.ParentControl)
             {
-                layer.Items.Remove(this);
+                layer.Items.RemoveAll(item => ReferenceEquals(item, this));
                 base.RemoveItem(undoPipe);
             }
         }
@@ -35,7 +35,7 @@ namespace HaCreator.MapEditor.Instance
         {
             lock (board.ParentControl)
             {
-                layer.Items.Add(this);
+                if (!layer.Items.Contains(this)) layer.Items.Add(this);
                 base.InsertItem();
             }
         }
@@ -111,10 +111,13 @@ namespace HaCreator.MapEditor.Instance
             base.AddToBoard(undoPipe);
             if (undoPipe != null)
             {
+                if (layer != board.SelectedLayer)
+                    layer.Items.RemoveAll(item => ReferenceEquals(item, this));
                 layer = board.SelectedLayer;
                 zm = board.SelectedPlatform;
             }
-            layer.Items.Add(this);
+            // Constructors already attach new instances; deserialized instances attach here.
+            if (!layer.Items.Contains(this)) layer.Items.Add(this);
         }
     }
 }

@@ -35,6 +35,96 @@ public sealed class V95PlacementFactAttribute : FactAttribute
 public class AIPlacementDatasetTests(ITestOutputHelper output)
 {
     [V95PlacementFact]
+    public void FirstPlatformsOnEmptyLayerRestoreMembershipAssetsAndPixels()
+    {
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            var previousInfo = Program.InfoManager;
+            var previousSource = Program.DataSource;
+            try
+            {
+                using var source = new ImgFileSystemDataSource(Environment.GetEnvironmentVariable("HACREATOR_AI_TEST_DATA")!);
+                Program.DataSource = source;
+                Program.InfoManager = new WzInformationManager();
+                Program.InfoManager.TileSets["grassySoil"] = null;
+                var parent = new MultiBoard();
+                var board = new Board(new XnaPoint(1200, 800), new XnaPoint(600, 400), parent, true, null, ItemTypes.All, ItemTypes.All);
+                board.CreateMapLayers();
+                var layer = board.Layers[0];
+                Assert.Null(layer.tS);
+                Assert.Empty(layer.Items);
+                var parser = new MapAIParser();
+                var executor = new MapAIExecutor(board);
+                string Render() => (string)MapAIVisualRenderer.RenderMap(board,
+                    new JObject { ["x"] = -100, ["y"] = -200, ["width"] = 1000, ["height"] = 600 })[1]["data"]!;
+                void Place(int start, int end, int y)
+                {
+                    Assert.True(executor.ExecuteCommand(parser.ParseCommand(
+                        $"TILE PLATFORM tileset=\"grassySoil\" from x={start} to x={end} at y={y} layer=0")),
+                        string.Join("\n", executor.ExecutionLog));
+                }
+                void AssertMembership(TileInstance[] expected)
+                {
+                    Assert.Equal("grassySoil", layer.tS);
+                    Assert.Equal(expected.Length, layer.Items.Count);
+                    Assert.Equal(expected.Length, board.BoardItems.TileObjs.Count);
+                    Assert.All(expected, tile =>
+                    {
+                        Assert.Same(layer, tile.Layer);
+                        Assert.Single(layer.Items.Where(item => ReferenceEquals(item, tile)));
+                        Assert.Single(board.BoardItems.TileObjs.Where(item => ReferenceEquals(item, tile)));
+                        Assert.NotNull(tile.BaseInfo);
+                    });
+                }
+                Place(0, 360, 0);
+                var first = board.BoardItems.TileObjs.OfType<TileInstance>().ToArray();
+                Assert.NotEmpty(first);
+                var firstAssets = first.Select(tile => tile.BaseInfo).ToArray();
+                AssertMembership(first);
+                string firstImage = Render();
+                Place(450, 810, -100);
+                var both = board.BoardItems.TileObjs.OfType<TileInstance>().ToArray();
+                var bothAssets = both.Select(tile => tile.BaseInfo).ToArray();
+                Assert.True(both.Length > first.Length);
+                AssertMembership(both);
+                string bothImage = Render();
+                Assert.NotEqual(firstImage, bothImage);
+
+                // Repeat the complete history cycle: stale layer members otherwise survive
+                // the final undo and ReplaceTS(null) destroys the redo instances' asset info.
+                for (int cycle = 0; cycle < 2; cycle++)
+                {
+                    board.UndoRedoMan.Undo();
+                    AssertMembership(first);
+                    Assert.Equal(firstImage, Render());
+                    board.UndoRedoMan.Undo();
+                    Assert.Null(layer.tS);
+                    Assert.Empty(layer.Items);
+                    Assert.Empty(board.BoardItems.TileObjs);
+                    Assert.Empty(board.BoardItems.FHAnchors);
+                    Assert.Empty(board.BoardItems.FootholdLines);
+                    Assert.All(both, tile => Assert.NotNull(tile.BaseInfo));
+                    board.UndoRedoMan.Redo();
+                    AssertMembership(first);
+                    for (int i = 0; i < first.Length; i++) Assert.Same(firstAssets[i], first[i].BaseInfo);
+                    Assert.Equal(firstImage, Render());
+                    board.UndoRedoMan.Redo();
+                    AssertMembership(both);
+                    for (int i = 0; i < both.Length; i++) Assert.Same(bothAssets[i], both[i].BaseInfo);
+                    Assert.Equal(bothImage, Render());
+                }
+            }
+            catch (Exception exception) { failure = exception; }
+            finally { Program.InfoManager = previousInfo; Program.DataSource = previousSource; }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        Assert.True(thread.Join(TimeSpan.FromSeconds(90)), "Empty-layer placement harness timed out");
+        if (failure != null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
+    }
+
+    [V95PlacementFact]
     public void RealTilesRopesAndObjectsRemainUndoable()
     {
         Exception? failure = null;

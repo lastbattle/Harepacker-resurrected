@@ -1,5 +1,6 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text.RegularExpressions;
 
@@ -285,7 +286,7 @@ namespace HaCreator.MapEditor.AI
                 {
                     ParseTeamProperties(commandText, command);
                 }
-                if (command.Type == CommandType.SetLayerTileset)
+                if (command.Type == CommandType.SetLayerTileset || command.Type == CommandType.ChangeTileset)
                 {
                     ParseLayerTilesetProperties(commandText, command);
                 }
@@ -347,6 +348,8 @@ namespace HaCreator.MapEditor.AI
 
         private CommandType ParseCommandType(string normalized)
         {
+            if (normalized.StartsWith("CHANGE TILESET"))
+                return CommandType.ChangeTileset;
             if (normalized.StartsWith("TILE STRUCTURE"))
                 return CommandType.TileStructure;
             if (normalized.StartsWith("TILE PLATFORM"))
@@ -509,7 +512,7 @@ namespace HaCreator.MapEditor.AI
                 {
                     command.Parameters[key] = boolVal;
                 }
-                else if (float.TryParse(value, out float floatVal))
+                else if (float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out float floatVal))
                 {
                     command.Parameters[key] = floatVal;
                 }
@@ -957,13 +960,13 @@ namespace HaCreator.MapEditor.AI
             var rateMatch = Regex.Match(commandText, @"RATE\s*=\s*([\d.]+)", RegexOptions.IgnoreCase);
             if (rateMatch.Success)
             {
-                command.Parameters["rate"] = float.Parse(rateMatch.Groups[1].Value);
+                command.Parameters["rate"] = float.Parse(rateMatch.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture);
             }
             else
             {
                 var valueMatch = Regex.Match(commandText, @"MOB_?RATE\s+([\d.]+)", RegexOptions.IgnoreCase);
                 if (valueMatch.Success)
-                    command.Parameters["rate"] = float.Parse(valueMatch.Groups[1].Value);
+                    command.Parameters["rate"] = float.Parse(valueMatch.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture);
             }
         }
 
@@ -1050,17 +1053,17 @@ namespace HaCreator.MapEditor.AI
         private void ParseHelpProperties(string commandText, MapAICommand command)
         {
             // Parse: SET HELP "help text"
-            var quotedMatches = QuotedStringPattern.Matches(commandText);
-            if (quotedMatches.Count > 0)
-                command.Parameters["text"] = quotedMatches[0].Groups[1].Value;
+            var match = Regex.Match(commandText, @"^\s*SET\s+HELP\s+""([^""]*)""\s*$", RegexOptions.IgnoreCase);
+            if (match.Success)
+                command.Parameters["text"] = match.Groups[1].Value;
         }
 
         private void ParseMapDescProperties(string commandText, MapAICommand command)
         {
             // Parse: SET MAP_DESC "description"
-            var quotedMatches = QuotedStringPattern.Matches(commandText);
-            if (quotedMatches.Count > 0)
-                command.Parameters["desc"] = quotedMatches[0].Groups[1].Value;
+            var match = Regex.Match(commandText, @"^\s*SET\s+(?:MAP_DESC|MAPDESC|DESCRIPTION)\s+""([^""]*)""\s*$", RegexOptions.IgnoreCase);
+            if (match.Success)
+                command.Parameters["desc"] = match.Groups[1].Value;
         }
 
         private void ParseDropProperties(string commandText, MapAICommand command)
@@ -1072,7 +1075,7 @@ namespace HaCreator.MapEditor.AI
 
             var rateMatch = Regex.Match(commandText, @"RATE\s*=\s*([\d.]+)", RegexOptions.IgnoreCase);
             if (rateMatch.Success)
-                command.Parameters["rate"] = float.Parse(rateMatch.Groups[1].Value);
+                command.Parameters["rate"] = float.Parse(rateMatch.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture);
         }
 
         private void ParseDecayProperties(string commandText, MapAICommand command)
@@ -1093,13 +1096,13 @@ namespace HaCreator.MapEditor.AI
             var rateMatch = Regex.Match(commandText, @"RATE\s*=\s*([\d.]+)", RegexOptions.IgnoreCase);
             if (rateMatch.Success)
             {
-                command.Parameters["rate"] = float.Parse(rateMatch.Groups[1].Value);
+                command.Parameters["rate"] = float.Parse(rateMatch.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture);
             }
             else
             {
                 var valueMatch = Regex.Match(commandText, @"RECOVERY\s+([\d.]+)", RegexOptions.IgnoreCase);
                 if (valueMatch.Success)
-                    command.Parameters["rate"] = float.Parse(valueMatch.Groups[1].Value);
+                    command.Parameters["rate"] = float.Parse(valueMatch.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture);
             }
         }
 

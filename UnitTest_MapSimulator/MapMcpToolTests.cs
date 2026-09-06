@@ -29,7 +29,7 @@ namespace UnitTest_MapSimulator
                     .ToArray();
 
                 Assert.Equal(expected, actual);
-                Assert.Equal(38, actual.Length);
+                Assert.Equal(41, actual.Length);
                 Assert.All(server.GetMcpTools().OfType<JObject>(), tool =>
                 {
                     Assert.Equal("object", tool["inputSchema"]?["type"]?.ToString());

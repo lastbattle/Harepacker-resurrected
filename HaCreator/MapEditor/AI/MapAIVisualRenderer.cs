@@ -34,7 +34,7 @@ namespace HaCreator.MapEditor.AI
                     !double.IsFinite(height) || width <= 0 || height <= 0 ||
                     Math.Abs(x) > 10000000 || Math.Abs(y) > 10000000 || width > 10000000 || height > 10000000)
                     throw new ArgumentException("Crop coordinates must be finite, dimensions positive, and values within 10000000 world pixels.");
-                int bound = GetBound(args);
+                int bound = Math.Clamp((int?)args["maxDimension"] ?? 1000, 256, 1000);
                 double scale = Math.Min(1, bound / Math.Max(width, height));
                 int pixelWidth = Math.Clamp((int)Math.Ceiling(width * scale), 1, bound);
                 int pixelHeight = Math.Clamp((int)Math.Ceiling(height * scale), 1, bound);
@@ -188,6 +188,9 @@ namespace HaCreator.MapEditor.AI
                     {
                         "tile" => TileInfo.Get(Required(spec, "tS"), Required(spec, "u"), Required(spec, "no")),
                         "object" => ObjectInfo.Get(Required(spec, "oS"), Required(spec, "l0"), Required(spec, "l1"), Required(spec, "l2")),
+                        "mob" => MobInfo.Get(Required(spec, "id")),
+                        "npc" => NpcInfo.Get(Required(spec, "id")),
+                        "reactor" => ReactorInfo.Get(Required(spec, "id")),
                         "background" => BackgroundInfo.Get(null, Required(spec, "bS"),
                             (string)spec["backgroundType"] switch
                             {
@@ -195,7 +198,7 @@ namespace HaCreator.MapEditor.AI
                                 null or "back" => BackgroundInfoType.Background,
                                 _ => throw new ArgumentException("backgroundType must be back or ani; Spine previews are unsupported.")
                             }, Required(spec, "no")),
-                        _ => throw new ArgumentException("Asset type must be tile, object or background.")
+                        _ => throw new ArgumentException("Asset type must be tile, object, background, mob, npc or reactor.")
                     };
                     if (info?.Image == null) throw new ArgumentException("Asset artwork was not found.");
                     var source = info.Image;

@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
+using Newtonsoft.Json.Linq;
 
 namespace HaCreator.MapEditor.AI
 {
@@ -13,6 +14,44 @@ namespace HaCreator.MapEditor.AI
     /// </summary>
     public static class MapAssetCatalog
     {
+        /// <summary>Discover exact loaded set names without parsing asset images or relying on prompt summaries.</summary>
+        public static string GetAssetSets(string type = "all", string search = null, int offset = 0, int limit = 100)
+        {
+            type = (type ?? "all").Trim().ToLowerInvariant();
+            if (type != "all" && type != "tile" && type != "object" && type != "background")
+                return "Error: type must be all, tile, object, or background.";
+
+            offset = Math.Max(0, offset);
+            limit = Math.Clamp(limit, 1, 200);
+            var manager = Program.InfoManager;
+            var sets = new List<(string type, string name)>();
+            if (manager != null)
+            {
+                if (type == "all" || type == "tile")
+                    sets.AddRange(manager.TileSets.Keys.Select(name => ("tile", name)));
+                if (type == "all" || type == "object")
+                    sets.AddRange(manager.ObjectSets.Keys.Select(name => ("object", name)));
+                if (type == "all" || type == "background")
+                    sets.AddRange(manager.BackgroundSets.Keys.Select(name => ("background", name)));
+            }
+            var matches = sets.Where(set => string.IsNullOrEmpty(search) || set.name.Contains(search, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(set => set.type, StringComparer.Ordinal).ThenBy(set => set.name, StringComparer.Ordinal).ToList();
+            var page = matches.Skip(offset).Take(limit).ToList();
+            bool hasMore = (long)offset + page.Count < matches.Count;
+            return new JObject
+            {
+                ["type"] = type,
+                ["search"] = search,
+                ["total"] = matches.Count,
+                ["offset"] = offset,
+                ["limit"] = limit,
+                ["hasMore"] = hasMore,
+                ["nextOffset"] = hasMore ? new JValue(offset + page.Count) : JValue.CreateNull(),
+                ["sets"] = new JArray(page.Select(set => new JObject { ["type"] = set.type, ["name"] = set.name })),
+                ["guidance"] = "Names are exact loaded asset set keys. Search matches names only, not visual themes. If a theme search is empty, browse without search and inspect candidates with get_tile_info, get_object_info or get_background_info, then get_asset_preview. Follow nextOffset until hasMore is false; do not guess names."
+            }.ToString();
+        }
+
         public static string GetTileSetDetails(string tileset, string category = null, int limit = 80, int offset = 0)
         {
             if (string.IsNullOrWhiteSpace(tileset))
@@ -244,30 +283,10 @@ namespace HaCreator.MapEditor.AI
             sb.AppendLine("# Available Map Assets");
             sb.AppendLine();
 
-            // Tilesets - list all
-            sb.AppendLine("## Tilesets");
-            var tilesets = Program.InfoManager.TileSets.Keys.OrderBy(k => k).ToList();
-            sb.AppendLine($"Available ({tilesets.Count}): {string.Join(", ", tilesets)}");
-            sb.AppendLine();
-
-            // Tile categories
-            sb.AppendLine("Tile categories: bsc (fill), enH0 (top), enH1 (bottom), enV0 (left edge), enV1 (right edge), edU (top corners), edD (bottom corners), slLU/slRU/slLD/slRD (slopes)");
-            sb.AppendLine();
-
-            // Object sets - just list names, use get_object_info for details
-            sb.AppendLine("## Object Sets");
-            sb.AppendLine("Use get_object_info(oS) to query available paths and dimensions for a specific set.");
-            var objectSets = Program.InfoManager.ObjectSets.Keys.OrderBy(k => k).ToList();
-            sb.AppendLine($"Available ({objectSets.Count}): {string.Join(", ", objectSets)}");
-            sb.AppendLine();
-
-            // Background sets - just list names, use get_background_info for details
-            sb.AppendLine("## Background Sets");
-            sb.AppendLine("Use get_background_info(bS) to query available items and dimensions for a specific set.");
-            var bgSets = Program.InfoManager.BackgroundSets.Keys.OrderBy(k => k).ToList();
-            sb.AppendLine($"Available ({bgSets.Count}): {string.Join(", ", bgSets)}");
-            sb.AppendLine();
-
+            sb.AppendLine("This summary lists counts only. Discover exact loaded names with get_asset_sets(type, search, offset, limit); follow nextOffset while hasMore is true.");
+            sb.AppendLine($"Tilesets: {Program.InfoManager.TileSets.Count}; object sets: {Program.InfoManager.ObjectSets.Count}; background sets: {Program.InfoManager.BackgroundSets.Count}.");
+            sb.AppendLine("Search matches names, not visual themes. For an unfamiliar theme, browse without a search and inspect candidates; do not guess names or request asset lists from the user.");
+            sb.AppendLine("Use get_tile_info(tileset), get_object_info(oS), or get_background_info(bS) for exact items, then get_asset_preview to assess artwork.");
             return sb.ToString();
         }
 

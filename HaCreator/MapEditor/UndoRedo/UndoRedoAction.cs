@@ -206,6 +206,8 @@ namespace HaCreator.MapEditor.UndoRedo
                 case UndoRedoType.ItemsLayerChanged:
                 case UndoRedoType.ItemLayerPlatChanged:
                 case UndoRedoType.ItemMoved:
+                case UndoRedoType.BackgroundMoved:
+                case UndoRedoType.ItemZChanged:
                 case UndoRedoType.MapCenterChanged:
                 case UndoRedoType.VRChanged:
                 case UndoRedoType.LayerTSChanged:

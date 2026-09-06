@@ -105,9 +105,9 @@ public class AIVisualRendererTests
             ["height"] = 500000, ["maxDimension"] = 99999
         });
         var metadata = JObject.Parse((string)result[0]["text"]!);
-        Assert.Equal(1600, (int)metadata["pixelWidth"]!);
-        Assert.Equal(800, (int)metadata["pixelHeight"]!);
-        Assert.Equal(0.0016, (double)metadata["pixelsPerWorldUnit"]!, 9);
+        Assert.Equal(1000, (int)metadata["pixelWidth"]!);
+        Assert.Equal(500, (int)metadata["pixelHeight"]!);
+        Assert.Equal(0.001, (double)metadata["pixelsPerWorldUnit"]!, 9);
         Assert.Equal(-100000, (int)metadata["worldBounds"]!["x"]!);
         Assert.Throws<ArgumentException>(() => MapAIVisualRenderer.RenderMap(board, new JObject { ["x"] = 0 }));
         Assert.Throws<ArgumentException>(() => MapAIVisualRenderer.RenderMap(board,
