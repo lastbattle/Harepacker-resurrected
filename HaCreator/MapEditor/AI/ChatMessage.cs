@@ -1,4 +1,5 @@
 using System;
+using HaCreator.GUI.EditorPanels;
 using System.ComponentModel;
 using System.Collections.ObjectModel;
 using System.Linq;
@@ -31,7 +32,8 @@ namespace HaCreator.MapEditor.AI
         private bool _commandsApplied;
 
         public ObservableCollection<MapEditReviewItem> Edits { get; } = new();
-        public string EditSummary => $"{Edits.Count} changes · {Edits.Count(e => e.Status == "Applied")} applied · {Edits.Count(e => e.IsPending && e.IsSelected)} ready to apply";
+        public string EditSummary => EditorPanelLocalizer.Format("AIEditor_EditSummary",
+            Edits.Count, Edits.Count(e => e.Status == "Applied"), Edits.Count(e => e.IsPending && e.IsSelected));
         public string HistorySummary => Edits.Count == 0
             ? (CommandsApplied ? "Edits already applied; do not repeat." : "Edits proposed; not applied.")
             : $"{Edits.Count(e => e.Status == "Applied")} edits already applied; do not repeat. {Edits.Count(e => e.IsPending)} proposed; not applied. {Edits.Count(e => !e.IsPending && e.Status != "Applied")} failed or interrupted. Query current map state before new edits.";

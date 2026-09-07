@@ -262,4 +262,72 @@
   <data name="Maximum tool turns" xml:space="preserve"><value>ツールターンの上限</value></data>
   <data name="Maximum output tokens" xml:space="preserve"><value>出力トークンの上限</value></data>
   <data name="Higher limits may increase cost or latency." xml:space="preserve"><value>上限を高くすると、コストや待ち時間が増える場合があります。</value></data>
+  <data name="AIEditor_ReviewHelp" xml:space="preserve"><value>保持する変更を選択してください。変更は順番に適用され、前提となる変更を省くと後の変更に影響する場合があります。</value></data>
+  <data name="AIEditor_SelectAll" xml:space="preserve"><value>すべて選択</value></data>
+  <data name="AIEditor_SelectNone" xml:space="preserve"><value>選択をすべて解除</value></data>
+  <data name="AIEditor_CopySelected" xml:space="preserve"><value>選択項目をコピー</value></data>
+  <data name="AIEditor_CopySelectedTip" xml:space="preserve"><value>選択した変更を編集可能なマップコマンドとしてコピー</value></data>
+  <data name="AIEditor_CopyCompact" xml:space="preserve"><value>コンパクト形式でコピー</value></data>
+  <data name="AIEditor_CopyCompactTip" xml:space="preserve"><value>コンパクトな編集形式をコピー</value></data>
+  <data name="AIEditor_IncludeEdit" xml:space="preserve"><value>適用またはコピーに含める</value></data>
+  <data name="AIEditor_SettingsMenu" xml:space="preserve"><value>AI 設定(_A)...</value></data>
+  <data name="AIEditor_SettingsTip" xml:space="preserve"><value>AI エンドポイント、モデル、API キーを設定</value></data>
+  <data name="AIEditor_ToolsMenu" xml:space="preserve"><value>ツール(_T)</value></data>
+  <data name="AIEditor_McpMenu" xml:space="preserve"><value>MCP 接続(_M)</value></data>
+  <data name="AIEditor_MapView" xml:space="preserve"><value>マップ表示</value></data>
+  <data name="AIEditor_MapClickTip" xml:space="preserve"><value>画像をクリックして正確なワールド座標をリクエストに挿入</value></data>
+  <data name="AIEditor_MapLegend" xml:space="preserve"><value>全体を表示 • 緑：足場 • 水色：ロープ
+静的な背景を含む。アニメーションと Spine は省略</value></data>
+  <data name="AIEditor_Geometry" xml:space="preserve"><value>ジオメトリ</value></data>
+  <data name="AIEditor_PasteChanges" xml:space="preserve"><value>変更を貼り付け</value></data>
+  <data name="AIEditor_PasteTip" xml:space="preserve"><value>コピーしたコンパクト形式の編集を確認リストに読み込む</value></data>
+  <data name="AIEditor_Undo" xml:space="preserve"><value>元に戻す</value></data>
+  <data name="AIEditor_UndoTip" xml:space="preserve"><value>最後のマップ操作を元に戻す</value></data>
+  <data name="AIEditor_Stop" xml:space="preserve"><value>停止</value></data>
+  <data name="AIEditor_StopTip" xml:space="preserve"><value>現在のマップ操作の後に停止</value></data>
+  <data name="AIEditor_MentionTip" xml:space="preserve"><value>@ を入力して読み込み済みの WZ パスや名前を検索。右矢印でプロパティを参照、Enter で参照を挿入。</value></data>
+  <data name="AIEditor_MentionHeader" xml:space="preserve"><value>WZ 参照 — 名前、ID、パスを検索</value></data>
+  <data name="AIEditor_MentionHint" xml:space="preserve"><value> • @ で WZ 素材を参照 • </value></data>
+  <data name="AIEditor_Idle" xml:space="preserve"><value>変更を説明するか、マップをクリックして場所を選択してください。</value></data>
+  <data name="AIEditor_LiveEdits" xml:space="preserve"><value>作業中に適用</value></data>
+  <data name="AIEditor_LiveEditsTip" xml:space="preserve"><value>元に戻せる変更を即座に適用。オフにすると適用前にコマンドを確認できます。</value></data>
+  <data name="AIEditor_ApplySelected" xml:space="preserve"><value>選択した変更を適用</value></data>
+  <data name="AIEditor_ApplySelectedTip" xml:space="preserve"><value>選択した未適用の変更を会話順に適用。適用済みの変更は繰り返しません</value></data>
+  <data name="AIEditor_NoMatches" xml:space="preserve"><value>読み込み済みデータに一致する項目がありません。</value></data>
+  <data name="AIEditor_MentionKeys" xml:space="preserve"><value>Enter/Tab：参照 • 右矢印：参照先を開く • Esc：閉じる • 最大100件</value></data>
+  <data name="AIEditor_BrowseError" xml:space="preserve"><value>WZ データを参照できません：{0}</value></data>
+  <data name="AIEditor_Finished" xml:space="preserve"><value>完了 • マップを更新しました</value></data>
+  <data name="AIEditor_ReviewReady" xml:space="preserve"><value>確認できます • 変更は未適用です</value></data>
+  <data name="AIEditor_StoppedMessage" xml:space="preserve"><value>停止しました。適用済みの変更はマップに残り、元に戻せます。</value></data>
+  <data name="AIEditor_Stopped" xml:space="preserve"><value>停止しました</value></data>
+  <data name="AIEditor_RequestFailed" xml:space="preserve"><value>リクエスト失敗 • 詳細は会話を確認してください</value></data>
+  <data name="AIEditor_CommandsIntro" xml:space="preserve"><value>リクエストを実行するコマンドです：</value></data>
+  <data name="AIEditor_NoValidCommands" xml:space="preserve"><value>有効なコマンドがありません。</value></data>
+  <data name="AIEditor_AppliedCount" xml:space="preserve"><value>選択した {1} 件中 {0} 件を適用しました。 </value></data>
+  <data name="AIEditor_RemainingCount" xml:space="preserve"><value>確認待ちの変更が {0} 件あります。</value></data>
+  <data name="AIEditor_ReviewComplete" xml:space="preserve"><value>確認が完了しました。</value></data>
+  <data name="AIEditor_ReviewFailed" xml:space="preserve"><value>確認リストで失敗した変更を確認してください。</value></data>
+  <data name="AIEditor_PasteTitle" xml:space="preserve"><value>確認する変更を貼り付け</value></data>
+  <data name="AIEditor_PasteHelp" xml:space="preserve"><value>「コンパクト形式でコピー」でコピーした編集を貼り付けてください。確認リストを作成します。適用するまでマップは変更されません。</value></data>
+  <data name="AIEditor_ReviewChanges" xml:space="preserve"><value>変更を確認</value></data>
+  <data name="AIEditor_ImportError" xml:space="preserve"><value>変更を読み込めません</value></data>
+  <data name="AIEditor_SelectToCopy" xml:space="preserve"><value>コピーする変更を選択してください。</value></data>
+  <data name="AIEditor_Copied" xml:space="preserve"><value>選択した変更をコピーしました。</value></data>
+  <data name="AIEditor_ClipboardBusy" xml:space="preserve"><value>クリップボードが使用中です。もう一度コピーしてください。</value></data>
+  <data name="AIEditor_Undone" xml:space="preserve"><value>最後のマップ操作を元に戻しました</value></data>
+  <data name="AIEditor_Error" xml:space="preserve"><value>エラー</value></data>
+  <data name="AIEditor_EditSummary" xml:space="preserve"><value>変更 {0} 件 · 適用済み {1} 件 · 適用可能 {2} 件</value></data>
+  <data name="AIEditor_Ready" xml:space="preserve"><value>準備完了</value></data>
+  <data name="AIEditor_Applying" xml:space="preserve"><value>適用中</value></data>
+  <data name="AIEditor_Applied" xml:space="preserve"><value>適用済み</value></data>
+  <data name="AIEditor_FailedStatus" xml:space="preserve"><value>失敗 — 再試行前にマップを確認してください</value></data>
+  <data name="AIEditor_Inspecting" xml:space="preserve"><value>マップを確認中…</value></data>
+  <data name="AIEditor_Planning" xml:space="preserve"><value>次の編集を計画中…</value></data>
+  <data name="AIEditor_UsingTool" xml:space="preserve"><value>{0} を使用中…</value></data>
+  <data name="AI_OpenSettingsTitle" xml:space="preserve"><value>AI 設定</value></data>
+  <data name="AI_OpenSettingsAfterError" xml:space="preserve"><value>設定または接続の問題で AI リクエストに失敗しました：
+
+{0}
+
+AI 設定を開きますか？</value></data>
 </root>

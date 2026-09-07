@@ -1,4 +1,5 @@
 using System;
+using HaCreator.GUI.EditorPanels;
 using System.ComponentModel;
 using System.Linq;
 using Newtonsoft.Json.Linq;
@@ -18,6 +19,13 @@ namespace HaCreator.MapEditor.AI
         public bool IsPending => status == "Ready";
         public bool IsSelected { get => selected; set { selected = value; Changed(nameof(IsSelected)); } }
         public string Status => status;
+        public string DisplayStatus => EditorPanelLocalizer.Text(status switch
+        {
+            "Ready" => "AIEditor_Ready",
+            "Applying" => "AIEditor_Applying",
+            "Applied" => "AIEditor_Applied",
+            _ => "AIEditor_FailedStatus"
+        });
         public event PropertyChangedEventHandler PropertyChanged;
 
         public MapEditReviewItem(MapMcpToolCallResult result, bool applied)
@@ -42,12 +50,12 @@ namespace HaCreator.MapEditor.AI
         public bool TryBeginApply()
         {
             if (!IsPending || !IsSelected) return false;
-            status = "Applying"; Changed(nameof(Status)); Changed(nameof(IsPending)); return true;
+            status = "Applying"; Changed(nameof(Status)); Changed(nameof(DisplayStatus)); Changed(nameof(IsPending)); return true;
         }
         public void Complete(bool success, string result)
         {
             status = success ? "Applied" : "Failed — inspect map before retrying";
-            Result = result; Changed(nameof(Status)); Changed(nameof(IsPending)); Changed(nameof(Result));
+            Result = result; Changed(nameof(Status)); Changed(nameof(DisplayStatus)); Changed(nameof(IsPending)); Changed(nameof(Result));
         }
         private void Changed(string name) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
     }

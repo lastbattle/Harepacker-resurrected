@@ -262,4 +262,72 @@
   <data name="Maximum tool turns" xml:space="preserve"><value>最大工具轮次</value></data>
   <data name="Maximum output tokens" xml:space="preserve"><value>最大输出令牌数</value></data>
   <data name="Higher limits may increase cost or latency." xml:space="preserve"><value>较高的限制可能增加费用或延迟。</value></data>
+  <data name="AIEditor_ReviewHelp" xml:space="preserve"><value>选择要保留的更改。更改按顺序应用，省略前置更改可能影响后续更改。</value></data>
+  <data name="AIEditor_SelectAll" xml:space="preserve"><value>全选</value></data>
+  <data name="AIEditor_SelectNone" xml:space="preserve"><value>取消全选</value></data>
+  <data name="AIEditor_CopySelected" xml:space="preserve"><value>复制所选更改</value></data>
+  <data name="AIEditor_CopySelectedTip" xml:space="preserve"><value>将所选更改复制为可编辑的地图命令</value></data>
+  <data name="AIEditor_CopyCompact" xml:space="preserve"><value>复制紧凑格式</value></data>
+  <data name="AIEditor_CopyCompactTip" xml:space="preserve"><value>复制紧凑编辑格式</value></data>
+  <data name="AIEditor_IncludeEdit" xml:space="preserve"><value>包含在应用或复制中</value></data>
+  <data name="AIEditor_SettingsMenu" xml:space="preserve"><value>AI 设置(_A)...</value></data>
+  <data name="AIEditor_SettingsTip" xml:space="preserve"><value>配置 AI 端点、模型和 API 密钥</value></data>
+  <data name="AIEditor_ToolsMenu" xml:space="preserve"><value>工具(_T)</value></data>
+  <data name="AIEditor_McpMenu" xml:space="preserve"><value>MCP 连接(_M)</value></data>
+  <data name="AIEditor_MapView" xml:space="preserve"><value>地图视图</value></data>
+  <data name="AIEditor_MapClickTip" xml:space="preserve"><value>点击图像以在请求中插入精确的世界坐标</value></data>
+  <data name="AIEditor_MapLegend" xml:space="preserve"><value>适应内容 • 绿色：立足点 • 青色：绳索
+包含静态场景；不含动画和 Spine</value></data>
+  <data name="AIEditor_Geometry" xml:space="preserve"><value>几何数据</value></data>
+  <data name="AIEditor_PasteChanges" xml:space="preserve"><value>粘贴更改</value></data>
+  <data name="AIEditor_PasteTip" xml:space="preserve"><value>将复制的紧凑编辑内容导入审核清单</value></data>
+  <data name="AIEditor_Undo" xml:space="preserve"><value>撤销</value></data>
+  <data name="AIEditor_UndoTip" xml:space="preserve"><value>撤销最近的地图操作</value></data>
+  <data name="AIEditor_Stop" xml:space="preserve"><value>停止</value></data>
+  <data name="AIEditor_StopTip" xml:space="preserve"><value>在当前地图操作后停止</value></data>
+  <data name="AIEditor_MentionTip" xml:space="preserve"><value>输入 @ 搜索已加载的 WZ 路径或名称。右箭头浏览属性，Enter 插入引用。</value></data>
+  <data name="AIEditor_MentionHeader" xml:space="preserve"><value>WZ 引用 — 搜索名称、ID 或路径</value></data>
+  <data name="AIEditor_MentionHint" xml:space="preserve"><value> • 输入 @ 引用 WZ 资源 • </value></data>
+  <data name="AIEditor_Idle" xml:space="preserve"><value>描述更改，或点击地图选择位置。</value></data>
+  <data name="AIEditor_LiveEdits" xml:space="preserve"><value>边处理边应用</value></data>
+  <data name="AIEditor_LiveEditsTip" xml:space="preserve"><value>立即应用更改，支持撤销。关闭后可在应用前审核命令。</value></data>
+  <data name="AIEditor_ApplySelected" xml:space="preserve"><value>应用所选更改</value></data>
+  <data name="AIEditor_ApplySelectedTip" xml:space="preserve"><value>按对话顺序应用所选待处理更改；不会重复已应用的更改</value></data>
+  <data name="AIEditor_NoMatches" xml:space="preserve"><value>已加载的数据中没有匹配项。</value></data>
+  <data name="AIEditor_MentionKeys" xml:space="preserve"><value>Enter/Tab：引用 • 右箭头：浏览 • Esc：关闭 • 最多 100 个结果</value></data>
+  <data name="AIEditor_BrowseError" xml:space="preserve"><value>无法浏览 WZ 数据：{0}</value></data>
+  <data name="AIEditor_Finished" xml:space="preserve"><value>已完成 • 地图已刷新</value></data>
+  <data name="AIEditor_ReviewReady" xml:space="preserve"><value>可以审核 • 更改尚未应用</value></data>
+  <data name="AIEditor_StoppedMessage" xml:space="preserve"><value>已停止。已应用的更改保留在地图上，可以撤销。</value></data>
+  <data name="AIEditor_Stopped" xml:space="preserve"><value>已停止</value></data>
+  <data name="AIEditor_RequestFailed" xml:space="preserve"><value>请求失败 • 请在对话中查看详情</value></data>
+  <data name="AIEditor_CommandsIntro" xml:space="preserve"><value>以下是完成请求的命令：</value></data>
+  <data name="AIEditor_NoValidCommands" xml:space="preserve"><value>没有有效命令。</value></data>
+  <data name="AIEditor_AppliedCount" xml:space="preserve"><value>已应用 {1} 项所选更改中的 {0} 项。 </value></data>
+  <data name="AIEditor_RemainingCount" xml:space="preserve"><value>仍有 {0} 项更改待审核。</value></data>
+  <data name="AIEditor_ReviewComplete" xml:space="preserve"><value>审核完成。</value></data>
+  <data name="AIEditor_ReviewFailed" xml:space="preserve"><value>请在审核列表中检查失败的更改。</value></data>
+  <data name="AIEditor_PasteTitle" xml:space="preserve"><value>粘贴更改以供审核</value></data>
+  <data name="AIEditor_PasteHelp" xml:space="preserve"><value>粘贴通过“复制紧凑格式”复制的编辑内容。这会创建清单；只有应用时才会更改地图。</value></data>
+  <data name="AIEditor_ReviewChanges" xml:space="preserve"><value>审核更改</value></data>
+  <data name="AIEditor_ImportError" xml:space="preserve"><value>无法导入更改</value></data>
+  <data name="AIEditor_SelectToCopy" xml:space="preserve"><value>请选择要复制的更改。</value></data>
+  <data name="AIEditor_Copied" xml:space="preserve"><value>已复制所选更改。</value></data>
+  <data name="AIEditor_ClipboardBusy" xml:space="preserve"><value>剪贴板正忙，请重试复制。</value></data>
+  <data name="AIEditor_Undone" xml:space="preserve"><value>已撤销最近的地图操作</value></data>
+  <data name="AIEditor_Error" xml:space="preserve"><value>错误</value></data>
+  <data name="AIEditor_EditSummary" xml:space="preserve"><value>{0} 项更改 · {1} 项已应用 · {2} 项可应用</value></data>
+  <data name="AIEditor_Ready" xml:space="preserve"><value>就绪</value></data>
+  <data name="AIEditor_Applying" xml:space="preserve"><value>正在应用</value></data>
+  <data name="AIEditor_Applied" xml:space="preserve"><value>已应用</value></data>
+  <data name="AIEditor_FailedStatus" xml:space="preserve"><value>失败 — 重试前请检查地图</value></data>
+  <data name="AIEditor_Inspecting" xml:space="preserve"><value>正在检查地图…</value></data>
+  <data name="AIEditor_Planning" xml:space="preserve"><value>正在规划下一次编辑…</value></data>
+  <data name="AIEditor_UsingTool" xml:space="preserve"><value>正在使用 {0}…</value></data>
+  <data name="AI_OpenSettingsTitle" xml:space="preserve"><value>AI 设置</value></data>
+  <data name="AI_OpenSettingsAfterError" xml:space="preserve"><value>AI 请求因配置或连接问题而失败：
+
+{0}
+
+是否现在打开 AI 设置？</value></data>
 </root>

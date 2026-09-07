@@ -1,4 +1,5 @@
 using System;
+using HaCreator.GUI.EditorPanels;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -378,7 +379,7 @@ namespace HaCreator.MapEditor.AI
             for (var turn = 0; turn < options.MaxToolTurns; turn++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                Progress?.Invoke(turn == 0 ? "Inspecting the map…" : "Planning the next edit…");
+                Progress?.Invoke(EditorPanelLocalizer.Text(turn == 0 ? "AIEditor_Inspecting" : "AIEditor_Planning"));
                 var body = new JObject
                 {
                     ["model"] = options.Model,
@@ -412,7 +413,7 @@ namespace HaCreator.MapEditor.AI
                     if (string.IsNullOrWhiteSpace(name))
                         continue;
 
-                    Progress?.Invoke($"Using {name}…");
+                    Progress?.Invoke(EditorPanelLocalizer.Format("AIEditor_UsingTool", name));
                     var result = CallTool(name, function?["arguments"]?.ToString(), cancellationToken);
                     if (result.Children == null) ToolCompleted?.Invoke(result);
                     if (result.Children != null)
@@ -451,7 +452,7 @@ namespace HaCreator.MapEditor.AI
             for (var turn = 0; turn < options.MaxToolTurns; turn++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                Progress?.Invoke(turn == 0 ? "Inspecting the map…" : "Planning the next edit…");
+                Progress?.Invoke(EditorPanelLocalizer.Text(turn == 0 ? "AIEditor_Inspecting" : "AIEditor_Planning"));
                 var body = new JObject
                 {
                     ["model"] = options.Model,
@@ -482,7 +483,7 @@ namespace HaCreator.MapEditor.AI
                     cancellationToken.ThrowIfCancellationRequested();
                     var name = item["name"]?.ToString();
                     var callId = item["call_id"]?.ToString();
-                    Progress?.Invoke($"Using {name}…");
+                    Progress?.Invoke(EditorPanelLocalizer.Format("AIEditor_UsingTool", name));
                     var result = CallTool(name, item["arguments"]?.ToString(), cancellationToken);
                     if (result.Children == null) ToolCompleted?.Invoke(result);
                     if (result.Children != null)

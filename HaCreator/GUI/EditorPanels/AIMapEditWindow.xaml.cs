@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.ComponentModel;
@@ -389,13 +389,13 @@ namespace HaCreator.GUI.EditorPanels
                 var matches = mentionCatalog.Search(query);
                 mentionSuggestions.ItemsSource = matches;
                 mentionSuggestions.SelectedIndex = matches.Count > 0 ? 0 : -1;
-                mentionStatus.Text = matches.Count == 0 ? "No matches in loaded data." : "Enter/Tab: reference • Right: browse • Esc: dismiss • Up to 100 results";
+                mentionStatus.Text = matches.Count == 0 ? EditorPanelLocalizer.Text("AIEditor_NoMatches") : EditorPanelLocalizer.Text("AIEditor_MentionKeys");
                 mentionPopup.IsOpen = true;
             }
             catch (Exception ex)
             {
                 mentionSuggestions.ItemsSource = null;
-                mentionStatus.Text = "Unable to browse WZ data: " + ex.Message;
+                mentionStatus.Text = EditorPanelLocalizer.Format("AIEditor_BrowseError", ex.Message);
                 mentionPopup.IsOpen = true;
             }
         }
@@ -506,7 +506,7 @@ namespace HaCreator.GUI.EditorPanels
                 assistantMessage.Content = explanation;
                 // Only successful tool calls are executable. Prose that resembles a command is not.
                 assistantMessage.CommandsApplied = applyChanges;
-                txtProgress.Text = applyChanges ? "Finished • map refreshed" : "Ready to review • changes have not been applied";
+                txtProgress.Text = applyChanges ? EditorPanelLocalizer.Text("AIEditor_Finished") : EditorPanelLocalizer.Text("AIEditor_ReviewReady");
                 LoadMapContext();
             }
             catch (OperationCanceledException)
@@ -514,9 +514,9 @@ namespace HaCreator.GUI.EditorPanels
                 if (_chatSession.LastAssistantMessage != null)
                 {
                     _chatSession.LastAssistantMessage.IsProcessing = false;
-                    _chatSession.LastAssistantMessage.Content = "Stopped. Any changes already applied remain on the map and can be undone.";
+                    _chatSession.LastAssistantMessage.Content = EditorPanelLocalizer.Text("AIEditor_StoppedMessage");
                 }
-                txtProgress.Text = "Stopped";
+                txtProgress.Text = EditorPanelLocalizer.Text("AIEditor_Stopped");
             }
             catch (Exception ex)
             {
@@ -528,7 +528,7 @@ namespace HaCreator.GUI.EditorPanels
                 }
 
                 MaybeOpenAISettingsForError(ex);
-                txtProgress.Text = "Request failed • see details in the conversation";
+                txtProgress.Text = EditorPanelLocalizer.Text("AIEditor_RequestFailed");
             }
             finally
             {
@@ -587,7 +587,7 @@ namespace HaCreator.GUI.EditorPanels
             // If no explanation, provide a default
             string explanation = explanationLines.Count > 0
                 ? string.Join(Environment.NewLine, explanationLines)
-                : "Here are the commands to accomplish your request:";
+                : EditorPanelLocalizer.Text("AIEditor_CommandsIntro");
 
             string commands = commandLines.Count > 0
                 ? string.Join(Environment.NewLine, commandLines)
@@ -644,15 +644,15 @@ namespace HaCreator.GUI.EditorPanels
                     {
                         var result = ExecuteCommandText(edit.Command);
                         bool success = result != null && result.FailCount == 0;
-                        edit.Complete(success, result == null ? "No valid commands." : string.Join("\n", result.Log));
+                        edit.Complete(success, result == null ? EditorPanelLocalizer.Text("AIEditor_NoValidCommands") : string.Join("\n", result.Log));
                         if (!success) break;
                         applied++;
                     }
                     catch (Exception ex) { edit.Complete(false, ex.Message); break; }
                 }
                 int remaining = _chatSession.Messages.Sum(m => m.Edits.Count(e => e.IsPending));
-                txtProgress.Text = $"Applied {applied} of {selected.Count} selected changes. " +
-                    (remaining > 0 ? $"{remaining} changes remain ready for review." : applied == selected.Count ? "Review complete." : "Inspect failed changes in the review list.");
+                txtProgress.Text = EditorPanelLocalizer.Format("AIEditor_AppliedCount", applied, selected.Count) +
+                    (remaining > 0 ? EditorPanelLocalizer.Format("AIEditor_RemainingCount", remaining) : applied == selected.Count ? EditorPanelLocalizer.Text("AIEditor_ReviewComplete") : EditorPanelLocalizer.Text("AIEditor_ReviewFailed"));
             }
             finally
             {
@@ -675,13 +675,13 @@ namespace HaCreator.GUI.EditorPanels
         private void PasteReview_Click(object sender, RoutedEventArgs e)
         {
             if (isProcessing) return;
-            var dialog = new Window { Owner = this, Title = "Paste changes for review", Width = 660, Height = 400,
+            var dialog = new Window { Owner = this, Title = EditorPanelLocalizer.Text("AIEditor_PasteTitle"), Width = 660, Height = 400,
                 MinWidth = 460, MinHeight = 300, WindowStartupLocation = WindowStartupLocation.CenterOwner };
             var layout = new System.Windows.Controls.DockPanel { Margin = new Thickness(16) };
-            var help = new System.Windows.Controls.TextBlock { Text = "Paste edits copied with Copy compact. This creates a checklist; your map changes only when you apply it.",
+            var help = new System.Windows.Controls.TextBlock { Text = EditorPanelLocalizer.Text("AIEditor_PasteHelp"),
                 TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 12) };
             System.Windows.Controls.DockPanel.SetDock(help, System.Windows.Controls.Dock.Top); layout.Children.Add(help);
-            var import = new System.Windows.Controls.Button { Content = "Review changes", Height = 32, Margin = new Thickness(0, 12, 0, 0) };
+            var import = new System.Windows.Controls.Button { Content = EditorPanelLocalizer.Text("AIEditor_ReviewChanges"), Height = 32, Margin = new Thickness(0, 12, 0, 0) };
             System.Windows.Controls.DockPanel.SetDock(import, System.Windows.Controls.Dock.Bottom); layout.Children.Add(import);
             var input = new System.Windows.Controls.TextBox { AcceptsReturn = true, AcceptsTab = true, TextWrapping = TextWrapping.Wrap,
                 VerticalScrollBarVisibility = System.Windows.Controls.ScrollBarVisibility.Auto, FontFamily = new System.Windows.Media.FontFamily("Consolas") };
@@ -689,7 +689,7 @@ namespace HaCreator.GUI.EditorPanels
             import.Click += (_, _) =>
             {
                 try { _chatSession.ImportCompactEdits(input.Text); RefreshApplyMode(); dialog.Close(); }
-                catch (ArgumentException ex) { MessageBox.Show(dialog, ex.Message, "Cannot import changes", MessageBoxButton.OK, MessageBoxImage.Warning); }
+                catch (ArgumentException ex) { MessageBox.Show(dialog, ex.Message, EditorPanelLocalizer.Text("AIEditor_ImportError"), MessageBoxButton.OK, MessageBoxImage.Warning); }
             };
             dialog.ShowDialog();
         }
@@ -701,9 +701,9 @@ namespace HaCreator.GUI.EditorPanels
             var text = (string)button.Tag == "compact" && rows.All(edit => edit.CompactCode != null)
                 ? CompactMapEdits.Encode(rows.SelectMany(edit => CompactMapEdits.Decode(edit.CompactCode)))
                 : string.Join(Environment.NewLine, rows.Select(edit => edit.Command));
-            if (text.Length == 0) { txtProgress.Text = "Select changes to copy."; return; }
-            try { Clipboard.SetText(text); txtProgress.Text = "Selected changes copied."; }
-            catch (System.Runtime.InteropServices.ExternalException) { txtProgress.Text = "Clipboard is busy. Try copying again."; }
+            if (text.Length == 0) { txtProgress.Text = EditorPanelLocalizer.Text("AIEditor_SelectToCopy"); return; }
+            try { Clipboard.SetText(text); txtProgress.Text = EditorPanelLocalizer.Text("AIEditor_Copied"); }
+            catch (System.Runtime.InteropServices.ExternalException) { txtProgress.Text = EditorPanelLocalizer.Text("AIEditor_ClipboardBusy"); }
         }
 
         private ExecutionResult ExecuteCommandText(string commandText)
@@ -798,7 +798,7 @@ namespace HaCreator.GUI.EditorPanels
             board.UndoRedoMan.Undo();
             board.Dirty = true;
             LoadMapContext();
-            txtProgress.Text = "Undid the latest map operation";
+            txtProgress.Text = EditorPanelLocalizer.Text("AIEditor_Undone");
         }
 
         private void BtnMcpConnection_Click(object sender, RoutedEventArgs e)
@@ -861,9 +861,9 @@ namespace HaCreator.GUI.EditorPanels
             txtSelectedModel.Text = AISettings.Model;
         }
 
-        private static string BuildAIErrorMessage(Exception ex, string prefix = "Error")
+        private static string BuildAIErrorMessage(Exception ex, string prefix = null)
         {
-            var message = $"{prefix}: {ex.Message}";
+            var message = $"{prefix ?? EditorPanelLocalizer.Text("AIEditor_Error")}: {ex.Message}";
 
             return message;
         }

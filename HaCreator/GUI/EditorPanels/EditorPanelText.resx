@@ -262,4 +262,72 @@
   <data name="Maximum tool turns" xml:space="preserve"><value>Maximum tool turns</value></data>
   <data name="Maximum output tokens" xml:space="preserve"><value>Maximum output tokens</value></data>
   <data name="Higher limits may increase cost or latency." xml:space="preserve"><value>Higher limits may increase cost or latency.</value></data>
+  <data name="AIEditor_ReviewHelp" xml:space="preserve"><value>Choose changes to keep. Edits apply in order; omitting a prerequisite can affect later changes.</value></data>
+  <data name="AIEditor_SelectAll" xml:space="preserve"><value>Select all</value></data>
+  <data name="AIEditor_SelectNone" xml:space="preserve"><value>Select none</value></data>
+  <data name="AIEditor_CopySelected" xml:space="preserve"><value>Copy selected</value></data>
+  <data name="AIEditor_CopySelectedTip" xml:space="preserve"><value>Copy selected changes as editable map commands</value></data>
+  <data name="AIEditor_CopyCompact" xml:space="preserve"><value>Copy compact</value></data>
+  <data name="AIEditor_CopyCompactTip" xml:space="preserve"><value>Copy the compact edit format</value></data>
+  <data name="AIEditor_IncludeEdit" xml:space="preserve"><value>Include in apply or copy</value></data>
+  <data name="AIEditor_SettingsMenu" xml:space="preserve"><value>_AI Settings...</value></data>
+  <data name="AIEditor_SettingsTip" xml:space="preserve"><value>Configure the AI endpoint, model, and API key</value></data>
+  <data name="AIEditor_ToolsMenu" xml:space="preserve"><value>_Tools</value></data>
+  <data name="AIEditor_McpMenu" xml:space="preserve"><value>_MCP Connection</value></data>
+  <data name="AIEditor_MapView" xml:space="preserve"><value>Map view</value></data>
+  <data name="AIEditor_MapClickTip" xml:space="preserve"><value>Click artwork to insert an exact world coordinate into your request</value></data>
+  <data name="AIEditor_MapLegend" xml:space="preserve"><value>Fit to content • green: footholds • cyan: ropes
+Static scenery included; animation and Spine omitted</value></data>
+  <data name="AIEditor_Geometry" xml:space="preserve"><value>Geometry</value></data>
+  <data name="AIEditor_PasteChanges" xml:space="preserve"><value>Paste changes</value></data>
+  <data name="AIEditor_PasteTip" xml:space="preserve"><value>Import copied compact edits into a review checklist</value></data>
+  <data name="AIEditor_Undo" xml:space="preserve"><value>Undo</value></data>
+  <data name="AIEditor_UndoTip" xml:space="preserve"><value>Undo the latest map operation</value></data>
+  <data name="AIEditor_Stop" xml:space="preserve"><value>Stop</value></data>
+  <data name="AIEditor_StopTip" xml:space="preserve"><value>Stop after the current map operation</value></data>
+  <data name="AIEditor_MentionTip" xml:space="preserve"><value>Type @ to search loaded WZ paths or names. Right arrow browses properties; Enter inserts a reference.</value></data>
+  <data name="AIEditor_MentionHeader" xml:space="preserve"><value>WZ references — search a name, ID, or path</value></data>
+  <data name="AIEditor_MentionHint" xml:space="preserve"><value> • Type @ to reference WZ assets • </value></data>
+  <data name="AIEditor_Idle" xml:space="preserve"><value>Describe a change, or click the map to choose a location.</value></data>
+  <data name="AIEditor_LiveEdits" xml:space="preserve"><value>Apply as it works</value></data>
+  <data name="AIEditor_LiveEditsTip" xml:space="preserve"><value>Apply changes immediately with undo. Turn off to review commands before applying.</value></data>
+  <data name="AIEditor_ApplySelected" xml:space="preserve"><value>Apply selected changes</value></data>
+  <data name="AIEditor_ApplySelectedTip" xml:space="preserve"><value>Apply selected pending changes in conversation order; already applied changes are never repeated</value></data>
+  <data name="AIEditor_NoMatches" xml:space="preserve"><value>No matches in loaded data.</value></data>
+  <data name="AIEditor_MentionKeys" xml:space="preserve"><value>Enter/Tab: reference • Right: browse • Esc: dismiss • Up to 100 results</value></data>
+  <data name="AIEditor_BrowseError" xml:space="preserve"><value>Unable to browse WZ data: {0}</value></data>
+  <data name="AIEditor_Finished" xml:space="preserve"><value>Finished • map refreshed</value></data>
+  <data name="AIEditor_ReviewReady" xml:space="preserve"><value>Ready to review • changes have not been applied</value></data>
+  <data name="AIEditor_StoppedMessage" xml:space="preserve"><value>Stopped. Any changes already applied remain on the map and can be undone.</value></data>
+  <data name="AIEditor_Stopped" xml:space="preserve"><value>Stopped</value></data>
+  <data name="AIEditor_RequestFailed" xml:space="preserve"><value>Request failed • see details in the conversation</value></data>
+  <data name="AIEditor_CommandsIntro" xml:space="preserve"><value>Here are the commands to accomplish your request:</value></data>
+  <data name="AIEditor_NoValidCommands" xml:space="preserve"><value>No valid commands.</value></data>
+  <data name="AIEditor_AppliedCount" xml:space="preserve"><value>Applied {0} of {1} selected changes. </value></data>
+  <data name="AIEditor_RemainingCount" xml:space="preserve"><value>{0} changes remain ready for review.</value></data>
+  <data name="AIEditor_ReviewComplete" xml:space="preserve"><value>Review complete.</value></data>
+  <data name="AIEditor_ReviewFailed" xml:space="preserve"><value>Inspect failed changes in the review list.</value></data>
+  <data name="AIEditor_PasteTitle" xml:space="preserve"><value>Paste changes for review</value></data>
+  <data name="AIEditor_PasteHelp" xml:space="preserve"><value>Paste edits copied with Copy compact. This creates a checklist; your map changes only when you apply it.</value></data>
+  <data name="AIEditor_ReviewChanges" xml:space="preserve"><value>Review changes</value></data>
+  <data name="AIEditor_ImportError" xml:space="preserve"><value>Cannot import changes</value></data>
+  <data name="AIEditor_SelectToCopy" xml:space="preserve"><value>Select changes to copy.</value></data>
+  <data name="AIEditor_Copied" xml:space="preserve"><value>Selected changes copied.</value></data>
+  <data name="AIEditor_ClipboardBusy" xml:space="preserve"><value>Clipboard is busy. Try copying again.</value></data>
+  <data name="AIEditor_Undone" xml:space="preserve"><value>Undid the latest map operation</value></data>
+  <data name="AIEditor_Error" xml:space="preserve"><value>Error</value></data>
+  <data name="AIEditor_EditSummary" xml:space="preserve"><value>{0} changes · {1} applied · {2} ready to apply</value></data>
+  <data name="AIEditor_Ready" xml:space="preserve"><value>Ready</value></data>
+  <data name="AIEditor_Applying" xml:space="preserve"><value>Applying</value></data>
+  <data name="AIEditor_Applied" xml:space="preserve"><value>Applied</value></data>
+  <data name="AIEditor_FailedStatus" xml:space="preserve"><value>Failed — inspect map before retrying</value></data>
+  <data name="AIEditor_Inspecting" xml:space="preserve"><value>Inspecting the map…</value></data>
+  <data name="AIEditor_Planning" xml:space="preserve"><value>Planning the next edit…</value></data>
+  <data name="AIEditor_UsingTool" xml:space="preserve"><value>Using {0}…</value></data>
+  <data name="AI_OpenSettingsTitle" xml:space="preserve"><value>AI Settings</value></data>
+  <data name="AI_OpenSettingsAfterError" xml:space="preserve"><value>The AI request failed with a configuration or connection problem:
+
+{0}
+
+Open AI Settings now?</value></data>
 </root>
