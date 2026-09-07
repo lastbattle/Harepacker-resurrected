@@ -1,4 +1,4 @@
-<Window x:Class="HaCreator.GUI.EditorPanels.AIMapEditWindow"
+﻿<Window x:Class="HaCreator.GUI.EditorPanels.AIMapEditWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -415,9 +415,6 @@
                     <Button x:Name="btnStop" Content="Stop" IsEnabled="False"
                             Style="{StaticResource ToolbarButtonStyle}" Click="BtnStop_Click"
                             ToolTip="Stop after the current map operation"/>
-                    <CheckBox x:Name="chkLiveEdits" Content="Apply as it works" VerticalAlignment="Center"
-                              Margin="8,0,0,0" Click="LiveEdits_Click"
-                              ToolTip="Apply changes immediately with undo. Turn off to review commands before applying."/>
                 </WrapPanel>
 
                 <!-- Chat Messages Area -->
@@ -456,8 +453,22 @@
                                  Padding="8"
                                  BorderThickness="0"
                                  PreviewKeyDown="TxtMessageInput_PreviewKeyDown"
-                                 TextChanged="TxtMessageInput_TextChanged"/>
+                                 TextChanged="TxtMessageInput_TextChanged"
+                                 SelectionChanged="TxtMessageInput_SelectionChanged"
+                                 ToolTip="Type @ to search loaded WZ paths or names. Right arrow browses properties; Enter inserts a reference."/>
                     </Border>
+                    <Popup x:Name="mentionPopup" PlacementTarget="{Binding ElementName=txtMessageInput}"
+                           Placement="Top" StaysOpen="False" AllowsTransparency="True">
+                        <Border Background="White" BorderBrush="#94A3B8" BorderThickness="1" Padding="6" Width="540">
+                            <StackPanel>
+                                <TextBlock Text="WZ references — search a name, ID, or path" FontWeight="SemiBold" Margin="4"/>
+                                <ListBox x:Name="mentionSuggestions" MaxHeight="240" DisplayMemberPath="Display"
+                                         PreviewMouseLeftButtonUp="MentionSuggestion_Click" Focusable="False"
+                                         ScrollViewer.HorizontalScrollBarVisibility="Auto"/>
+                                <TextBlock x:Name="mentionStatus" TextWrapping="Wrap" Margin="4" Foreground="#64748B" FontSize="11"/>
+                            </StackPanel>
+                        </Border>
+                    </Popup>
 
                     <Button x:Name="btnSend" Grid.Column="1"
                             Content="Ask"
@@ -468,16 +479,40 @@
                             ToolTip="Ask message (Enter)"/>
                 </Grid>
 
-                <!-- Execute Commands Button -->
+                <!-- Chat status and related apply controls -->
                 <StackPanel Grid.Row="3">
-                    <TextBlock x:Name="txtProgress" Text="GPT-6 Astra • Describe a change, or click the map to choose a location."
-                               TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,6,0,0"/>
-                <Button x:Name="btnExecute" IsEnabled="False"
-                        Content="Apply selected changes"
-                        Style="{StaticResource SuccessButtonStyle}"
-                        Margin="0,8,0,0"
-                        Click="BtnExecute_Click"
-                        ToolTip="Apply selected pending changes in conversation order; already applied changes are never repeated"/>
+                    <Grid Margin="0,6,0,0">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <Grid.Resources>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="TextWrapping" Value="NoWrap"/>
+                                <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+                                <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
+                                <Setter Property="FontSize" Value="11"/>
+                                <Setter Property="ToolTip" Value="{Binding Text, RelativeSource={RelativeSource Self}}"/>
+                            </Style>
+                        </Grid.Resources>
+                        <TextBlock x:Name="txtSelectedModel" MaxWidth="160"/>
+                        <TextBlock Grid.Column="1" Text=" • Type @ to reference WZ assets • "/>
+                        <TextBlock x:Name="txtProgress" Grid.Column="2" Text="Describe a change, or click the map to choose a location."/>
+                    </Grid>
+                    <Border Margin="0,8,0,0" Padding="10,8" Background="White"
+                            BorderBrush="{StaticResource DividerBrush}" BorderThickness="1" CornerRadius="7">
+                        <Grid MinHeight="32">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <CheckBox x:Name="chkLiveEdits" Content="Apply as it works" VerticalAlignment="Center"
+                                      Margin="0,0,12,0" Click="LiveEdits_Click"
+                                      ToolTip="Apply changes immediately with undo. Turn off to review commands before applying."/>
+                            <Button x:Name="btnExecute" Grid.Column="1" IsEnabled="False"
+                                    Content="Apply selected changes"
+                                    Style="{StaticResource SuccessButtonStyle}" Padding="12,0"
+                                    Click="BtnExecute_Click"
+                                    ToolTip="Apply selected pending changes in conversation order; already applied changes are never repeated"/>
+                        </Grid>
+                    </Border>
                 </StackPanel>
             </Grid>
         </Grid>

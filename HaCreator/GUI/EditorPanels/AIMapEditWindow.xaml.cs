@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.ComponentModel;
@@ -12,6 +12,7 @@ using HaCreator.MapEditor.AI;
 using Newtonsoft.Json.Linq;
 using System.IO;
 using System.Windows.Media.Imaging;
+using System.Windows.Controls;
 
 namespace HaCreator.GUI.EditorPanels
 {
@@ -56,7 +57,10 @@ namespace HaCreator.GUI.EditorPanels
             mapMcpServer.RichQueryExecutor = QueryMap;
 
             InitializeComponent();
+            mentionTimer.Tick += (_, _) => UpdateMentionSuggestions();
             EditorPanelLocalizer.Attach(this);
+            RefreshSelectedModel();
+            Activated += (_, _) => RefreshSelectedModel();
             RefreshApplyMode();
 
             // Bind chat messages to ItemsControl
@@ -92,6 +96,8 @@ namespace HaCreator.GUI.EditorPanels
         {
             // Hide instead of close to preserve state
             e.Cancel = true;
+            mentionTimer.Stop();
+            mentionPopup.IsOpen = false;
             this.Hide();
         }
 
@@ -159,6 +165,7 @@ namespace HaCreator.GUI.EditorPanels
             {
                 instances.Remove(board);
                 window.Closing -= window.Window_Closing;
+                window.mentionTimer.Stop();
                 window.requestCancellation?.Cancel();
                 window.Close();
                 window.mapMcpServer?.Dispose();
@@ -173,6 +180,7 @@ namespace HaCreator.GUI.EditorPanels
             foreach (var window in instances.Values)
             {
                 window.Closing -= window.Window_Closing;
+                window.mentionTimer.Stop();
                 window.requestCancellation?.Cancel();
                 window.Close();
                 window.mapMcpServer?.Dispose();
@@ -210,6 +218,7 @@ namespace HaCreator.GUI.EditorPanels
         /// </summary>
         public void LoadMapContext()
         {
+            mentionCatalog = null;
             if (board == null)
             {
                 txtMapContext.Text = EditorPanelLocalizer.Text("AI_NoMapContext", "# No map loaded");
@@ -316,6 +325,23 @@ namespace HaCreator.GUI.EditorPanels
 
         private void TxtMessageInput_PreviewKeyDown(object sender, KeyEventArgs e)
         {
+            if (mentionTimer.IsEnabled && (e.Key == Key.Enter || e.Key == Key.Tab)) UpdateMentionSuggestions();
+            if (mentionPopup.IsOpen)
+            {
+                if (e.Key == Key.Escape) { mentionTimer.Stop(); mentionPopup.IsOpen = false; e.Handled = true; return; }
+                if (e.Key == Key.Up || e.Key == Key.Down)
+                {
+                    int count = mentionSuggestions.Items.Count;
+                    if (count > 0)
+                    {
+                        mentionSuggestions.SelectedIndex = (mentionSuggestions.SelectedIndex + (e.Key == Key.Down ? 1 : count - 1)) % count;
+                        mentionSuggestions.ScrollIntoView(mentionSuggestions.SelectedItem);
+                    }
+                    e.Handled = true; return;
+                }
+                if ((e.Key == Key.Enter || e.Key == Key.Tab || e.Key == Key.Right) && Keyboard.Modifiers == ModifierKeys.None)
+                { AcceptMention(e.Key == Key.Right); e.Handled = true; return; }
+            }
             // Enter sends message, Shift+Enter adds new line
             if (e.Key == Key.Enter && !Keyboard.IsKeyDown(Key.LeftShift) && !Keyboard.IsKeyDown(Key.RightShift))
             {
@@ -328,6 +354,78 @@ namespace HaCreator.GUI.EditorPanels
         {
             // Enable/disable send button based on input
             btnSend.IsEnabled = !string.IsNullOrWhiteSpace(txtMessageInput.Text) && !isProcessing;
+            TxtMessageInput_SelectionChanged(sender, e);
+        }
+
+        private WzMentionCatalog mentionCatalog;
+        private bool updatingMention;
+        private int mentionStart;
+        private readonly System.Windows.Threading.DispatcherTimer mentionTimer = new()
+        { Interval = TimeSpan.FromMilliseconds(180) };
+
+        private void TxtMessageInput_SelectionChanged(object sender, RoutedEventArgs e)
+        {
+            if (updatingMention || mentionPopup == null) return;
+            mentionTimer.Stop();
+            mentionTimer.Start();
+        }
+
+        private void UpdateMentionSuggestions()
+        {
+            if (updatingMention || mentionPopup == null) return;
+            mentionTimer.Stop();
+            int caret = txtMessageInput.CaretIndex;
+            string before = txtMessageInput.Text.Substring(0, Math.Min(caret, txtMessageInput.Text.Length));
+            int at = before.LastIndexOf('@');
+            if (at < 0 || (at > 0 && !char.IsWhiteSpace(before[at - 1])) || txtMessageInput.SelectionLength > 0)
+            { mentionPopup.IsOpen = false; return; }
+            string query = before.Substring(at + 1);
+            if (query.IndexOfAny(new[] { '{', '}', '\r', '\n' }) >= 0)
+            { mentionPopup.IsOpen = false; return; }
+            mentionStart = at;
+            try
+            {
+                mentionCatalog ??= new WzMentionCatalog();
+                var matches = mentionCatalog.Search(query);
+                mentionSuggestions.ItemsSource = matches;
+                mentionSuggestions.SelectedIndex = matches.Count > 0 ? 0 : -1;
+                mentionStatus.Text = matches.Count == 0 ? "No matches in loaded data." : "Enter/Tab: reference • Right: browse • Esc: dismiss • Up to 100 results";
+                mentionPopup.IsOpen = true;
+            }
+            catch (Exception ex)
+            {
+                mentionSuggestions.ItemsSource = null;
+                mentionStatus.Text = "Unable to browse WZ data: " + ex.Message;
+                mentionPopup.IsOpen = true;
+            }
+        }
+
+        private void AcceptMention(bool browse)
+        {
+            if (mentionSuggestions.SelectedItem is not WzMentionCatalog.Entry entry) return;
+            if (browse && !entry.CanBrowse) return;
+            string text = browse || entry.Path.EndsWith("/") ? "@" + entry.Path.TrimEnd('/') + "/" : "@{" + entry.Path + "} ";
+            updatingMention = true;
+            try
+            {
+                txtMessageInput.Select(mentionStart, txtMessageInput.CaretIndex - mentionStart);
+                txtMessageInput.SelectedText = text;
+                txtMessageInput.CaretIndex = mentionStart + text.Length;
+                mentionPopup.IsOpen = false;
+                txtMessageInput.Focus();
+            }
+            finally { updatingMention = false; }
+            if (!text.EndsWith(" ")) UpdateMentionSuggestions();
+        }
+
+        private void MentionSuggestion_Click(object sender, MouseButtonEventArgs e)
+        {
+            var element = e.OriginalSource as DependencyObject;
+            var item = ItemsControl.ContainerFromElement(mentionSuggestions, element) as ListBoxItem;
+            if (item == null) return;
+            mentionSuggestions.SelectedItem = item.DataContext;
+            AcceptMention(false);
+            e.Handled = true;
         }
 
         private async Task SendMessageAsync()
@@ -754,7 +852,13 @@ namespace HaCreator.GUI.EditorPanels
                 StartPosition = System.Windows.Forms.FormStartPosition.CenterParent
             };
             dialog.ShowDialog();
+            RefreshSelectedModel();
             RefreshApplyMode();
+        }
+
+        private void RefreshSelectedModel()
+        {
+            txtSelectedModel.Text = AISettings.Model;
         }
 
         private static string BuildAIErrorMessage(Exception ex, string prefix = "Error")

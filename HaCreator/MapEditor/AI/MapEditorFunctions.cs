@@ -36,6 +36,12 @@ namespace HaCreator.MapEditor.AI
                 CreateFlipElementTool(),
                 CreateClearElementsTool(),
                 CreateGetAssetSetsTool(),
+                CreateQueryTool("resolve_wz_reference", "Resolve an exact @{path} mention from the user before name searches. Read-only access to any loaded WZ/IMG image or nested property. Returns bounded values, paginated child paths, and applicable exact arguments for detail/preview tools. Does not replace edit prerequisites or identify a placed map element.", new JObject
+                {
+                    ["path"] = new JObject { ["type"] = "string", ["description"] = "Category-relative path, e.g. Map/Obj/house.img/snow/house/0. The literal @{...} wrapper is also accepted. Preserve path spelling and leading zeroes." },
+                    ["offset"] = new JObject { ["type"] = "integer", ["minimum"] = 0 },
+                    ["limit"] = new JObject { ["type"] = "integer", ["minimum"] = 1, ["maximum"] = 100 }
+                }, "path"),
                 CreateQueryTool("get_reference_map", "Find named source maps from String/Map.img by map name, street or category, then supply map_id to read the exact tile/object/background artwork and usage counts in that map. For requests like a named town or region, use this authoritative reference before choosing theme assets. Read-only; does not change the active map. Search results and asset usages are paginated.", new JObject
                 {
                     ["search"] = new JObject { ["type"] = "string", ["description"] = "Optional case-insensitive substring of map name, street, category or ID. Omit to browse names." },
@@ -84,6 +90,7 @@ namespace HaCreator.MapEditor.AI
         public static bool IsQueryFunction(string functionName)
         {
             return functionName == "get_asset_sets" ||
+                   functionName == "resolve_wz_reference" ||
                    functionName == "get_reference_map" ||
                    functionName == "get_object_info" ||
                    functionName == "get_tile_info" ||
@@ -153,6 +160,9 @@ namespace HaCreator.MapEditor.AI
         {
             switch (functionName)
             {
+                case "resolve_wz_reference":
+                    return WzReferenceResolver.Resolve(arguments["path"]?.ToString(), arguments["offset"]?.Value<int>() ?? 0,
+                        arguments["limit"]?.Value<int>() ?? 50);
                 case "get_map_state":
                 case "get_map_view":
                 case "get_asset_preview":
