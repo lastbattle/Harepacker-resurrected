@@ -81,6 +81,32 @@ namespace HaSharedLibrary.Render.DX
 
         public IDXObject? Frame0 => frame0;
 
+        /// <summary>
+        /// Enumerates the texture-backed frames owned by this drawable. Hosts that
+        /// own a cache of composite UI drawables can use this to retire their GPU
+        /// resources without relying on reflection or the current animation frame.
+        /// </summary>
+        public IEnumerable<Texture2D> EnumerateTextures()
+        {
+            if (frame0?.Texture != null)
+            {
+                yield return frame0.Texture;
+            }
+
+            if (frames == null)
+            {
+                yield break;
+            }
+
+            foreach (IDXObject frame in frames)
+            {
+                if (frame?.Texture != null)
+                {
+                    yield return frame.Texture;
+                }
+            }
+        }
+
         private byte _layerAlpha = byte.MaxValue;
         public byte LayerAlpha
         {

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text;
+using HaCreator.MapSimulator.WorldMap;
 using MapleLib.Img;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
@@ -63,7 +64,7 @@ public sealed class WorldMapRepository
         WorldMapDocument source = Load(sourceImageName).DeepClone();
         source.ImageName = destinationImageName.EndsWith(".img", StringComparison.OrdinalIgnoreCase) ? destinationImageName : destinationImageName + ".img";
         source.Surface.LogicalName = logicalName ?? source.Surface.LogicalName;
-        source.IsNew = true; source.IsDirty = true;
+        source.MarkNew();
         return source;
     }
 
@@ -78,7 +79,7 @@ public sealed class WorldMapRepository
                 return new WorldMapBatchSaveResult(false, Array.Empty<string>(), new[] { $"External revision conflict for {document.ImageName}." }, _operations.Mode);
         }
         WzImage candidate;
-        try { candidate = WorldMapCodec.Write(document); }
+        try { candidate = WorldMapWriter.Write(document); }
         catch (Exception ex) { return new WorldMapBatchSaveResult(false, Array.Empty<string>(), new[] { ex.Message }, _operations.Mode); }
         WorldMapBatchSaveResult result = _operations.SaveBatch(new[] { new WorldMapImageCandidate(document.ImageName, candidate) });
         if (!result.Succeeded || !verifyReload) return result;
@@ -87,7 +88,7 @@ public sealed class WorldMapRepository
             WorldMapDocument reopened = Load(document.ImageName);
             if (!SemanticEquals(document, reopened))
                 return result with { Succeeded = false, Errors = result.Errors.Concat(new[] { "Reload verification changed edited WorldMap semantics." }).ToArray() };
-            document.RawImage = candidate.DeepClone();
+            document.ReplaceRawImage(candidate.DeepClone());
             document.AcceptChanges();
             return result;
         }

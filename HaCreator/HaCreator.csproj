@@ -126,6 +126,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\HaSharedLibrary\HaSharedLibrary.csproj" />
+    <ProjectReference Include="..\MapleGame.Runtime\MapleGame.Runtime.csproj" />
     <ProjectReference Include="..\HaRepacker\Harepacker-resurrected.csproj" />
     <ProjectReference Include="..\MapleLib\MapleLib\MapleLib.csproj" />
     <ProjectReference Include="..\MapleLib\spine-runtimes-2.1.25\spine-csharp\spine-csharp 2.1.25.csproj" />

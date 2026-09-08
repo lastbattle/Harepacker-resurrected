@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\HaCreator\HaCreator.csproj" />
+    <ProjectReference Include="..\MapleGame.Runtime\MapleGame.Runtime.csproj" />
   </ItemGroup>
 
   <ItemGroup>

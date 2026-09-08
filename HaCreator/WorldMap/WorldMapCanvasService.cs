@@ -2,6 +2,7 @@ using System;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
+using HaCreator.MapSimulator.WorldMap;
 using MapleLib.WzLib.WzProperties;
 
 namespace HaCreator.WorldMap;
@@ -27,9 +28,7 @@ public static class WorldMapCanvasService
         canvas.PngProperty.PNG = new Bitmap(source);
         canvas.AddProperty(new WzVectorProperty(WzCanvasProperty.OriginPropertyName, origin.X, origin.Y));
         canvas.AddProperty(new WzIntProperty("z", z));
-        var result = new WorldMapCanvasRef { RawCanvas = canvas };
-        result.ReadMetadata(canvas);
-        return result;
+        return new WorldMapCanvasRef(canvas);
     }
 
     public static void Export(WorldMapCanvasRef canvas, string filePath)
@@ -50,7 +49,6 @@ public static class WorldMapCanvasService
         if (target == null) throw new ArgumentNullException(nameof(target));
         WorldMapCanvasRef replacement = FromBitmap(source, target.Origin, target.Z,
             target.RawProperty?.Name ?? "0");
-        target.RawCanvas = replacement.RawCanvas;
-        target.ReadMetadata(target.RawCanvas);
+        target.ReplaceCanvas(replacement.RawProperty);
     }
 }

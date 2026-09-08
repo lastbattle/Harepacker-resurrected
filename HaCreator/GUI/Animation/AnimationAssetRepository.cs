@@ -206,6 +206,7 @@ namespace HaCreator.GUI.FrameAnimation
 
         private static void PersistOwnerImage(AnimationDocument document)
         {
+            using IDisposable writeLease = Program.BeginRuntimeAssetWrite("save animation assets");
             if (Program.DataSource != null)
             {
                 if (!Program.DataSource.SaveImage(document.Category, document.OwnerImage, document.ImageLookupName))

@@ -7,6 +7,7 @@ using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
@@ -69,14 +70,17 @@ namespace HaSharedLibrary.Util
                 return null; //todo handle this in a useful way
             }
 
+            Texture2D texture;
             try
             {
-                return TryCreateTextureFromBitmapPixels(bitmap, device);
+                texture = TryCreateTextureFromBitmapPixels(bitmap, device);
             }
             catch (ArgumentException)
             {
-                return CreateTextureFromBitmapStream(bitmap, device);
+                texture = CreateTextureFromBitmapStream(bitmap, device);
             }
+            GraphicsResourceCreationScope.Register(texture);
+            return texture;
         }
 
         private static Texture2D TryCreateTextureFromBitmapPixels(Bitmap bitmap, GraphicsDevice device)
@@ -115,8 +119,16 @@ namespace HaSharedLibrary.Util
                     }
 
                     Texture2D texture = new Texture2D(device, uploadBitmap.Width, uploadBitmap.Height, false, SurfaceFormat.Color);
-                    texture.SetData(colorData);
-                    return texture;
+                    try
+                    {
+                        texture.SetData(colorData);
+                        return texture;
+                    }
+                    catch
+                    {
+                        texture.Dispose();
+                        throw;
+                    }
                 }
                 finally
                 {
@@ -283,6 +295,48 @@ namespace HaSharedLibrary.Util
                 }
             }
             return filteredBitmap;
+        }
+    }
+
+    /// <summary>
+    /// Assigns bitmap-created graphics resources to the current explicit owner.
+    /// AsyncLocal carries the owner through loader tasks without introducing a
+    /// process-wide texture cache or relying on backend-specific device events.
+    /// </summary>
+    public static class GraphicsResourceCreationScope
+    {
+        private static readonly AsyncLocal<Action<IDisposable>> CurrentOwner = new();
+
+        public static IDisposable Begin(Action<IDisposable> ownResource)
+        {
+            ArgumentNullException.ThrowIfNull(ownResource);
+            Action<IDisposable> previous = CurrentOwner.Value;
+            CurrentOwner.Value = ownResource;
+            return new Scope(previous);
+        }
+
+        public static T Register<T>(T resource) where T : IDisposable
+        {
+            if (resource != null)
+            {
+                CurrentOwner.Value?.Invoke(resource);
+            }
+            return resource;
+        }
+
+        private sealed class Scope(Action<IDisposable> previous) : IDisposable
+        {
+            private bool disposed;
+
+            public void Dispose()
+            {
+                if (disposed)
+                {
+                    return;
+                }
+                disposed = true;
+                CurrentOwner.Value = previous;
+            }
         }
     }
 }

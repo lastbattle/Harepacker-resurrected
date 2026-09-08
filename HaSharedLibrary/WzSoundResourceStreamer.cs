@@ -21,7 +21,7 @@ namespace HaSharedLibrary
     /// <summary>
     /// Streams wav, or mp3.
     /// </summary>
-    public class WzSoundResourceStreamer
+    public class WzSoundResourceStreamer : IDisposable
     {
         private readonly Stream byteStream;
 
@@ -76,12 +76,18 @@ namespace HaSharedLibrary
                 //InvalidDataException
                 // Message = "Not a WAVE file - no RIFF header"
             }
+            if (!bPlaybackLoadedSuccess)
+            {
+                Dispose();
+                return;
+            }
             Volume = 0.5f; // default volume
             wavePlayer.PlaybackStopped += new EventHandler<StoppedEventArgs>(wavePlayer_PlaybackStopped);
         }
 
         void wavePlayer_PlaybackStopped(object sender, StoppedEventArgs e)
         {
+            if (disposed) return;
             if (repeat)
             {
                 if (disposed) {
@@ -101,7 +107,7 @@ namespace HaSharedLibrary
             }
         }
 
-        private bool disposed = false;
+        private volatile bool disposed = false;
         public bool Disposed
         {
             get { return disposed; }
@@ -112,18 +118,23 @@ namespace HaSharedLibrary
                 return;
 
             disposed = true;
-            wavePlayer.Dispose();
-            if (mpegStream != null)
+            bPlaybackLoadedSuccess = false;
+            wavePlayer.PlaybackStopped -= wavePlayer_PlaybackStopped;
+            try { wavePlayer.Dispose(); }
+            finally
             {
-                mpegStream.Dispose();
-                mpegStream = null;
+                try { mpegStream?.Dispose(); }
+                finally
+                {
+                    mpegStream = null;
+                    try { waveFileStream?.Dispose(); }
+                    finally
+                    {
+                        waveFileStream = null;
+                        byteStream?.Dispose();
+                    }
+                }
             }
-            if (waveFileStream != null)
-            {
-                waveFileStream.Dispose();
-                waveFileStream = null;
-            }
-            byteStream?.Dispose();
         }
 
         public void Play()
@@ -189,7 +200,7 @@ namespace HaSharedLibrary
                 return wavePlayer.Volume;
             }
             set {
-                if (value >= 0 && value <= 1.0)
+                if (!disposed && value >= 0 && value <= 1.0)
                 {
                     this.wavePlayer.Volume = value;
                 }

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Globalization;
 using System.Linq;
+using HaCreator.MapSimulator.WorldMap;
 
 namespace HaCreator.WorldMap;
 
@@ -202,7 +203,7 @@ public sealed class WorldMapTransactionService
         errors.AddRange(validation.Errors.Select(error => error.Message));
         foreach (WorldMapDocument document in candidates)
         {
-            try { _ = WorldMapCodec.ApplyToClone(document); }
+            try { _ = WorldMapWriter.ApplyToClone(document); }
             catch (Exception exception) { errors.Add($"{RelativePath(document.ImageName)}: {exception.Message}"); }
         }
         string[] paths = candidates.Select(document => RelativePath(document.ImageName)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
@@ -239,7 +240,7 @@ public sealed class WorldMapTransactionService
             {
                 MapleLib.WzLib.WzImage original = _operations.Load(imageName);
                 if (original != null) originals[imageName] = new WorldMapImageCandidate(imageName, original.DeepClone(), RelativePath(imageName));
-                MapleLib.WzLib.WzImage detached = WorldMapCodec.ApplyToClone(document);
+                MapleLib.WzLib.WzImage detached = WorldMapWriter.ApplyToClone(document);
                 if (verifyCandidates)
                 {
                     WorldMapSemanticReport roundTrip = WorldMapSemanticComparer.Compare(document, WorldMapCodec.Read(detached));
@@ -260,7 +261,7 @@ public sealed class WorldMapTransactionService
         {
             foreach (WorldMapDocument document in candidates)
             {
-                document.RawImage = staged.First(candidate => string.Equals(candidate.ImageName, NormalizeImageName(document.ImageName), StringComparison.OrdinalIgnoreCase)).Image.DeepClone();
+                document.ReplaceRawImage(staged.First(candidate => string.Equals(candidate.ImageName, NormalizeImageName(document.ImageName), StringComparison.OrdinalIgnoreCase)).Image.DeepClone());
                 document.AcceptChanges();
             }
             IReadOnlyList<string> affected = candidates.Select(document => RelativePath(document.ImageName)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();

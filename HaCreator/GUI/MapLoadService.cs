@@ -126,6 +126,7 @@ namespace HaCreator.GUI
                         MessageBoxButtons.YesNo,
                         MessageBoxIcon.Question) == DialogResult.Yes)
                 {
+                    using IDisposable writeLease = Program.BeginRuntimeAssetWrite("save missing map labels");
                     Program.DataSource?.MarkImageUpdated("String", stringMapImage);
                 }
             }

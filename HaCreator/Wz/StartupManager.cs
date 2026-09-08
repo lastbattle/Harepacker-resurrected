@@ -182,8 +182,8 @@ namespace HaCreator.Wz
             _config.Legacy.WzFilePath = wzPath;
             _config.Save(UserDataPaths.HaCreatorConfigFile);
 
-            var wzDataSource = new WzFileDataSource(wzPath, _config);
-            wzDataSource.Initialize();
+            var wzDataSource = new WzFileDataSource(wzPath, _config, registerAsGlobal: true, mapleVersion: mapleVersion);
+            wzDataSource.Initialize(mapleVersion);
             _dataSource = wzDataSource;
 
             return _dataSource;
@@ -221,7 +221,10 @@ namespace HaCreator.Wz
         /// <param name="imgVersionPath">Path to the IMG version directory</param>
         /// <param name="wzPath">Optional WZ files path for fallback</param>
         /// <returns>The hybrid data source</returns>
-        public IDataSource CreateHybridDataSource(string imgVersionPath, string wzPath = null)
+        public IDataSource CreateHybridDataSource(
+            string imgVersionPath,
+            string wzPath = null,
+            WzMapleVersion mapleVersion = WzMapleVersion.BMS)
         {
             _dataSource?.Dispose();
 
@@ -231,7 +234,7 @@ namespace HaCreator.Wz
                 _config.Legacy.WzFilePath = wzPath;
             }
 
-            _dataSource = new HybridDataSource(imgVersionPath, _config);
+            _dataSource = new HybridDataSource(imgVersionPath, _config, registerWzManagerAsGlobal: true, mapleVersion: mapleVersion);
 
             // Update last used version
             string versionName = Path.GetFileName(imgVersionPath);

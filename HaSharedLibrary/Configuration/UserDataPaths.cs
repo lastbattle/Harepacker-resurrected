@@ -12,6 +12,7 @@ public static class UserDataPaths
     public const string SuiteName = "Harepacker";
     public const string HaCreator = "HaCreator";
     public const string HaRepacker = "HaRepacker";
+    public const string MapleGameClient = "MapleGame.Client";
 
     public static string HaCreatorDirectory => GetRoamingDirectory(HaCreator);
     public static string HaRepackerDirectory
@@ -45,10 +46,9 @@ public static class UserDataPaths
         Path.Combine("AI", "Settings.json"),
         GetLegacyRoamingPath(HaCreator, "Settings_AI.json"));
 
-    public static string HaCreatorCharactersDirectory => GetMigratedRoamingDirectory(
+    public static string HaCreatorCharactersDirectory => GetSimulatorProfileCharactersDirectory(
         HaCreator,
-        Path.Combine("MapSimulator", "Characters"),
-        GetLegacyRoamingPath(HaCreator, "Characters"));
+        migrateLegacyHaCreatorData: true);
 
     public static string HaCreatorBackupsDirectory => GetMigratedRoamingDirectory(
         HaCreator,
@@ -66,10 +66,53 @@ public static class UserDataPaths
 
     public static string AceStepInstallDirectory => GetLocalDirectory("AudioAI", "ACE-Step-1.5");
 
-    public static string GetHaCreatorSimulatorFile(string fileName) => GetRoamingFile(
+    public static string GetHaCreatorSimulatorFile(string fileName) => GetSimulatorProfileFile(
         HaCreator,
-        Path.Combine("MapSimulator", fileName),
-        GetLegacyRoamingPath(HaCreator, "MapSimulator", fileName));
+        fileName,
+        migrateLegacyHaCreatorData: true);
+
+    /// <summary>
+    /// Gets the character-preset directory for a simulator profile.
+    /// HaCreator preview profiles can opt into the existing legacy migration;
+    /// standalone clients should use their own application name and leave it disabled.
+    /// </summary>
+    public static string GetSimulatorProfileCharactersDirectory(
+        string application,
+        bool migrateLegacyHaCreatorData = false)
+    {
+        ValidateSimulatorProfileMigration(application, migrateLegacyHaCreatorData);
+
+        string[] legacyDirectories = migrateLegacyHaCreatorData
+            ? new[] { GetLegacyRoamingPath(HaCreator, "Characters") }
+            : Array.Empty<string>();
+
+        return GetMigratedRoamingDirectory(
+            application,
+            Path.Combine("MapSimulator", "Characters"),
+            legacyDirectories);
+    }
+
+    /// <summary>
+    /// Gets a JSON/configuration file in a simulator profile.
+    /// HaCreator preview profiles can opt into the existing legacy migration;
+    /// standalone clients should use their own application name and leave it disabled.
+    /// </summary>
+    public static string GetSimulatorProfileFile(
+        string application,
+        string fileName,
+        bool migrateLegacyHaCreatorData = false)
+    {
+        ValidateSimulatorProfileMigration(application, migrateLegacyHaCreatorData);
+
+        string[] legacyFiles = migrateLegacyHaCreatorData
+            ? new[] { GetLegacyRoamingPath(HaCreator, "MapSimulator", fileName) }
+            : Array.Empty<string>();
+
+        return GetRoamingFile(
+            application,
+            Path.Combine("MapSimulator", fileName),
+            legacyFiles);
+    }
 
     public static string GetRoamingMigrationMarker(string application, string migrationName)
     {
@@ -319,6 +362,19 @@ public static class UserDataPaths
             application.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
         {
             throw new ArgumentException("The application name must be a single valid path segment.", nameof(application));
+        }
+    }
+
+    private static void ValidateSimulatorProfileMigration(
+        string application,
+        bool migrateLegacyHaCreatorData)
+    {
+        if (migrateLegacyHaCreatorData &&
+            !string.Equals(application, HaCreator, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException(
+                "Legacy simulator data can only be migrated into the HaCreator profile.",
+                nameof(application));
         }
     }
 }

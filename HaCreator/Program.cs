@@ -146,6 +146,9 @@ namespace HaCreator
         {
             if (image == null) return;
 
+            using IDisposable writeLease = MapEditor.Simulation.EditorRuntimeWriteCoordinator.EnterWrite(
+                "save editor asset changes");
+
             // Try IDataSource first
             if (DataSource != null)
             {
@@ -172,6 +175,9 @@ namespace HaCreator
         public static void MarkImageUpdated(string category, WzImage image, string relativePath)
         {
             if (image == null) return;
+
+            using IDisposable writeLease = MapEditor.Simulation.EditorRuntimeWriteCoordinator.EnterWrite(
+                "save editor asset changes");
             if (string.IsNullOrWhiteSpace(relativePath))
             {
                 MarkImageUpdated(category, image);
@@ -188,6 +194,15 @@ namespace HaCreator
             }
 
             MarkImageUpdated(category, image);
+        }
+
+        /// <summary>
+        /// Shared guard for editor services that write through an injected
+        /// IDataSource rather than the Program helpers.
+        /// </summary>
+        public static IDisposable BeginRuntimeAssetWrite(string operation)
+        {
+            return MapEditor.Simulation.EditorRuntimeWriteCoordinator.EnterWrite(operation);
         }
 
         /// <summary>

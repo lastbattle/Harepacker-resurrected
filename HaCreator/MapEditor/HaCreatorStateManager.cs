@@ -1,4 +1,4 @@
-﻿using HaCreator.CustomControls;
+using HaCreator.CustomControls;
 using HaCreator.Exceptions;
 using HaCreator.GUI;
 using HaCreator.GUI.Localization;
@@ -14,6 +14,7 @@ using HaCreator.MapEditor.Instance;
 using HaCreator.MapEditor.Instance.Misc;
 using HaCreator.MapEditor.Instance.Shapes;
 using HaCreator.MapEditor.UndoRedo;
+using HaCreator.MapEditor.Simulation;
 using HaCreator.Wz;
 using HaSharedLibrary;
 using MapleLib;
@@ -41,6 +42,10 @@ namespace HaCreator.MapEditor
         private readonly MultiBoard multiBoard;
         private readonly HaEditor editorShell;
         private readonly System.Windows.Controls.TabControl tabs;
+        private readonly EditorPreviewController simulatorPreview = new();
+
+        public bool IsSimulatorRunning => simulatorPreview.IsRunning;
+        public Task StopSimulatorAsync() => simulatorPreview.StopAsync();
 
         // StatusBar (bottom)
         private readonly SystemWinCtl.TextBlock textblock_CursorX;
@@ -719,163 +724,104 @@ namespace HaCreator.MapEditor
             }
         }
 
-        void Ribbon_MapSimulationClicked()
+        async void Ribbon_MapSimulationClicked()
         {
-            multiBoard.DeviceReady = false;
-
-
             Board selectedBoard = multiBoard.SelectedBoard;
-            System.Windows.Controls.TabItem tab = (System.Windows.Controls.TabItem) tabs.SelectedItem;
-            if (selectedBoard == null || tab == null)
+            var tab = tabs.SelectedItem as System.Windows.Controls.TabItem;
+            if (selectedBoard == null || tab == null || simulatorPreview.IsRunning)
                 return;
 
-            // Create callback for portal teleportation
-            Func<int, Tuple<Board, string>> loadMapCallback = (mapId) =>
+            string title = tab.Header?.ToString() ?? string.Empty;
+            var options = new MapSimulator.Contracts.GameSessionOptions(
+                MapSimulator.Contracts.SimulatorProfileStorage.CreateHaCreatorPreview())
             {
-                return LoadMapForSimulator(mapId);
+                Resolution = UserSettings.SimulateResolution,
+                AntiMacroScreenshotSaveLocation = UserSettings.AntiMacroScreenshotSaveLocation,
+                NpcRx0Offset = UserSettings.Npcrx0Offset,
+                NpcRx1Offset = UserSettings.Npcrx1Offset
             };
-
-            // Create callback for when simulator exits - restore DeviceReady on UI thread
-            Action onComplete = () =>
-            {
-                tabs.Dispatcher.BeginInvoke(new Action(() =>
+            bool wasDeviceReady = multiBoard.DeviceReady;
+            Simulation.EditorRuntimeAssets sessionAssets = null;
+            MapSimulator.Contracts.RuntimeMapDefinition launchSnapshot = null;
+            var capturedMaps = new List<MapSimulator.Contracts.RuntimeMapDefinition>();
+            MapSimulator.Assets.RuntimeMapProvider mapProvider = null;
+            var result = await simulatorPreview.RunAsync(
+                () =>
                 {
-                    multiBoard.DeviceReady = true;
-                }));
-            };
-
-            MapSimulator.MapSimulatorLoader.CreateAndShowMapSimulator(selectedBoard, (string) tab.Header, loadMapCallback, onComplete);
-        }
-
-        /// <summary>
-        /// Loads a map image on-demand from the data source.
-        /// This is used when WzImage was not stored in MapsCache to save memory.
-        /// </summary>
-        /// <param name="mapId">The 9-digit map ID</param>
-        /// <returns>The loaded WzImage or null if not found</returns>
-        private WzImage LoadMapImageOnDemand(string mapId)
-        {
-            if (Program.DataSource == null)
-                return null;
-
-            string paddedId = mapId.PadLeft(9, '0');
-            string folderNum = paddedId[0].ToString();
-
-            // Try to load from Map/Map/MapX/mapid.img
-            string relativePath = $"Map/Map{folderNum}/{paddedId}.img";
-            var mapImage = Program.DataSource.GetImageByPath($"Map/{relativePath}");
-
-            if (mapImage == null)
-            {
-                // Try without extra Map/ prefix
-                mapImage = Program.DataSource.GetImage("Map", $"Map/Map{folderNum}/{paddedId}.img");
-            }
-
-            if (mapImage != null)
-                mapImage.ParseImage();
-
-            return mapImage;
-        }
-
-        /// <summary>
-        /// Loads a map by ID for the simulator (portal teleportation).
-        /// This loads the map into a new tab in the editor and returns the Board for simulation.
-        /// If the map is already loaded in MultiBoard, it switches to that existing tab instead.
-        /// Must be called from the game thread - marshals UI operations to the UI thread.
-        /// </summary>
-        /// <param name="mapId">The map ID to load</param>
-        /// <returns>Tuple of (Board, titleName) or null if map not found</returns>
-        private Tuple<Board, string> LoadMapForSimulator(int mapId)
-        {
-            // Format map ID as 9-digit string
-            string mapIdStr = mapId.ToString().PadLeft(9, '0');
-
-            // First, check if the map is already loaded in MultiBoard
-            Tuple<Board, string> existingResult = null;
-            tabs.Dispatcher.Invoke(() =>
-            {
-                foreach (Board board in multiBoard.Boards)
-                {
-                    if (board.MapInfo != null && board.MapInfo.id == mapId)
+                    var game = new MapSimulator.MapSimulator(launchSnapshot, title, options, sessionAssets.Services);
+                    game.SetMapProvider(mapProvider);
+                    return game;
+                },
+                  async () =>
+                  {
+                      // Protect the source while detaching Board assets, before the
+                      // session-owned source acquires its longer-lived preview lease.
+                      using var captureLease = Simulation.EditorRuntimeWriteCoordinator.EnterPreview();
+                      // NpcInfo.StringName and MobInfo.Name read the editor's lazily
+                      // populated String.wz caches. Populate those two catalogs before
+                      // the detached definition freezes display names for the preview.
+                      Program.InfoManager.EnsureNpcStringData();
+                      Program.InfoManager.EnsureMobStringData();
+                      await multiBoard.PauseRenderingForSimulatorAsync();
+                    lock (multiBoard)
                     {
-                        // Map is already loaded - switch to it
-                        multiBoard.SelectedBoard = board;
-                        if (board.TabPage != null)
+                        launchSnapshot = new Simulation.BoardSnapshotBuilder().Create(selectedBoard);
+                        capturedMaps.Add(launchSnapshot);
+                        var capturedIds = new HashSet<int> { launchSnapshot.MapId };
+                        foreach (Board openBoard in multiBoard.Boards)
                         {
-                            tabs.SelectedItem = board.TabPage;
-                            string titleName = (string)board.TabPage.Header;
-                            existingResult = new Tuple<Board, string>(board, titleName);
+                            if (openBoard.MapInfo != null && capturedIds.Add(openBoard.MapInfo.id))
+                                capturedMaps.Add(new Simulation.BoardSnapshotBuilder().Create(openBoard));
                         }
-                        break;
+                        sessionAssets = new Simulation.EditorRuntimeAssets(Program.DataSource, Program.WzManager, Program.InfoManager, capturedMaps);
+                        mapProvider = new MapSimulator.Assets.RuntimeMapProvider(sessionAssets.Services, capturedMaps);
                     }
-                }
-            });
+                  },
+                  () =>
+                  {
+                      List<Exception> cleanupErrors = null;
 
-            if (existingResult != null)
+                      void CaptureCleanup(Action cleanup)
+                      {
+                          try
+                          {
+                              cleanup();
+                          }
+                          catch (Exception error)
+                          {
+                              (cleanupErrors ??= new List<Exception>()).Add(error);
+                          }
+                      }
+
+                      try
+                      {
+                          CaptureCleanup(() => mapProvider?.Dispose());
+
+                          foreach (var captured in capturedMaps)
+                              CaptureCleanup(() => captured?.Dispose());
+                          CaptureCleanup(capturedMaps.Clear);
+                          CaptureCleanup(() => sessionAssets?.Dispose());
+                      }
+                      catch (Exception error)
+                      {
+                          // Continue to rendering restoration even if an unexpected
+                          // failure occurs while walking the detached map snapshots.
+                          (cleanupErrors ??= new List<Exception>()).Add(error);
+                      }
+                      finally
+                      {
+                          CaptureCleanup(() => multiBoard.RestoreRenderingAfterSimulator(wasDeviceReady));
+                      }
+
+                      if (cleanupErrors != null)
+                          throw new AggregateException("Map preview cleanup failed.", cleanupErrors);
+                  });
+
+            if (result.Error != null)
             {
-                return existingResult;
+                ErrorLogger.Log(ErrorLevel.Critical, "Map preview failed: " + result.Error);
+                MessageBox.Show(result.Error.Message, "Map preview", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
-
-            // Check if map exists in cache
-            if (!Program.InfoManager.MapsCache.ContainsKey(mapIdStr))
-            {
-                return null;
-            }
-
-            try
-            {
-                // Get map data from cache
-                Tuple<WzImage, string, string, string, MapInfo> loadedMap = Program.InfoManager.MapsCache[mapIdStr];
-
-                WzImage mapImage = loadedMap.Item1;
-                string mapName = loadedMap.Item2;
-                string streetName = loadedMap.Item3;
-                string categoryName = loadedMap.Item4;
-                MapInfo info = loadedMap.Item5;
-
-                // Load WzImage on-demand if null (memory optimization)
-                if (mapImage == null)
-                {
-                    mapImage = LoadMapImageOnDemand(mapIdStr);
-                }
-                if (mapImage == null)
-                {
-                    return null;
-                }
-
-                // Create MapInfo on-demand if null (memory optimization)
-                if (info == null)
-                {
-                    info = new MapInfo(mapImage, streetName, mapName, categoryName);
-                }
-
-                // Use Dispatcher.Invoke to run UI operations on the UI thread
-                // Use the tabs control's Dispatcher since this is a WinForms app with WPF elements
-                Tuple<Board, string> result = null;
-                tabs.Dispatcher.Invoke(() =>
-                {
-                    // Load the map into a new tab
-                    MapLoader.CreateMapFromImage(mapId, mapImage, info, mapName, streetName, categoryName, tabs, multiBoard, MakeRightClickHandler());
-
-                    // Get the newly created board (it becomes the selected board)
-                    Board newBoard = multiBoard.SelectedBoard;
-                    System.Windows.Controls.TabItem newTab = (System.Windows.Controls.TabItem)tabs.SelectedItem;
-
-                    if (newBoard != null && newTab != null)
-                    {
-                        string titleName = (string)newTab.Header;
-                        result = new Tuple<Board, string>(newBoard, titleName);
-                    }
-                });
-
-                return result;
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error loading map {mapId}: {ex.Message}");
-            }
-
-            return null;
         }
 
         void Ribbon_ParallaxToggled(bool pressed)
@@ -967,6 +913,17 @@ namespace HaCreator.MapEditor
 
         void Ribbon_RepackClicked()
         {
+            try
+            {
+                EditorRuntimeWriteCoordinator.EnsureWriteAllowed("repack editor data");
+            }
+            catch (InvalidOperationException error)
+            {
+                MessageBox.Show(error.Message, "Map preview", MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+                return;
+            }
+
             // Check if we're using IMG filesystem mode (no WzManager)
             if (Program.WzManager == null)
             {

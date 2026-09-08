@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using HaCreator.MapSimulator.WorldMap;
 
 namespace HaCreator.WorldMap;
 

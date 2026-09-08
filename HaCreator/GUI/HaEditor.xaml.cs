@@ -501,9 +501,18 @@ namespace HaCreator.GUI
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void HaEditor2_Closing(object sender, System.ComponentModel.CancelEventArgs e)
+        private bool waitingForSimulatorClose;
+        private bool simulatorCloseApproved;
+
+        private async void HaEditor2_Closing(object sender, System.ComponentModel.CancelEventArgs e)
         {
-            if (!Program.Restarting && System.Windows.MessageBox.Show(
+            if (waitingForSimulatorClose)
+            {
+                e.Cancel = true;
+                return;
+            }
+
+            if (!simulatorCloseApproved && !Program.Restarting && System.Windows.MessageBox.Show(
                     LocExtension.Get("Editor_ConfirmQuitMessage"),
                     LocExtension.Get("Editor_QuitTitle"),
                     MessageBoxButton.YesNo,
@@ -513,6 +522,24 @@ namespace HaCreator.GUI
             }
             else
             {
+                if (hcsm?.IsSimulatorRunning == true)
+                {
+                    // Keep the dispatcher and data source alive until the game has exited
+                    // and the preview controller has restored editor rendering.
+                    e.Cancel = true;
+                    waitingForSimulatorClose = true;
+                    try
+                    {
+                        await hcsm.StopSimulatorAsync();
+                        simulatorCloseApproved = true;
+                    }
+                    finally
+                    {
+                        waitingForSimulatorClose = false;
+                    }
+                    Close();
+                    return;
+                }
                 // Thread safe without locks since reference assignment is atomic
                 Program.AbortThreads = true;
             }

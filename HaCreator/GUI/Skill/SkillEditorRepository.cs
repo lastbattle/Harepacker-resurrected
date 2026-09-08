@@ -96,6 +96,7 @@ public sealed class SkillEditorRepository
     public SkillSaveResult Save(SkillDocument document)
     {
         if (document == null) throw new ArgumentNullException(nameof(document));
+        using IDisposable writeLease = Program.BeginRuntimeAssetWrite("save skill assets");
         var validation = SkillValidator.Validate(document);
         if (validation.Any(issue => issue.Severity == SkillValidationSeverity.Error))
             return new(SkillSaveState.Failed, Array.Empty<string>(), validation.Where(i => i.Severity == SkillValidationSeverity.Error).Select(i => i.Message).ToArray(), Array.Empty<string>());

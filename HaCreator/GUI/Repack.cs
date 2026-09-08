@@ -2,6 +2,7 @@
 using MapleLib.WzLib.Serializer;
 using MapleLib.Helpers;
 using HaCreator.GUI.Localization;
+using HaCreator.MapEditor.Simulation;
 using System;
 using System.CodeDom;
 using System.Collections.Generic;
@@ -82,9 +83,21 @@ namespace HaCreator.GUI
         /// <param name="e"></param>
         private async void Repack_Click(object sender, RoutedEventArgs e)
         {
-            repackButton.IsEnabled = false;
-
-            await Task.Run(RepackerThread, _cancellationTokenSource.Token);
+            IDisposable writeLease = null;
+            try
+            {
+                writeLease = EditorRuntimeWriteCoordinator.EnterWrite("repack editor data");
+                repackButton.IsEnabled = false;
+                await Task.Run(RepackerThread, _cancellationTokenSource.Token);
+            }
+            catch (InvalidOperationException error)
+            {
+                ShowErrorMessage(error.Message);
+            }
+            finally
+            {
+                writeLease?.Dispose();
+            }
         }
 
         private void ShowErrorMessage(string message) =>
@@ -162,7 +175,7 @@ namespace HaCreator.GUI
             try
             {
                 PrepareDirectoriesAsync(directories);
-                SaveXMLFilesAsync(directories);
+                await SaveXMLFilesAsync(directories);
 
                 // save selected wz files
                 var selectedFiles = await Dispatcher.InvokeAsync(() => filesList.Items.OfType<CheckBox>()
@@ -253,7 +266,7 @@ namespace HaCreator.GUI
             }
         }
 
-        private async void SaveXMLFilesAsync(DirectoryStructure dirs)
+        private async Task SaveXMLFilesAsync(DirectoryStructure dirs)
         {
             await UpdateUIAsync(DialogTextExtension.Get("Dialog_SavingXml"));
 

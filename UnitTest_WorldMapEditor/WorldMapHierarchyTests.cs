@@ -1,4 +1,5 @@
 using HaCreator.WorldMap;
+using HaCreator.MapSimulator.WorldMap;
 
 namespace UnitTest_WorldMapEditor;
 

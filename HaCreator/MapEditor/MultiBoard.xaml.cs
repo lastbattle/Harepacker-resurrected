@@ -416,6 +416,34 @@ namespace HaCreator.MapEditor
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void RenderFrame()
         {
+            if (!simulatorRenderGate.TryEnterFrame())
+                return;
+            try
+            {
+                RenderFrameCore();
+            }
+            finally
+            {
+                simulatorRenderGate.ExitFrame();
+            }
+        }
+
+        private readonly Simulation.RenderQuiescenceGate simulatorRenderGate = new();
+
+        public System.Threading.Tasks.Task PauseRenderingForSimulatorAsync()
+        {
+            DeviceReady = false;
+            return simulatorRenderGate.PauseAsync();
+        }
+
+        public void RestoreRenderingAfterSimulator(bool wasDeviceReady)
+        {
+            simulatorRenderGate.Resume();
+            DeviceReady = wasDeviceReady;
+        }
+
+        private void RenderFrameCore()
+        {
             currentFrameStartTimestamp = Stopwatch.GetTimestamp();
             nextPreviewFrameTimestamp = long.MaxValue;
 
@@ -687,7 +715,7 @@ namespace HaCreator.MapEditor
         private BaseDXDrawableItem CreatePreviewDrawable(BoardItem item, WzImageProperty source, ref List<WzObject> usedProperties)
         {
             if (item is BackgroundInstance background)
-                return MapSimulatorLoader.CreateBackgroundFromProperty(previewTexturePool, source, background, DxDevice, ref usedProperties, background.Flip);
+                return EditorBackgroundPreviewLoader.CreateBackgroundFromProperty(previewTexturePool, source, background, DxDevice, ref usedProperties, background.Flip);
 
             List<IDXObject> frames = MapSimulatorLoader.LoadFrames(previewTexturePool, source, 0, 0, DxDevice, ref usedProperties);
             if (frames.Count == 0 || (frames.Count == 1 && frames[0].Texture != null))

@@ -55,10 +55,11 @@ namespace HaSharedLibrary.Render.DX
             if (string.IsNullOrWhiteSpace(atlasData) || skeletonBytes == null || skeletonBytes.Length == 0)
                 return false;
 
+            Spine41TextureLoader textureLoader = null;
             try
             {
                 using StringReader atlasReader = new StringReader(atlasData);
-                Spine41TextureLoader textureLoader = new Spine41TextureLoader(parentProperty, graphicsDevice);
+                textureLoader = new Spine41TextureLoader(parentProperty, graphicsDevice);
                 S41Atlas atlas = new S41Atlas(atlasReader, string.Empty, textureLoader);
 
                 using MemoryStream skeletonStream = new MemoryStream(skeletonBytes);
@@ -90,11 +91,17 @@ namespace HaSharedLibrary.Render.DX
                 }
 
                 spineObject = new Spine41Object(skeletonData, skeleton, state, IsPremultipliedAlpha(atlasData, parentProperty));
+                spineObject.ownedResources = textureLoader;
+                textureLoader = null;
                 return true;
             }
             catch (Exception)
             {
                 return false;
+            }
+            finally
+            {
+                textureLoader?.Dispose();
             }
         }
 
@@ -207,8 +214,15 @@ namespace HaSharedLibrary.Render.DX
         public Texture2D Texture => null;
         public object Tag { get => _Tag; set => _Tag = value; }
 
-        public sealed class Spine41Object
+        public sealed class Spine41Object : IDisposable
         {
+            internal IDisposable ownedResources;
+
+            public void Dispose()
+            {
+                ownedResources?.Dispose();
+                ownedResources = null;
+            }
             public Spine41Object(S41SkeletonData skeletonData, S41Skeleton skeleton, S41AnimationState state, bool premultipliedAlpha)
             {
                 SkeletonData = skeletonData;

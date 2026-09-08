@@ -1,4 +1,5 @@
 using HaCreator.WorldMap;
+using HaCreator.MapSimulator.WorldMap;
 using MapleLib.Img;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;

@@ -343,6 +343,7 @@ namespace HaCreator.GUI.Cutscene
 
         public static void SaveScene(CutsceneSceneModel scene)
         {
+            using IDisposable writeLease = Program.BeginRuntimeAssetWrite("save cutscene assets");
             foreach (CutsceneEventModel cutsceneEvent in scene.Events)
                 cutsceneEvent.Save();
             if (scene.Source.Parent == null)
@@ -359,6 +360,8 @@ namespace HaCreator.GUI.Cutscene
         {
             if (scene?.Source == null)
                 return;
+
+            using IDisposable writeLease = Program.BeginRuntimeAssetWrite("delete cutscene assets");
 
             if (scene.Source is WzImage image)
             {

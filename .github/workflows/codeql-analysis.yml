@@ -48,6 +48,11 @@ jobs:
         nuget restore MapleHaSuite.sln
         dotnet restore MapleHaSuite.sln
 
+    - name: Build independent game projects
+      if: matrix.language == 'csharp'
+      run: |
+        dotnet build MapleGame.Runtime/MapleGame.Runtime.csproj -c Debug --no-restore
+        dotnet build MapleGame.Client/MapleGame.Client.csproj -c Release --no-restore
     - name: Build Solution
       run: |
         if [ "${{ matrix.language }}" == "csharp" ]; then

@@ -189,6 +189,7 @@ namespace HaCreator.GUI.EditorPanels
                 System.Drawing.Point origin = new(image.Width / 2, image.Height);
                 BackgroundInfo info = new(property, image, origin, setName, infoType, name, property, null);
                 backgroundGallery.Add(info.Image, name, info);
+                using IDisposable writeLease = Program.BeginRuntimeAssetWrite("save editor asset changes");
                 Program.WzManager.SetWzFileUpdated(setImage.WzFileParent.Name, setImage);
 
                 System.Windows.MessageBox.Show(
@@ -260,6 +261,7 @@ namespace HaCreator.GUI.EditorPanels
             info.Image = upscaled;
             backgroundGallery.UpdateImage(_contextItem, upscaled);
             WzObject topDirectory = parent.GetTopMostWzDirectory();
+            using IDisposable writeLease = Program.BeginRuntimeAssetWrite("save editor asset changes");
             Program.WzManager.SetWzFileUpdated(topDirectory.Name, parent.Parent as WzImage);
         }
 
@@ -302,6 +304,7 @@ namespace HaCreator.GUI.EditorPanels
             parent.WzProperties.Remove(property);
             backgroundGallery.Remove(_contextItem);
             WzObject topDirectory = parent.GetTopMostWzDirectory();
+            using IDisposable writeLease = Program.BeginRuntimeAssetWrite("save editor asset changes");
             Program.WzManager.SetWzFileUpdated(topDirectory.Name, parent.Parent as WzImage);
             _contextItem = null;
         }

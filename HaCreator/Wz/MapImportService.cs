@@ -389,6 +389,7 @@ namespace HaCreator.Wz
             IProgress<MapImportProgress> progress)
         {
             if (plan == null) throw new ArgumentNullException(nameof(plan));
+            using IDisposable writeLease = Program.BeginRuntimeAssetWrite("import editor assets");
             var result = new MapImportResult();
             int completed = 0;
             foreach (MapImportAsset asset in plan.Assets)

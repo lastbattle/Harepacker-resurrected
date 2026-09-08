@@ -5,10 +5,11 @@ using Spine41;
 
 namespace HaSharedLibrary.Render.DX
 {
-    internal sealed class Spine41TextureLoader : TextureLoader
+    internal sealed class Spine41TextureLoader : TextureLoader, System.IDisposable
     {
         private readonly WzObject parentNode;
         private readonly GraphicsDevice graphicsDevice;
+        private readonly System.Collections.Generic.HashSet<Texture2D> ownedTextures = new();
 
         public Spine41TextureLoader(WzObject parentNode, GraphicsDevice graphicsDevice)
         {
@@ -39,6 +40,7 @@ namespace HaSharedLibrary.Render.DX
                 false,
                 WzPngFormatExtensions.GetXNASurfaceFormat(pngProperty.Format));
 
+            ownedTextures.Add(texture);
             pngProperty.ParsePng(true, texture);
 
             page.rendererObject = texture;
@@ -49,6 +51,13 @@ namespace HaSharedLibrary.Render.DX
         public void Unload(object texture)
         {
             (texture as Texture2D)?.Dispose();
+            if (texture is Texture2D owned) ownedTextures.Remove(owned);
+        }
+
+        public void Dispose()
+        {
+            foreach (Texture2D texture in ownedTextures) texture.Dispose();
+            ownedTextures.Clear();
         }
     }
 }

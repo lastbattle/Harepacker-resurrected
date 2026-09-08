@@ -1,5 +1,6 @@
 using HaCreator.GUI.WorldMap;
 using HaCreator.WorldMap;
+using HaCreator.MapSimulator.WorldMap;
 using System.Reflection;
 using System.Runtime.ExceptionServices;
 

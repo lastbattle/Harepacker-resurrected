@@ -1,4 +1,5 @@
 using HaSharedLibrary.Wz;
+using System;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using System.Collections.Generic;
@@ -102,6 +103,8 @@ namespace HaCreator.GUI.Quest
             if (image == null)
                 return;
 
+            using IDisposable writeLease = Program.BeginRuntimeAssetWrite("save quest assets");
+
             if (IsPerQuestStorageImage(image) && Program.DataSource != null)
             {
                 string questId = WzInfoTools.RemoveExtension(image.Name);
@@ -114,6 +117,7 @@ namespace HaCreator.GUI.Quest
 
         private static void PersistPerQuestImage(WzImage image, string questId)
         {
+            using IDisposable writeLease = Program.BeginRuntimeAssetWrite("save quest assets");
             if (Program.DataSource != null)
             {
                 Program.DataSource.SaveImage("Quest", image, $"QuestData/{questId}.img");

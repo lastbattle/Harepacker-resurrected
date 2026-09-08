@@ -4,6 +4,7 @@ using HaCreator.GUI.Localization;
 using HaCreator.GUI.InstanceEditor;
 using HaCreator.GUI.EditorPanels;
 using HaCreator.WorldMap;
+using HaCreator.MapSimulator.WorldMap;
 using HaCreator.Wz;
 using MapleLib.WzLib;
 using System;
@@ -242,7 +243,8 @@ public partial class WorldMapWorkspace : Window
             previewCache?.Dispose();
             previewCache = new WorldMapPreviewCache();
             availabilityIndex?.Dispose();
-            availabilityIndex = Program.DataSource == null ? null : new WorldMapAvailabilityIndex(Program.DataSource, Program.InfoManager);
+            availabilityIndex = Program.DataSource == null ? null : new WorldMapAvailabilityIndex(
+                Program.DataSource, new EditorWorldMapAvailabilityLookup(Program.InfoManager));
             viewModel.Surfaces.Clear();
             viewModel.Diagnostics.Clear();
             foreach (WorldMapSurfaceItem surface in snapshot.Surfaces)
@@ -828,7 +830,7 @@ public partial class WorldMapWorkspace : Window
             WorldMapDocument duplicated = typed.DeepClone();
             duplicated.ImageName = name + ".img";
             duplicated.Surface.LogicalName = name;
-            duplicated.IsNew = true;
+        duplicated.MarkNew();
             duplicated.IsDirty = true;
             coreDocuments[name] = duplicated;
             editSessions[name] = new WorldMapEditSession(duplicated);
@@ -1685,7 +1687,7 @@ internal static class WorldMapWorkspaceSource
             ?? Program.DataSource?.GetImageByPath($"Map/WorldMap/{imageName}.img");
         if (image == null)
             return null;
-        Type? codecType = typeof(WorldMapWorkspace).Assembly.GetType("HaCreator.WorldMap.WorldMapCodec");
+        Type? codecType = typeof(WorldMapCodec);
         if (codecType == null)
             return null;
         foreach (MethodInfo method in codecType.GetMethods(BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance).Where(method => method.Name is "Read" or "Load"))

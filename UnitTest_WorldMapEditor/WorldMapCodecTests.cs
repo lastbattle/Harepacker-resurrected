@@ -1,4 +1,5 @@
 using HaCreator.WorldMap;
+using HaCreator.MapSimulator.WorldMap;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 
@@ -49,7 +50,7 @@ public sealed class WorldMapCodecTests
         document.Surface.Links[0].ToolTip = "Edited tooltip";
         document.Surface.FogLayers[0].QState = 1;
 
-        WzImage saved = WorldMapCodec.ApplyToClone(document);
+        WzImage saved = WorldMapWriter.ApplyToClone(document);
 
         Assert.True(saved.Changed);
         Assert.Equal("FixtureRenamed", ((WzStringProperty)saved["info"]["WorldMap"]).Value);

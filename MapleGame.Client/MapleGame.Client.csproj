@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\MapleGame.Runtime\MapleGame.Runtime.csproj" />
+  </ItemGroup>
+  <!-- MonoGame's pinned package carries legacy .NET 2.x native host assets.
+       Use the .NET 10 SDK/installed runtime host, including in RID publishes. -->
+  <Target Name="ExcludeLegacyClrNativeBuildAssets" AfterTargets="ResolvePackageAssets"
+          BeforeTargets="ResolveLockFileCopyLocalFiles">
+    <ItemGroup>
+      <NativeCopyLocalItems Remove="@(NativeCopyLocalItems)"
+        Condition="$([System.Text.RegularExpressions.Regex]::IsMatch('%(NativeCopyLocalItems.NuGetPackageId)', '(?i)^(runtime\.[^.]+\.)?Microsoft\.NETCore\.')) and $([System.String]::Copy('%(NativeCopyLocalItems.NuGetPackageVersion)').StartsWith('2.'))" />
+    </ItemGroup>
+  </Target>
+  <Target Name="ExcludeLegacyClrNativePublishAssets" AfterTargets="_ResolveCopyLocalAssetsForPublish">
+    <ItemGroup>
+      <_ResolvedCopyLocalPublishAssets Remove="@(_ResolvedCopyLocalPublishAssets)"
+        Condition="$([System.Text.RegularExpressions.Regex]::IsMatch('%(_ResolvedCopyLocalPublishAssets.NuGetPackageId)', '(?i)^(runtime\.[^.]+\.)?Microsoft\.NETCore\.')) and $([System.String]::Copy('%(_ResolvedCopyLocalPublishAssets.NuGetPackageVersion)').StartsWith('2.'))" />
+    </ItemGroup>
+  </Target>
+</Project>

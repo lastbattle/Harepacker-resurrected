@@ -1,4 +1,5 @@
 using HaCreator.WorldMap;
+using HaCreator.MapSimulator.WorldMap;
 using MapleLib.WzLib.WzProperties;
 
 namespace UnitTest_WorldMapEditor;

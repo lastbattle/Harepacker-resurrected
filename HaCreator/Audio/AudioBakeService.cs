@@ -127,6 +127,7 @@ namespace HaCreator.Audio
             AudioBakeRequest request,
             CancellationToken cancellationToken = default)
         {
+            using IDisposable writeLease = Program.BeginRuntimeAssetWrite("save baked audio");
             ValidateRequest(request);
             AudioRenderedData rendered = await RenderAsync(request, cancellationToken).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();

@@ -9,6 +9,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using HaSharedLibrary.Util;
+using HaCreator.MapEditor.Simulation;
 using System.Windows;
 using System.Windows.Controls;
 using Forms = System.Windows.Forms;
@@ -814,6 +815,21 @@ namespace HaCreator.GUI
                 return;
             }
 
+            IDisposable writeLease;
+            try
+            {
+                writeLease = EditorRuntimeWriteCoordinator.EnterWrite("pack IMG data");
+            }
+            catch (InvalidOperationException error)
+            {
+                MessageBox.Show(error.Message, DialogTextExtension.Get("Dialog_Error"),
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            using (writeLease)
+            {
+
             // Save changed images to source if requested
             if (checkBox_saveChangedImages.IsChecked == true && checkBox_saveChangedImages.Enabled && _imgDataSource != null)
             {
@@ -940,6 +956,7 @@ namespace HaCreator.GUI
                 UpdateFormatOptionsState();
                 // Update changed images count after packing
                 UpdateChangedImagesCount();
+            }
             }
         }
 

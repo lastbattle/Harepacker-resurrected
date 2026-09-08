@@ -174,6 +174,7 @@ namespace HaCreator.MapEditor
 
         private void SetOsUpdated()
         {
+            using IDisposable writeLease = Program.BeginRuntimeAssetWrite("save editor asset changes");
             Program.WzManager.SetWzFileUpdated( 
                 "map", // "obj' is in Map.wz or Map2.wz (TODO)
                 Program.InfoManager.ObjectSets[oS]);

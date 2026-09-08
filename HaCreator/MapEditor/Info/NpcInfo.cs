@@ -155,7 +155,11 @@ namespace HaCreator.MapEditor.Info
             get {
                 if (_LinkedWzImage == null)
                 {
-                    _LinkedWzImage = NpcImgEntryResolver.Resolve(this);
+                    _LinkedWzImage = int.TryParse(ID, out int templateId)
+                        ? NpcImgEntryResolver.BuildNormalizedEntry(
+                            templateId,
+                            id => Program.FindImage("Npc", id.ToString("D7") + ".img"))
+                        : null;
                 }
                 return _LinkedWzImage;
             }

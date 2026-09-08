@@ -246,6 +246,7 @@ namespace HaCreator.GUI.EditorPanels
         {
             WzObject directory = property.GetTopMostWzDirectory();
             WzObject image = property.GetTopMostWzImage();
+            using IDisposable writeLease = Program.BeginRuntimeAssetWrite("save editor asset changes");
             Program.WzManager.SetWzFileUpdated(directory.Name, image as WzImage);
         }
 

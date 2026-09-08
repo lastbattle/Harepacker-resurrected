@@ -1798,6 +1798,7 @@ namespace HaCreator.GUI.Quest
             };
             if (openFileDialog.ShowDialog() == true)
             {
+                using IDisposable writeLease = Program.BeginRuntimeAssetWrite("import quest assets");
                 Dictionary<string, (WzSubProperty Info, WzSubProperty Say, WzSubProperty Act, WzSubProperty Check)> questsToImport = new();
                 List<string> existingQuestIds = new();
 
@@ -3691,6 +3692,8 @@ namespace HaCreator.GUI.Quest
                 return;
             }
 
+            using IDisposable writeLease = Program.BeginRuntimeAssetWrite("save quest assets");
+
             Tuple<WzSubProperty, WzSubProperty, WzSubProperty, WzSubProperty> questExportedProperties = saveQuestAsWzImage(quest);
 
             WzSubProperty questWzSubProperty_original = Program.InfoManager.QuestInfos[quest.Id.ToString()];
@@ -4739,6 +4742,8 @@ namespace HaCreator.GUI.Quest
                 return;
 
             QuestEditorModel quest = _selectedQuest;
+
+            using IDisposable writeLease = Program.BeginRuntimeAssetWrite("delete quest assets");
 
             // remove it off local collections
             _quests.Remove(_selectedQuest);

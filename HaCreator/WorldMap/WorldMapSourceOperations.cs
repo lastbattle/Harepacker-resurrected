@@ -2,12 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using HaCreator.MapSimulator.WorldMap;
 using MapleLib.Img;
 using MapleLib.WzLib;
 
 namespace HaCreator.WorldMap;
-
-public enum WorldMapSourceMode { Img, Wz, Hybrid, Unknown }
 
 public sealed record WorldMapSourceCapabilities(
     WorldMapSourceMode Mode,
@@ -92,6 +91,7 @@ public sealed class WorldMapSourceOperations
 
     public WorldMapBatchSaveResult SaveBatch(IEnumerable<WorldMapImageCandidate> candidates)
     {
+        using IDisposable writeLease = Program.BeginRuntimeAssetWrite("save world-map assets");
         var list = (candidates ?? Enumerable.Empty<WorldMapImageCandidate>()).Where(c => c?.Image != null).ToList();
         var errors = new List<string>();
         var affected = new List<string>();
@@ -134,6 +134,7 @@ public sealed class WorldMapSourceOperations
 
     public bool StageDelete(string imageName, out string backupPath, out string error)
     {
+        using IDisposable writeLease = Program.BeginRuntimeAssetWrite("delete world-map assets");
         backupPath = null;
         error = null;
         if (!Capabilities.CanDelete)
