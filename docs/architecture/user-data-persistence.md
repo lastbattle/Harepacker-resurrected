@@ -45,6 +45,28 @@ The ACE-Step runtime currently uses `AudioAI\ACE-Step-1.5` there.
 Extracted WZ/IMG content is not application configuration. Existing configured
 data roots remain unchanged and are not copied during settings migration.
 
+## Simulator profiles
+
+Simulator persistence is resolved through `ISimulatorProfileStorage` in
+`MapleGame.Runtime/Contracts`. Stores accept an optional profile while
+retaining their existing explicit file-path constructors for editor callers.
+The default editor profile is `SimulatorProfileStorage.CreateHaCreatorPreview()`;
+it uses the canonical `HaCreator/MapSimulator` subtree and preserves the existing
+copy-based migration from legacy `%APPDATA%\HaCreator\Characters` and
+`%APPDATA%\HaCreator\MapSimulator`. A standalone host must pass
+`SimulatorProfileStorage.CreateStandaloneClient()` (or its own implementation),
+which resolves to the separate `MapleGame.Client/MapSimulator` subtree and never
+imports HaCreator data.
+
+The character preset directory and these JSON stores are covered by the profile
+contract: item-maker progression, login-character accounts, map-transfer
+destinations, monster book, packet-owned function keys, quest alarms, skill
+macros, social rooms, and storage accounts. The stores do not call
+`UserDataPaths` directly. This keeps file ownership in the host composition root
+and lets the standalone client inject an isolated profile without a
+replacement global service locator. An explicitly supplied file path still wins
+over the profile, preserving existing tests and editor integrations.
+
 ## Compatibility migration
 
 `UserDataPaths` performs one-time, copy-based migration. Existing canonical data

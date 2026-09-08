@@ -8,6 +8,7 @@ This directory contains architecture documentation for HaCreator (map editor) an
 |----------|-------------|
 | [IMG_FILESYSTEM_MIGRATION_PLAN.md](./IMG_FILESYSTEM_MIGRATION_PLAN.md) | Migration from WZ files to extracted IMG filesystem |
 | [img-hot-swap.md](./img-hot-swap.md) | Hot-swapping system for live asset reloading |
+| [MapSimulator extraction plan](../architecture/map-simulator-extraction-plan.md) | Shared game runtime, standalone client, and HaCreator preview integration |
 
 ---
 
