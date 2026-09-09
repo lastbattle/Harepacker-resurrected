@@ -104,7 +104,12 @@ namespace HaCreator.MapSimulator.Contracts
 
             if (source.Image != null)
                 foreach (WzImageProperty property in source.Image.WzProperties)
-                    owner.AddProperty(property.DeepClone());
+                    // Source WZ/IMG files may contain duplicate property names.
+                    // Clone through the collection so those entries are
+                    // preserved for runtime reads and round-tripping; the
+                    // strict WzImage.AddProperty API is intended for edits to
+                    // newly-authored images and rejects such source data.
+                    owner.WzProperties.Add(property.DeepClone());
 
             foreach (var property in source.unsupportedInfoProperties)
                 clone.unsupportedInfoProperties.Add(owner.CloneDetached(property));
