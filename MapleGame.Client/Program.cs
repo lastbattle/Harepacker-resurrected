@@ -81,7 +81,10 @@ internal static class Program
             ISimulatorProfileStorage profile = clientOptions.ProfileDirectory == null
                 ? SimulatorProfileStorage.CreateStandaloneClient()
                 : new DirectoryProfileStorage(clientOptions.ProfileDirectory);
-            var options = new GameSessionOptions(profile);
+            var options = new GameSessionOptions(profile)
+            {
+                Resolution = clientOptions.Resolution
+            };
             if (!GameSessionHost.TryStart(() =>
             {
                 var game = new HaCreator.MapSimulator.MapSimulator(map, $"MapleGame — {map.MapId:D9}", options, services, clientOptions.Portal);

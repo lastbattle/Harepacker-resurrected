@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using HaCreator.MapSimulator.Assets;
+using HaSharedLibrary.Render.DX;
 using MapleLib.WzLib;
 
 namespace MapleGame.Client;
@@ -18,6 +19,7 @@ public sealed class MapleGameClientOptions
     public int? MapId { get; init; }
     public string Portal { get; init; }
     public string ProfileDirectory { get; init; }
+    public RenderResolution Resolution { get; init; } = RenderResolution.Res_1024x768;
     public WzMapleVersion WzVersion { get; init; } = WzMapleVersion.BMS;
     public byte[] CustomIv { get; init; }
 
@@ -28,6 +30,8 @@ public sealed class MapleGameClientOptions
             throw new ArgumentException("A map ID is required.", nameof(MapId));
         if (MapId.Value < 0 || MapId.Value > 999999999)
             throw new ArgumentOutOfRangeException(nameof(MapId), MapId, "Map ID must be between 0 and 999999999.");
+        if (!RenderResolutionCatalog.IsSelectable(Resolution))
+            throw new ArgumentException("Resolution must be a selectable screen resolution.", nameof(Resolution));
     }
 
     public RuntimeAssetSource OpenAssetSource()

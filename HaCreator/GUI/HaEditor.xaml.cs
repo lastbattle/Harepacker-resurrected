@@ -201,44 +201,19 @@ namespace HaCreator.GUI
                 SetSnappingFromShell(inspectorSnapCheckBox.IsChecked == true);
         }
 
-        private sealed class PreviewResolutionOption
-        {
-            public PreviewResolutionOption(RenderResolution resolution, string displayName)
-            {
-                Resolution = resolution;
-                DisplayName = displayName;
-            }
-
-            public RenderResolution Resolution { get; }
-            public string DisplayName { get; }
-            public override string ToString() => DisplayName;
-        }
-
         private void InitializePreviewResolutionSelector()
         {
             if (previewResolutionComboBox == null)
                 return;
 
             _syncingPreviewResolution = true;
-            previewResolutionComboBox.ItemsSource = new[]
-            {
-                new PreviewResolutionOption(RenderResolution.Res_800x600, "800 x 600"),
-                new PreviewResolutionOption(RenderResolution.Res_1024x768, "1024 x 768"),
-                new PreviewResolutionOption(RenderResolution.Res_1280x720, "1280 x 720"),
-                new PreviewResolutionOption(RenderResolution.Res_1366x768, "1366 x 768"),
-                new PreviewResolutionOption(RenderResolution.Res_1920x1080, "1920 x 1080"),
-                new PreviewResolutionOption(RenderResolution.Res_1920x1080_120PercScaled, "1920 x 1080 (120%)"),
-                new PreviewResolutionOption(RenderResolution.Res_1920x1080_150PercScaled, "1920 x 1080 (150%)"),
-                new PreviewResolutionOption(RenderResolution.Res_1920x1200, "1920 x 1200"),
-                new PreviewResolutionOption(RenderResolution.Res_1920x1200_120PercScaled, "1920 x 1200 (120%)"),
-                new PreviewResolutionOption(RenderResolution.Res_1920x1200_150PercScaled, "1920 x 1200 (150%)"),
-            };
+            previewResolutionComboBox.ItemsSource = RenderResolutionCatalog.Selectable;
 
             RenderResolution current = UserSettings.SimulateResolution;
             int selectedIndex = 0;
             for (int i = 0; i < previewResolutionComboBox.Items.Count; i++)
             {
-                if (previewResolutionComboBox.Items[i] is PreviewResolutionOption option &&
+                if (previewResolutionComboBox.Items[i] is RenderResolutionOption option &&
                     option.Resolution == current)
                 {
                     selectedIndex = i;
@@ -247,7 +222,7 @@ namespace HaCreator.GUI
             }
 
             previewResolutionComboBox.SelectedIndex = selectedIndex;
-            if (previewResolutionComboBox.SelectedItem is PreviewResolutionOption selected)
+            if (previewResolutionComboBox.SelectedItem is RenderResolutionOption selected)
                 UserSettings.SimulateResolution = selected.Resolution;
             _syncingPreviewResolution = false;
         }
@@ -256,7 +231,7 @@ namespace HaCreator.GUI
         {
             if (_syncingPreviewResolution)
                 return;
-            if (previewResolutionComboBox?.SelectedItem is PreviewResolutionOption option)
+            if (previewResolutionComboBox?.SelectedItem is RenderResolutionOption option)
                 UserSettings.SimulateResolution = option.Resolution;
         }
 

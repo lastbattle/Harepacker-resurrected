@@ -6,9 +6,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace HaSharedLibrary.Render.DX
 {
@@ -34,6 +31,58 @@ namespace HaSharedLibrary.Render.DX
         Res_1920x1200_150PercScaled = 0x100, // 1920x1200 16:9 150% scale
     }
 
+    /// <summary>A selectable simulator resolution and its shared UI label.</summary>
+    public sealed class RenderResolutionOption
+    {
+        public RenderResolutionOption(RenderResolution resolution, string displayName)
+        {
+            Resolution = resolution;
+            DisplayName = displayName;
+        }
+
+        public RenderResolution Resolution { get; }
+        public string DisplayName { get; }
+        public override string ToString() => DisplayName;
+    }
+
+    /// <summary>Canonical list of resolutions offered by simulator hosts.</summary>
+    public static class RenderResolutionCatalog
+    {
+        public static IReadOnlyList<RenderResolutionOption> Selectable { get; } = Array.AsReadOnly(new[]
+        {
+            new RenderResolutionOption(RenderResolution.Res_800x600, "800 x 600"),
+            new RenderResolutionOption(RenderResolution.Res_1024x768, "1024 x 768"),
+            new RenderResolutionOption(RenderResolution.Res_1280x720, "1280 x 720"),
+            new RenderResolutionOption(RenderResolution.Res_1366x768, "1366 x 768"),
+            new RenderResolutionOption(RenderResolution.Res_1920x1080, "1920 x 1080"),
+            new RenderResolutionOption(RenderResolution.Res_1920x1080_120PercScaled, "1920 x 1080 (120%)"),
+            new RenderResolutionOption(RenderResolution.Res_1920x1080_150PercScaled, "1920 x 1080 (150%)"),
+            new RenderResolutionOption(RenderResolution.Res_1920x1200, "1920 x 1200"),
+            new RenderResolutionOption(RenderResolution.Res_1920x1200_120PercScaled, "1920 x 1200 (120%)"),
+            new RenderResolutionOption(RenderResolution.Res_1920x1200_150PercScaled, "1920 x 1200 (150%)")
+        });
+
+        public static bool IsSelectable(RenderResolution resolution)
+        {
+            foreach (RenderResolutionOption option in Selectable)
+            {
+                if (option.Resolution == resolution)
+                    return true;
+            }
+            return false;
+        }
+
+        public static string GetDisplayName(RenderResolution resolution)
+        {
+            foreach (RenderResolutionOption option in Selectable)
+            {
+                if (option.Resolution == resolution)
+                    return option.DisplayName;
+            }
+            return null;
+        }
+    }
+
     public static class RenderResolutionExtensions
     {
         /// <summary>
@@ -43,7 +92,8 @@ namespace HaSharedLibrary.Render.DX
         /// <returns></returns>
         public static string ToReadableString(this RenderResolution rr)
         {
-            return rr.ToString().Replace("Res_", "").Replace("_", " ").Replace("PercScaled", "% scale");
+            return RenderResolutionCatalog.GetDisplayName(rr)
+                ?? rr.ToString().Replace("Res_", "").Replace("_", " ").Replace("PercScaled", "% scale");
         }
     }
 }

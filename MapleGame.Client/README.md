@@ -8,7 +8,13 @@ HaCreator's detached map preview.
 
 Run `MapleGame.Client.exe` without source arguments to open the launcher. Choose an IMG
 export, WZ installation or hybrid source, select the WZ encryption settings, enter a
-map ID and launch. Henesys (`100000000`) is the default map.
+map ID and screen resolution, then launch. Henesys (`100000000`) and 1024 x 768 are
+the defaults. The resolution list matches HaCreator's Map Simulator preview options,
+including the 120% and 150% scaled modes.
+
+After a successful IMG or hybrid launch, the launcher remembers the IMG folder and
+restores it the next time the client opens. The preference is stored in the current
+user's roaming Harepacker application-data directory.
 
 Keep the executable with every DLL, JSON manifest, native dependency and file in the
 published `Content` directory. Game data and user profiles are stored separately from

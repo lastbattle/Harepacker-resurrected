@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.IO;
+using HaSharedLibrary.Render.DX;
 using MapleLib.WzLib;
 using Forms = System.Windows.Forms;
 
@@ -16,6 +17,7 @@ internal sealed class ClientLaunchDialog : Forms.Form
     private readonly Forms.Button imgBrowse = new() { Text = "Browse…", AutoSize = true };
     private readonly Forms.Button wzBrowse = new() { Text = "Browse…", AutoSize = true };
     private readonly Forms.NumericUpDown mapId = new() { Minimum = 0, Maximum = 999999999, ThousandsSeparator = false };
+    private readonly Forms.ComboBox resolution = new() { DropDownStyle = Forms.ComboBoxStyle.DropDownList };
     private readonly Forms.ComboBox wzVersion = new() { DropDownStyle = Forms.ComboBoxStyle.DropDownList };
     private readonly Forms.TextBox customIv = new() { MaxLength = 8, PlaceholderText = "8 hexadecimal digits" };
     private readonly Forms.Label error = new() { ForeColor = Color.Firebrick, AutoSize = false, Dock = Forms.DockStyle.Fill };
@@ -27,8 +29,8 @@ internal sealed class ClientLaunchDialog : Forms.Form
         Text = "Launch MapleGame";
         AutoScaleMode = Forms.AutoScaleMode.Dpi;
         AutoScaleDimensions = new SizeF(96, 96);
-        ClientSize = new Size(700, 420);
-        MinimumSize = new Size(600, 450);
+        ClientSize = new Size(700, 458);
+        MinimumSize = new Size(600, 488);
         StartPosition = Forms.FormStartPosition.CenterScreen;
         MaximizeBox = false;
         MinimizeBox = false;
@@ -37,13 +39,13 @@ internal sealed class ClientLaunchDialog : Forms.Form
         var layout = new Forms.TableLayoutPanel
         {
             Dock = Forms.DockStyle.Fill, Padding = new Forms.Padding(20),
-            ColumnCount = 3, RowCount = 9
+            ColumnCount = 3, RowCount = 10
         };
         layout.ColumnStyles.Add(new Forms.ColumnStyle(Forms.SizeType.Absolute, 130));
         layout.ColumnStyles.Add(new Forms.ColumnStyle(Forms.SizeType.Percent, 100));
         layout.ColumnStyles.Add(new Forms.ColumnStyle(Forms.SizeType.AutoSize));
         layout.RowStyles.Add(new Forms.RowStyle(Forms.SizeType.Absolute, 52));
-        for (int row = 1; row <= 6; row++) layout.RowStyles.Add(new Forms.RowStyle(Forms.SizeType.Absolute, 38));
+        for (int row = 1; row <= 7; row++) layout.RowStyles.Add(new Forms.RowStyle(Forms.SizeType.Absolute, 38));
         layout.RowStyles.Add(new Forms.RowStyle(Forms.SizeType.Percent, 100));
         layout.RowStyles.Add(new Forms.RowStyle(Forms.SizeType.Absolute, 42));
         Controls.Add(layout);
@@ -59,9 +61,10 @@ internal sealed class ClientLaunchDialog : Forms.Form
         AddRow(layout, 2, "IMG folder", imgPath, imgBrowse);
         AddRow(layout, 3, "WZ folder", wzPath, wzBrowse);
         AddRow(layout, 4, "Map ID", mapId);
-        AddRow(layout, 5, "WZ encryption", wzVersion);
-        AddRow(layout, 6, "Custom IV", customIv);
-        layout.Controls.Add(error, 0, 7);
+        AddRow(layout, 5, "Resolution", resolution);
+        AddRow(layout, 6, "WZ encryption", wzVersion);
+        AddRow(layout, 7, "Custom IV", customIv);
+        layout.Controls.Add(error, 0, 8);
         layout.SetColumnSpan(error, 3);
 
         var actions = new Forms.FlowLayoutPanel
@@ -72,7 +75,7 @@ internal sealed class ClientLaunchDialog : Forms.Form
         var launch = new Forms.Button { Text = "Launch", AutoSize = true };
         actions.Controls.Add(cancel);
         actions.Controls.Add(launch);
-        layout.Controls.Add(actions, 0, 8);
+        layout.Controls.Add(actions, 0, 9);
         layout.SetColumnSpan(actions, 3);
         AcceptButton = launch;
         CancelButton = cancel;
@@ -80,9 +83,15 @@ internal sealed class ClientLaunchDialog : Forms.Form
         sourceMode.Items.AddRange(new object[] { "IMG", "WZ", "Hybrid (IMG + WZ)" });
         sourceMode.SelectedIndex = !string.IsNullOrWhiteSpace(this.initial.HybridImgDirectory) ? 2
             : !string.IsNullOrWhiteSpace(this.initial.WzDirectory) ? 1 : 0;
-        imgPath.Text = this.initial.HybridImgDirectory ?? this.initial.ImgDirectory ?? string.Empty;
+        imgPath.Text = this.initial.HybridImgDirectory
+            ?? this.initial.ImgDirectory
+            ?? ClientLaunchPreferences.LoadLastImgDirectory()
+            ?? string.Empty;
         wzPath.Text = this.initial.WzDirectory ?? string.Empty;
         mapId.Value = Math.Clamp(this.initial.MapId ?? 100000000, 0, 999999999);
+        foreach (RenderResolutionOption option in RenderResolutionCatalog.Selectable)
+            resolution.Items.Add(option);
+        resolution.SelectedIndex = FindResolutionIndex(this.initial.Resolution);
         foreach (WzMapleVersion version in Enum.GetValues<WzMapleVersion>()) wzVersion.Items.Add(version);
         wzVersion.SelectedItem = Enum.IsDefined(this.initial.WzVersion) ? this.initial.WzVersion : WzMapleVersion.BMS;
         customIv.Text = this.initial.CustomIv == null ? string.Empty : Convert.ToHexString(this.initial.CustomIv);
@@ -161,9 +170,12 @@ internal sealed class ClientLaunchDialog : Forms.Form
                 ImgDirectory = sourceMode.SelectedIndex == 0 ? img : null,
                 HybridImgDirectory = sourceMode.SelectedIndex == 2 ? img : null,
                 WzDirectory = wz, MapId = decimal.ToInt32(mapId.Value), WzVersion = version, CustomIv = iv,
-                Portal = initial.Portal, ProfileDirectory = initial.ProfileDirectory
+                Portal = initial.Portal, ProfileDirectory = initial.ProfileDirectory,
+                Resolution = ((RenderResolutionOption)resolution.SelectedItem).Resolution
             };
             options.Validate();
+            if (usesImg)
+                ClientLaunchPreferences.SaveLastImgDirectory(img);
             selected = options;
             DialogResult = Forms.DialogResult.OK;
             Close();
@@ -182,4 +194,15 @@ internal sealed class ClientLaunchDialog : Forms.Form
         if (!Directory.Exists(path)) throw new DirectoryNotFoundException($"The {kind} folder does not exist: {path}");
         return path;
     }
+
+    private int FindResolutionIndex(RenderResolution value)
+    {
+        for (int i = 0; i < resolution.Items.Count; i++)
+        {
+            if (resolution.Items[i] is RenderResolutionOption option && option.Resolution == value)
+                return i;
+        }
+        return 1;
+    }
+
 }

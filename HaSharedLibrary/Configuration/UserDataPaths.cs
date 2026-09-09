@@ -41,6 +41,10 @@ public static class UserDataPaths
         "config.json",
         GetLegacyRoamingPath(HaCreator, "config.json"));
 
+    public static string MapleGameClientSettingsFile => GetRoamingFile(
+        MapleGameClient,
+        "Settings.json");
+
     public static string HaCreatorAiSettingsFile => GetRoamingFile(
         HaCreator,
         Path.Combine("AI", "Settings.json"),
