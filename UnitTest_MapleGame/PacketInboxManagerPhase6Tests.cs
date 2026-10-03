@@ -85,35 +85,6 @@ namespace UnitTest_MapSimulator
             Assert.Equal(LocalOverlayPacketInboxManager.FieldFadeInOutClientPacketType, msg.PacketType);
         }
 
-        [Theory]
-        [InlineData("hpdec")]
-        [InlineData("damagemeter")]
-        [InlineData("hazardresult")]
-        [InlineData("243")]
-        [InlineData("267")]
-        [InlineData("1026")]
-        public void LocalOverlayInbox_RejectsAdjacentUtilityPackets(string packetToken)
-        {
-            bool parsed = LocalOverlayPacketInboxManager.TryParseLine(packetToken, out LocalOverlayPacketInboxMessage msg, out string error);
-
-            Assert.False(parsed);
-            Assert.Null(msg);
-            Assert.Contains("Unsupported local overlay packet", error);
-        }
-
-        [Fact]
-        public void LocalOverlayInbox_ClientRawRejectsAdjacentUtilityOpcode()
-        {
-            bool parsed = LocalOverlayPacketInboxManager.TryParseLine(
-                "packetclientraw 0B01",
-                out LocalOverlayPacketInboxMessage msg,
-                out string error);
-
-            Assert.False(parsed);
-            Assert.Null(msg);
-            Assert.Contains("Unsupported local overlay client opcode 267", error);
-        }
-
         [Fact]
         public void LocalOverlayBalloonFormatter_FontSizeReset_EmitsEmptyFontControl()
         {

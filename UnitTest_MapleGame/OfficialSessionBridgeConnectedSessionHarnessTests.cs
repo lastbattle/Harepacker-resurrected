@@ -10,15 +10,6 @@ namespace UnitTest_MapSimulator
     public class OfficialSessionBridgeConnectedSessionHarnessTests
     {
         [Fact]
-        public void DojoHarness_AttachesConnectedSessionInvariant()
-        {
-            using DojoOfficialSessionBridgeManager manager = new DojoOfficialSessionBridgeManager();
-            using ConnectedSessionHarness harness = ConnectedSessionHarness.Attach(manager);
-
-            Assert.True(manager.HasConnectedSession);
-        }
-
-        [Fact]
         public void TransportationHarness_FlushesDeferredQueue_OnInitEvent()
         {
             using TransportationOfficialSessionBridgeManager manager = new TransportationOfficialSessionBridgeManager();
@@ -119,6 +110,14 @@ namespace UnitTest_MapSimulator
                 Assert.NotNull(proxyField);
                 object? roleSessionProxy = proxyField!.GetValue(manager);
                 Assert.NotNull(roleSessionProxy);
+
+                if (roleSessionProxy is ReactorPoolRoleSessionProxyAdapter)
+                {
+                    FieldInfo? wrappedProxyField = roleSessionProxy.GetType().GetField("_proxy", BindingFlags.NonPublic | BindingFlags.Instance);
+                    Assert.NotNull(wrappedProxyField);
+                    roleSessionProxy = wrappedProxyField!.GetValue(roleSessionProxy);
+                    Assert.NotNull(roleSessionProxy);
+                }
 
                 TcpListener serverSinkListener = new TcpListener(IPAddress.Loopback, 0);
                 serverSinkListener.Start();

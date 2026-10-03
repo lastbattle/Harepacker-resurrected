@@ -26,7 +26,6 @@ public sealed class EditorRuntimeCatalogTests
 
         Assert.Equal(1082002, first.Items[0].ItemId);
         Assert.Equal(1082003, second.Items[0].ItemId);
-        Assert.Equal(1082002, first.Items[0].ItemId);
         Assert.Equal(0, new SocialRoomItemEntry("Owner", "Brown Work Gloves", 1, 0, "").ItemId);
     }
 

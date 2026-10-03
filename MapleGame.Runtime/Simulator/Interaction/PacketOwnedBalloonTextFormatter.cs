@@ -130,13 +130,14 @@ namespace HaCreator.MapSimulator.Interaction
             formatted = QuestValueRegex.Replace(formatted, match => ResolveQuestValueText(context, match.Groups[1].Value));
             formatted = CurrentQuestValueRegex.Replace(formatted, _ => ResolveActiveQuestValueText(context));
             formatted = ItemIconRegex.Replace(formatted, match => BuildItemIconMarker(match.Groups[1].Value));
-            formatted = UiCanvasRegex.Replace(formatted, match => BuildUiCanvasMarker(match.Groups[1].Value));
             formatted = StandaloneColorBlockRegex.Replace(formatted, match => match.Groups["text"].Value);
             formatted = RewardCategoryRegex.Replace(formatted, match => ResolveRewardCategoryMarker(match.Groups["category"].Value));
             formatted = FontNameRegex.Replace(formatted, match => BuildFontControlMarker(PacketOwnedBalloonFontControlKind.FontName, match.Value.Length > 3 ? match.Value[3..^1] : string.Empty));
             formatted = FontColorRegex.Replace(formatted, match => BuildFontControlMarker(PacketOwnedBalloonFontControlKind.FontColor, match.Groups["value"].Value));
             formatted = FontSizeRegex.Replace(formatted, match => BuildFontControlMarker(PacketOwnedBalloonFontControlKind.FontSize, match.Value.Length > 3 ? match.Value[3..^1] : string.Empty));
             formatted = FontSizeResetRegex.Replace(formatted, static _ => BuildFontControlMarker(PacketOwnedBalloonFontControlKind.FontSize, string.Empty));
+            // Font controls share the #f prefix and must be consumed before generic canvas tags.
+            formatted = UiCanvasRegex.Replace(formatted, match => BuildUiCanvasMarker(match.Groups[1].Value));
             formatted = FontTableRegex.Replace(formatted, match =>
             {
                 if (TryResolveFontTableIndex(match.Groups["value"].Value, out int tableId))

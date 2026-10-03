@@ -161,6 +161,15 @@ Graphics and real-data tests are opt-in because they require a Windows graphics 
 and external MapleStory data. Use the environment variables documented by the test
 classes, and keep game assets outside source control.
 
+`UnitTest_MapleGame` owns runtime host, asset, protocol and lifecycle contracts.
+`UnitTest_MapSimulator` retains the distinct editor preview, snapshot and producer
+parity contracts. Host lifecycle proof belongs in `GameSessionHostTests`; emitted
+dependency isolation belongs in `RuntimeAssemblyBoundaryTests`. Native map-transition
+tests exercise the live activation path rather than a separate transaction model.
+See [runtime test ownership](../../UnitTest_MapleGame/AGENTS.md) for audit guidance.
+Packet-owned balloon formatting consumes font name, color, size and reset controls
+before generic `#f...#` canvas references because they share the same tag prefix.
+
 ## Compatibility work that remains manual
 
 Automated coverage exercises the assembly boundary, both map producers, source

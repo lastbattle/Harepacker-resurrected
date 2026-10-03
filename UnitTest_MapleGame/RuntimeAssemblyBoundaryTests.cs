@@ -6,7 +6,6 @@ using System.IO;
 
 namespace UnitTest_MapleGame;
 
-[Collection("Game session host")]
 public class RuntimeAssemblyBoundaryTests
 {
     [Fact]
@@ -39,23 +38,4 @@ public class RuntimeAssemblyBoundaryTests
 
     private static void AssertNotEditor(string name) =>
         Assert.DoesNotContain(name, new[] { "WvsMaps", "WvsWzImg", "HaCreator", "HaRepacker" });
-
-    [Fact]
-    public async Task RuntimeHostConstructsRunsAndDisposesWithoutEditorAssembly()
-    {
-        var session = new ProbeSession();
-        Assert.True(GameSessionHost.TryStart(() => session, out GameSessionHandle handle));
-        GameSessionResult result = await handle.Completion.WaitAsync(TimeSpan.FromSeconds(10));
-        Assert.Equal(GameSessionOutcome.Closed, result.Outcome);
-        Assert.True(session.Disposed);
-        Assert.Equal(ApartmentState.STA, session.Apartment);
-    }
-
-    private sealed class ProbeSession : IGameSession
-    {
-        public ApartmentState Apartment { get; private set; }
-        public bool Disposed { get; private set; }
-        public void Run(CancellationToken cancellationToken) => Apartment = Thread.CurrentThread.GetApartmentState();
-        public void Dispose() => Disposed = true;
-    }
 }
