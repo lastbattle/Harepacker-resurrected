@@ -27007,21 +27007,57 @@ foreach (var pair in runtimeServices.Catalog.GetMapNames())
         private List<IDXObject> LoadInventoryItemDropFrames(int itemId)
         {
             WzSubProperty infoProperty = LoadInventoryItemInfoProperty(itemId);
-            WzImageProperty dropProperty = infoProperty?["drop"];
-            if (dropProperty == null || GraphicsDevice == null)
+            WzImageProperty dropProperty = infoProperty?["drop"]
+                ?? infoProperty?["icon"]
+                ?? infoProperty?["iconRaw"];
+            if (GraphicsDevice == null)
             {
                 return null;
             }
 
             ConcurrentBag<WzObject> usedProps = new();
-            List<IDXObject> frames = MapSimulatorLoader.LoadFrames(
-                _texturePool,
-                dropProperty,
-                0,
-                0,
-                GraphicsDevice,
-                usedProps);
-            return frames.Count > 0 ? frames : null;
+            List<IDXObject> frames = dropProperty != null
+                ? MapSimulatorLoader.LoadFrames(
+                    _texturePool,
+                    dropProperty,
+                    0,
+                    0,
+                    GraphicsDevice,
+                    usedProps)
+                : null;
+
+            // Keep the catalog's centralized item-icon lookup as a final fallback.
+            // This covers item nodes whose link or numeric name differs from the
+            // locally resolved IMG property shape.
+            if ((frames == null || frames.Count == 0)
+                && InventoryItemMetadataResolver.TryResolveImageSource(itemId, out string category, out string imagePath))
+            {
+                WzCanvasProperty catalogIcon = null;
+                if (string.Equals(category, "Character", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Equipment image paths include the slot folder (Cap, Weapon,
+                    // Shoes, etc.); passing only "Character" loses that folder.
+                    WzImage equipmentImage = runtimeServices.Assets.FindImage(category, imagePath);
+                    catalogIcon = equipmentImage?["info"]?["icon"]?.GetLinkedWzImageProperty() as WzCanvasProperty;
+                }
+                else
+                {
+                    runtimeServices.Catalog.TryGetItemIcon(itemId, category, out catalogIcon);
+                }
+
+                if (catalogIcon != null)
+                {
+                    frames = MapSimulatorLoader.LoadFrames(
+                        _texturePool,
+                        catalogIcon,
+                        0,
+                        0,
+                        GraphicsDevice,
+                        usedProps);
+                }
+            }
+
+            return frames != null && frames.Count > 0 ? frames : null;
         }
 
 
@@ -28907,8 +28943,12 @@ foreach (var pair in runtimeServices.Catalog.GetMapNames())
 
 
             itemImage.ParseImage();
-            string itemText = category == "Character" ? itemId.ToString("D8") : itemId.ToString("D7");
-            return itemImage[itemText] as WzSubProperty;
+            // Item IMG nodes are stored as eight digits in the v95 export (for
+            // example, Etc/0400.img contains 04000000). Keep the seven-digit
+            // lookup as a compatibility fallback for older data sources.
+            string itemText = itemId.ToString("D8", CultureInfo.InvariantCulture);
+            return itemImage[itemText] as WzSubProperty
+                ?? itemImage[itemId.ToString("D7", CultureInfo.InvariantCulture)] as WzSubProperty;
         }
 
 

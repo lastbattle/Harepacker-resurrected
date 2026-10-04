@@ -978,6 +978,13 @@ namespace HaCreator.MapSimulator.Pools
             {
                 drop.Icon = icon;
             }
+            else
+            {
+                // Simulator-owned drops use the same WZ visual source as packet drops.
+                // Without this fallback, normal mob drops have no icon because the
+                // legacy SetItemIcon registration path is not used by the client.
+                TryApplyPacketItemVisuals(drop, itemId);
+            }
 
             if (isRare)
             {
@@ -3394,7 +3401,13 @@ namespace HaCreator.MapSimulator.Pools
                 frames = _packetItemVisualResolver?.Invoke(itemId)?
                     .Where(frame => frame != null)
                     .ToList();
-                _packetItemVisualFrames[itemId] = frames;
+                // Do not cache failed lookups. WZ images may not be parsed yet
+                // when the first drop is spawned; retaining null would make all
+                // later drops of that item use the debug fallback permanently.
+                if (frames != null && frames.Count > 0)
+                {
+                    _packetItemVisualFrames[itemId] = frames;
+                }
             }
 
             if (frames == null || frames.Count == 0)
