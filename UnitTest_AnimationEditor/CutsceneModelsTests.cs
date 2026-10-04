@@ -438,4 +438,128 @@ public sealed class CutsceneModelsTests
         Assert.Equal(new[] { background, frame, text }, CutscenePlaybackTiming.FindActiveVisuals(events, 6000));
         Assert.Empty(CutscenePlaybackTiming.FindActiveVisuals(events, 9000));
     }
+
+    [Theory]
+    [InlineData(8)]
+    [InlineData(128)]
+    [InlineData(1024)]
+    public void MapDirection_ToProperty_AssignsSmallestFreeQueueNamesAndPreservesFields(int queueCount)
+    {
+        MapDirectionInfo directionInfo = new();
+        MapDirectionEvent directionEvent = new()
+        {
+            Name = "7",
+            X = 12,
+            Y = -7,
+            ForcedInput = 4
+        };
+        directionEvent.EventQueue.AddRange(
+            Enumerable.Range(0, queueCount).Select(index => $"event-{index}"));
+        directionEvent.UnknownEventQueueProperties.Add(new WzStringProperty("0", "reserved-zero"));
+        directionEvent.UnknownEventQueueProperties.Add(new WzIntProperty("2", 99));
+        directionInfo.Events.Add(directionEvent);
+        directionInfo.UnknownProperties.Add(new WzStringProperty("rootMetadata", "keep"));
+
+        WzSubProperty serialized = directionInfo.ToProperty();
+        WzSubProperty serializedEvent = Assert.IsType<WzSubProperty>(serialized["7"]);
+        WzSubProperty serializedQueue = Assert.IsType<WzSubProperty>(serializedEvent["EventQ"]);
+
+        string[] expectedQueueNames = Enumerable.Range(0, queueCount)
+            .Select(index => (index == 0 ? 1 : index + 2).ToString())
+            .Concat(new[] { "0", "2" })
+            .ToArray();
+
+        Assert.Equal(new[] { "7", "rootMetadata" }, serialized.WzProperties.Select(property => property.Name));
+        Assert.Equal(12, Assert.IsType<WzIntProperty>(serializedEvent["x"]).Value);
+        Assert.Equal(-7, Assert.IsType<WzIntProperty>(serializedEvent["y"]).Value);
+        Assert.Equal(4, Assert.IsType<WzIntProperty>(serializedEvent["forcedInput"]).Value);
+        Assert.Equal(expectedQueueNames, serializedQueue.WzProperties.Select(property => property.Name));
+        Assert.Equal("event-0", Assert.IsType<WzStringProperty>(serializedQueue["1"]).Value);
+        Assert.Equal("reserved-zero", Assert.IsType<WzStringProperty>(serializedQueue["0"]).Value);
+        Assert.Equal(99, Assert.IsType<WzIntProperty>(serializedQueue["2"]).Value);
+        Assert.Equal("keep", Assert.IsType<WzStringProperty>(serialized["rootMetadata"]).Value);
+    }
+
+    [Fact]
+    public void MapDirection_FromProperty_PreservesExplicitQueueNames()
+    {
+        WzSubProperty source = new("directionInfo");
+        WzSubProperty sourceEvent = new("7");
+        sourceEvent.AddProperty(new WzIntProperty("x", 12));
+        sourceEvent.AddProperty(new WzIntProperty("y", -7));
+        sourceEvent.AddProperty(new WzIntProperty("forcedInput", 4));
+        WzSubProperty sourceQueue = new("EventQ");
+        sourceQueue.AddProperty(new WzStringProperty("11", "late"));
+        sourceQueue.AddProperty(new WzStringProperty("3", "early"));
+        sourceQueue.AddProperty(new WzIntProperty("metadata", 99));
+        sourceEvent.AddProperty(sourceQueue);
+        source.AddProperty(sourceEvent);
+
+        MapDirectionInfo directionInfo = MapDirectionInfo.FromProperty(source)!;
+        WzSubProperty serialized = directionInfo.ToProperty();
+        WzSubProperty serializedEvent = Assert.IsType<WzSubProperty>(serialized["7"]);
+        WzSubProperty serializedQueue = Assert.IsType<WzSubProperty>(serializedEvent["EventQ"]);
+
+        Assert.Equal(new[] { "3", "11", "metadata" }, serializedQueue.WzProperties.Select(property => property.Name));
+        Assert.Equal("early", Assert.IsType<WzStringProperty>(serializedQueue["3"]).Value);
+        Assert.Equal("late", Assert.IsType<WzStringProperty>(serializedQueue["11"]).Value);
+        Assert.Equal(99, Assert.IsType<WzIntProperty>(serializedQueue["metadata"]).Value);
+
+        MapDirectionEvent directionEvent = Assert.Single(directionInfo.Events);
+        directionEvent.EventQueue.AddRange(new[] { "new-0", "new-1", "new-2", "new-3", "new-4" });
+        serializedQueue = Assert.IsType<WzSubProperty>(directionInfo.ToProperty()["7"]["EventQ"]);
+        Assert.Equal(new[] { "3", "11", "0", "1", "2", "4", "5", "metadata" },
+            serializedQueue.WzProperties.Select(property => property.Name));
+
+        directionEvent.UnknownEventQueueProperties.Add(new WzIntProperty("3", 77));
+        serializedQueue = Assert.IsType<WzSubProperty>(directionInfo.ToProperty()["7"]["EventQ"]);
+        Assert.Equal(new[] { "0", "11", "1", "2", "4", "5", "6", "metadata", "3" },
+            serializedQueue.WzProperties.Select(property => property.Name));
+        Assert.Equal("early", Assert.IsType<WzStringProperty>(serializedQueue["0"]).Value);
+        Assert.Equal(77, Assert.IsType<WzIntProperty>(serializedQueue["3"]).Value);
+    }
+
+    [Fact]
+    public void MapDirection_ToProperty_DeepClonesUnknownQueueAndRootProperties()
+    {
+        WzSubProperty source = new("directionInfo");
+        WzSubProperty sourceEvent = new("0");
+        WzSubProperty sourceQueue = new("EventQ");
+        WzSubProperty sourceQueueUnknown = new("futureQueue");
+        WzStringProperty sourceQueuePayload = new("payload", "queue-value");
+        sourceQueueUnknown.AddProperty(sourceQueuePayload);
+        sourceQueue.AddProperty(sourceQueueUnknown);
+        sourceEvent.AddProperty(sourceQueue);
+        source.AddProperty(sourceEvent);
+
+        WzSubProperty sourceRootUnknown = new("futureRoot");
+        WzStringProperty sourceRootPayload = new("payload", "root-value");
+        sourceRootUnknown.AddProperty(sourceRootPayload);
+        source.AddProperty(sourceRootUnknown);
+
+        MapDirectionInfo directionInfo = MapDirectionInfo.FromProperty(source)!;
+        MapDirectionEvent directionEvent = Assert.Single(directionInfo.Events);
+        WzSubProperty modelQueueUnknown = Assert.IsType<WzSubProperty>(Assert.Single(directionEvent.UnknownEventQueueProperties));
+        WzSubProperty modelRootUnknown = Assert.IsType<WzSubProperty>(Assert.Single(directionInfo.UnknownProperties));
+        Assert.NotSame(sourceQueueUnknown, modelQueueUnknown);
+        Assert.NotSame(sourceRootUnknown, modelRootUnknown);
+
+        WzSubProperty serialized = directionInfo.ToProperty();
+        WzSubProperty serializedEvent = Assert.IsType<WzSubProperty>(serialized["0"]);
+        WzSubProperty serializedQueue = Assert.IsType<WzSubProperty>(serializedEvent["EventQ"]);
+        WzSubProperty serializedQueueUnknown = Assert.IsType<WzSubProperty>(serializedQueue["futureQueue"]);
+        WzSubProperty serializedRootUnknown = Assert.IsType<WzSubProperty>(serialized["futureRoot"]);
+        Assert.NotSame(modelQueueUnknown, serializedQueueUnknown);
+        Assert.NotSame(modelRootUnknown, serializedRootUnknown);
+        Assert.NotSame(modelQueueUnknown["payload"], serializedQueueUnknown["payload"]);
+        Assert.NotSame(modelRootUnknown["payload"], serializedRootUnknown["payload"]);
+
+        Assert.IsType<WzStringProperty>(serializedQueueUnknown["payload"]).Value = "changed-queue";
+        Assert.IsType<WzStringProperty>(serializedRootUnknown["payload"]).Value = "changed-root";
+        Assert.Equal("queue-value", sourceQueuePayload.Value);
+        Assert.Equal("root-value", sourceRootPayload.Value);
+        Assert.Equal("queue-value", Assert.IsType<WzStringProperty>(modelQueueUnknown["payload"]).Value);
+        Assert.Equal("root-value", Assert.IsType<WzStringProperty>(modelRootUnknown["payload"]).Value);
+    }
+
 }

@@ -38,6 +38,10 @@ Unsupported event types remain visible as raw commands. The editor changes only 
 
 Top-level map `directionInfo` is represented by `MapDirectionInfo` and `MapDirectionEvent` in MapleLib. Each event exposes `x`, `y`, `forcedInput`, and the string entries under `EventQ`. Unknown event, queue, and root properties are deep-cloned and written back so the model is round-trippable across client variants.
 
+Saving retains parsed queue names when available and gives added entries the
+smallest unused numeric name. An append-only naming cursor avoids rescanning
+occupied prefixes for each new entry while preserving unknown queue nodes.
+
 `MapLoader.VerifyMapPropsKnown` no longer classifies top-level `directionInfo` as an unsupported copied property. `MapInfo` parses it, and `MapSaver` writes the typed node before preserving other unsupported map properties.
 
 ## Persistence
