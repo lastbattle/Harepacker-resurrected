@@ -154,6 +154,7 @@ public void EnsureKeySize(int size)
         return;
     }
 
+    byte[] newKeys = new byte[size];
     using var aes = Aes.Create();
     aes.KeySize = 256;           // AES-256
     aes.BlockSize = 128;         // 16-byte blocks
@@ -161,6 +162,7 @@ public void EnsureKeySize(int size)
     aes.Mode = CipherMode.ECB;   // Electronic Codebook mode
     aes.Padding = PaddingMode.None;
 
+    using var encryptor = aes.CreateEncryptor();
     // Generate key stream by encrypting IV repeatedly
     // First block: encrypt IV (repeated to 16 bytes)
     // Subsequent blocks: encrypt previous ciphertext
@@ -170,15 +172,16 @@ public void EnsureKeySize(int size)
         {
             // First block: IV repeated 4 times (4 bytes → 16 bytes)
             for (int j = 0; j < 16; j++)
-                block[j] = _iv[j % 4];
-            cs.Write(block);
+                newKeys[j] = _iv[j % 4];
+            encryptor.TransformBlock(newKeys, 0, 16, newKeys, 0);
         }
         else
         {
             // Chain: encrypt previous output
-            cs.Write(newKeys.AsSpan(i - 16, 16));
+            encryptor.TransformBlock(newKeys, i - 16, 16, newKeys, i);
         }
     }
+    _keys = newKeys;
 }
 ```
 
@@ -248,6 +251,26 @@ private string DecodeUnicode(int length)
 ```
 
 **Source:** `MapleLib/WzLib/Util/WzBinaryReader.cs`
+
+`WzBinaryWriter` ensures the complete string key before encrypting a buffered
+payload. Unicode reads and writes use one key word per UTF-16 code unit on little-endian
+runtimes; other runtimes assemble the same little-endian word from two bytes.
+This avoids repeated key-growth checks while preserving the length markers,
+the `0xAAAA` mask sequence, and the serialized bytes.
+
+Owned IMG file exports buffer string payloads without changing the public
+writer's flush behavior. Parsed, changed images containing built-in properties
+use a seekable pooled staging buffer capped at 1 MiB, then spill once to the
+destination when output grows beyond that buffer. This avoids flushing the file
+for each nested block-length patch. Unchanged raw copies and external property
+extensions retain the direct file path. Partial output and file ownership remain
+observable on errors; the pool can retain the 1 MiB lease after an export.
+
+List.wz entries use a separate unmasked UTF-16 encryption rule. The parser reads
+each validated encrypted payload into its reusable character buffer in one
+operation on little-endian runtimes, then consumes the encrypted terminator.
+Other runtimes retain the scalar little-endian reads; empty final entries and
+the final slash-to-`g` adjustment retain their existing behavior.
 
 ### Version Hash Computation
 
