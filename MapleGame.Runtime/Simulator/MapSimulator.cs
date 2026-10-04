@@ -14764,8 +14764,26 @@ foreach (var pair in runtimeServices.Catalog.GetMapNames())
                 return true;
             }
 
+            // Standalone direct login (P04): the title-screen account name is
+            // the passport; the machine id uses the synthetic slice default
+            // unless the manual auth command overrides it.
+            if (_onlineSessionOwner != null && !string.IsNullOrWhiteSpace(_loginTitleAccountName))
+            {
+                authMaterial = new LoginCheckPasswordAuthMaterial(
+                    _loginTitleAccountName.Trim(),
+                    (byte[])StandaloneDirectMachineId.Clone(),
+                    0,
+                    0,
+                    0,
+                    "standalone direct login title submission",
+                    DateTime.UtcNow);
+                return true;
+            }
+
             return _loginOfficialSessionBridge.TryGetCapturedCheckPasswordAuth(out authMaterial);
         }
+
+        private static readonly byte[] StandaloneDirectMachineId = Encoding.ASCII.GetBytes("MapleGameClient0");
 
         private bool TrySendLiveOfficialCheckPasswordRequest(string password, out string status)
         {
