@@ -17,6 +17,11 @@ Use it to make changes that match this codebase.
   - `UnitTest_MapSimulator`
   - `UnitTest_WzFile`
   - `UnitTest_Perf`
+  - `UnitTest_SkillEditor`
+  - `UnitTest_WorldMapEditor`
+  - `UnitTest_AnimationEditor`
+  - `UnitTest_AudioEditor`
+  - `UnitTest_MapleGame`
 - Platform: Windows
 - Current target framework in active projects: `net10.0-windows`
 
