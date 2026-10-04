@@ -16,7 +16,7 @@ internal static class Program
         ClientPresentation.Initialize();
         if (args.Length == 1 && args[0] is "--help" or "-h")
         {
-            ClientPresentation.ShowHelp("MapleGame.Client (--img <version-directory> | --wz <install-directory> | --hybrid-img <version-directory> --wz <install-directory>) [--map <map-id>] [--wz-version <GMS|EMS|BMS|CLASSIC|CUSTOM>] [--wz-iv <8-hex-digits>] [--portal <name>] [--profile-directory <path>]");
+            ClientPresentation.ShowHelp("MapleGame.Client (--img <version-directory> | --wz <install-directory> | --hybrid-img <version-directory> --wz <install-directory>) [--map <map-id>] [--wz-version <GMS|EMS|BMS|CLASSIC|CUSTOM>] [--wz-iv <8-hex-digits>] [--portal <name>] [--profile-directory <path>] [--online <login-host[:port]>]");
             return 0;
         }
 
@@ -27,6 +27,7 @@ internal static class Program
             string hybridImgDirectory = null;
             string portal = null;
             string profileDirectory = null;
+            string onlineEndpoint = null;
             int? mapId = 100000000;
             WzMapleVersion wzVersion = WzMapleVersion.BMS;
             byte[] customIv = null;
@@ -47,6 +48,7 @@ internal static class Program
                     case "--wz-iv": customIv = ParseWzIv(args[i + 1]); break;
                     case "--portal": portal = args[i + 1]; break;
                     case "--profile-directory": profileDirectory = args[i + 1]; break;
+                    case "--online": onlineEndpoint = args[i + 1]; break;
                     default: throw new ArgumentException($"Unknown option {args[i]}.");
                 }
             }
@@ -73,6 +75,7 @@ internal static class Program
             }
             clientOptions.Validate();
 
+            GameSessionAuthority authority = ParseOnlineAuthority(onlineEndpoint);
             using var assets = clientOptions.OpenAssetSource();
             var diagnostics = new ConsoleDiagnostics();
             var services = new RuntimeDataServices(assets, new SourceRuntimeAssetCatalog(assets, diagnostics), diagnostics);
@@ -83,6 +86,7 @@ internal static class Program
                 : new DirectoryProfileStorage(clientOptions.ProfileDirectory);
             var options = new GameSessionOptions(profile)
             {
+                Authority = authority,
                 Resolution = clientOptions.Resolution
             };
             if (!GameSessionHost.TryStart(() =>
@@ -108,6 +112,27 @@ internal static class Program
     {
         public void Trace(string message) => Console.WriteLine(message);
         public void Report(string message, Exception error = null) => Console.Error.WriteLine(error == null ? message : $"{message}: {error}");
+    }
+
+    private static GameSessionAuthority ParseOnlineAuthority(string onlineEndpoint)
+    {
+        if (string.IsNullOrWhiteSpace(onlineEndpoint))
+            return GameSessionAuthority.Offline.Instance;
+
+        string trimmed = onlineEndpoint.Trim();
+        int port = 8484; // classic login listener port when omitted
+        string host = trimmed;
+        int separatorIndex = trimmed.LastIndexOf(':');
+        if (separatorIndex >= 0
+            && !trimmed.Contains(']')
+            && int.TryParse(trimmed.AsSpan(separatorIndex + 1), out int parsedPort)
+            && parsedPort > 0)
+        {
+            host = trimmed[..separatorIndex];
+            port = parsedPort;
+        }
+
+        return new GameSessionAuthority.Online(host, port);
     }
 
     private static byte[] ParseWzIv(string value)

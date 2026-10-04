@@ -13,6 +13,12 @@ namespace HaCreator.MapSimulator.Contracts
         }
 
         public ISimulatorProfileStorage ProfileStorage { get; }
+        /// <summary>
+        /// Explicit session authority. The offline default keeps the detached
+        /// preview behavior; an online authority routes production state
+        /// through a client-owned direct session.
+        /// </summary>
+        public GameSessionAuthority Authority { get; init; } = GameSessionAuthority.Offline.Instance;
         public RenderResolution Resolution { get; init; } = RenderResolution.Res_1024x768;
         public string ContentRootDirectory { get; init; } = Path.Combine(AppContext.BaseDirectory, "Content");
         /// <summary>MapleStory client screenshot folder mode used by packet-owned anti-macro flows.</summary>
