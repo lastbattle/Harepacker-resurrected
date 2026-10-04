@@ -33,6 +33,20 @@ wiring. P09/P13 can improve presentation incrementally without claiming broad
 completion. Dependencies in the table are final acceptance gates, not a ban on
 independent research before upstream implementation is complete.
 
+## Current slice status (implementation vs verification)
+
+Statuses below distinguish implemented source from verified behavior. Level
+definitions live in [VALIDATION.md](VALIDATION.md); the pinned oracle record is
+[P00-ORACLE-PIN.md](P00-ORACLE-PIN.md).
+
+| Package | Implementation status | Verification status |
+|---|---|---|
+| P00 | Pinned executable identity, confirmed N04 observations, and scenario list recorded (`P00-ORACLE-PIN.md`). | Open: WZ/IMG export identity and controlled server not pinned; scenarios require level E. |
+| P01 | `GameSessionAuthority` contract in Runtime Contracts, host `--online <host[:port]>` flag, offline default preserved. | Source-verified (A); no behavior difference offline. |
+| P02 | `MapleClientDirectSession` (MapleLib) with handshake, framing, crypto, cancellation, disconnect, reconnect, global generations, stale rejection. `codex/p02-direct-session`. | Level B: 8 focused xUnit tests pass (`MapleClientDirectSessionTests`, `MapleOnlineDirectSessionOwnerTests`). Level E pending server. |
+| P03 | `MapleOnlineDirectSessionOwner` single ingress path, per-role sessions, game-thread drain, N04 retire-before-dial migration, trace ring. | Level B: routing, role isolation, and migration tests pass. Live trace pending server. |
+| P04 | Login/field bridges prefer the direct session; owner pumped on the game thread; select-character handoff performs the real close/connect channel migration; stage-aware reconnect. | Level A/B only: full login-to-field flow, server-authored roster, and field action/response require a controlled v95 server. Post-migration client-to-channel request packet is an open native follow-up (obfuscated `CClientSocket::Connect`/`OnConnect`). |
+
 Use one integrator for shared `MapSimulator.cs`, UpdateLoop, Drawing, Content and
 stage partials. Assign domain files to separate workers only after agreeing on
 session, clock and authority contracts. Do not concurrently edit the same giant
