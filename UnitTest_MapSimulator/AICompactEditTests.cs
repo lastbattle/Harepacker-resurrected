@@ -167,8 +167,13 @@ public class AICompactEditTests
     {
         using var server = new MapMcpToolServer();
         var tools = server.GetResponsesTools(true, compactOnly: true);
-        Assert.Equal(13, tools.Count);
+        // 12 query functions (including get_tile_info, get_map_state and
+        // get_asset_preview added with visual Astra tooling) + edit_map + help.
+        Assert.Equal(14, tools.Count);
         Assert.DoesNotContain(tools, t => (string?)t["name"] == "add_tile");
+        Assert.Contains(tools, t => (string?)t["name"] == "get_map_state");
+        Assert.Contains(tools, t => (string?)t["name"] == "get_tile_info");
+        Assert.Contains(tools, t => (string?)t["name"] == "get_asset_preview");
         var edit = Assert.Single(tools.Where(t => (string?)t["name"] == "edit_map"));
         Assert.False((bool)edit["parameters"]!["additionalProperties"]!);
         Assert.Contains("raw_position", (string)edit["description"]!);

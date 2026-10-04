@@ -28,20 +28,18 @@ using the existing Debug outputs and `--no-restore`:
 
 ```powershell
 dotnet test UnitTest_MapleGame/UnitTest_MapleGame.csproj -c Debug --no-restore -m:1
-# Passed: 137, Skipped: 10, Total: 147
+# Passed: 152, Skipped: 7, Total: 159 (with MAPLEGAME_TEST_EXPORTS pointing at the pinned gms_v95/gms_v270 exports; graphics opt-in suite passed 6/6)
 
 dotnet test UnitTest_MapSimulator/UnitTest_MapSimulator.csproj -c Debug --no-restore -m:1
-# Failed: 1, Passed: 189, Skipped: 4, Total: 194
+# Passed: 190, Skipped: 4, Total: 194
 ```
 
-The MapSimulator failure is
-`UnitTest_MapSimulator.AICompactEditTests.CompactRegistryKeepsQueriesAndStrictWrapper`
-at [`AICompactEditTests.cs:170`](../../UnitTest_MapSimulator/AICompactEditTests.cs:170):
-the test expects 13 compact response tools and the current owner returns 14.
-This is a baseline issue to resolve or explicitly classify before using a full
-MapSimulator pass as release evidence. The affected owner is the compact tool
-registry in the HaCreator MCP/editor surface; the test does not exercise the
-standalone online client.
+The MapSimulator baseline is green. The earlier
+`AICompactEditTests.CompactRegistryKeepsQueriesAndStrictWrapper` failure was a
+stale count in the test: three legitimate query tools (`get_tile_info`,
+`get_map_state`, `get_asset_preview`) were added to the compact registry by
+visual Astra tooling without updating the expected total. The test now asserts
+the current 14-tool contract plus explicit query membership.
 
 The skipped tests are deliberate environment gates, not passing parity proof:
 
