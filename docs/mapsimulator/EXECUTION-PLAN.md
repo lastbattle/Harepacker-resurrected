@@ -41,11 +41,11 @@ definitions live in [VALIDATION.md](VALIDATION.md); the pinned oracle record is
 
 | Package | Implementation status | Verification status |
 |---|---|---|
-| P00 | Pinned executable identity, confirmed N04 observations, and scenario list recorded (`P00-ORACLE-PIN.md`). | Open: WZ/IMG export identity and controlled server not pinned; scenarios require level E. |
+| P00 | Pinned executable identity, confirmed N04 observations, pinned `gms_v95` IMG export identity, and scenario list recorded (`P00-ORACLE-PIN.md`). | Level C: real-data and graphics lifecycle suites pass against the pinned export (`MAPLEGAME_TEST_EXPORTS`; 152 passed/7 skipped, graphics opt-in 6 passed). Level E scenarios still require a controlled server. |
 | P01 | `GameSessionAuthority` contract in Runtime Contracts, host `--online <host[:port]>` flag, offline default preserved. | Source-verified (A); no behavior difference offline. |
 | P02 | `MapleClientDirectSession` (MapleLib) with handshake, framing, crypto, cancellation, disconnect, reconnect, global generations, stale rejection. `codex/p02-direct-session`. | Level B: 8 focused xUnit tests pass (`MapleClientDirectSessionTests`, `MapleOnlineDirectSessionOwnerTests`). Level E pending server. |
-| P03 | `MapleOnlineDirectSessionOwner` single ingress path, per-role sessions, game-thread drain, N04 retire-before-dial migration, trace ring. | Level B: routing, role isolation, and migration tests pass. Live trace pending server. |
-| P04 | Login/field bridges prefer the direct session; owner pumped on the game thread; select-character handoff performs the real close/connect channel migration; stage-aware reconnect. | Level A/B only: full login-to-field flow, server-authored roster, and field action/response require a controlled v95 server. Post-migration client-to-channel request packet is an open native follow-up (obfuscated `CClientSocket::Connect`/`OnConnect`). |
+| P03 | `MapleOnlineDirectSessionOwner` single ingress path, per-role sessions, game-thread drain, N04 retire-before-dial migration, trace ring. Reactor touch requests (field action outbound) and field-scoped inbound route through the owner. | Level B: routing, role isolation, and migration tests pass. Live trace pending server. |
+| P04 | Login/field/reactor bridges prefer the direct session; owner pumped on the game thread; select-character handoff performs the real close/connect channel migration; stage-aware reconnect. | Level A/B/C: transport and field seams are source- and data-verified; the full login-to-field flow, server-authored roster, and field action/response require a controlled v95 server. Post-migration client-to-channel request packet is an open native follow-up (obfuscated `CClientSocket::Connect`/`OnConnect`). |
 
 Use one integrator for shared `MapSimulator.cs`, UpdateLoop, Drawing, Content and
 stage partials. Assign domain files to separate workers only after agreeing on

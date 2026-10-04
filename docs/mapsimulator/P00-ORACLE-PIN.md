@@ -20,7 +20,7 @@ used for the native observations below. All decompilation was read-only.
 
 | Input | Status |
 |---|---|
-| v95 WZ/IMG export | Not pinned yet in this repo; comparison scenarios below must be re-run against the identified export before any visual/data claim. |
+| v95 WZ/IMG export | Pinned: `gms_v95` IMG filesystem export (pre-BB, GMS encryption, patch version 95, manifest stamp `v20260305_0140`, manifest SHA-256 `E7C34103B9892C1356B6D094B589ADFA218ADC205CD6FCA2315C5726D771ACEB`). Categories: Base, Character (8316 files), Effect, Etc, Item, List, Map (6816), Mob (1893), Morph, Npc (1838), Quest (3231), Reactor (454), Skill (117), Sound, String, TamingMob, UI. |
 | Controlled compatible v95 server | Not available in this environment; live level-E evidence is pending. |
 | Login endpoint assumption | Classic login listener on port 8484 when `--online` omits the port. |
 | Migration endpoint | Server-authored: decoded from the login MigrateCommand payload (address + port), matching `CClientSocket::OnMigrateCommand`. |

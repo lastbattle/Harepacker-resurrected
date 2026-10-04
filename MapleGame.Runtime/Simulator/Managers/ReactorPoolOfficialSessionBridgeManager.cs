@@ -63,7 +63,7 @@ namespace HaCreator.MapSimulator.Managers
     /// Proxies a live Maple session and forwards CReactorPool::OnPacket reactor
     /// opcodes into the existing packet-owned reactor runtime seam.
     /// </summary>
-    public sealed class ReactorPoolOfficialSessionBridgeManager : IDisposable
+    public sealed class ReactorPoolOfficialSessionBridgeManager : IDisposable, IMapleOnlineStageHandler
     {
         public const int DefaultListenPort = 18499;
         public const short OutboundTouchReactorOpcode = 250;
@@ -74,6 +74,7 @@ namespace HaCreator.MapSimulator.Managers
         private readonly Queue<PendingTouchRequest> _pendingTouchRequests = new();
         private readonly object _sync = new();
         private readonly IReactorPoolRoleSessionProxy _roleSessionProxy;
+        private readonly MapleOnlineDirectSessionOwner _onlineSessionOwner;
         private int _nextDeferredTouchFlushTick = int.MinValue;
         private bool _deferredTouchFlushTickInitialized;
 
@@ -98,7 +99,7 @@ namespace HaCreator.MapSimulator.Managers
         public int RemotePort { get; private set; }
         public bool IsRunning => _roleSessionProxy.IsRunning;
         public bool HasAttachedClient => _roleSessionProxy.HasAttachedClient;
-        public bool HasConnectedSession => _roleSessionProxy.HasConnectedSession;
+        public bool HasConnectedSession => IsOnlineDirectSessionConnected || _roleSessionProxy.HasConnectedSession;
         public int ReceivedCount { get; private set; }
         public int InjectedTouchRequestCount { get; private set; }
         public int QueuedTouchRequestCount
@@ -119,17 +120,27 @@ namespace HaCreator.MapSimulator.Managers
         public byte[] LastQueuedTouchPacket { get; private set; } = Array.Empty<byte>();
         public string LastStatus { get; private set; } = "Reactor official-session bridge inactive.";
 
-        public ReactorPoolOfficialSessionBridgeManager(Func<MapleRoleSessionProxy> roleSessionProxyFactory = null)
-            : this(() => new ReactorPoolRoleSessionProxyAdapter((roleSessionProxyFactory ?? (() => MapleRoleSessionProxyFactory.GlobalV95.CreateChannel()))()))
+        public ReactorPoolOfficialSessionBridgeManager(
+            Func<MapleRoleSessionProxy> roleSessionProxyFactory = null,
+            MapleOnlineDirectSessionOwner onlineSessionOwner = null)
+            : this(() => new ReactorPoolRoleSessionProxyAdapter((roleSessionProxyFactory ?? (() => MapleRoleSessionProxyFactory.GlobalV95.CreateChannel()))()), onlineSessionOwner)
         {
         }
 
-        internal ReactorPoolOfficialSessionBridgeManager(Func<IReactorPoolRoleSessionProxy> roleSessionProxyFactory)
+        internal ReactorPoolOfficialSessionBridgeManager(
+            Func<IReactorPoolRoleSessionProxy> roleSessionProxyFactory,
+            MapleOnlineDirectSessionOwner onlineSessionOwner = null)
         {
             _roleSessionProxy = (roleSessionProxyFactory ?? throw new ArgumentNullException(nameof(roleSessionProxyFactory)))();
+            _onlineSessionOwner = onlineSessionOwner;
+            _onlineSessionOwner?.RegisterStageHandler(this);
             _roleSessionProxy.ServerPacketReceived += OnRoleSessionServerPacketReceived;
             _roleSessionProxy.ClientPacketReceived += OnRoleSessionClientPacketReceived;
         }
+
+        public bool IsOnlineDirectMode => _onlineSessionOwner != null;
+        public bool IsOnlineDirectSessionConnected =>
+            _onlineSessionOwner?.IsRoleConnected(MapleServerRole.Channel) == true;
 
         public string DescribeStatus()
         {
@@ -158,7 +169,7 @@ namespace HaCreator.MapSimulator.Managers
 
             lock (_sync)
             {
-                if (!_roleSessionProxy.HasConnectedSession)
+                if (!IsOnlineDirectSessionConnected && !_roleSessionProxy.HasConnectedSession)
                 {
                     status = "Reactor official-session bridge has no connected Maple session for touch injection.";
                     LastStatus = status;
@@ -188,7 +199,7 @@ namespace HaCreator.MapSimulator.Managers
                 }
 
                 byte[] packet = BuildTouchRequestPacket(objectId, isTouching);
-                if (!_roleSessionProxy.TrySendToServer(packet, out string proxyStatus))
+                if (!TrySendTouchPacketThroughAuthority(packet, out string proxyStatus))
                 {
                     bool queued = EnqueueOrCoalesceDuplicateTouchRequestUnsafe(
                         new PendingTouchRequest(objectId, isTouching, packet, ResolveCurrentTick(currentTick)));
@@ -513,6 +524,43 @@ namespace HaCreator.MapSimulator.Managers
         private void OnRoleSessionClientPacketReceived(object sender, MapleSessionPacketEventArgs e)
         {
             LastStatus = _roleSessionProxy.LastStatus;
+        }
+
+        MapleServerRole IMapleOnlineStageHandler.Role => MapleServerRole.Channel;
+
+        void IMapleOnlineStageHandler.HandleInboundPacket(MapleOnlineInboundPacket packet)
+        {
+            if (packet == null || packet.Role != MapleServerRole.Channel)
+                return;
+
+            if (!TryCreateBridgeMessageFromRawPacket(packet.RawPacket, $"direct-session:{packet.RemoteEndpoint}", out ReactorPoolPacketInboxMessage message, out string error))
+            {
+                LastStatus = $"Ignored direct-session reactor packet opcode {packet.Opcode} (generation {packet.Generation}): {error}";
+                return;
+            }
+
+            _pendingMessages.Enqueue(message);
+            ReceivedCount++;
+            LastStatus = $"Queued {ReactorPoolPacketInboxManager.DescribePacketType(message.PacketType)} from direct session generation {packet.Generation}.";
+        }
+
+        bool IMapleOnlineStageHandler.TrySendOutboundPacket(byte[] payload, out string status)
+        {
+            if (_onlineSessionOwner == null)
+            {
+                status = "Reactor direct-session authority is unavailable.";
+                return false;
+            }
+
+            return _onlineSessionOwner.TrySendPacket(MapleServerRole.Channel, payload, out status);
+        }
+
+        private bool TrySendTouchPacketThroughAuthority(byte[] packet, out string status)
+        {
+            if (_onlineSessionOwner != null && _onlineSessionOwner.IsRoleConnected(MapleServerRole.Channel))
+                return _onlineSessionOwner.TrySendPacket(MapleServerRole.Channel, packet, out status);
+
+            return _roleSessionProxy.TrySendToServer(packet, out status);
         }
 
         private void StopInternal(bool clearPending)

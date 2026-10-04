@@ -20038,7 +20038,7 @@ foreach (var pair in runtimeServices.Catalog.GetMapNames())
             _loginOfficialSessionBridge = new LoginOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateLogin, _onlineSessionOwner);
             _cashShopOfficialSessionBridge = new CashServiceOfficialSessionBridgeManager(MapleLib.PacketLib.MapleServerRole.CashShop, _officialSessionRoleProxyFactory.CreateCashShop);
             _mtsOfficialSessionBridge = new CashServiceOfficialSessionBridgeManager(MapleLib.PacketLib.MapleServerRole.Mts, _officialSessionRoleProxyFactory.CreateMts);
-            _reactorPoolOfficialSessionBridge = new ReactorPoolOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateChannel);
+            _reactorPoolOfficialSessionBridge = new ReactorPoolOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateChannel, _onlineSessionOwner);
             _summonedOfficialSessionBridge = new SummonedOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateChannel);
             _adminShopOfficialSessionBridge = new AdminShopOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateChannel);
             _localUtilityOfficialSessionBridge = new LocalUtilityOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateChannel);
