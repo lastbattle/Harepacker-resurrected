@@ -27,6 +27,7 @@ namespace HaCreator.GUI.Quest
         {
             // MapleStorySEA, MapleStoryKorea
             {"노멀", QuestEditorActInfoPotentialType.Normal},
+            {"노말", QuestEditorActInfoPotentialType.Normal},
             {"레어", QuestEditorActInfoPotentialType.Rare},
             {"에픽", QuestEditorActInfoPotentialType.Epic},
             {"유니크", QuestEditorActInfoPotentialType.Unique},

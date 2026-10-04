@@ -5,7 +5,7 @@ using MapleLib.WzLib.WzProperties;
 
 namespace Footholds
 {
-    public partial class Edit : Form
+    public partial class Edit : HaRepacker.GUI.ThemedDialogWindow
     {
         public List<Object> settings;
         public FootHold.Foothold fh;
@@ -36,7 +36,7 @@ namespace Footholds
             else
                 ForceTBox.Text = settings.ToArray()[4].ToString();
             try { ForceLbl.Text = ((WzIntProperty)fh.Data["force"]).Value.ToString(); }
-            catch { ForceLbl.Text = "None"; }
+            catch { ForceLbl.Text = HaRepacker.GUI.UiLocalization.Translate("None"); }
         }
 
         private void Cancel_Click(object sender, EventArgs e)
@@ -56,7 +56,7 @@ namespace Footholds
 
                 if (ForceTBox.Text != "")
                 {
-                    if (ForceLbl.Text == "None")
+                    if (ForceLbl.Text == HaRepacker.GUI.UiLocalization.Translate("None"))
                     {
                         WzIntProperty forceProperty = new WzIntProperty("force", int.Parse(ForceTBox.Text));
                         fh.Data.AddProperty(forceProperty);

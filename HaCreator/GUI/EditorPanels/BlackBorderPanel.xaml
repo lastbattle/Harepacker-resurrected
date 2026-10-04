@@ -1,0 +1,64 @@
+<UserControl x:Class="HaCreator.GUI.EditorPanels.BlackBorderPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             MinWidth="250">
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/HaSharedLibrary;component/GUI/Themes/HarepackerTheme.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="16">
+            <TextBlock Style="{StaticResource HareSectionTitleStyle}" Text="Black borders"/>
+            <TextBlock Margin="0,4,0,14"
+                       Style="{StaticResource HareMutedTextStyle}"
+                       Text="Define the hidden map edges used by older maps at modern resolutions."/>
+
+            <Border Style="{StaticResource HareCardStyle}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="100"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Column="1" Margin="8,0,0,7"
+                               HorizontalAlignment="Right"
+                               Style="{StaticResource HareMutedTextStyle}"
+                               FontSize="11" Text="Pixels"/>
+
+                    <CheckBox x:Name="checkBox_top" Grid.Row="1" Margin="0,5"
+                              Content="Top (LBTop)" Checked="BorderOption_Changed" Unchecked="BorderOption_Changed"/>
+                    <TextBox x:Name="numericUpDown_top" Grid.Row="1" Grid.Column="1" Margin="8,3,0,3"
+                             IsEnabled="False" HorizontalContentAlignment="Right" InputScope="Number"
+                             TextChanged="BorderValue_TextChanged" Tag="Top"/>
+
+                    <CheckBox x:Name="checkBox_bottom" Grid.Row="2" Margin="0,5"
+                              Content="Bottom (LBBottom)" Checked="BorderOption_Changed" Unchecked="BorderOption_Changed"/>
+                    <TextBox x:Name="numericUpDown_bottom" Grid.Row="2" Grid.Column="1" Margin="8,3,0,3"
+                             IsEnabled="False" HorizontalContentAlignment="Right" InputScope="Number"
+                             TextChanged="BorderValue_TextChanged" Tag="Bottom"/>
+
+                    <CheckBox x:Name="checkBox_side" Grid.Row="3" Margin="0,5"
+                              Content="Sides (LBSide)" Checked="BorderOption_Changed" Unchecked="BorderOption_Changed"/>
+                    <TextBox x:Name="numericUpDown_side" Grid.Row="3" Grid.Column="1" Margin="8,3,0,3"
+                             IsEnabled="False" HorizontalContentAlignment="Right" InputScope="Number"
+                             TextChanged="BorderValue_TextChanged" Tag="Side"/>
+                </Grid>
+            </Border>
+
+            <Border Margin="0,12,0,0" Padding="10,8" Background="{StaticResource HareAccentSoftBrush}" CornerRadius="6">
+                <TextBlock Foreground="{StaticResource HareAccentHoverBrush}" TextWrapping="Wrap"
+                           Text="Preview the result in Map Simulator after changing border dimensions."/>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

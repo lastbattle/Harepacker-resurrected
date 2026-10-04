@@ -154,6 +154,7 @@ public void EnsureKeySize(int size)
         return;
     }
 
+    byte[] newKeys = new byte[size];
     using var aes = Aes.Create();
     aes.KeySize = 256;           // AES-256
     aes.BlockSize = 128;         // 16-byte blocks
@@ -161,6 +162,7 @@ public void EnsureKeySize(int size)
     aes.Mode = CipherMode.ECB;   // Electronic Codebook mode
     aes.Padding = PaddingMode.None;
 
+    using var encryptor = aes.CreateEncryptor();
     // Generate key stream by encrypting IV repeatedly
     // First block: encrypt IV (repeated to 16 bytes)
     // Subsequent blocks: encrypt previous ciphertext
@@ -170,15 +172,16 @@ public void EnsureKeySize(int size)
         {
             // First block: IV repeated 4 times (4 bytes → 16 bytes)
             for (int j = 0; j < 16; j++)
-                block[j] = _iv[j % 4];
-            cs.Write(block);
+                newKeys[j] = _iv[j % 4];
+            encryptor.TransformBlock(newKeys, 0, 16, newKeys, 0);
         }
         else
         {
             // Chain: encrypt previous output
-            cs.Write(newKeys.AsSpan(i - 16, 16));
+            encryptor.TransformBlock(newKeys, i - 16, 16, newKeys, i);
         }
     }
+    _keys = newKeys;
 }
 ```
 
@@ -249,6 +252,26 @@ private string DecodeUnicode(int length)
 
 **Source:** `MapleLib/WzLib/Util/WzBinaryReader.cs`
 
+`WzBinaryWriter` ensures the complete string key before encrypting a buffered
+payload. Unicode reads and writes use one key word per UTF-16 code unit on little-endian
+runtimes; other runtimes assemble the same little-endian word from two bytes.
+This avoids repeated key-growth checks while preserving the length markers,
+the `0xAAAA` mask sequence, and the serialized bytes.
+
+Owned IMG file exports buffer string payloads without changing the public
+writer's flush behavior. Parsed, changed images containing built-in properties
+use a seekable pooled staging buffer capped at 1 MiB, then spill once to the
+destination when output grows beyond that buffer. This avoids flushing the file
+for each nested block-length patch. Unchanged raw copies and external property
+extensions retain the direct file path. Partial output and file ownership remain
+observable on errors; the pool can retain the 1 MiB lease after an export.
+
+List.wz entries use a separate unmasked UTF-16 encryption rule. The parser reads
+each validated encrypted payload into its reusable character buffer in one
+operation on little-endian runtimes, then consumes the encrypted terminator.
+Other runtimes retain the scalar little-endian reads; empty final entries and
+the final slash-to-`g` adjustment retain their existing behavior.
+
 ### Version Hash Computation
 
 The version hash is used to encrypt/decrypt file offsets:
@@ -303,6 +326,11 @@ public long ReadOffset()
 
 Canvas data can be in two formats:
 
+The canvas format id describes the pixel/block layout after zlib decompression. Modern files may
+use format `4098` (`0x1002`), which is BC7/BPTC at 16 bytes per 4x4 block. MapleLib decodes this
+layout to BGRA32 on the CPU because MonoGame's `SurfaceFormat` does not expose BC7. A confirmed
+example is map `993296000`, asset `Map/Back/2603nightmareForest.img/spine/nightmare2.png`.
+
 **Standard zlib format** (header `0x789C`, `0x78DA`, etc.):
 - Data is directly zlib-compressed, no additional encryption
 
@@ -356,6 +384,28 @@ public static WzMapleVersion DetectMapleVersion(string wzFilePath, out short fil
 ```
 
 **Source:** `MapleLib/WzLib/Util/WzTool.cs`
+
+### Malformed-input limits and parser state
+
+MapleLib treats WZ data as untrusted binary input. The parser rejects lengths,
+offsets, and block ends that cannot fit inside the containing stream before
+allocating or seeking. It also applies bounded ceilings to attacker-controlled
+materialization: WZ strings (64 MiB), null-terminated metadata strings (1 MiB),
+header strings (1 MiB), individual raw/media payloads (256 MiB), property-list
+entries (100,000), and nesting depth (128). PNG inflation and packet bodies have
+their own checked limits.
+
+`WzFile` reparsing is transactional: if replacement bytes fail validation, the
+previous reader and directory tree remain usable. `PartialStream` enforces its
+logical range for synchronous, asynchronous, and APM operations and documents
+whether disposing it also disposes the caller's stream (`leaveOpen`).
+Version-detection probes retain the already-validated directory on success and
+dispose every rejected probe tree; they do not parse the accepted directory a
+second time.
+
+Extraction and packing resolve archive- and manifest-supplied names below their
+requested roots, reject traversal/rooted paths, and refuse existing symlink or
+junction components that would redirect a read or write outside the root.
 
 ---
 

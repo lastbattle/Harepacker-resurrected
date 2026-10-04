@@ -1,54 +1,45 @@
-﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
-using System.Drawing;
-using System.Linq;
-using System.Text;
-using System.Windows.Forms;
+using System;
 using System.IO;
+using HaCreator.GUI.Localization;
+using System.Windows;
+using Forms = System.Windows.Forms;
 
 namespace HaCreator.GUI
 {
-    public partial class ExceptionHandler : Form
+    public partial class ExceptionHandler : Window
     {
-        public static bool InitializationFinished = false;
+        public static bool InitializationFinished;
 
-        public string GetExceptionInfo(Exception e)
+        public string GetExceptionInfo(Exception exception)
         {
-            string result = e.Message + "\r\n\r\n" + e.Source + "\r\n\r\n" + e.StackTrace;
-            if (e.InnerException != null)
-                result += "\r\n\r\n" + GetExceptionInfo(e.InnerException);
+            string result = exception.Message + "\r\n\r\n" + exception.Source + "\r\n\r\n" + exception.StackTrace;
+            if (exception.InnerException != null)
+                result += "\r\n\r\n" + GetExceptionInfo(exception.InnerException);
             return result;
         }
 
-        public ExceptionHandler(Exception e)
+        public ExceptionHandler(Exception exception)
         {
             InitializeComponent();
-            string logPath = Path.Combine(Application.StartupPath, "crashdump.log");
-            File.WriteAllText(logPath, GetExceptionInfo(e));
+            string logPath = Path.Combine(AppContext.BaseDirectory, "crashdump.log");
+            File.WriteAllText(logPath, GetExceptionInfo(exception));
+
             if (!InitializationFinished)
             {
-                crashMessageLabel.Text = "Whoops! It looks like HaCreator crashed. The good news are, it crashed before you started working on your map so you didn't lose anything (woohoo!).\r\nAdditionaly, an error log was saved to " + logPath + ". If you want the bug to be solved ASAP, do report this error via github, preferably with some details about the problem (e.g. are your files edited or clean).";
-                restartButton.Text = "Restart HaCreator";
-                restartButton.Click += new EventHandler(Restart);
+                crashMessageText.Text = DialogTextExtension.Format("Dialog_CrashBeforeEditing", logPath);
+                restartButton.Content = DialogTextExtension.Get("Dialog_RestartHaCreator");
             }
             else
             {
-                crashMessageLabel.Text = "Whoops! It looks like HaCreator crashed. The good news are, because I am such a 1337 programmer a backup file containing the map you were working on will be dumped once you click on the button below (and it's going to be extremely funny if it crashes again while trying to back up the data, in which case you are screwed), and it will be loaded next time you open HaCreator after the initialization screen.\r\nAdditionaly, an error log was saved to " + logPath + ". If you want the bug to be solved ASAP, do report this via github, preferably with some details about what were you doing and maybe a copy of the map you were trying to make.";
-                restartButton.Text = "Dump map backup and restart HaCreator";
-                restartButton.Click += new EventHandler(Backup);
+                crashMessageText.Text = DialogTextExtension.Format("Dialog_CrashDuringEditing", logPath);
+                restartButton.Content = DialogTextExtension.Get("Dialog_SaveRecoveryRestart");
             }
         }
 
-        private void Restart(object sender, EventArgs e)
+        private void Restart_Click(object sender, RoutedEventArgs e)
         {
-            Application.Restart();
-        }
-
-        private void Backup(object sender, EventArgs e)
-        {
-            Application.Restart();
+            Forms.Application.Restart();
+            Application.Current?.Shutdown();
         }
     }
 }

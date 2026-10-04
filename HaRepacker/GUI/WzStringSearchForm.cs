@@ -6,7 +6,7 @@ using System.Windows.Forms;
 
 namespace HaRepacker.GUI
 {
-    public partial class WzStringSearchForm : Form
+    public partial class WzStringSearchForm : ThemedDialogWindow
     {
 
         // WZ Searcher
@@ -33,6 +33,9 @@ namespace HaRepacker.GUI
         /// <param name="e"></param>
         private void in_textchanged(object sender, EventArgs e)
         {
+            if (textBox5 == null)
+                return;
+
             int data = 0;
             try
             {
@@ -78,6 +81,9 @@ namespace HaRepacker.GUI
         /// <param name="e"></param>
         private void textBox_itemidFind_TextChanged(object sender, EventArgs e)
         {
+            if (!IsInitialized)
+                return;
+
             string query = textBox_itemidFind.Text;
             if (query.Length <= 2 && query != string.Empty) // if its string empty, include everything..
                 return;
@@ -86,49 +92,49 @@ namespace HaRepacker.GUI
             comboBox_hexlist.Items.Clear();
 
             // Items
-            if (checkBox_searcheq.Checked)
+            if (checkBox_searcheq.IsChecked == true)
             {
                 WzDataCache.LookupItemNameDesc(WzStringSearchFormDataCache.WzDataCacheItemType.Eqp, query, HexJumpList);
             }
-            if (checkBox_searchuse.Checked)
+            if (checkBox_searchuse.IsChecked == true)
             {
                 WzDataCache.LookupItemNameDesc(WzStringSearchFormDataCache.WzDataCacheItemType.Use, query, HexJumpList);
             }
-            if (checkBox_searchsetup.Checked)
+            if (checkBox_searchsetup.IsChecked == true)
             {
                 WzDataCache.LookupItemNameDesc(WzStringSearchFormDataCache.WzDataCacheItemType.Setup, query, HexJumpList);
             }
-            if (checkBox_searchetc.Checked)
+            if (checkBox_searchetc.IsChecked == true)
             {
                 WzDataCache.LookupItemNameDesc(WzStringSearchFormDataCache.WzDataCacheItemType.Etc, query, HexJumpList);
             }
-            if (checkBox_searchcash.Checked)
+            if (checkBox_searchcash.IsChecked == true)
             {
                 WzDataCache.LookupItemNameDesc(WzStringSearchFormDataCache.WzDataCacheItemType.Cash, query, HexJumpList);
             }
             // Quests
-            if (checkBox_searchquest.Checked)
+            if (checkBox_searchquest.IsChecked == true)
             {
                 WzDataCache.LookupQuest(query, HexJumpList);
             }
 
             // NPC
-            if (checkBox_searchNPC.Checked)
+            if (checkBox_searchNPC.IsChecked == true)
             {
                 WzDataCache.LookupNPCs(query, HexJumpList);
             }
             // Maps
-            if (checkBox_searchMaps.Checked)
+            if (checkBox_searchMaps.IsChecked == true)
             {
                 WzDataCache.LookupMaps(query, HexJumpList);
             }
             // Skills
-            if (checkbox_searchSkill.Checked)
+            if (checkbox_searchSkill.IsChecked == true)
             {
                 WzDataCache.LookupSkills(query, HexJumpList);
             }
             // Jobs
-            if (checkBox_searchJobs.Checked)
+            if (checkBox_searchJobs.IsChecked == true)
             {
                 WzDataCache.LookupJobs(query, HexJumpList);
             }
@@ -137,8 +143,8 @@ namespace HaRepacker.GUI
             if (HexJumpList.Count == 0)
             {
                 textBox6.Text = "0";
-                label_itemname.Text = "Not found";
-                label_itemdesc.Text = "Not found";
+                label_itemname.Text = UiLocalization.Translate("Not found");
+                label_itemdesc.Text = UiLocalization.Translate("Not found");
             }
             else
             {

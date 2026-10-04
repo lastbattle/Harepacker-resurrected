@@ -1,0 +1,20 @@
+<Window x:Class="HaCreator.GUI.CancelableWaitWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:dialogLoc="clr-namespace:HaCreator.GUI.Localization"
+        Title="{dialogLoc:DialogText Dialog_Working_A92F04}" Width="400" SizeToContent="Height" ResizeMode="NoResize"
+        WindowStyle="ToolWindow" ShowInTaskbar="False" WindowStartupLocation="CenterScreen"
+        Background="{DynamicResource HareCanvasBrush}" FontFamily="Segoe UI"
+        Loaded="Window_Loaded" Closing="Window_Closing">
+    <Window.Resources><ResourceDictionary><ResourceDictionary.MergedDictionaries>
+        <ResourceDictionary Source="/HaSharedLibrary;component/GUI/Themes/HarepackerTheme.xaml"/>
+    </ResourceDictionary.MergedDictionaries></ResourceDictionary></Window.Resources>
+    <Border Margin="16" Style="{StaticResource HareCardStyle}">
+        <StackPanel>
+            <TextBlock x:Name="messageText" TextWrapping="Wrap" FontWeight="SemiBold"/>
+            <ProgressBar Margin="0,14,0,0" Height="4" IsIndeterminate="True"/>
+            <Button x:Name="cancelButton" Margin="0,14,0,0" HorizontalAlignment="Right" MinWidth="96"
+                    Style="{StaticResource HareDangerButtonStyle}" Click="Cancel_Click" Content="{dialogLoc:DialogText Dialog_Cancel_19766E}"/>
+        </StackPanel>
+    </Border>
+</Window>

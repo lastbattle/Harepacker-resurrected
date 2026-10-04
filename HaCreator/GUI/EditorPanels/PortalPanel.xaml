@@ -1,0 +1,24 @@
+<UserControl x:Class="HaCreator.GUI.EditorPanels.PortalPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:HaCreator.GUI.EditorPanels">
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/HaSharedLibrary;component/GUI/Themes/HarepackerTheme.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </UserControl.Resources>
+    <Grid Background="{StaticResource HareCanvasBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        <StackPanel Margin="12,12,12,4">
+            <TextBlock Style="{StaticResource HareSectionTitleStyle}" Text="Portal types"/>
+            <TextBlock Margin="0,3,0,0" Style="{StaticResource HareMutedTextStyle}"
+                       Text="Choose a portal, then place it on the active map."/>
+        </StackPanel>
+        <local:AssetGallery x:Name="portalImageContainer" Grid.Row="1" ItemActivated="PortalImageContainer_ItemActivated"/>
+    </Grid>
+</UserControl>

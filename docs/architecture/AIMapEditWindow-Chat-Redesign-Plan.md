@@ -2,6 +2,22 @@
 
 ## Overview
 
+### Localization
+
+The AI map editor uses `EditorPanelText` resources for English, Japanese, Korean,
+Simplified Chinese, and Traditional Chinese, following the application's UI culture.
+`EditorPanelTextExtension` resolves XAML text when controls and deferred chat templates
+are instantiated. Runtime progress, review summaries, status labels, and paste dialogs
+use the same resources. Review state identifiers remain invariant; `DisplayStatus`
+provides the translated label without affecting apply or history logic. AI responses,
+WZ asset data, command syntax, and tool output retain their original content.
+
+Manual verification: select each supported application language and restart HaCreator.
+Open a map and the AI editor; check menus, tabs, tooltips, the WZ reference popup, and
+the paste-review dialog. Submit a request with live edits disabled, verify the thinking
+indicator and review controls, then select, copy, and apply changes. Confirm translated
+counts/statuses update, applied changes cannot be replayed, and Undo still works.
+
 Convert the AIMapEditWindow from a single-prompt interface to a multi-turn chat interface similar to ChatGPT/Claude.ai, allowing users to iteratively refine their map editing requests through natural conversation.
 
 ## Current State
@@ -60,7 +76,7 @@ public class ChatSession : INotifyPropertyChanged
 
     public ChatMessage AddUserMessage(string content);
     public ChatMessage AddAssistantMessage(string content = "");
-    public JArray ToApiMessages();  // Convert to OpenRouter format
+    public JArray ToApiMessages();  // Convert to OpenAI-compatible chat format
     public void Clear();
     public string GetLatestCommands();
 }
@@ -288,13 +304,13 @@ public async Task<string> ProcessWithConversationAsync(
 
 ## Dependencies
 
-- Existing: `AgentOrchestrator`, `OpenRouterClient`, `MapAISerializer`, `MapAIExecutor`
+- Existing: `AgentOrchestrator`, `OpenAICompatibleClient`, `MapMcpToolServer`, `MapAISerializer`, `MapAIExecutor`
 - Patterns: `INotifyPropertyChanged` (used in HaList.xaml.cs), `ObservableCollection`
 - May need: `BoolToVisibilityConverter`, `InverseBoolToVisibilityConverter`
 
 ## Backward Compatibility
 
 - Left panel (Map Context) unchanged
-- Execute flow unchanged (parse → execute → refresh)
-- Settings menu unchanged
+- Execute flow remains parse → execute → refresh, with automatic application configurable in AI Settings
+- Settings menu preserves the existing entry and adds MCP connection details
 - Run Tests functionality preserved (sends test prompt to chat)

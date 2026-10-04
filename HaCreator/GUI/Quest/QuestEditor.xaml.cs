@@ -18,8 +18,10 @@ using System.Threading.Tasks;
 using System.Transactions;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 
 namespace HaCreator.GUI.Quest
 {
@@ -31,6 +33,7 @@ namespace HaCreator.GUI.Quest
         // etc
         private bool _isLoading = false;
         private bool _unsavedChanges = false;
+        private GridLength _conversationStudioHeight = new(2, GridUnitType.Star);
 
         /// <summary>
         /// Constructor
@@ -39,12 +42,15 @@ namespace HaCreator.GUI.Quest
         {
             InitializeComponent();
 
+            QuestGraph.RelationshipCommandExecutor = ExecuteQuestGraphRelationshipCommand;
+
 
             _isLoading = true;
             try
             {
                 DataContext = this;
 
+                Program.InfoManager.EnsureQuestData();
                 LoadQuestsData();
             }
             finally
@@ -61,6 +67,7 @@ namespace HaCreator.GUI.Quest
             set
             {
                 _selectedQuest = value;
+                EnsureAdditionalProperties(_selectedQuest);
                 OnPropertyChanged(nameof(SelectedQuest));
             }
         }
@@ -88,6 +95,12 @@ namespace HaCreator.GUI.Quest
                 OnPropertyChanged(nameof(FilteredQuests));
             }
         }
+
+        /// <summary>
+        /// All loaded quests for relationship views. The graph intentionally uses the
+        /// unfiltered collection so a reference remains navigable after a search.
+        /// </summary>
+        public ObservableCollection<QuestEditorModel> Quests => _quests;
         #endregion
 
         #region Overrides
@@ -96,8 +109,8 @@ namespace HaCreator.GUI.Quest
             if (_unsavedChanges)
             {
                 MessageBoxResult result = MessageBox.Show(
-                    "You have unsaved changes. Do you want to save the Quest.wz file before closing?",
-                    "Unsaved Changes",
+                    QuestTextExtension.Get("QuestEditor_UnsavedPrompt"),
+                    QuestTextExtension.Get("QuestEditor_UnsavedTitle"),
                     MessageBoxButton.YesNoCancel,
                     MessageBoxImage.Warning);
 
@@ -184,6 +197,8 @@ namespace HaCreator.GUI.Quest
                     case "medalCategory":
                         break;
                     default:
+                        if (QuestEditorKnownPropertyCatalog.IsKnownName("QuestInfo", questImgProp.Name))
+                            break;
                         string error = string.Format("[QuestEditor] Unhandled quest image property. Name='{0}', QuestId={1}", questImgProp.Name, questId);
                         ErrorLogger.Log(ErrorLevel.MissingFeature, error);
                         break;
@@ -339,6 +354,7 @@ namespace HaCreator.GUI.Quest
                 if (questCheckEnd1Prop != null)
                     parseQuestCheck(questCheckEnd1Prop, quest.CheckEndInfo, quest); // end quest
             }
+
             return quest;
         }
 
@@ -445,6 +461,8 @@ namespace HaCreator.GUI.Quest
                                             break;
                                         default:
                                             {
+                                                if (QuestEditorKnownPropertyCatalog.IsKnownName("Check", itemSubProperties.Name))
+                                                    break;
                                                 string error = string.Format("[QuestEditor] Unhandled quest Check.img item property. Name='{0}', QuestId={1}", itemSubProperties.Name, quest.Id);
                                                 ErrorLogger.Log(ErrorLevel.MissingFeature, error);
                                                 break;
@@ -634,6 +652,8 @@ namespace HaCreator.GUI.Quest
                                             break;
                                         default:
                                             {
+                                                if (QuestEditorKnownPropertyCatalog.IsKnownName("Check", itemSubProperties.Name))
+                                                    break;
                                                 string error = string.Format("[QuestEditor] Unhandled quest Check.img skill property. Name='{0}', QuestId={1}", itemSubProperties.Name, quest.Id);
                                                 ErrorLogger.Log(ErrorLevel.MissingFeature, error);
                                                 break;
@@ -915,6 +935,8 @@ namespace HaCreator.GUI.Quest
                         }
                     default:
                         {
+                            if (QuestEditorKnownPropertyCatalog.IsKnownName("Check", checkTypeProp.Name))
+                                break;
                             string error = string.Format("[QuestEditor] Unhandled quest check type. Name='{0}', QuestId={1}", checkTypeProp.Name, quest.Id);
                             ErrorLogger.Log(ErrorLevel.MissingFeature, error);
                             break;
@@ -973,6 +995,8 @@ namespace HaCreator.GUI.Quest
                                             break;
                                         default:
                                             {
+                                                if (QuestEditorKnownPropertyCatalog.IsKnownName("Act", itemSubProperties.Name))
+                                                    break;
                                                 string error = string.Format("[QuestEditor] Unhandled quest Act.img item property. Name='{0}', QuestId={1}", itemSubProperties.Name, quest.Id);
                                                 ErrorLogger.Log(ErrorLevel.MissingFeature, error);
                                                 break;
@@ -1421,6 +1445,8 @@ namespace HaCreator.GUI.Quest
                             }
                             else
                             {
+                                if (QuestEditorKnownPropertyCatalog.IsKnownName("Act", actTypeProp.Name))
+                                    break;
                                 string error = string.Format("[QuestEditor] Unhandled quest act type. Name='{0}', QuestId={1}", actTypeProp.Name, quest.Id);
                                 ErrorLogger.Log(ErrorLevel.MissingFeature, error);
                             }
@@ -1592,6 +1618,8 @@ namespace HaCreator.GUI.Quest
                     }
                     else
                     {
+                        if (QuestEditorKnownPropertyCatalog.IsKnownName("Say", questStopProp.Name))
+                            continue;
                         string error = string.Format("[QuestEditor] Unhandled quest stop type. Name='{0}', QuestId={1}", questStopProp.Name, quest.Id);
                         ErrorLogger.Log(ErrorLevel.MissingFeature, error);
                     }
@@ -1764,12 +1792,13 @@ namespace HaCreator.GUI.Quest
             // Create and configure open file dialog
             Microsoft.Win32.OpenFileDialog openFileDialog = new()
             {
-                Filter = "WZ files (*.wz)|*.wz|All files (*.*)|*.*",
+                Filter = QuestTextExtension.Get("QuestEditor_WzImportFilter"),
                 Multiselect = true,
-                Title = "Select Quest WZ file(s) to import"
+                Title = QuestTextExtension.Get("QuestEditor_ImportDialogTitle")
             };
             if (openFileDialog.ShowDialog() == true)
             {
+                using IDisposable writeLease = Program.BeginRuntimeAssetWrite("import quest assets");
                 Dictionary<string, (WzSubProperty Info, WzSubProperty Say, WzSubProperty Act, WzSubProperty Check)> questsToImport = new();
                 List<string> existingQuestIds = new();
 
@@ -1788,8 +1817,8 @@ namespace HaCreator.GUI.Quest
 
                         if (questInfoImage == null)
                         {
-                            MessageBox.Show($"Invalid Quest WZ format - QuestInfo.img not found in {fileName}",
-                                "Import Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                            MessageBox.Show(QuestTextExtension.Get("QuestEditor_InvalidImportFormat", fileName),
+                                QuestTextExtension.Get("QuestEditor_ImportError"), MessageBoxButton.OK, MessageBoxImage.Error);
                             continue;
                         }
 
@@ -1813,8 +1842,8 @@ namespace HaCreator.GUI.Quest
                     }
                     catch (Exception ex)
                     {
-                        MessageBox.Show($"Error importing from {fileName}: {ex.Message}",
-                            "Import Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                        MessageBox.Show(QuestTextExtension.Get("QuestEditor_ImportException", fileName, ex.Message),
+                            QuestTextExtension.Get("QuestEditor_ImportError"), MessageBoxButton.OK, MessageBoxImage.Error);
                         continue;
                     }
                 }
@@ -1824,8 +1853,8 @@ namespace HaCreator.GUI.Quest
                 {
                     string questList = string.Join(", ", existingQuestIds);
                     MessageBoxResult result = MessageBox.Show(
-                        $"The following quest IDs already exist:\n{questList}\n\nDo you want to overwrite them?",
-                        "Quests Already Exist",
+                        QuestTextExtension.Get("QuestEditor_OverwritePrompt", questList),
+                        QuestTextExtension.Get("QuestEditor_OverwriteTitle"),
                         MessageBoxButton.YesNo,
                         MessageBoxImage.Warning);
 
@@ -1854,7 +1883,7 @@ namespace HaCreator.GUI.Quest
                                 // select any questInfo from the list, to get the CheckInfo parent directory
                                 WzImage anyQuestInfoParentImg = Program.InfoManager.QuestInfos.FirstOrDefault().Value.Parent as WzImage;
                                 // Set file updated
-                                Program.MarkImageUpdated("Quest", anyQuestInfoParentImg);
+                                MarkQuestImageUpdated(anyQuestInfoParentImg);
                             }
                         }
                     }
@@ -1865,6 +1894,20 @@ namespace HaCreator.GUI.Quest
                 {
                     string questId = kvp.Key;
                     var (info, say, act, check) = kvp.Value;
+
+                    if (UsesPerQuestStorage(questId))
+                    {
+                        StorePerQuestData(questId, info, say, act, check);
+
+                        QuestEditorModel modernQuestModel = loadQuestImage(info, questId);
+                        _quests.Add(modernQuestModel);
+                        FilteredQuests.Add(modernQuestModel);
+
+                        SelectedQuest = modernQuestModel;
+                        listbox_Quest.SelectedItem = modernQuestModel;
+                        listbox_Quest.ScrollIntoView(modernQuestModel);
+                        continue;
+                    }
 
                     // Add quest info
                     if (info != null)
@@ -1969,8 +2012,8 @@ namespace HaCreator.GUI.Quest
                 {
                     _unsavedChanges = true;
 
-                    MessageBox.Show($"Successfully imported {questsToImport.Count} quest(s)",
-                        "Import Successful",
+                    MessageBox.Show(QuestTextExtension.Get("QuestEditor_ImportSuccessMessage", questsToImport.Count),
+                        QuestTextExtension.Get("QuestEditor_ImportSuccessTitle"),
                         MessageBoxButton.OK,
                         MessageBoxImage.Information);
                 }
@@ -1991,12 +2034,12 @@ namespace HaCreator.GUI.Quest
                     return string.Format("This quest ID [{0}] was already being used.", questId);
 
                 if (questName.Length == 0 || questName.Length > 100)
-                    return "Quest name is too long.";
+                return QuestTextExtension.Get("QuestEditor_NameTooLong");
 
                 return string.Empty;
             }))
             {
-                inputForm.SetWindowInfo("Quest Name", "Quest Id", "Add a new quest:");
+            inputForm.SetWindowInfo(QuestTextExtension.Get("QuestEditor_QuestName"), QuestTextExtension.Get("QuestEditor_QuestId"), QuestTextExtension.Get("QuestEditor_AddNewQuestPrompt"));
 
                 if (inputForm.ShowDialog() == System.Windows.Forms.DialogResult.OK)
                 {
@@ -2009,18 +2052,30 @@ namespace HaCreator.GUI.Quest
                     {
                         questWzSubProp.AddProperty(new WzStringProperty("name", name));
 
-                        // select any questInfo from the list, to get the CheckInfo parent directory
-                        WzImage anyQuestInfoParentImg = Program.InfoManager.QuestInfos.FirstOrDefault().Value.Parent as WzImage;
+                        if (UsesPerQuestStorage(questId.ToString()))
+                        {
+                            StorePerQuestData(
+                                questId.ToString(),
+                                questWzSubProp,
+                                new WzSubProperty("Say"),
+                                new WzSubProperty("Act"),
+                                new WzSubProperty("Check"));
+                        }
+                        else
+                        {
+                            // select any questInfo from the list, to get the CheckInfo parent directory
+                            WzImage anyQuestInfoParentImg = Program.InfoManager.QuestInfos.FirstOrDefault().Value.Parent as WzImage;
 
-                        // replace the old 
-                        Program.InfoManager.QuestInfos[questId.ToString()] = questWzSubProp;
+                            // replace the old
+                            Program.InfoManager.QuestInfos[questId.ToString()] = questWzSubProp;
 
-                        // add back the newly created image
-                        anyQuestInfoParentImg.AddProperty(questWzSubProp);
+                            // add back the newly created image
+                            anyQuestInfoParentImg.AddProperty(questWzSubProp);
 
-                        // flag unsaved changes bool
-                        _unsavedChanges = true;
-                        Program.MarkImageUpdated("Quest", anyQuestInfoParentImg);
+                            // flag unsaved changes bool
+                            _unsavedChanges = true;
+                            MarkQuestImageUpdated(anyQuestInfoParentImg);
+                        }
 
 
                         // Navigate to this quest on the scrollviewer
@@ -2056,6 +2111,238 @@ namespace HaCreator.GUI.Quest
             // TODO: detect unsaved quest
 
             SelectedQuest = e.AddedItems[0] as QuestEditorModel;
+            QueueFirstVisibleQuestConversationSelection();
+        }
+
+        private void QuestGraph_QuestSelected(object sender, Graph.QuestGraphQuestSelectedEventArgs e)
+        {
+            QuestEditorModel quest = _quests.FirstOrDefault(item => item.Id == e.QuestId);
+            if (quest == null)
+                return;
+
+            if (!FilteredQuests.Contains(quest))
+            {
+                searchBox.Text = string.Empty;
+                SortQuestAreaCode = QuestAreaCodeType.Unknown;
+                UpdateSortedQuestList();
+            }
+
+            SelectedQuest = quest;
+            listbox_Quest.SelectedItem = quest;
+            listbox_Quest.ScrollIntoView(quest);
+        }
+
+        private Graph.QuestGraphRelationshipResult ExecuteQuestGraphRelationshipCommand(
+            Graph.QuestGraphRelationshipRequest request)
+        {
+            if (request?.SourceQuest == null)
+            {
+                return Graph.QuestGraphRelationshipResult.Fail(
+                    Graph.QuestGraphRelationshipErrorCode.InvalidSource,
+                    "The source quest is unavailable.");
+            }
+
+            Graph.QuestGraphRelationshipKind kind;
+            Graph.QuestGraphRelationshipPhase phase;
+            QuestStateType state;
+            int targetQuestId;
+            if (request.RequestType == Graph.QuestGraphRelationshipRequestType.Remove)
+            {
+                if (request.Address == null)
+                {
+                    return Graph.QuestGraphRelationshipResult.Fail(
+                        Graph.QuestGraphRelationshipErrorCode.StaleAddress,
+                        "The relationship address is unavailable.");
+                }
+                kind = request.Address.Kind;
+                phase = request.Address.Phase;
+                state = request.Address.QuestState ?? QuestStateType.Completed;
+                targetQuestId = request.Address.TargetQuestId;
+            }
+            else
+            {
+                if (request.Draft == null)
+                {
+                    return Graph.QuestGraphRelationshipResult.Fail(
+                        Graph.QuestGraphRelationshipErrorCode.InvalidTarget,
+                        "The relationship change is incomplete.");
+                }
+                (kind, phase) = request.Draft.Kind switch
+                {
+                    Graph.QuestGraphRelationshipDraftKind.StartNextQuest =>
+                        (Graph.QuestGraphRelationshipKind.NextQuest, Graph.QuestGraphRelationshipPhase.Start),
+                    Graph.QuestGraphRelationshipDraftKind.CompletionNextQuest =>
+                        (Graph.QuestGraphRelationshipKind.NextQuest, Graph.QuestGraphRelationshipPhase.End),
+                    Graph.QuestGraphRelationshipDraftKind.StartRequirement =>
+                        (Graph.QuestGraphRelationshipKind.CheckQuestRequirement, Graph.QuestGraphRelationshipPhase.Start),
+                    Graph.QuestGraphRelationshipDraftKind.CompletionRequirement =>
+                        (Graph.QuestGraphRelationshipKind.CheckQuestRequirement, Graph.QuestGraphRelationshipPhase.End),
+                    _ => throw new InvalidOperationException("Unsupported quest graph relationship type."),
+                };
+                state = request.Draft.QuestState;
+                targetQuestId = request.Draft.TargetQuestId;
+            }
+
+            IDictionary<string, WzSubProperty> rawCollection = kind == Graph.QuestGraphRelationshipKind.NextQuest
+                ? Program.InfoManager.QuestActs
+                : Program.InfoManager.QuestChecks;
+            if (!rawCollection.TryGetValue(request.SourceQuest.Id.ToString(), out WzSubProperty rawRoot) ||
+                rawRoot?.ParentImage == null)
+            {
+                return Graph.QuestGraphRelationshipResult.Fail(
+                    Graph.QuestGraphRelationshipErrorCode.UnsupportedRawShape,
+                    "The source quest does not have an attached relationship container. Add and save the corresponding Act or Check section before editing it from the graph.");
+            }
+
+            return request.RequestType switch
+            {
+                Graph.QuestGraphRelationshipRequestType.Add => Graph.QuestGraphRelationshipCommand.TryAdd(
+                    request.SourceQuest, rawRoot, kind, phase, targetQuestId, state, _quests),
+                Graph.QuestGraphRelationshipRequestType.Replace when request.Address != null => Graph.QuestGraphRelationshipCommand.TryReplace(
+                    request.SourceQuest, rawRoot, request.Address, targetQuestId, state, _quests),
+                Graph.QuestGraphRelationshipRequestType.Remove when request.Address != null => Graph.QuestGraphRelationshipCommand.TryRemove(
+                    request.SourceQuest, rawRoot, request.Address),
+                _ => Graph.QuestGraphRelationshipResult.Fail(
+                    Graph.QuestGraphRelationshipErrorCode.StaleAddress,
+                    "The relationship request is incomplete."),
+            };
+        }
+
+        private void QuestGraph_RelationshipChanged(object sender, Graph.QuestGraphRelationshipChangedEventArgs e)
+        {
+            WzImage changedImage = e.Operation.ChangedRawRoot?.ParentImage;
+            if (changedImage == null)
+                return;
+
+            _unsavedChanges = true;
+            MarkQuestImageUpdated(changedImage);
+        }
+
+        /// <summary>
+        /// Selects the first item in the active quest data grid after the new quest has
+        /// propagated through the bindings. This also refreshes the conversation studio
+        /// because its conversation is bound to the grid's selected item.
+        /// </summary>
+        private void QueueFirstVisibleQuestConversationSelection()
+        {
+            Dispatcher.BeginInvoke(
+                DispatcherPriority.ContextIdle,
+                new Action(() =>
+                {
+                    SelectFirstVisibleQuestConversation();
+                    RefreshConversationStudio();
+                }));
+        }
+
+        private void SelectFirstVisibleQuestConversation()
+        {
+            DataGrid dataGrid = FindVisibleDescendant<DataGrid>(this);
+            if (dataGrid == null || dataGrid.Items.Count == 0 ||
+                dataGrid.Items[0] == CollectionView.NewItemPlaceholder)
+            {
+                return;
+            }
+
+            object firstItem = dataGrid.Items[0];
+            if (firstItem is QuestEditorSayModel sayModel)
+            {
+                sayModel.SelectedPreviewLine = sayModel.PreviewLines.FirstOrDefault();
+            }
+            else if (firstItem is QuestEditorSayEndQuestModel stopConversation)
+            {
+                stopConversation.SelectedResponse = stopConversation.Responses.FirstOrDefault();
+            }
+
+            dataGrid.SelectedItem = firstItem;
+            dataGrid.ScrollIntoView(firstItem);
+        }
+
+        private void ConversationGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (ConversationStudio != null && sender is DataGrid dataGrid && dataGrid.IsVisible)
+            {
+                ShowConversationStudio(dataGrid);
+            }
+        }
+
+        private void QuestEditorTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (QuestEditorTabs?.SelectedItem == QuestGraphTab)
+                QuestGraph?.RefreshGraph();
+
+            Dispatcher.BeginInvoke(
+                DispatcherPriority.Loaded,
+                new Action(RefreshConversationStudio));
+        }
+
+        private void RefreshConversationStudio()
+        {
+            if (QuestEditorTabs == null || ConversationStudio == null)
+            {
+                return;
+            }
+
+            DataGrid conversationGrid = FindVisibleDescendant<DataGrid>(
+                QuestEditorTabs,
+                dataGrid => Equals(dataGrid.Tag, "ConversationStudioSource"));
+
+            if (conversationGrid == null)
+            {
+                HideConversationStudio();
+                return;
+            }
+
+            ShowConversationStudio(conversationGrid);
+        }
+
+        private void ShowConversationStudio(DataGrid conversationGrid)
+        {
+            BindingOperations.ClearBinding(ConversationStudio, NpcConversationPreview.ConversationProperty);
+            ConversationStudio.ConversationGroup = null;
+
+            if (conversationGrid.SelectedItem is QuestEditorSayModel sayModel)
+            {
+                ConversationStudio.SetBinding(
+                    NpcConversationPreview.ConversationProperty,
+                    new Binding($"{nameof(QuestEditorSayModel.SelectedPreviewLine)}.{nameof(QuestEditorConversationPreviewLine.Conversation)}")
+                    {
+                        Source = sayModel
+                    });
+                ConversationStudio.ConversationGroup = sayModel;
+            }
+            else if (conversationGrid.SelectedItem is QuestEditorSayEndQuestModel stopConversation)
+            {
+                ConversationStudio.SetBinding(
+                    NpcConversationPreview.ConversationProperty,
+                    new Binding(nameof(QuestEditorSayEndQuestModel.SelectedResponse))
+                    {
+                        Source = stopConversation
+                    });
+            }
+
+            ConversationStudioSplitterRow.Height = new GridLength(6);
+            if (ConversationStudio.Visibility != Visibility.Visible)
+            {
+                ConversationStudioRow.Height = _conversationStudioHeight;
+            }
+            ConversationStudioSplitter.Visibility = Visibility.Visible;
+            ConversationStudio.Visibility = Visibility.Visible;
+        }
+
+        private void HideConversationStudio()
+        {
+            if (ConversationStudioRow.Height.Value > 0)
+            {
+                _conversationStudioHeight = ConversationStudioRow.Height;
+            }
+
+            BindingOperations.ClearBinding(ConversationStudio, NpcConversationPreview.ConversationProperty);
+            ConversationStudio.Conversation = null;
+            ConversationStudio.ConversationGroup = null;
+            ConversationStudioSplitter.Visibility = Visibility.Collapsed;
+            ConversationStudio.Visibility = Visibility.Collapsed;
+            ConversationStudioSplitterRow.Height = new GridLength(0);
+            ConversationStudioRow.Height = new GridLength(0);
         }
 
         /// <summary>
@@ -3405,12 +3692,25 @@ namespace HaCreator.GUI.Quest
                 return;
             }
 
+            using IDisposable writeLease = Program.BeginRuntimeAssetWrite("save quest assets");
+
             Tuple<WzSubProperty, WzSubProperty, WzSubProperty, WzSubProperty> questExportedProperties = saveQuestAsWzImage(quest);
 
             WzSubProperty questWzSubProperty_original = Program.InfoManager.QuestInfos[quest.Id.ToString()];
             WzSubProperty oldSayWzProp = Program.InfoManager.QuestSays.ContainsKey(quest.Id.ToString()) ? Program.InfoManager.QuestSays[quest.Id.ToString()] : null;
             WzSubProperty questAct_SubPropOriginal = Program.InfoManager.QuestActs.ContainsKey(quest.Id.ToString()) ? Program.InfoManager.QuestActs[quest.Id.ToString()] : null;
             WzSubProperty questCheck_SubPropOriginal = Program.InfoManager.QuestChecks.ContainsKey(quest.Id.ToString()) ? Program.InfoManager.QuestChecks[quest.Id.ToString()] : null;
+
+            if (IsPerQuestStorageImage(questWzSubProperty_original?.ParentImage))
+            {
+                StorePerQuestData(
+                    quest.Id.ToString(),
+                    questExportedProperties.Item1,
+                    questExportedProperties.Item2,
+                    questExportedProperties.Item3,
+                    questExportedProperties.Item4);
+                return;
+            }
 
             WzImage questInfoParentImg = resolveQuestParentImage(questWzSubProperty_original, Program.InfoManager.QuestInfos, "QuestInfo.img");
             WzImage questSayParentImg = resolveQuestParentImage(oldSayWzProp, Program.InfoManager.QuestSays, "Say.img");
@@ -3419,8 +3719,8 @@ namespace HaCreator.GUI.Quest
             if (questInfoParentImg == null || questSayParentImg == null || questActParentImg == null || questCheckParentImg == null)
             {
                 MessageBox.Show(
-                    $"Unable to resolve one or more quest parent images while saving quest {quest.Id}. Save was cancelled to prevent corruption.",
-                    "Save Error",
+                    QuestTextExtension.Get("QuestEditor_SaveParentError", quest.Id),
+                    QuestTextExtension.Get("QuestEditor_SaveError"),
                     MessageBoxButton.OK,
                     MessageBoxImage.Error);
                 return;
@@ -3658,6 +3958,8 @@ namespace HaCreator.GUI.Quest
                 SaveCheck(quest.CheckStartInfo, check_startSubProperty, quest);
                 SaveCheck(quest.CheckEndInfo, check_endSubProperty, quest);
             }
+
+            RestoreAdditionalProperties(quest, questWzSubProp, newSayWzProp, questAct_New, questCheck_New);
 
             return new Tuple<WzSubProperty, WzSubProperty, WzSubProperty, WzSubProperty>(
                 questWzSubProp, newSayWzProp, questAct_New, questCheck_New
@@ -4441,9 +4743,22 @@ namespace HaCreator.GUI.Quest
 
             QuestEditorModel quest = _selectedQuest;
 
+            using IDisposable writeLease = Program.BeginRuntimeAssetWrite("delete quest assets");
+
             // remove it off local collections
             _quests.Remove(_selectedQuest);
             FilteredQuests.Remove(_selectedQuest);
+
+            string questId = quest.Id.ToString();
+            if (Program.InfoManager.QuestInfos.TryGetValue(questId, out WzSubProperty modernQuestInfo)
+                && IsPerQuestStorageImage(modernQuestInfo?.ParentImage))
+            {
+                // Keep the standalone IMG as an empty, valid image. It will no
+                // longer be indexed as a quest because it has no QuestInfo root.
+                StorePerQuestData(questId, null, null, null, null);
+                SelectedQuest = null;
+                return;
+            }
 
             //////////////////
             /// Remove from QuestInfo.img
@@ -4534,7 +4849,7 @@ namespace HaCreator.GUI.Quest
             // Create dialog to select save location
             Microsoft.Win32.SaveFileDialog saveFileDialog = new()
             {
-                Filter = "WZ files (*.wz)|*.wz",
+                Filter = QuestTextExtension.Get("QuestEditor_WzExportFilter"),
                 FileName = $"Quest_{quest.Id}.wz",
                 DefaultExt = ".wz"
             };
@@ -4568,15 +4883,15 @@ namespace HaCreator.GUI.Quest
                     // Save WZ file
                     wzFile.SaveToDisk(saveFileDialog.FileName);
 
-                    MessageBox.Show($"Quest {quest.Id} successfully exported to {saveFileDialog.FileName}",
-                        "Export Successful",
+                    MessageBox.Show(QuestTextExtension.Get("QuestEditor_ExportSuccessMessage", quest.Id, saveFileDialog.FileName),
+                        QuestTextExtension.Get("QuestEditor_ExportSuccessTitle"),
                         MessageBoxButton.OK,
                         MessageBoxImage.Information);
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show($"Error exporting quest: {ex.Message}",
-                        "Export Error",
+                    MessageBox.Show(QuestTextExtension.Get("QuestEditor_ExportErrorMessage", ex.Message),
+                        QuestTextExtension.Get("QuestEditor_ExportErrorTitle"),
                         MessageBoxButton.OK,
                         MessageBoxImage.Error);
                 }
@@ -4628,6 +4943,49 @@ namespace HaCreator.GUI.Quest
                         return descendant;
                 }
             }
+            return null;
+        }
+
+        /// <summary>
+        /// Helper method to find the first visible descendant of a specific type.
+        /// </summary>
+        private static T FindVisibleDescendant<T>(DependencyObject parent) where T : FrameworkElement
+        {
+            if (parent is T visibleElement && visibleElement.IsVisible)
+            {
+                return visibleElement;
+            }
+
+            int childCount = VisualTreeHelper.GetChildrenCount(parent);
+            for (int i = 0; i < childCount; i++)
+            {
+                T descendant = FindVisibleDescendant<T>(VisualTreeHelper.GetChild(parent, i));
+                if (descendant != null)
+                {
+                    return descendant;
+                }
+            }
+
+            return null;
+        }
+
+        private static T FindVisibleDescendant<T>(DependencyObject parent, Predicate<T> predicate) where T : FrameworkElement
+        {
+            if (parent is T visibleElement && visibleElement.IsVisible && predicate(visibleElement))
+            {
+                return visibleElement;
+            }
+
+            int childCount = VisualTreeHelper.GetChildrenCount(parent);
+            for (int i = 0; i < childCount; i++)
+            {
+                T descendant = FindVisibleDescendant(VisualTreeHelper.GetChild(parent, i), predicate);
+                if (descendant != null)
+                {
+                    return descendant;
+                }
+            }
+
             return null;
         }
         #endregion

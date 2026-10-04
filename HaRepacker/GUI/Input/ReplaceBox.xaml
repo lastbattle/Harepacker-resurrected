@@ -1,0 +1,15 @@
+<Window x:Class="HaRepacker.GUI.Input.ReplaceBox" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ Width="520" SizeToContent="Height" ResizeMode="NoResize" WindowStartupLocation="CenterOwner" Background="{DynamicResource HareCanvasBrush}" FontFamily="Segoe UI">
+ <Window.Resources><ResourceDictionary><ResourceDictionary.MergedDictionaries>
+<ResourceDictionary Source="/HaSharedLibrary;component/GUI/Themes/HarepackerTheme.xaml"/>
+</ResourceDictionary.MergedDictionaries></ResourceDictionary></Window.Resources>
+ <StackPanel Margin="18"><Border Style="{StaticResource HareCardStyle}">
+  <TextBlock x:Name="messageText" TextWrapping="Wrap" FontSize="14"/>
+ </Border>
+ <UniformGrid Columns="2" Margin="0,14,0,0">
+  <Button x:Name="yesButton" Content="Yes" Margin="0,0,4,8" Style="{StaticResource HarePrimaryButtonStyle}" Click="Yes_Click"/>
+  <Button x:Name="noButton" Content="No" Margin="4,0,0,8" Click="No_Click"/>
+  <Button x:Name="yesAllButton" Content="Yes to all" Margin="0,0,4,0" Click="YesAll_Click"/>
+  <Button x:Name="noAllButton" Content="No to all" Margin="4,0,0,0" Click="NoAll_Click"/>
+ </UniformGrid></StackPanel>
+</Window>

@@ -121,6 +121,8 @@ namespace HaCreator.MapEditor
             {
                 position.X = x;
                 position.Y = y;
+                if (this is PortalInstance)
+                    board.InvalidatePortalPairCache();
                 List<BoardItem> items = boundItems.Keys.ToList();
                 foreach (BoardItem item in items)
                 {
@@ -135,6 +137,7 @@ namespace HaCreator.MapEditor
                 {
                     tempParent.boundItems[this] = new XNA.Point(this.X - tempParent.X, this.Y - tempParent.Y);
                 }
+                Board.ParentControl.RequestRender();
             }
         }
 
@@ -144,6 +147,8 @@ namespace HaCreator.MapEditor
             {
                 position.X = x;
                 position.Y = y;
+                if (this is PortalInstance)
+                    board.InvalidatePortalPairCache();
                 List<BoardItem> items = boundItems.Keys.ToList();
                 foreach (BoardItem item in items)
                 {
@@ -154,6 +159,7 @@ namespace HaCreator.MapEditor
                 {
                     tempParent.boundItems[this] = new XNA.Point(this.X - tempParent.X, this.Y - tempParent.Y);
                 }
+                Board.ParentControl.RequestRender();
             }
         }
 
@@ -320,6 +326,7 @@ namespace HaCreator.MapEditor
                         board.ParentControl.OnSelectedItemChanged(board.SelectedItems[0]);
                     else if (board.SelectedItems.Count == 0)
                         board.ParentControl.OnSelectedItemChanged(null);
+                    board.ParentControl.RequestRender();
                 }
             }
         }
@@ -450,6 +457,8 @@ namespace HaCreator.MapEditor
             {
                 position.X += offset.Value.X;
                 position.Y += offset.Value.Y;
+                if (this is PortalInstance)
+                    board.InvalidatePortalPairCache();
             }
         }
         #endregion

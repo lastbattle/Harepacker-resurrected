@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="Title" xml:space="preserve"><value>스킬 편집기</value></data>
+  <data name="CommandLabel" xml:space="preserve"><value>스킬</value></data>
+  <data name="Purpose" xml:space="preserve"><value>플레이어 스킬과 특수 Skill 데이터를 찾아보고, 검증하고, 미리 보고, 손실 없이 편집합니다.</value></data>
+  <data name="Save" xml:space="preserve"><value>저장</value></data>
+  <data name="Undo" xml:space="preserve"><value>실행 취소</value></data>
+  <data name="Redo" xml:space="preserve"><value>다시 실행</value></data>
+  <data name="ValidateCurrent" xml:space="preserve"><value>현재 스킬 검증</value></data>
+  <data name="ValidateAll" xml:space="preserve"><value>로드된 모든 변경 사항 검증</value></data>
+  <data name="Duplicate" xml:space="preserve"><value>복제</value></data>
+  <data name="NewSkill" xml:space="preserve"><value>새 스킬</value></data>
+  <data name="Source" xml:space="preserve"><value>소스</value></data>
+  <data name="Search" xml:space="preserve"><value>스킬 ID 또는 이름으로 검색</value></data>
+  <data name="Scope" xml:space="preserve"><value>범위</value></data>
+  <data name="All" xml:space="preserve"><value>전체</value></data>
+  <data name="Player" xml:space="preserve"><value>플레이어</value></data>
+  <data name="Special" xml:space="preserve"><value>특수 데이터</value></data>
+  <data name="Books" xml:space="preserve"><value>직업 및 스킬북</value></data>
+  <data name="Skills" xml:space="preserve"><value>스킬</value></data>
+  <data name="Overview" xml:space="preserve"><value>개요</value></data>
+  <data name="Levels" xml:space="preserve"><value>레벨</value></data>
+  <data name="Visuals" xml:space="preserve"><value>시각 요소</value></data>
+  <data name="Relationships" xml:space="preserve"><value>관계</value></data>
+  <data name="KnownProperties" xml:space="preserve"><value>알려진 속성</value></data>
+  <data name="RawProperties" xml:space="preserve"><value>Raw 속성</value></data>
+  <data name="Validation" xml:space="preserve"><value>유효성 검사</value></data>
+  <data name="SkillId" xml:space="preserve"><value>스킬 ID</value></data>
+  <data name="Book" xml:space="preserve"><value>스킬북 / 직업</value></data>
+  <data name="Name" xml:space="preserve"><value>이름</value></data>
+  <data name="Description" xml:space="preserve"><value>설명</value></data>
+  <data name="EditText" xml:space="preserve"><value>텍스트 메타데이터 편집</value></data>
+  <data name="OtherImageWarning" xml:space="preserve"><value>String/Skill.img도 수정됩니다.</value></data>
+  <data name="FormulaMode" xml:space="preserve"><value>수식 모드</value></data>
+  <data name="ExplicitMode" xml:space="preserve"><value>명시적 레벨</value></data>
+  <data name="PreviewLevel" xml:space="preserve"><value>미리 보기 레벨</value></data>
+  <data name="Property" xml:space="preserve"><value>속성</value></data>
+  <data name="Type" xml:space="preserve"><value>WZ 형식</value></data>
+  <data name="RawValue" xml:space="preserve"><value>Raw 값</value></data>
+  <data name="Evaluated" xml:space="preserve"><value>계산값</value></data>
+  <data name="PvpCommon" xml:space="preserve"><value>PVPcommon</value></data>
+  <data name="VisualTracks" xml:space="preserve"><value>시각 트랙</value></data>
+  <data name="ShowCharacter" xml:space="preserve"><value>캐릭터 표시</value></data>
+  <data name="Action" xml:space="preserve"><value>동작</value></data>
+  <data name="Auto" xml:space="preserve"><value>자동</value></data>
+  <data name="Facing" xml:space="preserve"><value>방향</value></data>
+  <data name="FacingLeft" xml:space="preserve"><value>왼쪽</value></data>
+  <data name="FacingRight" xml:space="preserve"><value>오른쪽</value></data>
+  <data name="CharacterPreset" xml:space="preserve"><value>캐릭터 프리셋</value></data>
+  <data name="Male" xml:space="preserve"><value>기본 남성</value></data>
+  <data name="Female" xml:space="preserve"><value>기본 여성</value></data>
+  <data name="Custom" xml:space="preserve"><value>사용자 지정</value></data>
+  <data name="Play" xml:space="preserve"><value>미리 보기 재생 또는 일시 중지</value></data>
+  <data name="PreviousFrame" xml:space="preserve"><value>이전 프레임</value></data>
+  <data name="NextFrame" xml:space="preserve"><value>다음 프레임</value></data>
+  <data name="Materialize" xml:space="preserve"><value>링크 구체화</value></data>
+  <data name="Import" xml:space="preserve"><value>가져오기</value></data>
+  <data name="Export" xml:space="preserve"><value>내보내기</value></data>
+  <data name="Add" xml:space="preserve"><value>추가</value></data>
+  <data name="Delete" xml:space="preserve"><value>삭제</value></data>
+  <data name="Rename" xml:space="preserve"><value>이름 바꾸기</value></data>
+  <data name="ChangeType" xml:space="preserve"><value>형식 변경</value></data>
+  <data name="CopyPath" xml:space="preserve"><value>경로 복사</value></data>
+  <data name="RelationshipKind" xml:space="preserve"><value>관계</value></data>
+  <data name="TargetSkill" xml:space="preserve"><value>대상 스킬</value></data>
+  <data name="Path" xml:space="preserve"><value>WZ 경로</value></data>
+  <data name="Status" xml:space="preserve"><value>상태</value></data>
+  <data name="Ready" xml:space="preserve"><value>준비 완료</value></data>
+  <data name="Loading" xml:space="preserve"><value>로드 중…</value></data>
+  <data name="Saving" xml:space="preserve"><value>저장 중…</value></data>
+  <data name="Dirty" xml:space="preserve"><value>저장되지 않은 변경 사항</value></data>
+  <data name="PreservedRaw" xml:space="preserve"><value>알 수 없는 필드는 Raw 속성에 보존됩니다.</value></data>
+  <data name="NoSelection" xml:space="preserve"><value>스킬을 선택하여 시작하세요.</value></data>
+  <data name="NoDataSource" xml:space="preserve"><value>활성 MapleStory 데이터 소스를 사용할 수 없습니다.</value></data>
+  <data name="LoadFailed" xml:space="preserve"><value>스킬을 불러올 수 없습니다: {0}</value></data>
+  <data name="SaveSucceeded" xml:space="preserve"><value>이미지 {0}개를 저장했습니다.</value></data>
+  <data name="SaveFailed" xml:space="preserve"><value>저장 실패: {0}</value></data>
+  <data name="PartialSave" xml:space="preserve"><value>부분 저장입니다. 계속하기 전에 다음 복구 경로를 다시 로드하세요: {0}</value></data>
+  <data name="ValidationSummary" xml:space="preserve"><value>오류 {0}개, 경고 {1}개</value></data>
+  <data name="UnsavedPrompt" xml:space="preserve"><value>계속하기 전에 스킬 {0}의 변경 사항을 저장하시겠습니까?</value></data>
+  <data name="Discard" xml:space="preserve"><value>버리기</value></data>
+  <data name="Cancel" xml:space="preserve"><value>취소</value></data>
+  <data name="ConfirmDelete" xml:space="preserve"><value>Raw 속성 '{0}'을 삭제하시겠습니까? Undo 외부에는 백업이 보존되지 않습니다.</value></data>
+  <data name="ConfirmMaterialize" xml:space="preserve"><value>이 링크를 분리된 복사본으로 구체화하시겠습니까? 직렬화된 링크가 바뀝니다.</value></data>
+  <data name="ActionFallback" xml:space="preserve"><value>{0} → {1}: {2}</value></data>
+  <data name="NoAction" xml:space="preserve"><value>선언된 동작 없음</value></data>
+  <data name="UnsupportedSemantic" xml:space="preserve"><value>이 구조는 Raw 속성에서 계속 완전히 편집할 수 있습니다.</value></data>
+  <data name="Level" xml:space="preserve"><value>레벨</value></data>
+  <data name="Absent" xml:space="preserve"><value>(없음)</value></data>
+  <data name="PngImageFilter" xml:space="preserve"><value>PNG 이미지|*.png</value></data>
+  <data name="Ok" xml:space="preserve"><value>확인</value></data>
+  <data name="OperationFailed" xml:space="preserve"><value>작업 실패: {0}</value></data>
+  <data name="EditProperty" xml:space="preserve"><value>{0} 편집</value></data>
+  <data name="EditStringMetadata" xml:space="preserve"><value>String 메타데이터 편집</value></data>
+  <data name="EditRawProperty" xml:space="preserve"><value>Raw 속성 편집</value></data>
+  <data name="EditFormula" xml:space="preserve"><value>수식 편집</value></data>
+  <data name="DeleteRawProperty" xml:space="preserve"><value>Raw 속성 삭제</value></data>
+  <data name="RenameRawProperty" xml:space="preserve"><value>Raw 속성 이름 바꾸기</value></data>
+  <data name="AddRawProperty" xml:space="preserve"><value>Raw 속성 추가</value></data>
+  <data name="ChangeRawPropertyType" xml:space="preserve"><value>Raw 속성 형식 변경</value></data>
+  <data name="AlphaEnd" xml:space="preserve"><value>알파 끝</value></data><data name="AlphaStart" xml:space="preserve"><value>알파 시작</value></data><data name="ApplyProfile" xml:space="preserve"><value>프로필 적용</value></data><data name="Body" xml:space="preserve"><value>몸</value></data><data name="CopyCell" xml:space="preserve"><value>셀 복사</value></data><data name="CopyPropertyToLoaded" xml:space="preserve"><value>속성을 로드된 스킬에 복사</value></data><data name="CustomProfile" xml:space="preserve"><value>사용자 지정 프로필</value></data><data name="Delay" xml:space="preserve"><value>지연</value></data><data name="DeleteSkill" xml:space="preserve"><value>스킬 삭제</value></data><data name="DuplicateProperty" xml:space="preserve"><value>속성 복제</value></data><data name="Equipment" xml:space="preserve"><value>장비</value></data><data name="EquipmentHint" xml:space="preserve"><value>쉼표로 구분된 아이템 ID 입력</value></data><data name="ExportData" xml:space="preserve"><value>데이터 내보내기</value></data><data name="ExportIcon" xml:space="preserve"><value>아이콘 내보내기</value></data><data name="Face" xml:space="preserve"><value>얼굴</value></data><data name="FillDown" xml:space="preserve"><value>아래로 채우기</value></data><data name="Fit" xml:space="preserve"><value>맞춤</value></data><data name="FrameDelete" xml:space="preserve"><value>프레임 삭제</value></data><data name="FrameDuplicate" xml:space="preserve"><value>프레임 복제</value></data><data name="Hair" xml:space="preserve"><value>헤어</value></data><data name="Head" xml:space="preserve"><value>머리</value></data><data name="HoldStage" xml:space="preserve"><value>홀드 단계</value></data><data name="ImportData" xml:space="preserve"><value>데이터 가져오기</value></data><data name="ImportIcon" xml:space="preserve"><value>아이콘 가져오기</value></data><data name="MoveLeft" xml:space="preserve"><value>왼쪽으로 이동</value></data><data name="MoveRight" xml:space="preserve"><value>오른쪽으로 이동</value></data><data name="NavigateRelationship" xml:space="preserve"><value>관계로 이동</value></data><data name="OnionSkin" xml:space="preserve"><value>어니언 스킨</value></data><data name="OriginX" xml:space="preserve"><value>원점 X</value></data><data name="OriginY" xml:space="preserve"><value>원점 Y</value></data><data name="PlaybackSpeed" xml:space="preserve"><value>재생 속도</value></data><data name="RekeyFrames" xml:space="preserve"><value>프레임 다시 번호 매기기</value></data><data name="ReleaseStage" xml:space="preserve"><value>해제 단계</value></data><data name="RenameMoveSkill" xml:space="preserve"><value>스킬 이름 변경 또는 이동</value></data><data name="RenderedDescription" xml:space="preserve"><value>렌더링된 설명</value></data><data name="ResolveLink" xml:space="preserve"><value>링크 확인</value></data><data name="Z" xml:space="preserve"><value>Z</value></data><data name="Zoom" xml:space="preserve"><value>확대/축소</value></data>
+  <data name="EditorMode" xml:space="preserve"><value>편집기 모드</value></data><data name="ModePlayer" xml:space="preserve"><value>플레이어 스킬</value></data><data name="ModeAttackType" xml:space="preserve"><value>공격 유형</value></data><data name="ModeItemSkill" xml:space="preserve"><value>아이템 스킬</value></data><data name="ModeMobSkill" xml:space="preserve"><value>몬스터 스킬</value></data><data name="ModeBattlefield" xml:space="preserve"><value>전장</value></data><data name="ModeMiniGame" xml:space="preserve"><value>미니게임</value></data><data name="ModeRecipe" xml:space="preserve"><value>레시피</value></data><data name="ModeDragon" xml:space="preserve"><value>드래곤</value></data><data name="ModeModernGraph" xml:space="preserve"><value>현대 그래프</value></data><data name="ModeGeneric" xml:space="preserve"><value>일반 데이터</value></data>
+  <data name="ValidationNoSelection" xml:space="preserve"><value>선택된 스킬이 없습니다.</value></data>
+  <data name="ValidationInvalidSkillId" xml:space="preserve"><value>스킬 ID '{0}'에는 숫자만 사용할 수 있습니다.</value></data>
+  <data name="ValidationIdMismatch" xml:space="preserve"><value>직렬화된 노드 '{0}'이(가) 선택한 스킬 ID '{1}'과(와) 일치하지 않습니다.</value></data>
+  <data name="ValidationDuplicateProperty" xml:space="preserve"><value>프로퍼티 이름 '{0}'이(가) 중복됩니다.</value></data>
+  <data name="ValidationInvalidCanvasDelay" xml:space="preserve"><value>애니메이션 지연 시간은 0보다 커야 합니다.</value></data>
+  <data name="ValidationInvalidContainerDelay" xml:space="preserve"><value>0 이하의 지연 시간은 보존되며 제한된 대체값으로 미리 봅니다.</value></data>
+  <data name="ValidationBrokenExistingUol" xml:space="preserve"><value>기존 UOL 대상 '{0}'이(가) 손상되었거나 순환합니다.</value></data>
+  <data name="ValidationBrokenIntroducedUol" xml:space="preserve"><value>편집한 UOL 대상 '{0}'이(가) 손상되었거나 순환합니다.</value></data>
+  <data name="ValidationFormulaInvalid" xml:space="preserve"><value>수식이 잘못되었거나 지원되지 않는 구문을 사용합니다.</value></data>
+  <data name="ValidationFormulaDivisionByZero" xml:space="preserve"><value>수식이 레벨 {0}에서 0으로 나눕니다.</value></data>
+  <data name="ValidationMissingProgression" xml:space="preserve"><value>스킬에 common 수식과 명시적 레벨 표가 모두 없습니다.</value></data>
+  <data name="ValidationMissingIcon" xml:space="preserve"><value>스킬 아이콘이 없습니다.</value></data>
+  <data name="ValidationMissingString" xml:space="preserve"><value>문자열 메타데이터가 없습니다.</value></data>
+  <data name="ValidationMissingStringName" xml:space="preserve"><value>현지화된 스킬 이름이 없습니다.</value></data>
+  <data name="ValidationMissingMaximum" xml:space="preserve"><value>스킬에 선언된 최대 레벨이나 명시적 레벨이 없습니다.</value></data>
+  <data name="ValidationMaximumMismatch" xml:space="preserve"><value>common/maxLevel({0})이(가) maxLevel({1})과(와) 다릅니다.</value></data>
+  <data name="ValidationUnexpectedBook" xml:space="preserve"><value>스킬 ID {0}이(가) 예상하지 않은 스킬 북 {1}에 있습니다.</value></data>
+  <data name="ValidationMissingReference" xml:space="preserve"><value>참조된 스킬 {0}을(를) 찾을 수 없습니다.</value></data>
+  <data name="ValidationAmbiguousReference" xml:space="preserve"><value>참조된 스킬 {0}이(가) 둘 이상의 스킬 북에 있습니다.</value></data>
+  <data name="ValidationPlaceholderImage" xml:space="preserve"><value>길이가 0이거나 자리 표시자인 이미지입니다.</value></data>
+  <data name="ValidationModernGraph" xml:space="preserve"><value>최신 프로세스 그래프는 보존되지만 전용 유효성 검사기가 없습니다.</value></data>
+  <data name="ValidationEmptyAction" xml:space="preserve"><value>선언된 캐릭터 액션이 비어 있습니다.</value></data>
+  <data name="Active" xml:space="preserve"><value>액티브</value></data>
+  <data name="Passive" xml:space="preserve"><value>패시브</value></data>
+  <data name="Hidden" xml:space="preserve"><value>숨김</value></data>
+  <data name="Warnings" xml:space="preserve"><value>경고</value></data>
+  <data name="SearchProperties" xml:space="preserve"><value>속성 이름 정확히 검색</value></data>
+  <data name="Classification" xml:space="preserve"><value>분류</value></data>
+  <data name="MaximumLevel" xml:space="preserve"><value>최대 레벨</value></data>
+  <data name="RequirementsFlags" xml:space="preserve"><value>요구 조건 및 플래그</value></data>
+  <data name="DragonAssets" xml:space="preserve"><value>드래곤 에셋 열기</value></data>
+  <data name="TimelineFrames" xml:space="preserve"><value>애니메이션 프레임</value></data>
+  <data name="TimelineClipboardTooltip" xml:space="preserve"><value>프레임을 선택한 다음 Ctrl+C로 복사하거나 Ctrl+V로 선택한 프레임 뒤에 붙여 넣습니다.</value></data>
+  <data name="FrameCopied" xml:space="preserve"><value>프레임을 복사했습니다.</value></data>
+  <data name="FramePasted" xml:space="preserve"><value>프레임을 붙여 넣었습니다.</value></data>
+  <data name="ClipboardHasNoImage" xml:space="preserve"><value>클립보드에 이미지 프레임이 없습니다.</value></data>
+  <data name="WebpImageFilter" xml:space="preserve"><value>WebP 이미지 (*.webp)|*.webp</value></data>
+</root>

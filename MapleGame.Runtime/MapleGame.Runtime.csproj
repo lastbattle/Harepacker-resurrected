@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <OutputType>Library</OutputType>
+    <UseWindowsForms>true</UseWindowsForms>
+    <UseWPF>true</UseWPF>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\MapleLib\MapleLib\MapleLib.csproj" />
+    <ProjectReference Include="..\HaSharedLibrary\HaSharedLibrary.csproj" />
+    <PackageReference Include="MonoGame.Framework.WindowsDX" Version="3.8.4.1" />
+    <PackageReference Include="NAudio" Version="2.3.0" />
+    <PackageReference Include="SharpDX" Version="4.2.0" />
+    <PackageReference Include="SharpDX.Direct2D1" Version="4.2.0" />
+    <!-- MapleLib uses LZ4 while its package reference is private. The client needs
+         the assembly in its own dependency manifest and published output. -->
+    <PackageReference Include="lz4net" Version="1.0.15.93" />
+  </ItemGroup>
+</Project>

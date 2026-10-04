@@ -8,6 +8,7 @@ This directory contains architecture documentation for HaCreator (map editor) an
 |----------|-------------|
 | [IMG_FILESYSTEM_MIGRATION_PLAN.md](./IMG_FILESYSTEM_MIGRATION_PLAN.md) | Migration from WZ files to extracted IMG filesystem |
 | [img-hot-swap.md](./img-hot-swap.md) | Hot-swapping system for live asset reloading |
+| [MapSimulator extraction plan](../architecture/map-simulator-extraction-plan.md) | Shared game runtime, standalone client, and HaCreator preview integration |
 
 ---
 
@@ -35,6 +36,21 @@ Loads data from extracted `.img` files in the filesystem. Benefits:
 - Git-trackable assets
 - Easy modification via file system
 - Hot-swap support for live editing
+
+Lua WZ images use a text representation in the extracted filesystem: a Lua WZ
+image such as `BattleScene.lua` (containing a `WzLuaProperty`) is written as
+UTF-8 `BattleScene.lua`, not as a binary `BattleScene.lua.img`. When packing,
+the `.lua` file is encoded back into `WzLuaProperty`. UTF-8 (with or without a
+BOM) and BOM-marked UTF-16 source files are accepted. A legacy `.lua.img` is
+accepted only when its
+matching `.lua` text file is absent, so an old export cannot override edited
+script text.
+
+When packing IMG files back to WZ, the Pack IMG files to WZ dialog uses the
+manifest's `isPreBBDataWzFormat` value as the initial suggestion. The user can
+change the pre-Big-Bang checkbox; selecting it produces split category WZ
+files and preserves `List.wz` when the List category is selected. Beta
+packing remains the separate single `Data.wz` format.
 
 ---
 
@@ -177,6 +193,8 @@ Each extracted version has a `manifest.json`:
   "extractedDate": "2025-01-15T10:30:00Z",
   "encryption": "GMS",
   "is64Bit": false,
+  "isPreBBDataWzFormat": true,
+  "isVUpdate": false,
   "categories": {
     "String": { "fileCount": 8 },
     "Map": { "fileCount": 1250 },
@@ -190,6 +208,30 @@ Each extracted version has a `manifest.json`:
 }
 ```
 
+`isVUpdate` is detected from the presence of `UI.wz/StatusBar3.img` during
+WZ extraction. It is independent of the client architecture and lets IMG
+versions retain the same UI-family selection as their source WZ files.
+
+### MapleStory V Update
+
+MapleStory's V Update introduced the fifth-job system and its accompanying
+modern status-bar assets. The client-owned UI images distinguish the simulator
+families by newest owner: `StatusBar.img` identifies the legacy/pre-Big-Bang
+family, `StatusBar2.img` identifies the post-Big-Bang family, and
+`StatusBar3.img` identifies the V Update family. Because later clients can keep
+older assets for compatibility, `StatusBar3.img` takes precedence when more
+than one is present. The extraction service records this result as
+`isVUpdate`; when an IMG version is opened, `VersionManager` and
+`ImgFileSystemManager` deserialize that flag from `manifest.json`. For exports
+created before the flag existed, both readers fall back to the presence of
+`UI/StatusBar3.img` and write the inferred `isVUpdate: true` value back to the
+manifest. If the manifest is read-only, the in-memory version still uses the
+inferred value.
+
+For background on the fifth-job release, see the [official V-179 patch
+notes](https://www.nexon.com/maplestory/news/update/4250/v-179-v-5th-job-patch-notes)
+and the [MapleStory V overview](https://maplestory.fandom.com/wiki/MapleStory:_V).
+
 ---
 
 ## Performance Optimizations
@@ -200,18 +242,24 @@ Each extracted version has a `manifest.json`:
 - Shared across all data sources
 
 ### Lazy Loading
-- TileSets, ObjectSets, BackgroundSets use `LazyWzImageDictionary`
-- Images loaded only when accessed
-- MapInfo created on-demand when map opened
+- Category discovery does not recursively index every IMG file. A recursive category index is built only for APIs that require a complete category scan; directory-name APIs enumerate only their requested directory.
+- Standalone IMG readers parse property headers and retain shareable readers. Canvas and sound payload bytes remain on disk until rendered or played; startup does not calculate whole-file checksums.
+- TileSets, ObjectSets, and BackgroundSets register filenames and load images only when accessed.
+- MapInfo is created when a map opens.
+- A map's BGM path resolves directly to its owning Sound IMG and property. The complete audio catalogue is built only by explicit catalogue/browse workflows.
+- Reactor definitions load from IDs referenced by the opened map. Mob/NPC assets load from that map, and skill assets load for the active character.
+- Startup reads only `String/Map.img`. MapSimulator loads `String/Npc.img` when it first builds NPC tooltips; other localized String catalogues and Quest metadata load when their selectors or editors open.
+- MapSimulator advances NPC animation from update-loop elapsed time; drawing only renders the frame selected by the animation controller.
 
 ### Memory Usage Comparison
 
 | Data Type | Traditional WZ | IMG Filesystem |
 |-----------|----------------|----------------|
-| Startup memory | 40GB+ (all loaded) | 2-4GB (lazy) |
+| Startup memory | 40GB+ (all loaded) | About 99 MB working set in the measured post-V probe |
 | Tiles/Objects | All at startup | On-demand |
 | Maps | All WzImages kept | Metadata only |
-| NPCs/Mobs | Icons preloaded | Names only, icons on-demand |
+| BGM/Reactor | Complete categories parsed | Opened map only |
+| NPCs/Mobs | Icons preloaded | IDs from filenames; assets on-demand |
 
 ---
 
@@ -304,6 +352,12 @@ See [img-hot-swap.md](./img-hot-swap.md) Part 2 for details.
 `HaCreator/MapSimulator` now treats `Mob.img/attackN/info` as structured attack data instead of only generic attack animations.
 The loader carries `range`, `effectAfter`, `attackAfter`, `areaCount`, `attackCount`, `start`, `areaWarning`, `effect`, and numbered `effect0/effect1/...` nodes into the simulator so boss attacks can place telegraphs and delayed ground effects on footholds with client-style timing.
 
+### Foothold Editing
+
+With the Foothold tool active, a normal left click creates the next anchor and
+clicking an existing anchor continues the current polyline. Press `Escape` to
+cancel the unfinished segment; clicking the Foothold tool button again
+re-enters the mode even when the button is already selected.
 ---
 
 ## See Also

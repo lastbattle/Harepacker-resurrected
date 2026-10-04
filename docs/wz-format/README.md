@@ -13,6 +13,16 @@ This directory contains documentation about MapleStory WZ file format handling i
 | [WzFileManager Reference](./WzFileManager.md) | Central class for WZ file loading, caching, and format detection |
 | [Canvas & Outlink System](./canvas-outlink-system.md) | _Canvas directories and _outlink/_inlink resolution |
 
+## Image Compression
+
+WZ canvas formats that use DXT3 or DXT5 are decoded and encoded by MapleLib's
+managed `PngUtility` implementation.
+
+The main integration points are:
+
+- `MapleLib/Helpers/PngUtility.cs` for DXT3/DXT5 compression and decompression
+- `MapleLib/WzLib/WzProperties/WzPngProperty.cs` for WZ canvas format dispatch
+
 ---
 
 ## Quick Links

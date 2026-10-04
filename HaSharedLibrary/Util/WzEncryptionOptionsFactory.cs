@@ -50,13 +50,19 @@ namespace HaSharedLibrary.Util {
         }
 
         public static BindingList<EncryptionKey> BindToComboBox(object encryptionBox, string customEncryptionName, WzEncryptionDisplayNames displayNames = null, bool includeGenerateOption = false) {
+            var keys = CreateEncryptionKeys(customEncryptionName, includeGenerateOption, displayNames);
+            if (encryptionBox is System.Windows.Controls.ComboBox wpfComboBox) {
+                wpfComboBox.DisplayMemberPath = nameof(EncryptionKey.Name);
+                wpfComboBox.ItemsSource = keys;
+                return keys;
+            }
+
             ComboBox comboBox = encryptionBox switch {
                 ToolStripComboBox tsComboBox => tsComboBox.ComboBox,
                 ComboBox winFormsComboBox => winFormsComboBox,
                 _ => throw new ArgumentException("Expected ComboBox or ToolStripComboBox", nameof(encryptionBox))
             };
 
-            var keys = CreateEncryptionKeys(customEncryptionName, includeGenerateOption, displayNames);
             comboBox.DisplayMember = nameof(EncryptionKey.Name);
             comboBox.DataSource = keys;
             return keys;

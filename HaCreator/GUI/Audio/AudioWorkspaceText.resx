@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="Title" xml:space="preserve"><value>Audio Studio</value></data>
+  <data name="NewProject" xml:space="preserve"><value>New</value></data>
+  <data name="OpenProject" xml:space="preserve"><value>Open</value></data>
+  <data name="SaveProject" xml:space="preserve"><value>Save</value></data>
+  <data name="ImportAudio" xml:space="preserve"><value>Import</value></data>
+  <data name="ExportAudio" xml:space="preserve"><value>Export</value></data>
+  <data name="BakeToWz" xml:space="preserve"><value>Bake to WZ/IMG</value></data>
+  <data name="Undo" xml:space="preserve"><value>Undo</value></data>
+  <data name="Redo" xml:space="preserve"><value>Redo</value></data>
+  <data name="Render" xml:space="preserve"><value>Render</value></data>
+  <data name="Play" xml:space="preserve"><value>Play</value></data>
+  <data name="Pause" xml:space="preserve"><value>Pause</value></data>
+  <data name="Stop" xml:space="preserve"><value>Stop</value></data>
+  <data name="Loop" xml:space="preserve"><value>Loop</value></data>
+  <data name="Snap" xml:space="preserve"><value>Snap</value></data>
+  <data name="Metronome" xml:space="preserve"><value>Metronome</value></data>
+  <data name="ZoomOut" xml:space="preserve"><value>Zoom out</value></data>
+  <data name="ZoomIn" xml:space="preserve"><value>Zoom in</value></data>
+  <data name="ActiveSource" xml:space="preserve"><value>Active source</value></data>
+  <data name="ComparisonSource" xml:space="preserve"><value>No comparison</value></data>
+  <data name="Assets" xml:space="preserve"><value>ASSETS</value></data>
+  <data name="SourceSet" xml:space="preserve"><value>Source set</value></data>
+  <data name="Search" xml:space="preserve"><value>Search sounds, paths, aliases</value></data>
+  <data name="AllSounds" xml:space="preserve"><value>All sounds</value></data>
+  <data name="Favorites" xml:space="preserve"><value>Favorites</value></data>
+  <data name="Recent" xml:space="preserve"><value>Recent</value></data>
+  <data name="CenterEditor" xml:space="preserve"><value>EDITOR</value></data>
+  <data name="Overview" xml:space="preserve"><value>Overview</value></data>
+  <data name="Timeline" xml:space="preserve"><value>Timeline</value></data>
+  <data name="Selection" xml:space="preserve"><value>Selection</value></data>
+  <data name="RightInspector" xml:space="preserve"><value>INSPECTOR</value></data>
+  <data name="SourceMetadata" xml:space="preserve"><value>Source metadata</value></data>
+  <data name="ClipProperties" xml:space="preserve"><value>Clip properties</value></data>
+  <data name="EffectRack" xml:space="preserve"><value>Effect rack</value></data>
+  <data name="BakeSettings" xml:space="preserve"><value>Bake settings</value></data>
+  <data name="WhereUsed" xml:space="preserve"><value>Where used</value></data>
+  <data name="StatusReady" xml:space="preserve"><value>Ready</value></data>
+  <data name="StatusCatalogEmpty" xml:space="preserve"><value>No sound assets loaded. Choose a source set to browse.</value></data>
+  <data name="MetadataUnavailable" xml:space="preserve"><value>Select a sound to inspect metadata.</value></data>
+  <data name="Duration" xml:space="preserve"><value>Duration</value></data>
+  <data name="Format" xml:space="preserve"><value>Format</value></data>
+  <data name="SampleRate" xml:space="preserve"><value>Sample rate</value></data>
+  <data name="Channels" xml:space="preserve"><value>Channels</value></data>
+  <data name="Payload" xml:space="preserve"><value>Payload</value></data>
+  <data name="Warning" xml:space="preserve"><value>Warning</value></data>
+  <data name="Track" xml:space="preserve"><value>Track</value></data>
+  <data name="Volume" xml:space="preserve"><value>Volume</value></data>
+  <data name="Pan" xml:space="preserve"><value>Pan</value></data>
+  <data name="Master" xml:space="preserve"><value>MASTER</value></data>
+  <data name="Loudness" xml:space="preserve"><value>Integrated loudness</value></data>
+  <data name="Status" xml:space="preserve"><value>Status</value></data>
+  <data name="OpenProjectFilter" xml:space="preserve"><value>Audio Studio projects (*.hasound.json)|*.hasound.json|All files (*.*)|*.*</value></data>
+  <data name="ImportFilter" xml:space="preserve"><value>Audio files (*.mp3;*.wav)|*.mp3;*.wav|MP3 (*.mp3)|*.mp3|PCM WAV (*.wav)|*.wav</value></data>
+  <data name="WavExportFilter" xml:space="preserve"><value>WAV audio (*.wav)|*.wav</value></data>
+  <data name="Mp3ExportFilter" xml:space="preserve"><value>MP3 audio (*.mp3)|*.mp3</value></data>
+  <data name="UnsavedPrompt" xml:space="preserve"><value>Save Audio Studio changes before closing?</value></data>
+  <data name="UnsavedTitle" xml:space="preserve"><value>Unsaved audio changes</value></data>
+  <data name="ProjectSaved" xml:space="preserve"><value>Project saved.</value></data>
+  <data name="ProjectOpened" xml:space="preserve"><value>Project opened.</value></data>
+  <data name="Imported" xml:space="preserve"><value>Imported {0}</value></data>
+  <data name="Baked" xml:space="preserve"><value>Rendered audio is ready to bake.</value></data>
+  <data name="CatalogLoading" xml:space="preserve"><value>Loading sound metadata…</value></data>
+  <data name="TargetImage" xml:space="preserve"><value>Target image</value></data>
+  <data name="ParentPath" xml:space="preserve"><value>Parent property path</value></data>
+  <data name="PropertyName" xml:space="preserve"><value>Property name</value></data>
+  <data name="Category" xml:space="preserve"><value>Category</value></data>
+  <data name="Encoding" xml:space="preserve"><value>Encoding</value></data>
+  <data name="ReplaceMode" xml:space="preserve"><value>Replace mode</value></data>
+  <data name="Name" xml:space="preserve"><value>Name</value></data>
+  <data name="Path" xml:space="preserve"><value>Path</value></data>
+  <data name="Locked" xml:space="preserve"><value>Locked</value></data>
+  <data name="AddEffect" xml:space="preserve"><value>Add effect</value></data>
+  <data name="RefreshCatalog" xml:space="preserve"><value>Refresh sound catalog</value></data>
+  <data name="TimelineZoom" xml:space="preserve"><value>Timeline zoom</value></data>
+  <data name="WaveformOverview" xml:space="preserve"><value>Waveform overview</value></data>
+  <data name="MultitrackTimeline" xml:space="preserve"><value>Multitrack timeline</value></data>
+  <data name="PlaybackPosition" xml:space="preserve"><value>Playback position</value></data>
+  <data name="SoundTree" xml:space="preserve"><value>Sound image and category tree</value></data>
+  <data name="AssetResults" xml:space="preserve"><value>Sound asset results</value></data>
+  <data name="ResultCount" xml:space="preserve"><value>{0} result(s)</value></data>
+  <data name="ActiveSourceOption" xml:space="preserve"><value>Active source</value></data>
+  <data name="NoComparison" xml:space="preserve"><value>No comparison</value></data>
+  <data name="BgmCategory" xml:space="preserve"><value>BGM</value></data>
+  <data name="AmbienceCategory" xml:space="preserve"><value>Ambience</value></data>
+  <data name="SfxCategory" xml:space="preserve"><value>SFX</value></data>
+  <data name="VoiceCategory" xml:space="preserve"><value>Voice</value></data>
+  <data name="PcmWav" xml:space="preserve"><value>PCM WAV</value></data>
+  <data name="Mp3" xml:space="preserve"><value>MP3</value></data>
+  <data name="ReplaceOrAdd" xml:space="preserve"><value>Replace or add</value></data>
+  <data name="AddOnly" xml:space="preserve"><value>Add only</value></data>
+  <data name="RenderCancelled" xml:space="preserve"><value>Render cancelled.</value></data>
+  <data name="PlaybackUnavailable" xml:space="preserve"><value>Playback unavailable: {0}</value></data>
+  <data name="CatalogWarning" xml:space="preserve"><value>Sound catalog warning: {0}</value></data>
+  <data name="GainNormalize" xml:space="preserve"><value>Gain / normalize</value></data>
+  <data name="ParametricEq" xml:space="preserve"><value>Parametric EQ</value></data>
+  <data name="CompressorLimiter" xml:space="preserve"><value>Compressor / limiter</value></data>
+  <data name="UiCategory" xml:space="preserve"><value>UI</value></data>
+  <data name="MobCategory" xml:space="preserve"><value>Mob</value></data>
+  <data name="RegionalCategory" xml:space="preserve"><value>Regional</value></data>
+  <data name="CatalogCancelled" xml:space="preserve"><value>Catalog loading cancelled.</value></data>
+  <data name="CatalogWarningMessage" xml:space="preserve"><value>Sound catalog warning: {0}</value></data>
+  <data name="OpenFailed" xml:space="preserve"><value>Unable to open project: {0}</value></data>
+  <data name="SaveFailed" xml:space="preserve"><value>Unable to save project: {0}</value></data>
+  <data name="Exported" xml:space="preserve"><value>Exported {0}</value></data>
+  <data name="ExportFailed" xml:space="preserve"><value>Export failed: {0}</value></data>
+  <data name="RenderingPreview" xml:space="preserve"><value>Rendering preview…</value></data>
+  <data name="PlayingPreview" xml:space="preserve"><value>Playing preview</value></data>
+  <data name="PlaybackWarning" xml:space="preserve"><value>Playback device warning: {0}</value></data>
+  <data name="SelectAsset" xml:space="preserve"><value>Select an asset first.</value></data>
+  <data name="UsageIndex" xml:space="preserve"><value>Usage index: {0} references</value></data>
+  <data name="AddClipRequired" xml:space="preserve"><value>Add a clip before adding an effect.</value></data>
+  <data name="NoDataSource" xml:space="preserve"><value>No active WZ/IMG data source is mounted.</value></data>
+  <data name="TargetImageRequired" xml:space="preserve"><value>Enter a target Sound image path.</value></data>
+  <data name="PropertyRequired" xml:space="preserve"><value>Enter a target property name.</value></data>
+  <data name="BakeFailed" xml:space="preserve"><value>Bake failed: {0}</value></data>
+  <data name="AddedAsset" xml:space="preserve"><value>Added {0}</value></data>
+  <data name="ClipSplit" xml:space="preserve"><value>Clip split</value></data>
+  <data name="EffectAdded" xml:space="preserve"><value>Gain effect added to the selected clip.</value></data>
+  <data name="NewProjectStatus" xml:space="preserve"><value>New project</value></data>
+  <data name="UndoComplete" xml:space="preserve"><value>Undo complete</value></data>
+  <data name="RedoComplete" xml:space="preserve"><value>Redo complete</value></data>
+  <data name="Paused" xml:space="preserve"><value>Paused</value></data>
+  <data name="PlaceCursor" xml:space="preserve"><value>Place the cursor over an unlocked clip to split.</value></data>
+  <data name="MoveCursor" xml:space="preserve"><value>Move the cursor inside a clip before splitting.</value></data>
+  <data name="AudioAi" xml:space="preserve"><value>Audio AI</value></data>
+  <data name="AiPrompt" xml:space="preserve"><value>Music brief</value></data>
+  <data name="GenerateCandidate" xml:space="preserve"><value>Generate candidate</value></data>
+  <data name="AiLocalStatus" xml:space="preserve"><value>Local ACE-Step endpoint</value></data>
+  <data name="AiUnavailable" xml:space="preserve"><value>Local Audio AI is unavailable: {0}</value></data>
+  <data name="InstallAceStep" xml:space="preserve"><value>Install / start local ACE-Step</value></data>
+  <data name="AceStepInstallTitle" xml:space="preserve"><value>Install ACE-Step 1.5</value></data>
+  <data name="AceStepInstallPrompt" xml:space="preserve"><value>ACE-Step 1.5 is not installed or running. Download and configure it now?
+
+Approximate downloads:
+• Model weights: about 11 GB
+• Python/runtime dependencies: about 6.5 GB
+
+Allow at least 20 GB of free disk space. Actual size can vary by model and GPU backend. Model weights are downloaded by ACE-Step during the first generation.</value></data>
+  <data name="AceStepReady" xml:space="preserve"><value>ACE-Step is ready. Model weights download on first generation.</value></data>
+  <data name="AceStepSetupFailed" xml:space="preserve"><value>ACE-Step setup failed: {0}</value></data>
+  <data name="AceStepStoragePath" xml:space="preserve"><value>Model storage: {0}</value></data>
+  <data name="OpenAceStepFolder" xml:space="preserve"><value>Open model folder</value></data>
+  <data name="DeleteAceStep" xml:space="preserve"><value>Delete model</value></data>
+  <data name="DeleteAceStepPrompt" xml:space="preserve"><value>Delete the managed ACE-Step runtime and model weights? You can install them again later. This removes the downloaded model and its Python environment.</value></data>
+  <data name="AceStepDeleted" xml:space="preserve"><value>ACE-Step runtime and model deleted.</value></data>
+  <data name="AceStepNotInstalled" xml:space="preserve"><value>ACE-Step is not installed.</value></data>
+  <data name="AiStarting" xml:space="preserve"><value>Starting ACE-Step…</value></data>
+  <data name="AiGenerating" xml:space="preserve"><value>Generating audio… On the first run, model weights may be downloading; this can take several minutes.</value></data>
+  <data name="AiCandidateReady" xml:space="preserve"><value>Candidate generated and added to the timeline.</value></data>
+  <data name="AiPromptRequired" xml:space="preserve"><value>Enter a music brief before generating.</value></data>
+  <data name="AiNoCandidate" xml:space="preserve"><value>Generation finished without returning an audio candidate.</value></data>
+  <data name="AiDuration" xml:space="preserve"><value>Duration (seconds)</value></data>
+  <data name="AiDurationHint" xml:space="preserve"><value>Choose a preset or enter 10–600 seconds.</value></data>
+  <data name="AiOutputFormat" xml:space="preserve"><value>Output format</value></data>
+  <data name="AiDurationInvalid" xml:space="preserve"><value>Enter a generation duration between 10 and 600 seconds.</value></data>
+  <data name="AiRefinePrompt" xml:space="preserve"><value>Refine brief</value></data>
+  <data name="AiRefining" xml:space="preserve"><value>Refining the music brief…</value></data>
+  <data name="AiPromptRefined" xml:space="preserve"><value>Music brief refined. Review it before generating.</value></data>
+  <data name="AiRefineNotConfigured" xml:space="preserve"><value>Configure a text AI model before refining the brief.</value></data>
+  <data name="AiRefineCancelled" xml:space="preserve"><value>Prompt refinement cancelled.</value></data>
+  <data name="AiRefineFailed" xml:space="preserve"><value>Prompt refinement failed: {0}</value></data>
+  <data name="AiRefineRecommendation" xml:space="preserve"><value>A text model can make this brief much more precise and is highly recommended. Configure one now? You can choose No and generate the raw brief instead.</value></data>
+  <data name="AiRefineSkipped" xml:space="preserve"><value>Prompt refinement skipped. You can generate the raw brief.</value></data>
+</root>

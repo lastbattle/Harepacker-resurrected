@@ -13,13 +13,18 @@
              d:DesignHeight="350" d:DesignWidth="640">
 
     <UserControl.Resources>
+        <ResourceDictionary>
+        <ResourceDictionary.MergedDictionaries>
+            <ResourceDictionary Source="/HaSharedLibrary;component/GUI/Themes/HarepackerTheme.xaml"/>
+        </ResourceDictionary.MergedDictionaries>
         <converter:TicksToRelativeTimeConverter x:Key="ticksToRelativeTimeConverter" />
         <converter:IntegerULongCommasConverter x:Key="integerULongCommasConverter"/>
+        </ResourceDictionary>
     </UserControl.Resources>
     
-    <Grid Background="White">
+    <Grid Background="{StaticResource HareCanvasBrush}">
 
-        <TextBlock Text="{x:Static p:Resources.Subpanel_Loading}" FontSize="25" Foreground="Black" 
+        <TextBlock Text="{x:Static p:Resources.Subpanel_Loading}" FontSize="25" Foreground="{StaticResource HareTextBrush}"
                    Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center" FontFamily="Roboto Mono Medium"/>
     </Grid>
 </UserControl>

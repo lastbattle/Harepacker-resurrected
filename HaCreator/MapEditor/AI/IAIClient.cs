@@ -1,10 +1,11 @@
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace HaCreator.MapEditor.AI
 {
     /// <summary>
-    /// Interface for AI API clients (OpenRouter, OpenCode, etc.)
+    /// Interface for AI API clients.
     /// Abstracts the underlying API provider for map editing AI functionality.
     /// </summary>
     public interface IAIClient
@@ -16,7 +17,10 @@ namespace HaCreator.MapEditor.AI
         /// <param name="mapContext">The current map state in AI-readable format</param>
         /// <param name="userInstructions">Natural language instructions from the user</param>
         /// <returns>List of executable map commands as a string</returns>
-        Task<string> ProcessInstructionsAsync(string mapContext, string userInstructions);
+        Task<string> ProcessInstructionsAsync(
+            string mapContext,
+            string userInstructions,
+            CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Test if the API connection is valid
@@ -26,19 +30,14 @@ namespace HaCreator.MapEditor.AI
     }
 
     /// <summary>
-    /// Supported AI API providers
+    /// AI integration mode. The endpoint itself determines the provider.
     /// </summary>
     public enum AIProvider
     {
         /// <summary>
-        /// OpenRouter API (supports multiple models via API key)
+        /// OpenAI-compatible HTTP API. OpenRouter is the default preset.
         /// </summary>
-        OpenRouter,
-
-        /// <summary>
-        /// OpenCode API (local server with OAuth-based Claude access)
-        /// </summary>
-        OpenCode
+        OpenAICompatible
     }
 
     /// <summary>
@@ -62,47 +61,22 @@ namespace HaCreator.MapEditor.AI
         /// <returns>An IAIClient implementation</returns>
         public static IAIClient Create(AIProvider provider)
         {
-            switch (provider)
-            {
-                case AIProvider.OpenCode:
-                    return new OpenCodeClient(
-                        AISettings.OpenCodeHost,
-                        AISettings.OpenCodePort,
-                        AISettings.OpenCodeModel,
-                        AISettings.OpenCodeAutoStart,
-                        AISettings.OpenCodeReasoningEffort);
-
-                case AIProvider.OpenRouter:
-                default:
-                    return new OpenRouterClient(
-                        AISettings.ApiKey,
-                        AISettings.Model);
-            }
+            return new OpenAICompatibleClient(AISettings.CreateOptions());
         }
 
         /// <summary>
         /// Create an AI client with explicit configuration (for testing/override)
         /// </summary>
-        public static IAIClient CreateOpenRouter(string apiKey, string model)
+        public static IAIClient CreateOpenAICompatible(string baseUrl, string apiKey, string model,
+            AIEndpointProtocol protocol = AIEndpointProtocol.ChatCompletions)
         {
-            return new OpenRouterClient(apiKey, model);
-        }
-
-        /// <summary>
-        /// Create an OpenCode client with explicit configuration
-        /// </summary>
-        public static IAIClient CreateOpenCode(string host, int port, string model = null, bool autoStart = true, string reasoningEffort = null)
-        {
-            return new OpenCodeClient(host, port, model, autoStart, reasoningEffort);
-        }
-
-        /// <summary>
-        /// Cleanup any managed resources (e.g., auto-started OpenCode server).
-        /// Call this when the application or map editor is closing.
-        /// </summary>
-        public static void Cleanup()
-        {
-            OpenCodeClient.StopServer();
+            return new OpenAICompatibleClient(new OpenAICompatibleOptions
+            {
+                BaseUrl = baseUrl,
+                ApiKey = apiKey,
+                Model = model,
+                Protocol = protocol
+            });
         }
     }
 }

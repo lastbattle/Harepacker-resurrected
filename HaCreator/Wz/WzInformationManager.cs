@@ -1,5 +1,6 @@
 ﻿using HaCreator.MapEditor.Info;
 using HaSharedLibrary.Wz;
+using HaCreator.Audio;
 using MapleLib;
 using MapleLib.Img;
 using MapleLib.WzLib;
@@ -27,6 +28,8 @@ namespace HaCreator.Wz
 
             public string ImageName { get; }
             public string PropertyPath { get; }
+            public string ImagePath => ImageName;
+            public string FullPropertyPath => PropertyPath;
         }
 
         public Dictionary<string, ReactorInfo> Reactors = new Dictionary<string, ReactorInfo>();
@@ -37,6 +40,21 @@ namespace HaCreator.Wz
         public IDictionary<string, WzImage> BackgroundSets = new Dictionary<string, WzImage>();
 
         public Dictionary<string, BgmEntry> BGMs = new Dictionary<string, BgmEntry>();
+        private IAudioAssetCatalog audioCatalog;
+        private readonly object deferredExtractionLock = new();
+
+        /// <summary>Shared Sound catalog projection used by map and AI code.</summary>
+        public IAudioAssetCatalog AudioCatalog
+        {
+            get
+            {
+                if (Program.DataSource == null)
+                    return audioCatalog;
+                if (audioCatalog == null || !ReferenceEquals(audioCatalog.DataSource, Program.DataSource))
+                    audioCatalog = Program.AudioAssetCatalog ?? new AudioAssetCatalog(Program.DataSource);
+                return audioCatalog;
+            }
+        }
 
         // Maps
         public Dictionary<string, Bitmap> MapMarks = new Dictionary<string, Bitmap>();
@@ -145,26 +163,128 @@ namespace HaCreator.Wz
         /// <param name="id"></param>
         /// <param name="fileManager"></param>
         /// <returns></returns>
-        public WzImage GetItemEquipSubProperty(int id, string categoryName, WzFileManager fileManager)
+        public WzImage GetItemEquipSubProperty(int id, string categoryName, WzFileManager fileManager = null)
         {
             if (EquipItemCache.ContainsKey(id))
                 return EquipItemCache[id];
 
-            WzDirectory charWzEqpCatDirectory = (WzDirectory)fileManager.FindWzImageByName("character", categoryName);
+            WzImage itemObj = null;
+            string imageName = WzInfoTools.AddLeadingZeros(id.ToString(), 8) + ".img";
+
+            if (Program.DataSource != null && !string.IsNullOrWhiteSpace(categoryName))
+            {
+                itemObj = Program.DataSource.GetImage("Character", $"{categoryName}/{imageName}");
+            }
+
+            WzDirectory charWzEqpCatDirectory = fileManager?.FindWzImageByName("character", categoryName) as WzDirectory;
             if (charWzEqpCatDirectory != null)
             {
-                WzImage itemObj = (WzImage)charWzEqpCatDirectory[WzInfoTools.AddLeadingZeros(id.ToString(), 8) + ".img"];
-                if (itemObj != null)
+                itemObj ??= charWzEqpCatDirectory[imageName] as WzImage;
+            }
+
+            if (itemObj != null)
+            {
+                lock (EquipItemCache)
                 {
-                    lock (EquipItemCache)
-                    {
-                        if (!EquipItemCache.ContainsKey(id))
-                            EquipItemCache.Add(id, itemObj);
-                    }
-                    return itemObj;
+                    if (!EquipItemCache.ContainsKey(id))
+                        EquipItemCache.Add(id, itemObj);
                 }
+                return itemObj;
             }
             return null;
+        }
+
+        /// <summary>
+        /// Gets an item icon from either the IMG data source or the legacy WZ caches.
+        /// </summary>
+        public WzCanvasProperty GetItemIcon(int id, string categoryName, WzFileManager fileManager = null)
+        {
+            if (ItemIconCache.TryGetValue(id, out WzCanvasProperty cachedIcon))
+                return cachedIcon;
+
+            WzCanvasProperty icon = null;
+            if (MapleLib.WzLib.WzStructure.Data.ItemStructure.ItemIdsCategory.IsEquipment(id))
+            {
+                WzImage equipmentImage = GetItemEquipSubProperty(id, categoryName, fileManager);
+                icon = equipmentImage?["info"]?["icon"]?.GetLinkedWzImageProperty() as WzCanvasProperty;
+            }
+            else if (Program.DataSource != null && !string.IsNullOrWhiteSpace(categoryName))
+            {
+                string paddedId = WzInfoTools.AddLeadingZeros(id.ToString(), 8);
+                bool isPet = string.Equals(categoryName, "Pet", StringComparison.OrdinalIgnoreCase);
+                string itemDirectory = string.Equals(categoryName, "Ins", StringComparison.OrdinalIgnoreCase)
+                    ? "Install"
+                    : categoryName;
+                string relativePath = isPet
+                    ? $"Pet/{id}.img"
+                    : $"{itemDirectory}/{paddedId.Substring(0, 4)}.img";
+
+                WzImage itemImage = Program.DataSource.GetImage("Item", relativePath);
+                if (isPet)
+                {
+                    icon = itemImage?["info"]?["icon"]?.GetLinkedWzImageProperty() as WzCanvasProperty;
+                }
+                else
+                {
+                    WzImageProperty itemProperty = itemImage?[id.ToString()] ?? itemImage?[paddedId];
+                    icon = itemProperty?["info"]?["icon"]?.GetLinkedWzImageProperty() as WzCanvasProperty;
+                }
+            }
+
+            if (icon != null)
+            {
+                lock (ItemIconCache)
+                {
+                    ItemIconCache.TryAdd(id, icon);
+                }
+            }
+
+            return icon;
+        }
+
+        /// <summary>
+        /// Gets a mob preview icon, loading the mob IMG on demand when necessary.
+        /// </summary>
+        public WzCanvasProperty GetMobIcon(int id)
+        {
+            if (MobIconCache.TryGetValue(id, out WzImageProperty cachedIcon))
+                return cachedIcon as WzCanvasProperty;
+
+            WzImage mobImage = Program.FindImage("Mob", WzInfoTools.AddLeadingZeros(id.ToString(), 7) + ".img");
+            WzCanvasProperty icon = mobImage?["stand"]?["0"]?.GetLinkedWzImageProperty() as WzCanvasProperty;
+            if (icon != null)
+            {
+                lock (MobIconCache)
+                {
+                    MobIconCache.TryAdd(id, icon);
+                }
+            }
+
+            return icon;
+        }
+
+        /// <summary>
+        /// Gets a skill property, loading its owning skill IMG on demand when necessary.
+        /// </summary>
+        public WzImageProperty GetSkillProperty(string skillId)
+        {
+            if (SkillWzImageCache.TryGetValue(skillId, out WzImageProperty cachedSkill))
+                return cachedSkill;
+            if (!int.TryParse(skillId, out int parsedSkillId))
+                return null;
+
+            string groupName = (parsedSkillId / 10000).ToString("D3") + ".img";
+            WzImage skillImage = Program.FindImage("Skill", groupName);
+            WzImageProperty skillProperty = skillImage?["skill"]?[skillId];
+            if (skillProperty != null)
+            {
+                lock (SkillWzImageCache)
+                {
+                    SkillWzImageCache.TryAdd(skillId, skillProperty);
+                }
+            }
+
+            return skillProperty;
         }
 
         /// <summary>
@@ -180,6 +300,7 @@ namespace HaCreator.Wz
             ObjectSets.Clear();
             BackgroundSets.Clear();
             BGMs.Clear();
+            audioCatalog = null;
             MapMarks.Clear();
             MapsNameCache.Clear();
             MapsCache.Clear();
@@ -191,15 +312,224 @@ namespace HaCreator.Wz
 
         public WzBinaryProperty GetBgm(string name)
         {
-            if (string.IsNullOrEmpty(name) || !BGMs.TryGetValue(name, out var entry))
+            if (string.IsNullOrEmpty(name))
                 return null;
 
-            WzImage image = Program.FindImage("Sound", entry.ImageName);
+            if (!BGMs.TryGetValue(name, out var entry))
+            {
+                if (!TryResolveBgmPath(name, out string imagePath, out string propertyPath))
+                    return null;
+
+                entry = new BgmEntry(imagePath, propertyPath);
+                BGMs[name] = entry;
+            }
+            if (entry == null)
+                return null;
+
+            WzImage image = Program.FindImage("Sound", entry.ImageName)
+                ?? Program.DataSource?.GetImage("Sound", entry.ImageName);
             image?.ParseImage();
             if (image == null)
                 return null;
 
-            return image.GetFromPath(entry.PropertyPath) as WzBinaryProperty;
+            WzImageProperty property = image.GetFromPath(entry.PropertyPath);
+            if (property is WzBinaryProperty binary)
+                return binary;
+            try
+            {
+                return property?.GetLinkedWzImageProperty() as WzBinaryProperty;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Splits legacy paths such as Bgm00/FloralLife and canonical paths
+        /// such as Sound/Bgm00.img/FloralLife without building the global
+        /// Sound catalogue.
+        /// </summary>
+        internal static bool TryResolveBgmPath(string name, out string imagePath, out string propertyPath)
+        {
+            imagePath = null;
+            propertyPath = null;
+            if (string.IsNullOrWhiteSpace(name))
+                return false;
+
+            string[] segments = name.Replace('\\', '/').Split('/', StringSplitOptions.RemoveEmptyEntries);
+            int first = segments.Length > 0 &&
+                string.Equals(segments[0], "Sound", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+            if (segments.Length - first < 2)
+                return false;
+
+            int imageEnd = Array.FindIndex(segments, first,
+                segment => segment.EndsWith(".img", StringComparison.OrdinalIgnoreCase));
+            if (imageEnd < first)
+                imageEnd = first;
+            if (imageEnd >= segments.Length - 1)
+                return false;
+
+            imagePath = string.Join('/', segments.Skip(first).Take(imageEnd - first + 1));
+            if (!imagePath.EndsWith(".img", StringComparison.OrdinalIgnoreCase))
+                imagePath += ".img";
+            propertyPath = string.Join('/', segments.Skip(imageEnd + 1));
+            return propertyPath.Length > 0;
+        }
+
+        /// <summary>
+        /// Gets one reactor definition on demand.  Startup keeps only reactor
+        /// IDs; image metadata and canvas data are loaded when a map or picker
+        /// actually uses that ID.
+        /// </summary>
+        public ReactorInfo GetReactor(string reactorId)
+        {
+            if (string.IsNullOrWhiteSpace(reactorId))
+                return null;
+            if (Reactors.TryGetValue(reactorId, out ReactorInfo cached))
+                return cached;
+
+            string imageName = WzInfoTools.AddLeadingZeros(reactorId, 7) + ".img";
+            WzImage image = Program.FindImage("Reactor", imageName);
+            if (image == null)
+                return null;
+
+            image.ParseImage();
+            WzSubProperty info = image["info"] as WzSubProperty;
+            string name = (info?["info"] as WzStringProperty)?.Value ??
+                (info?["viewName"] as WzStringProperty)?.Value ?? string.Empty;
+            var result = new ReactorInfo(null, new System.Drawing.Point(), reactorId, name, image);
+            lock (Reactors)
+            {
+                if (Reactors.TryGetValue(reactorId, out cached))
+                    return cached;
+                Reactors[reactorId] = result;
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Enumerates reactor IDs without parsing reactor IMG files.
+        /// </summary>
+        public IEnumerable<string> GetReactorIds()
+        {
+            var ids = new HashSet<string>(Reactors.Keys, StringComparer.OrdinalIgnoreCase);
+            if (Program.DataSource != null)
+            {
+                foreach (string name in Program.DataSource.GetImageNamesInDirectory("Reactor", string.Empty))
+                {
+                    string id = WzInfoTools.RemoveExtension(name);
+                    if (!string.IsNullOrWhiteSpace(id))
+                        ids.Add(id);
+                }
+            }
+            return ids;
+        }
+
+        public IEnumerable<string> GetMobIds() => GetImageIds("Mob", MobNameCache.Keys);
+
+        public IEnumerable<string> GetNpcIds() => GetImageIds("Npc", NpcNameCache.Keys);
+
+        private IEnumerable<string> GetImageIds(string category, IEnumerable<string> cachedIds)
+        {
+            var ids = new HashSet<string>(cachedIds, StringComparer.OrdinalIgnoreCase);
+            if (Program.DataSource != null)
+            {
+                foreach (string name in Program.DataSource.GetImageNamesInDirectory(category, string.Empty))
+                {
+                    string id = WzInfoTools.RemoveExtension(name).TrimStart('0');
+                    if (id.Length == 0)
+                        id = "0";
+                    ids.Add(id);
+                }
+            }
+            return ids;
+        }
+
+        /// <summary>Loads all localized selector names only when a selector needs them.</summary>
+        public void EnsureStringData()
+        {
+            if (Program.DataSource == null ||
+                (NpcNameCache.Count != 0 && MobNameCache.Count != 0 &&
+                 SkillNameCache.Count != 0 && ItemNameCache.Count != 0))
+                return;
+            lock (deferredExtractionLock)
+            {
+                new ImgDataExtractor(Program.DataSource, this).ExtractStringData();
+            }
+        }
+
+        /// <summary>Loads localized mob names when the life asset picker needs them.</summary>
+        public void EnsureMobStringData()
+        {
+            if (Program.DataSource == null || MobNameCache.Count != 0)
+                return;
+            lock (deferredExtractionLock)
+            {
+                if (MobNameCache.Count == 0)
+                    new ImgDataExtractor(Program.DataSource, this).ExtractMobStringData();
+            }
+        }
+
+        /// <summary>Loads only localized NPC names when map NPC tooltips need them.</summary>
+        public void EnsureNpcStringData()
+        {
+            if (Program.DataSource == null || NpcNameCache.Count != 0)
+                return;
+            lock (deferredExtractionLock)
+            {
+                if (NpcNameCache.Count == 0)
+                    new ImgDataExtractor(Program.DataSource, this).ExtractNpcStringData();
+            }
+        }
+
+        /// <summary>Loads quest metadata when the Quest editor is opened.</summary>
+        public void EnsureQuestData()
+        {
+            if (Program.DataSource == null || QuestInfos.Count != 0)
+                return;
+            lock (deferredExtractionLock)
+            {
+                if (QuestInfos.Count == 0)
+                    new ImgDataExtractor(Program.DataSource, this).ExtractQuestData();
+            }
+        }
+
+        /// <summary>
+        /// Rebuilds the legacy BGMs dictionary from the recursive catalog.
+        /// Keys retain the historical <c>Bgm00/Track</c> form while nested
+        /// BgmMultiTrack paths are represented without truncation.
+        /// </summary>
+        public bool RefreshAudioCatalogProjection()
+        {
+            IAudioAssetCatalog catalog = AudioCatalog;
+            if (catalog == null)
+                return false;
+            IReadOnlyList<AudioAssetEntry> assets;
+            try
+            {
+                assets = catalog.BuildIndexAsync().GetAwaiter().GetResult();
+            }
+            catch
+            {
+                return false;
+            }
+
+            BGMs.Clear();
+            foreach (AudioAssetEntry asset in assets.Where(item =>
+                item.Category == AudioAssetCategory.Bgm ||
+                item.Category == AudioAssetCategory.Regional))
+            {
+                string imageName = asset.ImagePath;
+                string key = WzInfoTools.RemoveExtension(imageName) + "/" + asset.PropertyPath;
+                if (!BGMs.ContainsKey(key))
+                    BGMs[key] = new BgmEntry(imageName, asset.PropertyPath);
+
+                string canonical = asset.CanonicalPath;
+                if (!BGMs.ContainsKey(canonical))
+                    BGMs[canonical] = new BgmEntry(imageName, asset.PropertyPath);
+            }
+            return true;
         }
 
         public static string GetPropertyPathRelativeToImage(WzImageProperty property)

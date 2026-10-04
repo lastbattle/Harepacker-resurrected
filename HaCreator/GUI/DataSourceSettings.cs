@@ -1,223 +1,84 @@
-﻿using MapleLib.Img;
+using MapleLib.Img;
 using System;
-using System.Drawing;
 using System.IO;
-using System.Windows.Forms;
+using System.Windows;
+using HaCreator.GUI.Localization;
+using Forms = System.Windows.Forms;
 
 namespace HaCreator.GUI
 {
-    /// <summary>
-    /// Settings form for configuring data source options (IMG filesystem, WZ files, Hybrid mode).
-    /// </summary>
-    public partial class DataSourceSettings : Form
+    public sealed class DataSourceSettings : IDisposable
     {
-        private readonly HaCreatorConfig _config;
-        private bool _configChanged;
+        private readonly DataSourceSettingsWindow window = new DataSourceSettingsWindow();
+        public bool ConfigChanged => window.ConfigChanged;
+        public Forms.DialogResult ShowDialog(Forms.IWin32Window owner = null) => window.ShowDialog() == true ? Forms.DialogResult.OK : Forms.DialogResult.Cancel;
+        public void Dispose() { if (window.IsLoaded) window.Close(); }
+    }
 
-        /// <summary>
-        /// Gets whether the configuration was changed and saved
-        /// </summary>
-        public bool ConfigChanged => _configChanged;
+    internal partial class DataSourceSettingsWindow : Window
+    {
+        private readonly HaCreatorConfig config = HaCreatorConfig.Load();
+        internal bool ConfigChanged { get; private set; }
 
-        public DataSourceSettings()
+        internal DataSourceSettingsWindow()
         {
-            _config = HaCreatorConfig.Load();
             InitializeComponent();
-        }
-
-        private void DataSourceSettings_Load(object sender, EventArgs e)
-        {
-            // Load current settings
+            if (Program.HaEditorWindow?.IsVisible == true) Owner = Program.HaEditorWindow;
             LoadSettings();
         }
 
         private void LoadSettings()
         {
-            // Data source mode
-            switch (_config.DataSourceMode)
-            {
-                case DataSourceMode.ImgFileSystem:
-                    radioButton_imgMode.Checked = true;
-                    break;
-                case DataSourceMode.WzFiles:
-                    radioButton_wzMode.Checked = true;
-                    break;
-                case DataSourceMode.Hybrid:
-                    radioButton_hybridMode.Checked = true;
-                    break;
-            }
-
-            // Paths
-            textBox_wzPath.Text = _config.Legacy.WzFilePath ?? "";
-
-            // Cache settings
-            numericUpDown_maxMemory.Value = _config.Cache.MaxMemoryCacheMB;
-            numericUpDown_maxImages.Value = _config.Cache.MaxCachedImages;
-            checkBox_memoryMappedFiles.Checked = _config.Cache.EnableMemoryMappedFiles;
-
-            // Legacy settings
-            checkBox_allowWzFallback.Checked = _config.Legacy.AllowWzFallback;
-            checkBox_autoConvert.Checked = _config.Legacy.AutoConvertOnLoad;
-
-            // Extraction settings
-            numericUpDown_parallelThreads.Value = _config.Extraction.ParallelThreads;
-            checkBox_generateIndex.Checked = _config.Extraction.GenerateIndex;
-            checkBox_validateAfterExtract.Checked = _config.Extraction.ValidateAfterExtract;
-
-            UpdateUIState();
+            imgMode.IsChecked = config.DataSourceMode == DataSourceMode.ImgFileSystem;
+            wzMode.IsChecked = config.DataSourceMode == DataSourceMode.WzFiles;
+            hybridMode.IsChecked = config.DataSourceMode == DataSourceMode.Hybrid;
+            wzPath.Text = config.Legacy.WzFilePath ?? string.Empty;
+            maxMemory.Text = config.Cache.MaxMemoryCacheMB.ToString(); maxImages.Text = config.Cache.MaxCachedImages.ToString();
+            memoryMapped.IsChecked = config.Cache.EnableMemoryMappedFiles; allowFallback.IsChecked = config.Legacy.AllowWzFallback;
+            autoConvert.IsChecked = config.Legacy.AutoConvertOnLoad; parallelThreads.Text = config.Extraction.ParallelThreads.ToString();
+            generateIndex.IsChecked = config.Extraction.GenerateIndex; validateExtract.IsChecked = config.Extraction.ValidateAfterExtract;
+            UpdateMode();
         }
 
-        private void UpdateUIState()
+        private void Mode_Checked(object sender, RoutedEventArgs e) => UpdateMode();
+        private void UpdateMode()
         {
-            // Enable/disable based on selected mode
-            bool isImgMode = radioButton_imgMode.Checked;
-            bool isWzMode = radioButton_wzMode.Checked;
-            bool isHybridMode = radioButton_hybridMode.Checked;
-
-            // WZ path controls
-            textBox_wzPath.Enabled = isWzMode || isHybridMode;
-            button_browseWz.Enabled = isWzMode || isHybridMode;
-
-            // Cache settings only apply to IMG mode
-            groupBox_cache.Enabled = isImgMode || isHybridMode;
-
-            // Legacy settings
-            checkBox_allowWzFallback.Enabled = isHybridMode;
-            checkBox_autoConvert.Enabled = isWzMode;
-
-            // Update description label
-            if (isImgMode)
-            {
-                label_modeDescription.Text = "IMG Filesystem Mode (Recommended)\n" +
-                    "Loads data from extracted .img files in the filesystem. " +
-                    "Faster loading, supports version control, and allows direct file editing.";
-            }
-            else if (isWzMode)
-            {
-                label_modeDescription.Text = "WZ Files Mode (Legacy)\n" +
-                    "Loads data directly from MapleStory .wz archive files. " +
-                    "Requires MapleStory installation. Use 'Extract New...' to migrate.";
-            }
-            else if (isHybridMode)
-            {
-                label_modeDescription.Text = "Hybrid Mode\n" +
-                    "Tries IMG filesystem first, falls back to WZ files if not found. " +
-                    "Useful during migration or for partial extractions.";
-            }
+            if (modeDescription == null) return;
+            bool img = imgMode.IsChecked == true, wz = wzMode.IsChecked == true, hybrid = hybridMode.IsChecked == true;
+            wzPath.IsEnabled = browseWz.IsEnabled = wz || hybrid; cacheCard.IsEnabled = img || hybrid;
+            allowFallback.IsEnabled = hybrid; autoConvert.IsEnabled = wz;
+            modeDescription.Text = DialogTextExtension.Get(img ? "Dialog_ImgModeDescription" :
+                wz ? "Dialog_WzModeDescription" : "Dialog_HybridModeDescription");
         }
 
-        private void radioButton_mode_CheckedChanged(object sender, EventArgs e)
+        private void BrowseWz_Click(object sender, RoutedEventArgs e)
         {
-            UpdateUIState();
+            using Forms.FolderBrowserDialog dialog = new Forms.FolderBrowserDialog { Description = DialogTextExtension.Get("Dialog_SelectMapleWzFolder"), SelectedPath = wzPath.Text };
+            if (dialog.ShowDialog() != Forms.DialogResult.OK) return;
+            if (Directory.GetFiles(dialog.SelectedPath, "*.wz").Length == 0)
+            { MessageBox.Show(this, DialogTextExtension.Get("Dialog_NoWzFiles"), DialogTextExtension.Get("Dialog_InvalidDirectory"), MessageBoxButton.OK, MessageBoxImage.Warning); return; }
+            wzPath.Text = dialog.SelectedPath;
         }
 
-        private void button_browseWz_Click(object sender, EventArgs e)
+        private void Reset_Click(object sender, RoutedEventArgs e)
         {
-            using (var dialog = new FolderBrowserDialog())
-            {
-                dialog.Description = "Select MapleStory installation directory containing WZ files";
-                dialog.SelectedPath = textBox_wzPath.Text;
-
-                if (dialog.ShowDialog() == DialogResult.OK)
-                {
-                    // Validate that it contains WZ files
-                    if (Directory.GetFiles(dialog.SelectedPath, "*.wz").Length == 0)
-                    {
-                        MessageBox.Show(
-                            "The selected folder doesn't contain any .wz files.\n" +
-                            "Please select a MapleStory installation directory.",
-                            "Invalid Directory",
-                            MessageBoxButtons.OK,
-                            MessageBoxIcon.Warning);
-                        return;
-                    }
-
-                    textBox_wzPath.Text = dialog.SelectedPath;
-                }
-            }
+            if (MessageBox.Show(this, DialogTextExtension.Get("Dialog_ConfirmResetDataSource"), DialogTextExtension.Get("Dialog_ConfirmReset"), MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+            HaCreatorConfig defaults = new HaCreatorConfig(); config.DataSourceMode = defaults.DataSourceMode; config.ImgRootPath = defaults.ImgRootPath;
+            config.Cache = new CacheConfig(); config.Legacy = new LegacyConfig(); config.Extraction = new ExtractionConfig(); LoadSettings();
         }
 
-        private void button_ok_Click(object sender, EventArgs e)
+        private void Save_Click(object sender, RoutedEventArgs e)
         {
-            // Validate inputs
-            if (radioButton_wzMode.Checked || radioButton_hybridMode.Checked)
-            {
-                if (radioButton_wzMode.Checked && string.IsNullOrWhiteSpace(textBox_wzPath.Text))
-                {
-                    MessageBox.Show("Please specify a WZ files directory.",
-                        "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    return;
-                }
-            }
-
-            // Save settings
-            SaveSettings();
-
-            _configChanged = true;
-            DialogResult = DialogResult.OK;
-            Close();
-        }
-
-        private void SaveSettings()
-        {
-            // Data source mode
-            if (radioButton_imgMode.Checked)
-                _config.DataSourceMode = DataSourceMode.ImgFileSystem;
-            else if (radioButton_wzMode.Checked)
-                _config.DataSourceMode = DataSourceMode.WzFiles;
-            else if (radioButton_hybridMode.Checked)
-                _config.DataSourceMode = DataSourceMode.Hybrid;
-
-            // Paths
-            _config.Legacy.WzFilePath = textBox_wzPath.Text;
-
-            // Cache settings
-            _config.Cache.MaxMemoryCacheMB = (int)numericUpDown_maxMemory.Value;
-            _config.Cache.MaxCachedImages = (int)numericUpDown_maxImages.Value;
-            _config.Cache.EnableMemoryMappedFiles = checkBox_memoryMappedFiles.Checked;
-
-            // Legacy settings
-            _config.Legacy.AllowWzFallback = checkBox_allowWzFallback.Checked;
-            _config.Legacy.AutoConvertOnLoad = checkBox_autoConvert.Checked;
-
-            // Extraction settings
-            _config.Extraction.ParallelThreads = (int)numericUpDown_parallelThreads.Value;
-            _config.Extraction.GenerateIndex = checkBox_generateIndex.Checked;
-            _config.Extraction.ValidateAfterExtract = checkBox_validateAfterExtract.Checked;
-
-            // Ensure directories exist
-            _config.EnsureDirectoriesExist();
-
-            // Save to file
-            _config.Save();
-        }
-
-        private void button_cancel_Click(object sender, EventArgs e)
-        {
-            DialogResult = DialogResult.Cancel;
-            Close();
-        }
-
-        private void button_resetDefaults_Click(object sender, EventArgs e)
-        {
-            var result = MessageBox.Show(
-                "Are you sure you want to reset all settings to defaults?",
-                "Confirm Reset",
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Question);
-
-            if (result == DialogResult.Yes)
-            {
-                // Create fresh config and reload
-                var defaultConfig = new HaCreatorConfig();
-                _config.DataSourceMode = defaultConfig.DataSourceMode;
-                _config.ImgRootPath = defaultConfig.ImgRootPath;
-                _config.Cache = new CacheConfig();
-                _config.Legacy = new LegacyConfig();
-                _config.Extraction = new ExtractionConfig();
-
-                LoadSettings();
-            }
+            if (wzMode.IsChecked == true && string.IsNullOrWhiteSpace(wzPath.Text))
+            { MessageBox.Show(this, DialogTextExtension.Get("Dialog_SpecifyWzDirectory"), DialogTextExtension.Get("Dialog_ValidationError"), MessageBoxButton.OK, MessageBoxImage.Warning); return; }
+            if (!int.TryParse(maxMemory.Text, out int memory) || !int.TryParse(maxImages.Text, out int images) || !int.TryParse(parallelThreads.Text, out int threads))
+            { MessageBox.Show(this, DialogTextExtension.Get("Dialog_CacheThreadsIntegers"), DialogTextExtension.Get("Dialog_ValidationError"), MessageBoxButton.OK, MessageBoxImage.Warning); return; }
+            config.DataSourceMode = imgMode.IsChecked == true ? DataSourceMode.ImgFileSystem : wzMode.IsChecked == true ? DataSourceMode.WzFiles : DataSourceMode.Hybrid;
+            config.Legacy.WzFilePath = wzPath.Text; config.Cache.MaxMemoryCacheMB = memory; config.Cache.MaxCachedImages = images;
+            config.Cache.EnableMemoryMappedFiles = memoryMapped.IsChecked == true; config.Legacy.AllowWzFallback = allowFallback.IsChecked == true;
+            config.Legacy.AutoConvertOnLoad = autoConvert.IsChecked == true; config.Extraction.ParallelThreads = threads;
+            config.Extraction.GenerateIndex = generateIndex.IsChecked == true; config.Extraction.ValidateAfterExtract = validateExtract.IsChecked == true;
+            config.EnsureDirectoriesExist(); config.Save(); ConfigChanged = true; DialogResult = true;
         }
     }
 }

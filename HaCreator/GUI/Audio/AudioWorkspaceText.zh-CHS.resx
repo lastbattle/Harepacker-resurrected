@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root><resheader name="resmimetype"><value>text/microsoft-resx</value></resheader><resheader name="version"><value>2.0</value></resheader><resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader><resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="Title"><value>音频工作室</value></data><data name="NewProject"><value>新建</value></data><data name="OpenProject"><value>打开</value></data><data name="SaveProject"><value>保存</value></data><data name="ImportAudio"><value>导入</value></data><data name="ExportAudio"><value>导出</value></data><data name="BakeToWz"><value>写入 WZ/IMG</value></data><data name="Undo"><value>撤销</value></data><data name="Redo"><value>重做</value></data><data name="Render"><value>渲染</value></data><data name="Play"><value>播放</value></data><data name="Pause"><value>暂停</value></data><data name="Stop"><value>停止</value></data><data name="Loop"><value>循环</value></data><data name="Snap"><value>吸附</value></data><data name="Metronome"><value>节拍器</value></data><data name="ZoomOut"><value>缩小</value></data><data name="ZoomIn"><value>放大</value></data><data name="ActiveSource"><value>活动源</value></data><data name="ComparisonSource"><value>无比较源</value></data><data name="Assets"><value>资源</value></data><data name="SourceSet"><value>资源集</value></data><data name="Search"><value>搜索声音、路径、别名</value></data><data name="AllSounds"><value>全部声音</value></data><data name="Favorites"><value>收藏</value></data><data name="Recent"><value>最近使用</value></data><data name="CenterEditor"><value>编辑器</value></data><data name="Overview"><value>概览</value></data><data name="Timeline"><value>时间线</value></data><data name="Selection"><value>选择范围</value></data><data name="RightInspector"><value>检查器</value></data><data name="SourceMetadata"><value>源元数据</value></data><data name="ClipProperties"><value>剪辑属性</value></data><data name="EffectRack"><value>效果架</value></data><data name="BakeSettings"><value>写入设置</value></data><data name="WhereUsed"><value>使用位置</value></data><data name="StatusReady"><value>就绪</value></data><data name="StatusCatalogEmpty"><value>未加载声音资源。请选择资源集。</value></data><data name="MetadataUnavailable"><value>请选择声音查看元数据。</value></data><data name="Duration"><value>时长</value></data><data name="Format"><value>格式</value></data><data name="SampleRate"><value>采样率</value></data><data name="Channels"><value>声道</value></data><data name="Payload"><value>数据大小</value></data><data name="Warning"><value>警告</value></data><data name="Track"><value>音轨</value></data><data name="Master"><value>主音量</value></data><data name="Loudness"><value>综合响度</value></data><data name="Status"><value>状态</value></data><data name="OpenProjectFilter"><value>音频工作室项目 (*.hasound.json)|*.hasound.json|所有文件 (*.*)|*.*</value></data><data name="ImportFilter"><value>音频文件 (*.mp3;*.wav)|*.mp3;*.wav|MP3 (*.mp3)|*.mp3|PCM WAV (*.wav)|*.wav</value></data><data name="WavExportFilter"><value>WAV 音频 (*.wav)|*.wav</value></data><data name="Mp3ExportFilter"><value>MP3 音频 (*.mp3)|*.mp3</value></data><data name="UnsavedPrompt"><value>保存音频工作室更改？</value></data><data name="UnsavedTitle"><value>未保存的音频更改</value></data><data name="ProjectSaved"><value>项目已保存。</value></data><data name="ProjectOpened"><value>项目已打开。</value></data><data name="Imported"><value>已导入 {0}</value></data><data name="Baked"><value>渲染音频可写入。</value></data><data name="CatalogLoading"><value>正在加载声音元数据…</value></data>
+  <data name="TargetImage"><value>Target image</value></data>
+  <data name="ParentPath"><value>Parent property path</value></data>
+  <data name="PropertyName"><value>Property name</value></data>
+  <data name="Category"><value>Category</value></data>
+  <data name="Encoding"><value>Encoding</value></data>
+  <data name="ReplaceMode"><value>Replace mode</value></data>
+  <data name="Name"><value>Name</value></data>
+  <data name="Path"><value>Path</value></data>
+  <data name="Locked"><value>Locked</value></data>
+  <data name="AddEffect"><value>Add effect</value></data>
+  <data name="RefreshCatalog"><value>Refresh sound catalog</value></data>
+  <data name="TimelineZoom"><value>Timeline zoom</value></data>
+  <data name="WaveformOverview"><value>Waveform overview</value></data>
+  <data name="MultitrackTimeline"><value>Multitrack timeline</value></data>
+  <data name="PlaybackPosition"><value>Playback position</value></data>
+  <data name="SoundTree"><value>Sound image and category tree</value></data>
+  <data name="AssetResults"><value>Sound asset results</value></data>
+  <data name="ResultCount"><value>{0} result(s)</value></data>
+  <data name="ActiveSourceOption"><value>Active source</value></data>
+  <data name="NoComparison"><value>No comparison</value></data>
+  <data name="BgmCategory"><value>BGM</value></data>
+  <data name="AmbienceCategory"><value>Ambience</value></data>
+  <data name="SfxCategory"><value>SFX</value></data>
+  <data name="VoiceCategory"><value>Voice</value></data>
+  <data name="PcmWav"><value>PCM WAV</value></data>
+  <data name="Mp3"><value>MP3</value></data>
+  <data name="ReplaceOrAdd"><value>Replace or add</value></data>
+  <data name="AddOnly"><value>Add only</value></data>
+  <data name="RenderCancelled"><value>Render cancelled.</value></data>
+  <data name="PlaybackUnavailable"><value>Playback unavailable: {0}</value></data>
+  <data name="CatalogWarning"><value>Sound catalog warning: {0}</value></data>
+  <data name="GainNormalize"><value>Gain / normalize</value></data>
+  <data name="ParametricEq"><value>Parametric EQ</value></data>
+  <data name="CompressorLimiter"><value>Compressor / limiter</value></data>
+  <data name="UiCategory"><value>UI</value></data>
+  <data name="MobCategory"><value>Mob</value></data>
+  <data name="RegionalCategory"><value>Regional</value></data>
+  <data name="Volume"><value>Volume</value></data>
+  <data name="Pan"><value>Pan</value></data>
+  <data name="CatalogCancelled"><value>Catalog loading cancelled.</value></data>
+  <data name="CatalogWarningMessage"><value>Sound catalog warning: {0}</value></data>
+  <data name="OpenFailed"><value>Unable to open project: {0}</value></data>
+  <data name="SaveFailed"><value>Unable to save project: {0}</value></data>
+  <data name="Exported"><value>Exported {0}</value></data>
+  <data name="ExportFailed"><value>Export failed: {0}</value></data>
+  <data name="RenderingPreview"><value>Rendering preview…</value></data>
+  <data name="PlayingPreview"><value>Playing preview</value></data>
+  <data name="PlaybackWarning"><value>Playback device warning: {0}</value></data>
+  <data name="SelectAsset"><value>Select an asset first.</value></data>
+  <data name="UsageIndex"><value>Usage index: {0} references</value></data>
+  <data name="AddClipRequired"><value>Add a clip before adding an effect.</value></data>
+  <data name="NoDataSource"><value>No active WZ/IMG data source is mounted.</value></data>
+  <data name="TargetImageRequired"><value>Enter a target Sound image path.</value></data>
+  <data name="PropertyRequired"><value>Enter a target property name.</value></data>
+  <data name="BakeFailed"><value>Bake failed: {0}</value></data>
+  <data name="AddedAsset"><value>Added {0}</value></data>
+  <data name="ClipSplit"><value>Clip split</value></data>
+  <data name="EffectAdded"><value>Gain effect added to the selected clip.</value></data>
+  <data name="NewProjectStatus"><value>New project</value></data>
+  <data name="UndoComplete"><value>Undo complete</value></data>
+  <data name="RedoComplete"><value>Redo complete</value></data>
+  <data name="Paused"><value>Paused</value></data>
+  <data name="PlaceCursor"><value>Place the cursor over an unlocked clip to split.</value></data>
+  <data name="MoveCursor"><value>Move the cursor inside a clip before splitting.</value></data>
+  <data name="AudioAi" xml:space="preserve"><value>音频 AI</value></data>
+  <data name="AiPrompt" xml:space="preserve"><value>音乐简述</value></data>
+  <data name="GenerateCandidate" xml:space="preserve"><value>生成候选音频</value></data>
+  <data name="AiLocalStatus" xml:space="preserve"><value>本地 ACE-Step 端点</value></data>
+  <data name="AiUnavailable" xml:space="preserve"><value>本地音频 AI 不可用：{0}</value></data>
+  <data name="InstallAceStep" xml:space="preserve"><value>安装／启动本地 ACE-Step</value></data>
+  <data name="AceStepInstallTitle" xml:space="preserve"><value>安装 ACE-Step 1.5</value></data>
+  <data name="AceStepInstallPrompt" xml:space="preserve"><value>尚未安装或运行 ACE-Step 1.5。是否立即下载并配置？
+
+预计下载量：
+• 模型权重：约 11 GB
+• Python／运行时依赖项：约 6.5 GB
+
+请至少保留 20 GB 可用磁盘空间。实际大小会因模型和 GPU 后端而异。模型权重将在首次生成音频时由 ACE-Step 下载。</value></data>
+  <data name="AceStepReady" xml:space="preserve"><value>ACE-Step 已准备就绪。模型权重将在首次生成音频时下载。</value></data>
+  <data name="AceStepSetupFailed" xml:space="preserve"><value>ACE-Step 配置失败：{0}</value></data>
+  <data name="OpenAceStepFolder"><value>打开模型文件夹</value></data>
+  <data name="DeleteAceStep"><value>删除模型</value></data>
+  <data name="AceStepStoragePath"><value>模型存储位置：{0}</value></data>
+  <data name="DeleteAceStepPrompt"><value>要删除受管理的 ACE-Step 运行环境和模型权重吗？之后可以重新安装。这会移除已下载的模型和 Python 环境。</value></data>
+  <data name="AceStepNotInstalled"><value>尚未安装 ACE-Step。</value></data>
+  <data name="AceStepDeleted"><value>ACE-Step 运行环境和模型已删除。</value></data>
+  <data name="AiStarting"><value>正在启动 ACE-Step…</value></data>
+  <data name="AiGenerating"><value>正在生成音频…首次运行时可能正在下载模型权重，这可能需要几分钟。</value></data>
+  <data name="AiCandidateReady"><value>候选音频已生成并添加到时间线。</value></data>
+  <data name="AiPromptRequired"><value>请先输入音乐简述再生成音频。</value></data>
+  <data name="AiNoCandidate"><value>生成任务已完成，但未返回候选音频。</value></data>
+  <data name="AiDuration"><value>时长（秒）</value></data>
+  <data name="AiDurationHint"><value>请选择预设值或输入 10–600 秒。</value></data>
+  <data name="AiOutputFormat"><value>输出格式</value></data>
+  <data name="AiDurationInvalid"><value>请输入 10 到 600 秒的生成时长。</value></data>
+  <data name="AiRefinePrompt"><value>优化简述</value></data>
+  <data name="AiRefining"><value>正在优化音乐简述…</value></data>
+  <data name="AiPromptRefined"><value>音乐简述已优化，请在生成前检查内容。</value></data>
+  <data name="AiRefineNotConfigured"><value>请先配置文本 AI 模型，再优化简述。</value></data>
+  <data name="AiRefineCancelled"><value>已取消简述优化。</value></data>
+  <data name="AiRefineFailed"><value>简述优化失败：{0}</value></data>
+  <data name="AiRefineRecommendation"><value>文本模型可以让这段简述更加精确，强烈建议使用。现在配置吗？选择“否”即可直接生成原始简述。</value></data>
+  <data name="AiRefineSkipped"><value>已跳过简述优化，可以直接生成原始简述。</value></data>
+</root>

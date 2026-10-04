@@ -1,5 +1,6 @@
-﻿using HaCreator.MapEditor;
+using HaCreator.MapEditor;
 using HaCreator.MapEditor.Info;
+using HaCreator.GUI.Localization;
 using HaCreator.MapEditor.Instance;
 using HaCreator.Wz;
 using HaSharedLibrary.Wz;
@@ -7,184 +8,149 @@ using MapleLib.WzLib;
 using MapleLib.WzLib.WzStructure;
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
-using System.Drawing;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using System.Windows.Forms;
+using System.Windows;
+using System.Windows.Input;
 
 namespace HaCreator.GUI
 {
-    public partial class ManageUserObjects : Form
+    public partial class ManageUserObjects : Window
     {
-        private UserObjectsManager userObjs;
+        private readonly UserObjectsManager userObjects;
 
-        public ManageUserObjects(UserObjectsManager userObjs)
+        public ManageUserObjects(UserObjectsManager userObjects)
         {
-            this.userObjs = userObjs;
+            this.userObjects = userObjects;
             InitializeComponent();
+            if (Program.HaEditorWindow?.IsVisible == true)
+                Owner = Program.HaEditorWindow;
+            LoadObjects();
         }
 
-        private void ManageUserObjects_KeyDown(object sender, KeyEventArgs e)
+        private void LoadObjects()
         {
-            e.Handled = true;
-            if (e.KeyCode == Keys.Escape)
+            IEnumerable<UserObject> objects = userObjects.L1Property.WzProperties
+                .Select(property => new UserObject(property, userObjects.NewObjects.Any(item => item.l2 == property.Name)))
+                .OrderBy(item => item.IsNew)
+                .ThenBy(item => item.ToString());
+            foreach (UserObject item in objects)
+                objsList.Items.Add(item);
+        }
+
+        private void Window_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Escape)
             {
+                e.Handled = true;
                 Close();
             }
         }
 
-        private void ManageUserObjects_Load(object sender, EventArgs e)
+        private void RemoveButton_Click(object sender, RoutedEventArgs e)
         {
-            List<WzImageProperty> oldProps = new List<WzImageProperty>();
-            List<WzImageProperty> newProps = new List<WzImageProperty>();
-            foreach (WzImageProperty prop in userObjs.L1Property.WzProperties)
-            {
-                (userObjs.NewObjects.Any(x => x.l2 == prop.Name) ? newProps : oldProps).Add(prop);
-            }
-
-            oldProps.ForEach(x => objsList.Items.Add(new UserObject(x, false)));
-            newProps.ForEach(x => objsList.Items.Add(new UserObject(x, true)));
-        }
-
-        private void objsList_DrawItem(object sender, DrawItemEventArgs e)
-        {
-            if (e.Index == -1)
+            if (objsList.SelectedItem is not UserObject item)
                 return;
-            e.DrawBackground();
-            Graphics g = e.Graphics;
-
-            // Background
-            g.FillRectangle(new SolidBrush(e.BackColor), e.Bounds);
-            // Foreground
-            UserObject obj = (UserObject)objsList.Items[e.Index];
-            g.DrawString(obj.ToString(), e.Font, new SolidBrush(obj.newObj ? Color.Green : e.ForeColor), new PointF(e.Bounds.X, e.Bounds.Y));
-
-            e.DrawFocusRectangle();
-        }
-
-        private void removeBtn_Click(object sender, EventArgs e)
-        {
-            if (MessageBox.Show("This action CANNOT BE UNDONE, are you sure you want to remove this object?", "Confirm Deletion", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
+            if (MessageBox.Show(DialogTextExtension.Get("Dialog_ConfirmDeleteObject"), DialogTextExtension.Get("Dialog_DeleteCustomObject"),
+                MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
                 return;
+
             int index = objsList.SelectedIndex;
-            UserObject obj = (UserObject)objsList.SelectedItem;
-            userObjs.Remove(obj.ToString());
-            objsList.Items.Remove(obj);
+            userObjects.Remove(item.ToString());
+            objsList.Items.Remove(item);
             objsList.SelectedIndex = Math.Min(index, objsList.Items.Count - 1);
         }
 
-        private void objsList_SelectedIndexChanged(object sender, EventArgs e)
+        private void ObjectsList_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
         {
-            removeBtn.Enabled = searchBtn.Enabled = objsList.SelectedItem != null;
+            bool selected = objsList.SelectedItem != null;
+            removeBtn.IsEnabled = selected;
+            searchBtn.IsEnabled = selected;
         }
 
-        private void searchBtn_Click(object sender, EventArgs e)
+        private void SearchButton_Click(object sender, RoutedEventArgs e)
         {
-            UserObject uobj = (UserObject)objsList.SelectedItem;
-            string l2 = uobj.ToString();
-            CancelableWaitWindow cww = null;
-            if (!uobj.newObj)
-            {
-                if (MessageBox.Show("This will search the entire Map.wz for usages of this object. It may take a while. Proceed?", "Search", MessageBoxButtons.YesNo, MessageBoxIcon.Information) != DialogResult.Yes)
-                    return;
-                cww = new CancelableWaitWindow("Searching...", () => Enumerable.Concat(SearchMapWzForObj(l2), SearchEditorForObj(l2).Select(x => x + " (In Editor)")));
-            }
-            else
-            {
-                cww = new CancelableWaitWindow("Searching...", () => SearchEditorForObj(l2).Select(x => x + " (In Editor)"));
-            }
-            cww.ShowDialog();
-            if (cww.result == null)
+            if (objsList.SelectedItem is not UserObject item)
                 return;
-            List<string> result = ((IEnumerable<string>)cww.result).ToList();
-            if (result.Count > 0)
-                MessageBox.Show("The object is used in the following maps:\r\n\r\n" + result.Aggregate((x, y) => x + ", " + y), "Search Results", MessageBoxButtons.OK, MessageBoxIcon.Information);
+
+            string objectId = item.ToString();
+            CancelableWaitWindow waitWindow;
+            if (!item.IsNew)
+            {
+                if (MessageBox.Show(DialogTextExtension.Get("Dialog_SearchAllMapsPrompt"), DialogTextExtension.Get("Dialog_FindUsages"),
+                    MessageBoxButton.YesNo, MessageBoxImage.Information) != MessageBoxResult.Yes)
+                    return;
+                waitWindow = new CancelableWaitWindow(DialogTextExtension.Get("Dialog_Searching"), () =>
+                    SearchMapWzForObject(objectId).Concat(SearchEditorForObject(objectId).Select(id => DialogTextExtension.Format("Dialog_OpenMapResult", id))));
+            }
             else
-                MessageBox.Show("The object is not used in any maps.", "Search Results", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            {
+                waitWindow = new CancelableWaitWindow(DialogTextExtension.Get("Dialog_Searching"), () =>
+                    SearchEditorForObject(objectId).Select(id => DialogTextExtension.Format("Dialog_OpenMapResult", id)));
+            }
+
+            waitWindow.Owner = this;
+            waitWindow.ShowDialog();
+            if (waitWindow.result is not IEnumerable<string> matches)
+                return;
+            List<string> results = matches.ToList();
+            MessageBox.Show(results.Count == 0
+                    ? DialogTextExtension.Get("Dialog_ObjectNotUsed")
+                    : DialogTextExtension.Format("Dialog_ObjectUsageMaps", string.Join(", ", results)),
+                DialogTextExtension.Get("Dialog_UsageResults"), MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
-        private List<string> SearchEditorForObj(string l2)
+        private List<string> SearchEditorForObject(string objectId)
         {
-            List<string> result = new List<string>();
-            foreach (Board board in userObjs.MultiBoard.Boards)
+            List<string> results = new();
+            foreach (Board board in userObjects.MultiBoard.Boards)
             {
-                foreach (LayeredItem li in board.BoardItems.TileObjs)
+                if (board.BoardItems.TileObjs.OfType<ObjectInstance>().Any(instance =>
                 {
-                    if (li is ObjectInstance)
-                    {
-                        ObjectInfo oi = (ObjectInfo)li.BaseInfo;
-                        if (oi.oS == UserObjectsManager.oS &&
-                            oi.l0 == Program.APP_NAME &&
-                            oi.l1 == UserObjectsManager.l1 &&
-                            oi.l2 == l2)
-                        {
-                            result.Add(board.MapInfo.id.ToString());
-                            break;
-                        }
-                    }
-                }
+                    ObjectInfo info = (ObjectInfo)instance.BaseInfo;
+                    return info.oS == UserObjectsManager.oS && info.l0 == Program.APP_NAME &&
+                           info.l1 == UserObjectsManager.l1 && info.l2 == objectId;
+                }))
+                    results.Add(board.MapInfo.id.ToString());
             }
-            return result;
+            return results;
         }
 
-        private List<string> SearchMapWzForObj(string l2)
+        private List<string> SearchMapWzForObject(string objectId)
         {
-            List<string> result = new List<string>();
-            foreach (WzDirectory mapDir in ((WzDirectory)Program.WzManager["map"]["Map"]).WzDirectories)
+            List<string> results = new();
+            foreach (WzDirectory directory in ((WzDirectory)Program.WzManager["map"]["Map"]).WzDirectories)
             {
-                foreach (WzImage mapImg in mapDir.WzImages)
+                foreach (WzImage image in directory.WzImages)
                 {
-                    bool fastForwardToNext = false;
-                    bool parsed = mapImg.Parsed;
-                    if (!parsed)
-                        mapImg.ParseImage();
-                    foreach (WzImageProperty layer in mapImg.WzProperties)
-                    {
-                        if (layer.Name.Length != 1 || !char.IsDigit(layer.Name[0]))
-                            continue;
-                        WzImageProperty prop = layer["obj"];
-                        if (prop == null)
-                            continue;
-                        foreach (WzImageProperty obj in prop.WzProperties)
-                        {
-                            if (InfoTool.GetOptionalString(obj["oS"]) == UserObjectsManager.oS &&
-                                InfoTool.GetOptionalString(obj["l0"]) == Program.APP_NAME &&
-                                InfoTool.GetOptionalString(obj["l1"]) == UserObjectsManager.l1 &&
-                                InfoTool.GetOptionalString(obj["l2"]) == l2)
-                            {
-                                result.Add(WzInfoTools.RemoveExtension(mapImg.Name));
-                                fastForwardToNext = true;
-                                break;
-                            }
-                        }
-                        if (fastForwardToNext)
-                            break;
-                    }
-                    if (!parsed)
-                        mapImg.UnparseImage();
+                    bool wasParsed = image.Parsed;
+                    if (!wasParsed) image.ParseImage();
+                    bool used = image.WzProperties
+                        .Where(layer => layer.Name.Length == 1 && char.IsDigit(layer.Name[0]))
+                        .Select(layer => layer["obj"])
+                        .Where(property => property != null)
+                        .SelectMany(property => property.WzProperties)
+                        .Any(obj => InfoTool.GetOptionalString(obj["oS"]) == UserObjectsManager.oS &&
+                                    InfoTool.GetOptionalString(obj["l0"]) == Program.APP_NAME &&
+                                    InfoTool.GetOptionalString(obj["l1"]) == UserObjectsManager.l1 &&
+                                    InfoTool.GetOptionalString(obj["l2"]) == objectId);
+                    if (used) results.Add(WzInfoTools.RemoveExtension(image.Name));
+                    if (!wasParsed) image.UnparseImage();
                 }
             }
-            return result;
+            return results;
         }
     }
 
-    public struct UserObject
+    public readonly struct UserObject
     {
-        public bool newObj;
-        public WzImageProperty prop;
-        
-        public UserObject(WzImageProperty prop, bool newObj)
+        public UserObject(WzImageProperty property, bool isNew)
         {
-            this.prop = prop;
-            this.newObj = newObj;
+            Property = property;
+            IsNew = isNew;
         }
 
-        public override string ToString()
-        {
-            return prop.Name;
-        }
+        public WzImageProperty Property { get; }
+        public bool IsNew { get; }
+        public override string ToString() => Property.Name;
     }
 }

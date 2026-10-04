@@ -10,7 +10,6 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
@@ -24,12 +23,20 @@ using System.Windows.Input;
 using HaCreator.Collections;
 using HaCreator.MapEditor.Input;
 using HaCreator.MapEditor.Instance;
+using HaCreator.MapEditor.Preview;
 using HaCreator.MapEditor.Text;
 using HaCreator.MapSimulator;
+using HaCreator.MapSimulator.Entities;
+using HaCreator.MapSimulator.Pools;
+using HaSharedLibrary.Render;
+using HaSharedLibrary.Render.DX;
 using HaSharedLibrary.Util;
+using MapleLib.WzLib;
+using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure.Data;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using Spine;
 using Color = Microsoft.Xna.Framework.Color;
 using Point = Microsoft.Xna.Framework.Point;
 using Rectangle = Microsoft.Xna.Framework.Rectangle;
@@ -48,10 +55,42 @@ namespace HaCreator.MapEditor
 
         private FontEngine fontEngine;
         private Thread renderer;
-        private bool needsReset = false;
+        private volatile bool needsReset = false;
+        private volatile bool stopRenderer;
         private readonly IntPtr dxHandle;
         private readonly UserObjectsManager userObjs;
         private Scheduler scheduler;
+
+        // The map editor shares the GPU and process with WPF. Static maps are rendered only when
+        // invalidated. Moving backgrounds and Spine previews are capped at 30 FPS; ordinary WZ
+        // animations wake at the delay declared by their current frame.
+        private const int TargetEditorFrameRate = 30;
+        private const int InactiveRenderSleepMilliseconds = 100;
+        private static readonly long TargetFrameDurationTicks =
+            Math.Max(1, Stopwatch.Frequency / TargetEditorFrameRate);
+        private readonly AutoResetEvent renderRequested = new AutoResetEvent(false);
+        private long nextPreviewFrameTimestamp = long.MaxValue;
+        private long currentFrameStartTimestamp;
+
+        private readonly TexturePool previewTexturePool = new TexturePool();
+        private readonly Dictionary<BoardItem, PreviewDrawableEntry> previewDrawables = new Dictionary<BoardItem, PreviewDrawableEntry>();
+        private readonly Dictionary<BoardItem, int> nonLivePreviewItems = new Dictionary<BoardItem, int>();
+        private readonly Stopwatch previewClock = Stopwatch.StartNew();
+        private TimeSpan previousPreviewTime;
+        private SkeletonMeshRenderer previewSkeletonRenderer;
+        private GameTime previewGameTime = new GameTime();
+
+        private sealed class PreviewDrawableEntry
+        {
+            public PreviewDrawableEntry(BaseDXDrawableItem drawable, int stateHash)
+            {
+                Drawable = drawable;
+                StateHash = stateHash;
+            }
+
+            public BaseDXDrawableItem Drawable { get; }
+            public int StateHash { get; }
+        }
 
         // UI
         private readonly List<Board> boards = new List<Board>();
@@ -68,7 +107,8 @@ namespace HaCreator.MapEditor
             }
         }
 
-        private System.Windows.WindowState CurrentHostWindowState = System.Windows.WindowState.Normal;
+        private volatile System.Windows.WindowState CurrentHostWindowState = System.Windows.WindowState.Normal;
+        private volatile bool isHostWindowActive = true;
         private System.Drawing.Size _CurrentDXWindowSize = new System.Drawing.Size();
         public System.Drawing.Size CurrentDXWindowSize
         {
@@ -89,18 +129,48 @@ namespace HaCreator.MapEditor
         public void UpdateWindowState(System.Windows.WindowState CurrentHostWindowState)
         {
             this.CurrentHostWindowState = CurrentHostWindowState;
+            RequestRender();
+        }
+
+        public void UpdateWindowActivation(bool isActive)
+        {
+            isHostWindowActive = isActive;
+            RequestRender();
         }
 
         public void UpdateWindowSize(System.Windows.Size CurrentWindowSize)
         {
-            _CurrentDXWindowSize = DxContainer.ClientSize;
-
-            needsReset = true;
+            UpdateDxWindowSize(resetDevice: true);
         }
 
         private void MultiBoard2_SizeChanged(object sender, SizeChangedEventArgs e)
         {
-            _CurrentDXWindowSize = DxContainer.ClientSize;
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                UpdateDxWindowSize(resetDevice: true);
+            }), System.Windows.Threading.DispatcherPriority.Loaded);
+        }
+
+        private void DxContainer_Resize(object sender, EventArgs e)
+        {
+            UpdateDxWindowSize(resetDevice: true);
+        }
+
+        private void UpdateDxWindowSize(bool resetDevice)
+        {
+            System.Drawing.Size newSize = DxContainer.ClientSize;
+            if (newSize.Width <= 0 || newSize.Height <= 0)
+                return;
+
+            if (_CurrentDXWindowSize == newSize)
+                return;
+
+            _CurrentDXWindowSize = newSize;
+            if (resetDevice)
+            {
+                needsReset = true;
+            }
+            RequestRender();
         }
 
         #endregion 
@@ -110,21 +180,54 @@ namespace HaCreator.MapEditor
             PrepareDXDevice();
             pixel = CreatePixel();
             DeviceReady = true;
+            bool firstFrame = true;
 
-            while (!Program.AbortThreads)
+            while (!Program.AbortThreads && !stopRenderer)
             {
-                if (DeviceReady && CurrentHostWindowState != System.Windows.WindowState.Minimized)
+                bool canRender = DeviceReady
+                    && isHostWindowActive
+                    && CurrentHostWindowState != System.Windows.WindowState.Minimized;
+                if (!canRender)
                 {
-                    RenderFrame();
+                    renderRequested.WaitOne(InactiveRenderSleepMilliseconds);
+                    firstFrame = true;
+                    continue;
+                }
+
+                if (!firstFrame)
+                {
+                    int waitMilliseconds = GetRenderWaitMilliseconds(
+                        nextPreviewFrameTimestamp,
+                        Stopwatch.GetTimestamp());
+                    renderRequested.WaitOne(waitMilliseconds);
+                    if (Program.AbortThreads || stopRenderer)
+                        break;
+
+                    if (!isHostWindowActive
+                        || CurrentHostWindowState == System.Windows.WindowState.Minimized)
+                        continue;
+                }
+
+                firstFrame = false;
+                RenderFrame();
 #if FPS_TEST
-                    fpsCounter.Tick();
+                fpsCounter.Tick();
 #endif
-                }
-                else
-                {
-                    Thread.Sleep(100);
-                }
             }
+        }
+
+        internal static int GetRenderWaitMilliseconds(long deadlineTimestamp, long currentTimestamp)
+        {
+            if (deadlineTimestamp == long.MaxValue)
+                return Timeout.Infinite;
+
+            long remainingTicks = deadlineTimestamp - currentTimestamp;
+            if (remainingTicks <= 0)
+                return 1;
+
+            return Math.Max(
+                1,
+                (int)Math.Ceiling(remainingTicks * 1000d / Stopwatch.Frequency));
         }
 
         #region Initialization
@@ -138,6 +241,7 @@ namespace HaCreator.MapEditor
             this.dxHandle = DxContainer.Handle;
             this.userObjs = new UserObjectsManager(this);
             this.SizeChanged += MultiBoard2_SizeChanged;
+            this.DxContainer.Resize += DxContainer_Resize;
         }
 
         /// <summary>
@@ -145,15 +249,25 @@ namespace HaCreator.MapEditor
         /// </summary>
         public void Start()
         {
-            if (DeviceReady) 
+            // DeviceReady is also cleared temporarily while MapSimulator owns the GPU. The
+            // renderer is still alive in that state, so using DeviceReady as the startup guard
+            // can create a second render thread that shares this SpriteBatch.
+            if (renderer != null)
                 return;
 
             //if (selectedBoard == null) 
             //    throw new Exception("Cannot start without a selected board");
             Visibility = Visibility.Visible;
+            stopRenderer = false;
 
+            UpdateDxWindowSize(resetDevice: false);
             AdjustScrollBars();
-            renderer = new Thread(new ThreadStart(RenderLoop));
+            renderer = new Thread(RenderLoop)
+            {
+                IsBackground = true,
+                Name = "HaCreator map renderer",
+                Priority = ThreadPriority.BelowNormal
+            };
             renderer.Start();
 
             Dictionary<Action, int> clientList = new Dictionary<Action, int>();
@@ -169,6 +283,8 @@ namespace HaCreator.MapEditor
         {
             if (renderer != null)
             {
+                stopRenderer = true;
+                renderRequested.Set();
                 renderer.Join();
                 renderer = null;
             }
@@ -176,6 +292,8 @@ namespace HaCreator.MapEditor
             {
                 scheduler.Dispose();
             }
+
+            ClearPreviewDrawables();
         }
 
         public static Microsoft.Xna.Framework.Graphics.GraphicsDevice CreateGraphicsDevice(PresentationParameters pParams)
@@ -187,7 +305,7 @@ namespace HaCreator.MapEditor
             }
             catch (Exception e)
             {
-                MessageBox.Show(string.Format("Graphics adapter is not supported: {0}\r\n\r\n{1}", e.Message, e.StackTrace));
+                MessageBox.Show(HaCreator.GUI.Localization.MapEditorText.Format("GraphicsAdapterUnsupported", e.Message, e.StackTrace));
                 Environment.Exit(0);
                 // This code will never be reached, but VS still requires this path to end
                 throw;
@@ -203,10 +321,14 @@ namespace HaCreator.MapEditor
             pParams.DepthStencilFormat = DepthFormat.Depth24Stencil8;
             pParams.DeviceWindowHandle = dxHandle;
             pParams.IsFullScreen = false;
-            //pParams.PresentationInterval = PresentInterval.Immediate;
+            pParams.PresentationInterval = PresentInterval.One;
             DxDevice = CreateGraphicsDevice(pParams);
             fontEngine = new FontEngine(UserSettings.FontName, UserSettings.FontStyle, UserSettings.FontSize, DxDevice);
             sprite = new SpriteBatch(DxDevice);
+            previewSkeletonRenderer = new SkeletonMeshRenderer(DxDevice)
+            {
+                PremultipliedAlpha = false
+            };
         }
 
         #endregion
@@ -255,6 +377,11 @@ namespace HaCreator.MapEditor
         {
             int width = (int)Vector2.Distance(start, end);
             float rotation = (float)Math.Atan2((double)(end.Y - start.Y), (double)(end.X - start.X));
+            DrawLine(sprite, start, width, rotation, color);
+        }
+
+        public void DrawLine(SpriteBatch sprite, Vector2 start, int width, float rotation, Color color)
+        {
             sprite.Draw(pixel, new Rectangle((int)start.X, (int)start.Y, width, UserSettings.LineWidth), null, color, rotation, new Vector2(0f, 0f), SpriteEffects.None, 1f);
         }
 
@@ -289,6 +416,37 @@ namespace HaCreator.MapEditor
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void RenderFrame()
         {
+            if (!simulatorRenderGate.TryEnterFrame())
+                return;
+            try
+            {
+                RenderFrameCore();
+            }
+            finally
+            {
+                simulatorRenderGate.ExitFrame();
+            }
+        }
+
+        private readonly Simulation.RenderQuiescenceGate simulatorRenderGate = new();
+
+        public System.Threading.Tasks.Task PauseRenderingForSimulatorAsync()
+        {
+            DeviceReady = false;
+            return simulatorRenderGate.PauseAsync();
+        }
+
+        public void RestoreRenderingAfterSimulator(bool wasDeviceReady)
+        {
+            simulatorRenderGate.Resume();
+            DeviceReady = wasDeviceReady;
+        }
+
+        private void RenderFrameCore()
+        {
+            currentFrameStartTimestamp = Stopwatch.GetTimestamp();
+            nextPreviewFrameTimestamp = long.MaxValue;
+
             if (needsReset)
             {
                 needsReset = false;
@@ -301,77 +459,109 @@ namespace HaCreator.MapEditor
             }
             DxDevice.Clear(ClearOptions.Target, Color.White, 1.0f, 0); // Clear the window to black
 
+            TimeSpan previewTime = previewClock.Elapsed;
+            TimeSpan previewElapsed = previewTime - previousPreviewTime;
+            previousPreviewTime = previewTime;
+            previewGameTime = selectedBoard?.AdvanceLivePreviewTime(previewElapsed) ?? new GameTime();
+
             float zoom = selectedBoard?.Zoom ?? 1.0f;
 
             // Render backgrounds first without zoom transform so they stay at fixed screen position
             if (selectedBoard != null)
             {
+                previewSkeletonRenderer.Effect.World = Matrix.Identity;
                 sprite.Begin(SpriteSortMode.Immediate, BlendState.NonPremultiplied);
-                lock (this)
+                try
                 {
-                    if (selectedBoard != null)
+                    lock (this)
                     {
-                        selectedBoard.RenderBackgrounds(sprite);
+                        if (selectedBoard != null)
+                        {
+                            selectedBoard.RenderBackgrounds(sprite);
+                        }
                     }
                 }
-                sprite.End();
+                finally
+                {
+                    sprite.End();
+                }
             }
 
 #if UseXNAZorder
             sprite.Begin(SpriteBlendMode.AlphaBlend, SpriteSortMode.FrontToBack, SaveStateMode.None);
 #else
+            previewSkeletonRenderer.Effect.World = Matrix.CreateScale(zoom);
             sprite.Begin(SpriteSortMode.Immediate, BlendState.NonPremultiplied, null, null, null, null, Matrix.CreateScale(zoom));
 #endif
 
-            if (selectedBoard != null) // No map selected to draw on
+            try
             {
-                lock (this)
+                if (selectedBoard != null) // No map selected to draw on
                 {
-                    if (selectedBoard != null) // check again
+                    lock (this)
                     {
-                        selectedBoard.RenderBoard(sprite);
-                        if (selectedBoard.MapSize.X < _CurrentDXWindowSize.Width)
+                        if (selectedBoard != null) // check again
                         {
-                            DrawLine(sprite, new Vector2(MapSize.X, 0), new Vector2(MapSize.X, _CurrentDXWindowSize.Height), Color.Black);
-                        }
-                        if (selectedBoard.MapSize.Y < _CurrentDXWindowSize.Height)
-                        {
-                            DrawLine(sprite, new Vector2(0, MapSize.Y), new Vector2(_CurrentDXWindowSize.Width, MapSize.Y), Color.Black);
+                            selectedBoard.RenderBoard(sprite);
+                            if (selectedBoard.MapSize.X < _CurrentDXWindowSize.Width)
+                            {
+                                DrawLine(sprite, new Vector2(MapSize.X, 0), new Vector2(MapSize.X, _CurrentDXWindowSize.Height), Color.Black);
+                            }
+                            if (selectedBoard.MapSize.Y < _CurrentDXWindowSize.Height)
+                            {
+                                DrawLine(sprite, new Vector2(0, MapSize.Y), new Vector2(_CurrentDXWindowSize.Width, MapSize.Y), Color.Black);
+                            }
                         }
                     }
                 }
-            }
 #if FPS_TEST
-            fontEngine.DrawString(sprite, new System.Drawing.Point(), Color.Black, fpsCounter.Frames.ToString(), 1000);
+                fontEngine.DrawString(sprite, new System.Drawing.Point(), Color.Black, fpsCounter.Frames.ToString(), 1000);
 #endif
-            sprite.End();
+            }
+            finally
+            {
+                sprite.End();
+            }
 
             // Render front backgrounds without zoom transform (after other items but before minimap)
             if (selectedBoard != null)
             {
+                previewSkeletonRenderer.Effect.World = Matrix.Identity;
                 sprite.Begin(SpriteSortMode.Immediate, BlendState.NonPremultiplied);
-                lock (this)
+                try
                 {
-                    if (selectedBoard != null)
+                    lock (this)
                     {
-                        selectedBoard.RenderFrontBackgrounds(sprite);
+                        if (selectedBoard != null)
+                        {
+                            selectedBoard.RenderFrontBackgrounds(sprite);
+                        }
                     }
                 }
-                sprite.End();
+                finally
+                {
+                    sprite.End();
+                }
             }
 
             // Render minimap as a UI overlay (without zoom transform so it stays at fixed screen size)
             if (selectedBoard != null)
             {
                 sprite.Begin(SpriteSortMode.Immediate, BlendState.NonPremultiplied);
-                lock (this)
+                try
                 {
-                    if (selectedBoard != null)
+                    lock (this)
                     {
-                        selectedBoard.RenderMinimap(sprite);
+                        if (selectedBoard != null)
+                        {
+                            selectedBoard.RenderMinimap(sprite);
+                        }
                     }
                 }
-                sprite.End();
+                finally
+                {
+                    sprite.End();
+                }
             }
             try
             {
@@ -387,6 +577,265 @@ namespace HaCreator.MapEditor
 
         }
 
+        internal bool DrawLivePreview(
+            BoardItem item,
+            SpriteBatch sprite,
+            Color color,
+            int xShift,
+            int yShift,
+            int hScroll,
+            int vScroll,
+            Point centerPoint)
+        {
+            if (!ApplicationSettings.AnimateMapObjectPreviews || item?.BaseInfo == null)
+            {
+                return false;
+            }
+
+            int stateHash = GetPreviewStateHash(item);
+            if (nonLivePreviewItems.TryGetValue(item, out int nonLivePreviewStateHash))
+            {
+                if (nonLivePreviewStateHash == stateHash)
+                    return false;
+
+                nonLivePreviewItems.Remove(item);
+            }
+
+            if (!previewDrawables.TryGetValue(item, out PreviewDrawableEntry entry) || entry.StateHash != stateHash)
+            {
+                WzImageProperty source = GetPreviewSource(item);
+                if (!CanUseLivePreview(source, item))
+                {
+                    nonLivePreviewItems[item] = stateHash;
+                    return false;
+                }
+
+                List<WzObject> usedProperties = new List<WzObject>();
+                try
+                {
+                    BaseDXDrawableItem createdDrawable = CreatePreviewDrawable(item, source, ref usedProperties);
+                    if (createdDrawable == null)
+                    {
+                        nonLivePreviewItems[item] = stateHash;
+                        return false;
+                    }
+
+                    entry = new PreviewDrawableEntry(createdDrawable, stateHash);
+                    previewDrawables[item] = entry;
+                }
+                catch (Exception)
+                {
+                    nonLivePreviewItems[item] = stateHash;
+                    return false;
+                }
+                finally
+                {
+                    ClearWzRenderTags(usedProperties);
+                }
+            }
+
+            BaseDXDrawableItem drawable = entry.Drawable;
+            GameTime livePreviewGameTime = item.Board?.LivePreviewGameTime ?? previewGameTime;
+            int tickCount = (int)(livePreviewGameTime.TotalGameTime.TotalMilliseconds % int.MaxValue);
+            RenderParameters renderParameters = CreatePreviewRenderParameters();
+            if (drawable is BackgroundItem backgroundDrawable)
+            {
+                backgroundDrawable.DrawPreview(sprite, previewSkeletonRenderer, livePreviewGameTime,
+                    hScroll, vScroll, centerPoint.X, centerPoint.Y,
+                    renderParameters,
+                    tickCount,
+                    color);
+            }
+            else if (drawable is EditorPreviewDrawable previewDrawable)
+            {
+                previewDrawable.DrawPreview(sprite, previewSkeletonRenderer, livePreviewGameTime, tickCount, item.X + xShift, item.Y + yShift, color);
+            }
+            else
+            {
+                drawable.Draw(sprite, previewSkeletonRenderer, livePreviewGameTime,
+                    hScroll, vScroll, centerPoint.X, centerPoint.Y,
+                    null,
+                    renderParameters,
+                    tickCount);
+            }
+
+            ScheduleNextPreviewFrame(item, drawable, tickCount);
+
+            return true;
+        }
+
+        private void ScheduleNextPreviewFrame(BoardItem item, BaseDXDrawableItem drawable, int tickCount)
+        {
+            int delayMilliseconds;
+            bool continuouslyMoving = drawable.LastFrameDrawn?.Texture == null
+                || item is BackgroundInstance background && IsMovingBackground(background.type);
+            if (continuouslyMoving)
+            {
+                long continuousDeadline = currentFrameStartTimestamp + TargetFrameDurationTicks;
+                if (continuousDeadline < nextPreviewFrameTimestamp)
+                    nextPreviewFrameTimestamp = continuousDeadline;
+                return;
+            }
+
+            if (!drawable.IsAnimationRunning)
+                return;
+
+            delayMilliseconds = Math.Max(
+                1,
+                drawable.GetCurrentAnimationFrameDelay(tickCount)
+                    - drawable.GetCurrentAnimationFrameElapsed(tickCount));
+            long animationDeadline = Stopwatch.GetTimestamp()
+                + Math.Max(1, (long)Math.Ceiling(delayMilliseconds * Stopwatch.Frequency / 1000d));
+            if (animationDeadline < nextPreviewFrameTimestamp)
+                nextPreviewFrameTimestamp = animationDeadline;
+        }
+
+        private static bool IsMovingBackground(BackgroundType type)
+        {
+            return type == BackgroundType.HorizontalMoving
+                || type == BackgroundType.VerticalMoving
+                || type == BackgroundType.HorizontalMovingHVTiling
+                || type == BackgroundType.VerticalMovingHVTiling;
+        }
+
+        public void RequestRender()
+        {
+            renderRequested.Set();
+        }
+
+        private RenderParameters CreatePreviewRenderParameters()
+        {
+            return new RenderParameters(
+                Math.Max(_CurrentDXWindowSize.Width, 1),
+                Math.Max(_CurrentDXWindowSize.Height, 1),
+                1f,
+                UserSettings.SimulateResolution);
+        }
+
+        private BaseDXDrawableItem CreatePreviewDrawable(BoardItem item, WzImageProperty source, ref List<WzObject> usedProperties)
+        {
+            if (item is BackgroundInstance background)
+                return EditorBackgroundPreviewLoader.CreateBackgroundFromProperty(previewTexturePool, source, background, DxDevice, ref usedProperties, background.Flip);
+
+            List<IDXObject> frames = MapSimulatorLoader.LoadFrames(previewTexturePool, source, 0, 0, DxDevice, ref usedProperties);
+            if (frames.Count == 0 || (frames.Count == 1 && frames[0].Texture != null))
+                return null;
+
+            return new EditorPreviewDrawable(frames, item.IsFlipped());
+        }
+
+        private static int GetPreviewStateHash(BoardItem item)
+        {
+            unchecked
+            {
+                int hash = 17;
+                hash = hash * 31 + item.IsFlipped().GetHashCode();
+
+                if (item is BackgroundInstance background)
+                {
+                    hash = hash * 31 + background.BaseX;
+                    hash = hash * 31 + background.BaseY;
+                    hash = hash * 31 + background.cx;
+                    hash = hash * 31 + background.cy;
+                    hash = hash * 31 + background.rx;
+                    hash = hash * 31 + background.ry;
+                    hash = hash * 31 + (int)background.type;
+                    hash = hash * 31 + background.a;
+                    hash = hash * 31 + background.screenMode;
+                    hash = hash * 31 + (background.SpineAni?.GetHashCode() ?? 0);
+                }
+
+                return hash;
+            }
+        }
+
+        private static WzImageProperty GetPreviewSource(BoardItem item)
+        {
+            if (item is PortalInstance portal)
+                return GetPortalPreviewSource(portal);
+
+            switch (item.BaseInfo)
+            {
+                case Info.BackgroundInfo backgroundInfo:
+                    return backgroundInfo.WzImageProperty;
+                case Info.MobInfo mobInfo:
+                    return (WzImageProperty)(mobInfo.LinkedWzImage?["stand"] ?? mobInfo.LinkedWzImage?["fly"]);
+                case Info.NpcInfo npcInfo:
+                    return (WzImageProperty)npcInfo.LinkedWzImage?["stand"];
+                case Info.ReactorInfo reactorInfo:
+                    return (WzImageProperty)reactorInfo.LinkedWzImage?["0"]?["0"];
+                default:
+                    return item.BaseInfo.ParentObject as WzImageProperty;
+            }
+        }
+
+        private static WzImageProperty GetPortalPreviewSource(PortalInstance portal)
+        {
+            switch (portal.pt)
+            {
+                case PortalType.StartPoint:
+                case PortalType.Invisible:
+                case PortalType.ScriptInvisible:
+                case PortalType.Script:
+                case PortalType.Collision:
+                case PortalType.CollisionScript:
+                case PortalType.CollisionCustomImpact:
+                case PortalType.CollisionVerticalJump:
+                    return null;
+            }
+
+            WzImage mapHelper = Program.FindImage("Map", "MapHelper.img");
+            WzSubProperty gameParent = mapHelper?["portal"]?["game"] as WzSubProperty;
+            WzSubProperty portalType = gameParent?[portal.pt.ToCode()] as WzSubProperty
+                ?? gameParent?["pv"] as WzSubProperty;
+            if (portalType == null || portalType["0"] is WzCanvasProperty)
+                return portalType;
+
+            WzSubProperty portalImage = portalType[portal.image ?? "default"] as WzSubProperty;
+            return portalImage?["portalContinue"] as WzSubProperty ?? portalImage;
+        }
+
+        private static bool CanUseLivePreview(WzImageProperty source, BoardItem item)
+        {
+            if (source == null)
+                return false;
+
+            if (item is BackgroundInstance background)
+            {
+                Info.BackgroundInfo info = (Info.BackgroundInfo)background.BaseInfo;
+                return background.type != BackgroundType.Regular ||
+                    info.Type == Info.BackgroundInfoType.Animation ||
+                    info.Type == Info.BackgroundInfoType.Spine;
+            }
+
+            if (source is WzRawDataProperty rawProperty && rawProperty.Name.EndsWith(".skel", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            return source is WzSubProperty &&
+                (source["1"] != null || source["spine"] != null || source.Parent?.Name == "spine");
+        }
+
+        private void ClearPreviewDrawables()
+        {
+            previewDrawables.Clear();
+            nonLivePreviewItems.Clear();
+            previewTexturePool.DisposeAll();
+        }
+
+        private static void ClearWzRenderTags(IEnumerable<WzObject> properties)
+        {
+            foreach (WzObject property in properties)
+            {
+                if (property == null)
+                    continue;
+
+                property.MSTag = null;
+                property.MSTagSpine = null;
+            }
+        }
+
         public bool IsItemInRange(int x, int y, int w, int h, int xshift, int yshift)
         {
             // Get zoom from selected board, default to 1.0 if no board selected
@@ -400,7 +849,16 @@ namespace HaCreator.MapEditor
         #endregion
 
         #region Properties
-        public bool DeviceReady { get; set; } = false;
+        private volatile bool deviceReady;
+        public bool DeviceReady
+        {
+            get { return deviceReady; }
+            set
+            {
+                deviceReady = value;
+                RequestRender();
+            }
+        }
 
         public FontEngine FontEngine
         {
@@ -443,12 +901,16 @@ namespace HaCreator.MapEditor
             {
                 lock (this)
                 {
+                    if (selectedBoard != value)
+                        selectedBoard?.PauseLivePreviewTime();
+
                     selectedBoard = value;
                     if (value != null)
                     {
                         AdjustScrollBars();
                     }
                 }
+                RequestRender();
             }
         }
 
@@ -474,7 +936,7 @@ namespace HaCreator.MapEditor
         {
             if (SelectedBoard.SelectedLayerIndex == -1)
             {
-                MessageBox.Show("Select a real layer", "Error", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+                MessageBox.Show(HaCreator.GUI.Localization.MapEditorText.Get("SelectRealLayer"), HaCreator.GUI.Localization.MapEditorText.Get("ErrorTitle"), System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
                 return false;
             }
             return true;
@@ -629,10 +1091,9 @@ namespace HaCreator.MapEditor
             return false;
         }
 
-        public void OnExportRequested()
+        public void OnSaveRequested()
         {
-            if (ExportRequested != null)
-                ExportRequested.Invoke();
+            SaveRequested?.Invoke();
         }
 
         public void OnLoadRequested()
@@ -674,11 +1135,11 @@ namespace HaCreator.MapEditor
         public delegate void ImageDroppedDelegate(Board selectedBoard, System.Drawing.Bitmap bmp, string name, Point pos);
         public event ImageDroppedDelegate ImageDropped;
 
-        public event HaCreator.GUI.HaRibbon.EmptyEvent ExportRequested;
-        public event HaCreator.GUI.HaRibbon.EmptyEvent LoadRequested;
-        public event HaCreator.GUI.HaRibbon.EmptyEvent CloseTabRequested;
+        public event Action SaveRequested;
+        public event Action LoadRequested;
+        public event Action CloseTabRequested;
         public event EventHandler<bool> SwitchTabRequested;
-        public event HaCreator.GUI.HaRibbon.EmptyEvent BackupCheck;
+        public event Action BackupCheck;
 
         /// <summary>
         /// Mouse click
@@ -960,6 +1421,12 @@ namespace HaCreator.MapEditor
         {
             lock (this)
             {
+                bool centerInitialView = selectedBoard != null
+                    && selectedBoard.InitialViewPending
+                    && _CurrentDXWindowSize.Width > 0
+                    && _CurrentDXWindowSize.Height > 0
+                    && (MapSize.X > 0 || MapSize.Y > 0);
+
                 // Get zoom factor - when zoomed out, viewport covers more virtual space
                 float zoom = selectedBoard?.Zoom ?? 1.0f;
                 float viewportWidth = _CurrentDXWindowSize.Width / zoom;
@@ -1007,6 +1474,13 @@ namespace HaCreator.MapEditor
                     vScrollBar.IsEnabled = false;
                     vScrollBar.Value = 0;
                     vScrollBar.Maximum = 0;
+                }
+
+                if (centerInitialView)
+                {
+                    selectedBoard.hScroll = (int)Math.Round(hScrollBar.Maximum / 2.0);
+                    selectedBoard.vScroll = (int)vScrollBar.Maximum;
+                    selectedBoard.MarkInitialViewInitialized();
                 }
             }
         }
@@ -1133,6 +1607,7 @@ namespace HaCreator.MapEditor
         public void OnSelectedItemChanged(BoardItem selectedItem)
         {
             if (SelectedItemChanged != null) SelectedItemChanged.Invoke(selectedItem);
+            RequestRender();
         }
 
         public void InvokeReturnToSelectionState()
@@ -1143,36 +1618,43 @@ namespace HaCreator.MapEditor
         public void SendToBackClicked(BoardItem item)
         {
             if (OnSendToBackClicked != null) OnSendToBackClicked.Invoke(item);
+            RequestRender();
         }
 
         public void BringToFrontClicked(BoardItem item)
         {
             if (OnBringToFrontClicked != null) OnBringToFrontClicked.Invoke(item);
+            RequestRender();
         }
 
         public void EditInstanceClicked(BoardItem item)
         {
             if (OnEditInstanceClicked != null) OnEditInstanceClicked.Invoke(item);
+            RequestRender();
         }
 
         public void EditBaseClicked(BoardItem item)
         {
             if (OnEditBaseClicked != null) OnEditBaseClicked.Invoke(item);
+            RequestRender();
         }
 
         public void LayerTSChanged(Layer layer)
         {
             if (OnLayerTSChanged != null) OnLayerTSChanged.Invoke(layer);
+            RequestRender();
         }
 
         public void UndoListChanged()
         {
             if (OnUndoListChanged != null) OnUndoListChanged.Invoke();
+            RequestRender();
         }
 
         public void RedoListChanged()
         {
             if (OnRedoListChanged != null) OnRedoListChanged.Invoke();
+            RequestRender();
         }
         #endregion
 

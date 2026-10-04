@@ -1,0 +1,385 @@
+<Window x:Class="HaCreator.GUI.Audio.AudioWorkspace"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:audio="clr-namespace:HaCreator.GUI.Audio"
+        xmlns:loc="clr-namespace:HaCreator.GUI.Audio"
+        Title="{loc:AudioWorkspaceText Title}"
+        Width="1600" Height="980" MinWidth="1280" MinHeight="720"
+        WindowStartupLocation="CenterOwner"
+        UseLayoutRounding="True" SnapsToDevicePixels="True"
+        Closing="Workspace_Closing" Loaded="Workspace_Loaded">
+    <Window.CommandBindings>
+        <CommandBinding Command="ApplicationCommands.New" Executed="NewProject_Click" CanExecute="AlwaysCanExecute"/>
+        <CommandBinding Command="ApplicationCommands.Open" Executed="OpenProject_Click" CanExecute="AlwaysCanExecute"/>
+        <CommandBinding Command="ApplicationCommands.Save" Executed="SaveProject_Click" CanExecute="AlwaysCanExecute"/>
+        <CommandBinding Command="ApplicationCommands.Undo" Executed="Undo_Click" CanExecute="CanUndo"/>
+        <CommandBinding Command="ApplicationCommands.Redo" Executed="Redo_Click" CanExecute="CanRedo"/>
+    </Window.CommandBindings>
+    <Window.InputBindings>
+        <KeyBinding Command="ApplicationCommands.New" Gesture="Ctrl+N"/>
+        <KeyBinding Command="ApplicationCommands.Open" Gesture="Ctrl+O"/>
+        <KeyBinding Command="ApplicationCommands.Save" Gesture="Ctrl+S"/>
+        <KeyBinding Command="ApplicationCommands.Undo" Gesture="Ctrl+Z"/>
+        <KeyBinding Command="ApplicationCommands.Redo" Gesture="Ctrl+Y"/>
+        <KeyBinding Key="Space" Command="audio:AudioWorkspace.TogglePlaybackCommand"/>
+        <KeyBinding Gesture="Ctrl+Shift+S" Command="audio:AudioWorkspace.SplitCommand"/>
+        <KeyBinding Key="Home" Command="audio:AudioWorkspace.HomeCommand"/>
+        <KeyBinding Key="End" Command="audio:AudioWorkspace.EndCommand"/>
+    </Window.InputBindings>
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/HaSharedLibrary;component/GUI/Themes/HarepackerTheme.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+            <Style x:Key="AudioSectionHeader" TargetType="TextBlock" BasedOn="{StaticResource HareSectionTitleStyle}">
+                <Setter Property="Margin" Value="0,0,0,8"/>
+                <Setter Property="FontSize" Value="12"/>
+                <Setter Property="TextOptions.TextFormattingMode" Value="Display"/>
+            </Style>
+            <Style x:Key="InspectorLabel" TargetType="TextBlock" BasedOn="{StaticResource HareMutedTextStyle}">
+                <Setter Property="VerticalAlignment" Value="Center"/>
+                <Setter Property="Margin" Value="0,2,8,4"/>
+            </Style>
+            <Style x:Key="InspectorValue" TargetType="TextBlock">
+                <Setter Property="Foreground" Value="{StaticResource HareTextBrush}"/>
+                <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+                <Setter Property="Margin" Value="0,2,0,4"/>
+            </Style>
+            <Style x:Key="TrackButton" TargetType="Button" BasedOn="{StaticResource HareIconButtonStyle}">
+                <Setter Property="Width" Value="26"/>
+                <Setter Property="Height" Value="25"/>
+                <Setter Property="Margin" Value="2,0,0,0"/>
+                <Setter Property="FontSize" Value="11"/>
+            </Style>
+            <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
+        </ResourceDictionary>
+    </Window.Resources>
+    <Grid Background="{StaticResource HareCanvasBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Command bar -->
+        <Border Grid.Row="0" Style="{StaticResource HareToolbarStyle}" Margin="12,12,12,8">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Orientation="Horizontal" HorizontalAlignment="Left">
+                    <Button Style="{StaticResource HarePrimaryButtonStyle}" Content="{loc:AudioWorkspaceText NewProject}" Click="NewProject_Click" ToolTip="Ctrl+N" AutomationProperties.Name="{loc:AudioWorkspaceText NewProject}"/>
+                    <Button Margin="6,0,0,0" Content="{loc:AudioWorkspaceText OpenProject}" Click="OpenProject_Click" ToolTip="Ctrl+O" AutomationProperties.Name="{loc:AudioWorkspaceText OpenProject}"/>
+                    <Button Margin="6,0,0,0" Content="{loc:AudioWorkspaceText SaveProject}" Click="SaveProject_Click" ToolTip="Ctrl+S" AutomationProperties.Name="{loc:AudioWorkspaceText SaveProject}"/>
+                    <Separator Style="{StaticResource {x:Type Separator}}" Width="8"/>
+                    <Button Content="{loc:AudioWorkspaceText ImportAudio}" Click="ImportAudio_Click" AutomationProperties.Name="{loc:AudioWorkspaceText ImportAudio}"/>
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center">
+                    <Button Style="{StaticResource HareIconButtonStyle}" FontFamily="Segoe MDL2 Assets" Content="&#xE71A;" ToolTip="{loc:AudioWorkspaceText Undo}" Click="Undo_Click" AutomationProperties.Name="{loc:AudioWorkspaceText Undo}"/>
+                    <Button Style="{StaticResource HareIconButtonStyle}" FontFamily="Segoe MDL2 Assets" Content="&#xE71B;" ToolTip="{loc:AudioWorkspaceText Redo}" Click="Redo_Click" AutomationProperties.Name="{loc:AudioWorkspaceText Redo}"/>
+                    <Separator Style="{StaticResource {x:Type Separator}}" Width="8"/>
+                    <Button Style="{StaticResource HareIconButtonStyle}" Content="&#x25A0;" Click="Stop_Click" ToolTip="{loc:AudioWorkspaceText Stop}" AutomationProperties.Name="{loc:AudioWorkspaceText Stop}"/>
+                    <Button x:Name="playButton" Style="{StaticResource HarePrimaryButtonStyle}" MinWidth="74" Margin="6,0" Content="{loc:AudioWorkspaceText Play}" Click="Play_Click" ToolTip="Space" AutomationProperties.Name="{loc:AudioWorkspaceText Play}"/>
+                    <ToggleButton x:Name="loopButton" Content="{loc:AudioWorkspaceText Loop}" Click="Loop_Click" AutomationProperties.Name="{loc:AudioWorkspaceText Loop}"/>
+                    <TextBlock x:Name="timeDisplay" Text="00:00.000" FontFamily="Consolas" FontSize="14" Foreground="{StaticResource HareTextBrush}" VerticalAlignment="Center" Margin="12,0,0,0" AutomationProperties.Name="{loc:AudioWorkspaceText PlaybackPosition}"/>
+                </StackPanel>
+                <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button Content="{loc:AudioWorkspaceText Render}" Click="Render_Click" AutomationProperties.Name="{loc:AudioWorkspaceText Render}"/>
+                    <Button Margin="6,0,0,0" Content="{loc:AudioWorkspaceText ExportAudio}" Click="ExportAudio_Click" AutomationProperties.Name="{loc:AudioWorkspaceText ExportAudio}"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Three-pane workspace. GridSplitters remain keyboard and DPI friendly. -->
+        <Grid Grid.Row="1" Margin="12,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition x:Name="assetColumn" Width="300" MinWidth="235"/>
+                <ColumnDefinition Width="6"/>
+                <ColumnDefinition Width="*" MinWidth="480"/>
+                <ColumnDefinition Width="6"/>
+                <ColumnDefinition x:Name="inspectorColumn" Width="340" MinWidth="280"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Asset browser -->
+            <Border Grid.Column="0" Style="{StaticResource HareCardStyle}" Padding="12">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Style="{StaticResource AudioSectionHeader}" Text="{loc:AudioWorkspaceText Assets}" AutomationProperties.Name="{loc:AudioWorkspaceText Assets}"/>
+                    <Grid Grid.Row="1" Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <TextBlock Text="{Binding SourceVersion}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" ToolTip="{Binding SourceVersion}" AutomationProperties.Name="{loc:AudioWorkspaceText SourceSet}"/>
+                        <Button Grid.Column="1" Style="{StaticResource HareIconButtonStyle}" Content="⟳" Margin="6,0,0,0" Click="RefreshCatalog_Click" ToolTip="Refresh sound catalog" AutomationProperties.Name="Refresh sound catalog"/>
+                    </Grid>
+                    <TextBox x:Name="assetSearchBox" Grid.Row="2" TextChanged="AssetSearch_Changed" ToolTip="{loc:AudioWorkspaceText Search}" AutomationProperties.Name="{loc:AudioWorkspaceText Search}"/>
+                    <ComboBox x:Name="assetCategoryComboBox" Grid.Row="3" Margin="0,8,0,8" ItemsSource="{Binding Categories}" SelectedItem="{Binding SelectedCategory, Mode=TwoWay}" AutomationProperties.Name="{loc:AudioWorkspaceText Assets}"/>
+                    <Grid Grid.Row="4">
+                        <Grid.RowDefinitions><RowDefinition Height="150"/><RowDefinition Height="6"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                        <TreeView x:Name="assetTree" ItemsSource="{Binding Categories}" SelectedItemChanged="AssetTree_SelectionChanged" AutomationProperties.Name="Sound image and category tree" BorderThickness="0" Padding="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                            <TreeView.Resources>
+                                <Style TargetType="{x:Type TreeViewItem}">
+                                    <Setter Property="Padding" Value="8,6"/>
+                                    <Setter Property="Margin" Value="0,1"/>
+                                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                    <Setter Property="Background" Value="Transparent"/>
+                                    <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="{x:Type TreeViewItem}">
+                                                <Border x:Name="CategoryBorder" Background="Transparent" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                    <ContentPresenter ContentSource="Header" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"/>
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="CategoryBorder" Property="Background" Value="{StaticResource HareSurfaceAltBrush}"/>
+                                                    </Trigger>
+                                                    <Trigger Property="IsSelected" Value="True">
+                                                        <Setter TargetName="CategoryBorder" Property="Background" Value="{StaticResource HareAccentSoftBrush}"/>
+                                                        <Setter Property="Foreground" Value="{StaticResource HareAccentHoverBrush}"/>
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </TreeView.Resources>
+                            <TreeView.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid ToolTip="{Binding}" SnapsToDevicePixels="True">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="22"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                        <TextBlock Text="♫" Foreground="{StaticResource HareAccentBrush}" FontSize="13" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="1" Text="{Binding}" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </TreeView.ItemTemplate>
+                        </TreeView>
+                        <GridSplitter Grid.Row="1" Height="6" HorizontalAlignment="Stretch" VerticalAlignment="Center"/>
+                        <ListBox x:Name="assetList" Grid.Row="2" ItemsSource="{Binding Assets}" SelectedItem="{Binding SelectedAsset, Mode=TwoWay}" SelectionChanged="AssetList_SelectionChanged" MouseDoubleClick="AssetList_DoubleClick" KeyDown="AssetList_KeyDown" AutomationProperties.Name="Sound asset results">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate DataType="{x:Type audio:AudioAssetEntry}">
+                                    <Grid ToolTip="{Binding FullPath}">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="18"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                        <TextBlock Text="♫" Foreground="{StaticResource HareAccentBrush}" VerticalAlignment="Top"/>
+                                        <StackPanel Grid.Column="1">
+                                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Text="{Binding FullPath}" Style="{StaticResource HareMutedTextStyle}" FontSize="11" TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Text="{Binding FormatText}" Style="{StaticResource HareMutedTextStyle}" FontSize="10" TextTrimming="CharacterEllipsis"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="2" HorizontalAlignment="Right">
+                                            <TextBlock Text="{Binding DurationText}" FontFamily="Consolas" FontSize="10"/>
+                                            <TextBlock Text="!" Foreground="{StaticResource HareWarningBrush}" FontWeight="Bold" HorizontalAlignment="Right" Visibility="{Binding HasWarning, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Grid>
+                    <TextBlock Grid.Row="5" Text="{Binding Assets.Count, StringFormat={}{0} result(s)}" Style="{StaticResource HareMutedTextStyle}" Margin="0,8,0,0"/>
+                </Grid>
+            </Border>
+
+            <GridSplitter Grid.Column="1" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Background="Transparent" ShowsPreview="True"/>
+
+            <!-- Timeline editor -->
+            <Border Grid.Column="2" Style="{StaticResource HareCardStyle}" Padding="12">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="92"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <DockPanel Grid.Row="0" Margin="0,0,0,8">
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                            <Button Style="{StaticResource HareIconButtonStyle}" Content="−" Click="ZoomOut_Click" ToolTip="{loc:AudioWorkspaceText ZoomOut}" AutomationProperties.Name="{loc:AudioWorkspaceText ZoomOut}"/>
+                            <Slider x:Name="zoomSlider" Width="100" Minimum="0.25" Maximum="8" Value="1" ValueChanged="Zoom_Changed" VerticalAlignment="Center" Margin="6,0" AutomationProperties.Name="Timeline zoom"/>
+                            <Button Style="{StaticResource HareIconButtonStyle}" Content="＋" Click="ZoomIn_Click" ToolTip="{loc:AudioWorkspaceText ZoomIn}" AutomationProperties.Name="{loc:AudioWorkspaceText ZoomIn}"/>
+                        </StackPanel>
+                        <TextBlock Style="{StaticResource AudioSectionHeader}" Text="{loc:AudioWorkspaceText CenterEditor}" VerticalAlignment="Center"/>
+                    </DockPanel>
+                    <Border Grid.Row="1" Background="{StaticResource HareSurfaceAltBrush}" BorderBrush="{StaticResource HareBorderBrush}" BorderThickness="1" CornerRadius="4" Padding="8">
+                        <Canvas x:Name="overviewCanvas" ClipToBounds="True" SizeChanged="TimelineCanvas_SizeChanged" MouseLeftButtonDown="Timeline_MouseDown" AutomationProperties.Name="Waveform overview">
+                            <TextBlock Canvas.Left="8" Canvas.Top="8" Text="{loc:AudioWorkspaceText Overview}" Style="{StaticResource HareMutedTextStyle}" FontSize="11"/>
+                        </Canvas>
+                    </Border>
+                    <Grid Grid.Row="2" Margin="0,8,0,0">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="190"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource HareMutedTextStyle}" Text="{loc:AudioWorkspaceText Timeline}"/>
+                        <TextBlock Grid.Column="1" x:Name="rulerText" Text="00:00       00:30       01:00       01:30       02:00" FontFamily="Consolas" FontSize="10"/>
+                    </Grid>
+                    <Border Grid.Row="3" Background="{StaticResource HareSurfaceBrush}" BorderBrush="{StaticResource HareBorderBrush}" BorderThickness="1" CornerRadius="4" Margin="0,4,0,8">
+                        <ScrollViewer x:Name="timelineScrollViewer" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" PreviewMouseWheel="Timeline_MouseWheel">
+                            <Canvas x:Name="timelineCanvas" Width="1500" Height="420" Background="{StaticResource HareSurfaceAltBrush}" MouseLeftButtonDown="Timeline_MouseDown" AutomationProperties.Name="Multitrack timeline"/>
+                        </ScrollViewer>
+                    </Border>
+                    <Grid Grid.Row="4">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource HareMutedTextStyle}" Text="{loc:AudioWorkspaceText Selection}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <TextBlock Grid.Column="1" x:Name="selectionText" Text="00:00.000 – 02:00.000" FontFamily="Consolas" VerticalAlignment="Center"/>
+                        <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
+                            <CheckBox Content="{loc:AudioWorkspaceText Snap}" IsChecked="{Binding SnapEnabled, Mode=TwoWay}" AutomationProperties.Name="{loc:AudioWorkspaceText Snap}"/>
+                            <CheckBox Content="{loc:AudioWorkspaceText Metronome}" IsChecked="{Binding MetronomeEnabled, Mode=TwoWay}" Margin="10,2,0,2" AutomationProperties.Name="{loc:AudioWorkspaceText Metronome}"/>
+                        </StackPanel>
+                    </Grid>
+                </Grid>
+            </Border>
+
+            <GridSplitter Grid.Column="3" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Background="Transparent" ShowsPreview="True"/>
+
+            <!-- Contextual tools -->
+            <Border Grid.Column="4" Style="{StaticResource HareCardStyle}" Padding="12">
+                <TabControl>
+                    <TabItem Header="{loc:AudioWorkspaceText RightInspector}">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0,10,0,0">
+                            <StackPanel>
+                                <GroupBox Header="{loc:AudioWorkspaceText SourceMetadata}">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="92"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+                                        <TextBlock Style="{StaticResource InspectorLabel}" Text="{loc:AudioWorkspaceText Name}"/>
+                                        <TextBlock Grid.Column="1" Style="{StaticResource InspectorValue}" Text="{Binding SelectedAsset.Name, FallbackValue=—}"/>
+                                        <TextBlock Grid.Row="1" Style="{StaticResource InspectorLabel}" Text="{loc:AudioWorkspaceText Path}"/>
+                                        <TextBlock Grid.Row="1" Grid.Column="1" Style="{StaticResource InspectorValue}" Text="{Binding SelectedAsset.FullPath, FallbackValue=—}" ToolTip="{Binding SelectedAsset.FullPath}"/>
+                                        <TextBlock Grid.Row="2" Style="{StaticResource InspectorLabel}" Text="{loc:AudioWorkspaceText Duration}"/>
+                                        <TextBlock Grid.Row="2" Grid.Column="1" Style="{StaticResource InspectorValue}" Text="{Binding SelectedAsset.DurationText, FallbackValue=—}"/>
+                                        <TextBlock Grid.Row="3" Style="{StaticResource InspectorLabel}" Text="{loc:AudioWorkspaceText Format}"/>
+                                        <TextBlock Grid.Row="3" Grid.Column="1" Style="{StaticResource InspectorValue}" Text="{Binding SelectedAsset.Encoding, FallbackValue=—}"/>
+                                        <TextBlock Grid.Row="4" Style="{StaticResource InspectorLabel}" Text="{loc:AudioWorkspaceText SampleRate}"/>
+                                        <TextBlock Grid.Row="4" Grid.Column="1" Style="{StaticResource InspectorValue}" Text="{Binding SelectedAsset.SampleRate, StringFormat={}{0:N0} Hz, FallbackValue=—}"/>
+                                        <TextBlock Grid.Row="5" Style="{StaticResource InspectorLabel}" Text="{loc:AudioWorkspaceText Channels}"/>
+                                        <TextBlock Grid.Row="5" Grid.Column="1" Style="{StaticResource InspectorValue}" Text="{Binding SelectedAsset.Channels, FallbackValue=—}"/>
+                                        <TextBlock Grid.Row="6" Style="{StaticResource InspectorLabel}" Text="{loc:AudioWorkspaceText Payload}"/>
+                                        <TextBlock Grid.Row="6" Grid.Column="1" Style="{StaticResource InspectorValue}" Text="{Binding SelectedAsset.PayloadBytes, StringFormat={}{0:N0} bytes, FallbackValue=—}"/>
+                                        <TextBlock Grid.Row="7" Style="{StaticResource InspectorLabel}" Text="{loc:AudioWorkspaceText Warning}"/>
+                                        <TextBlock Grid.Row="7" Grid.Column="1" Style="{StaticResource InspectorValue}" Text="{Binding SelectedAsset.Warning, FallbackValue=—}" Foreground="{StaticResource HareWarningBrush}"/>
+                                    </Grid>
+                                </GroupBox>
+                                <GroupBox Header="{loc:AudioWorkspaceText ClipProperties}">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="92"/><ColumnDefinition/></Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+                                        <TextBlock Style="{StaticResource InspectorLabel}" Text="{loc:AudioWorkspaceText Track}"/>
+                                        <ComboBox Grid.Column="1" ItemsSource="{Binding Tracks}" DisplayMemberPath="Name" SelectedItem="{Binding SelectedTrack, Mode=TwoWay}"/>
+                                        <TextBlock Grid.Row="1" Style="{StaticResource InspectorLabel}" Text="{loc:AudioWorkspaceText Volume}"/>
+                                        <Slider Grid.Row="1" Grid.Column="1" Minimum="0" Maximum="2" Value="{Binding SelectedTrack.Volume, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                        <TextBlock Grid.Row="2" Style="{StaticResource InspectorLabel}" Text="{loc:AudioWorkspaceText Pan}"/>
+                                        <Slider Grid.Row="2" Grid.Column="1" Minimum="-1" Maximum="1" Value="{Binding SelectedTrack.Pan, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                        <CheckBox Grid.Row="3" Grid.Column="1" Content="{loc:AudioWorkspaceText Locked}" IsChecked="{Binding SelectedTrack.IsLocked, Mode=TwoWay}"/>
+                                    </Grid>
+                                </GroupBox>
+                                <GroupBox Header="{loc:AudioWorkspaceText EffectRack}">
+                                    <StackPanel>
+                                        <CheckBox Content="{loc:AudioWorkspaceText GainNormalize}" IsChecked="True"/>
+                                        <CheckBox Content="{loc:AudioWorkspaceText ParametricEq}"/>
+                                        <CheckBox Content="{loc:AudioWorkspaceText CompressorLimiter}"/>
+                                        <Button Content="{loc:AudioWorkspaceText AddEffect}" Margin="0,8,0,0" Click="AddEffect_Click"/>
+                                    </StackPanel>
+                                </GroupBox>
+                                <Button Content="{loc:AudioWorkspaceText WhereUsed}" Click="WhereUsed_Click"/>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </TabItem>
+                    <TabItem Header="{loc:AudioWorkspaceText AudioAi}">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0,10,0,0">
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource AudioSectionHeader}" Text="{loc:AudioWorkspaceText AiPrompt}"/>
+                                <TextBox x:Name="aiPromptBox" MinHeight="150" TextWrapping="Wrap" AcceptsReturn="True"
+                                         VerticalContentAlignment="Top" AutomationProperties.Name="{loc:AudioWorkspaceText AiPrompt}"/>
+                                <Button x:Name="refineAiPromptButton" Content="{loc:AudioWorkspaceText AiRefinePrompt}" Margin="0,8,0,0"
+                                        Click="RefineAiPrompt_Click" AutomationProperties.Name="{loc:AudioWorkspaceText AiRefinePrompt}"/>
+                                <Grid Margin="0,10,0,0">
+                                    <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="10"/><ColumnDefinition/></Grid.ColumnDefinitions>
+                                    <StackPanel>
+                                        <TextBlock Style="{StaticResource InspectorLabel}" Text="{loc:AudioWorkspaceText AiDuration}"/>
+                                        <ComboBox x:Name="aiDurationComboBox" IsEditable="True" Text="30" SelectedValuePath="Tag"
+                                                  ToolTip="{loc:AudioWorkspaceText AiDurationHint}">
+                                            <ComboBoxItem Content="15" Tag="15"/><ComboBoxItem Content="30" Tag="30"/>
+                                            <ComboBoxItem Content="60" Tag="60"/><ComboBoxItem Content="90" Tag="90"/>
+                                            <ComboBoxItem Content="120" Tag="120"/><ComboBoxItem Content="180" Tag="180"/>
+                                            <ComboBoxItem Content="300" Tag="300"/><ComboBoxItem Content="600" Tag="600"/>
+                                        </ComboBox>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2">
+                                        <TextBlock Style="{StaticResource InspectorLabel}" Text="{loc:AudioWorkspaceText AiOutputFormat}"/>
+                                        <ComboBox x:Name="aiOutputFormatComboBox" SelectedValuePath="Tag" SelectedIndex="1">
+                                            <ComboBoxItem Content="{loc:AudioWorkspaceText PcmWav}" Tag="wav"/>
+                                            <ComboBoxItem Content="{loc:AudioWorkspaceText Mp3}" Tag="mp3"/>
+                                        </ComboBox>
+                                    </StackPanel>
+                                </Grid>
+                                <TextBlock Text="{loc:AudioWorkspaceText AiDurationHint}" Style="{StaticResource HareMutedTextStyle}"
+                                           TextWrapping="Wrap" Margin="0,6,0,0"/>
+                                <Border Background="{StaticResource HareSurfaceAltBrush}" BorderBrush="{StaticResource HareBorderBrush}"
+                                        BorderThickness="1" CornerRadius="4" Padding="10" Margin="0,12,0,0">
+                                    <StackPanel>
+                                        <TextBlock Text="{loc:AudioWorkspaceText AiLocalStatus}" Style="{StaticResource HareMutedTextStyle}" TextWrapping="Wrap"/>
+                                        <TextBlock x:Name="aceStepPathText" Style="{StaticResource HareMutedTextStyle}" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                                        <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                            <Button Content="{loc:AudioWorkspaceText OpenAceStepFolder}" Click="OpenAceStepFolder_Click"/>
+                                            <Button Content="{loc:AudioWorkspaceText DeleteAceStep}" Margin="6,0,0,0" Click="DeleteAceStep_Click"/>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+                                <Button x:Name="installAceStepButton" Content="{loc:AudioWorkspaceText InstallAceStep}" Margin="0,12,0,0" Click="InstallAceStep_Click"
+                                        AutomationProperties.Name="{loc:AudioWorkspaceText InstallAceStep}"/>
+                                <Button x:Name="generateAiButton" Content="{loc:AudioWorkspaceText GenerateCandidate}" Style="{StaticResource HarePrimaryButtonStyle}"
+                                        Margin="0,8,0,0" Click="GenerateAiCandidate_Click" AutomationProperties.Name="{loc:AudioWorkspaceText GenerateCandidate}"/>
+                                <Border x:Name="aiGenerationStatusBorder" Background="{StaticResource HareSurfaceAltBrush}"
+                                        BorderBrush="{StaticResource HareBorderBrush}" BorderThickness="1" CornerRadius="4"
+                                        Padding="10" Margin="0,12,0,0" Visibility="Collapsed" AutomationProperties.LiveSetting="Polite">
+                                    <StackPanel>
+                                        <ProgressBar x:Name="aiGenerationProgress" Height="7" Minimum="0" Maximum="1" IsIndeterminate="True"/>
+                                        <TextBlock x:Name="aiGenerationStatusText" Margin="0,8,0,0" TextWrapping="Wrap"
+                                                   AutomationProperties.LiveSetting="Polite"/>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </TabItem>
+                    <TabItem Header="{loc:AudioWorkspaceText BakeSettings}">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0,10,0,0">
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource InspectorLabel}" Text="{loc:AudioWorkspaceText TargetImage}"/>
+                                <ComboBox x:Name="bakePathBox" Text="Sound/Bgm00.img" IsEditable="True" IsTextSearchEnabled="True" StaysOpenOnEdit="True" MaxDropDownHeight="260" ToolTip="{loc:AudioWorkspaceText TargetImage}" AutomationProperties.Name="{loc:AudioWorkspaceText TargetImage}"/>
+                                <TextBlock Style="{StaticResource InspectorLabel}" Text="{loc:AudioWorkspaceText ParentPath}" Margin="0,12,8,4"/>
+                                <TextBox x:Name="bakeParentPathBox"/>
+                                <TextBlock Style="{StaticResource InspectorLabel}" Text="{loc:AudioWorkspaceText PropertyName}" Margin="0,12,8,4"/>
+                                <TextBox x:Name="bakePropertyNameBox" Text="audio"/>
+                                <TextBlock Style="{StaticResource InspectorLabel}" Text="{loc:AudioWorkspaceText Category}" Margin="0,12,8,4"/>
+                                <ComboBox x:Name="bakeCategoryComboBox" SelectedIndex="0"><ComboBoxItem Content="BGM"/><ComboBoxItem Content="Ambience"/><ComboBoxItem Content="SFX"/><ComboBoxItem Content="Voice"/></ComboBox>
+                                <TextBlock Style="{StaticResource InspectorLabel}" Text="{loc:AudioWorkspaceText Encoding}" Margin="0,12,8,4"/>
+                                <ComboBox x:Name="bakeEncodingComboBox" SelectedIndex="1"><ComboBoxItem Content="{loc:AudioWorkspaceText PcmWav}"/><ComboBoxItem Content="{loc:AudioWorkspaceText Mp3}"/></ComboBox>
+                                <TextBlock Style="{StaticResource InspectorLabel}" Text="{loc:AudioWorkspaceText ReplaceMode}" Margin="0,12,8,4"/>
+                                <ComboBox x:Name="bakeReplaceComboBox" SelectedIndex="0"><ComboBoxItem Content="{loc:AudioWorkspaceText ReplaceOrAdd}"/><ComboBoxItem Content="{loc:AudioWorkspaceText AddOnly}"/></ComboBox>
+                                <Button Content="{loc:AudioWorkspaceText BakeToWz}" Style="{StaticResource HarePrimaryButtonStyle}" Margin="0,16,0,0" Click="BakeToWz_Click"/>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </TabItem>
+                </TabControl>
+            </Border>
+        </Grid>
+
+        <!-- Meter and diagnostics strip -->
+        <Border Grid.Row="2" Style="{StaticResource HareToolbarStyle}" Margin="12,8,12,12" Padding="12,7">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <TextBlock Style="{StaticResource HareMutedTextStyle}" Text="{loc:AudioWorkspaceText Master}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <ProgressBar x:Name="masterMeter" Width="100" Height="8" Minimum="0" Maximum="1" Value="0.1" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="loudnessText" Style="{StaticResource HareMutedTextStyle}" Text="−∞ LUFS" Margin="12,0,0,0" VerticalAlignment="Center"/>
+                </StackPanel>
+                <TextBlock Style="{StaticResource HareMutedTextStyle}" Text="{loc:AudioWorkspaceText Status}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                <TextBlock x:Name="statusText" Text="{Binding StatusText}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                <ProgressBar x:Name="renderProgress" Width="150" Height="7" Margin="12,0,0,0" Minimum="0" Maximum="1" Visibility="Collapsed" VerticalAlignment="Center"/>
+            </DockPanel>
+        </Border>
+    </Grid>
+</Window>

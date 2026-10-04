@@ -5,7 +5,7 @@ using MapleLib.WzLib.WzProperties;
 
 namespace Footholds
 {
-    public partial class EditPortals : Form
+    public partial class EditPortals : HaRepacker.GUI.ThemedDialogWindow
     {
         public List<Object> Settings;
         public Portals.Portal portal;

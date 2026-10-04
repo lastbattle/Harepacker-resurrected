@@ -12,7 +12,9 @@ using System.Threading;
 using System.Resources;
 using System.Reflection;
 using HaCreator.Wz;
+using HaCreator.Audio;
 using HaSharedLibrary;
+using HaSharedLibrary.Configuration;
 using MapleLib;
 using MapleLib.Img;
 using MapleLib.WzLib.WzProperties;
@@ -24,6 +26,23 @@ namespace HaCreator
         public static WzFileManager WzManager;
         public static WzInformationManager InfoManager;
         public static IDataSource DataSource;
+        private static IAudioAssetCatalog _audioAssetCatalog;
+        /// <summary>
+        /// Shared metadata-first Sound catalog used by map AI and cutscene
+        /// pickers.  It is recreated automatically when the active data source
+        /// changes during source-version hot swap.
+        /// </summary>
+        public static IAudioAssetCatalog AudioAssetCatalog
+        {
+            get
+            {
+                if (DataSource == null)
+                    return null;
+                if (_audioAssetCatalog == null || !ReferenceEquals(_audioAssetCatalog.DataSource, DataSource))
+                    _audioAssetCatalog = new AudioAssetCatalog(DataSource);
+                return _audioAssetCatalog;
+            }
+        }
         public static StartupManager StartupManager;
         public static bool AbortThreads = false;
         public static bool Restarting;
@@ -127,6 +146,9 @@ namespace HaCreator
         {
             if (image == null) return;
 
+            using IDisposable writeLease = MapEditor.Simulation.EditorRuntimeWriteCoordinator.EnterWrite(
+                "save editor asset changes");
+
             // Try IDataSource first
             if (DataSource != null)
             {
@@ -136,8 +158,51 @@ namespace HaCreator
             // Fall back to WzManager
             if (WzManager != null)
             {
-                WzManager.SetWzFileUpdated(category.ToLower(), image);
+                // In legacy Data.wz layouts, the image's logical category (for example,
+                // "skill") is a directory inside Data.wz rather than a top-level WZ file.
+                // Use the actual owner so marking the image dirty works for both layouts.
+                string ownerName = image.WzFileParent?.Name;
+                WzManager.SetWzFileUpdated(
+                    string.IsNullOrWhiteSpace(ownerName) ? category.ToLower() : ownerName,
+                    image);
             }
+        }
+
+        /// <summary>
+        /// Marks an image as updated using an explicit path within its category.
+        /// This is needed for IMG files stored below category subdirectories.
+        /// </summary>
+        public static void MarkImageUpdated(string category, WzImage image, string relativePath)
+        {
+            if (image == null) return;
+
+            using IDisposable writeLease = MapEditor.Simulation.EditorRuntimeWriteCoordinator.EnterWrite(
+                "save editor asset changes");
+            if (string.IsNullOrWhiteSpace(relativePath))
+            {
+                MarkImageUpdated(category, image);
+                return;
+            }
+
+            if (DataSource != null)
+            {
+                string normalizedPath = NormalizeCategoryRelativePath(
+                    category,
+                    relativePath.Replace('\\', '/').Trim('/'));
+                DataSource.SaveImage(category, image, normalizedPath);
+                return;
+            }
+
+            MarkImageUpdated(category, image);
+        }
+
+        /// <summary>
+        /// Shared guard for editor services that write through an injected
+        /// IDataSource rather than the Program helpers.
+        /// </summary>
+        public static IDisposable BeginRuntimeAssetWrite(string operation)
+        {
+            return MapEditor.Simulation.EditorRuntimeWriteCoordinator.EnterWrite(operation);
         }
 
         /// <summary>
@@ -166,18 +231,15 @@ namespace HaCreator
 
         #region Settings
         public static WzSettingsManager SettingsManager;
+        public static bool SkipSettingsSave { get; set; }
         public static string GetLocalSettingsFolder()
         {
-            string appdata = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-            string our_folder = Path.Combine(appdata, APP_NAME);
-            if (!Directory.Exists(our_folder))
-                Directory.CreateDirectory(our_folder);
-            return our_folder;
+            return UserDataPaths.HaCreatorDirectory;
         }
 
         public static string GetLocalSettingsPath()
         {
-            return Path.Combine(GetLocalSettingsFolder(), "Settings.json");
+            return UserDataPaths.HaCreatorSettingsFile;
         }
         #endregion
 
@@ -224,13 +286,18 @@ namespace HaCreator
 
             // Program run here
             GUI.Initialization initForm = new GUI.Initialization();
-            Application.Run(initForm);
+            var wpfApplication = System.Windows.Application.Current ?? new System.Windows.Application();
+            wpfApplication.ShutdownMode = System.Windows.ShutdownMode.OnLastWindowClose;
+            wpfApplication.Run(initForm);
 
             // Shutdown
             if (initForm.editor != null)
                 initForm.editor.hcsm.backupMan.ClearBackups();
-            SettingsManager.SaveSettings();
-            StartupManager?.SaveConfig();
+            if (!SkipSettingsSave)
+            {
+                SettingsManager.SaveSettings();
+                StartupManager?.SaveConfig();
+            }
             if (Restarting)
             {
                 Application.Restart();

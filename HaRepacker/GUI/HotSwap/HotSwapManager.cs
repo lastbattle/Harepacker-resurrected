@@ -80,7 +80,8 @@ namespace HaRepacker.GUI.HotSwap
 
             _watcherService = new ImgDirectoryWatcherService(
                 HotSwapConstants.DebounceMs,
-                HotSwapConstants.TrackContentHash);
+                HotSwapConstants.TrackContentHash,
+                recordInitialState: false);
 
             _watcherService.ImgFileModified += OnImgFileModified;
             _watcherService.ImgFileAdded += OnImgFileAdded;
@@ -232,7 +233,7 @@ namespace HaRepacker.GUI.HotSwap
                 return;
 
             // Auto-reload and show brief notification
-            _mainForm.Invoke(new Action(() =>
+            _mainForm.Dispatcher.Invoke(new Action(() =>
             {
                 ReloadFile(e.FilePath);
                 ShowNotification(e.FilePath, e.ChangeType);
@@ -245,7 +246,7 @@ namespace HaRepacker.GUI.HotSwap
                 return;
 
             // Auto-add and show brief notification
-            _mainForm.Invoke(new Action(() =>
+            _mainForm.Dispatcher.Invoke(new Action(() =>
             {
                 AddFileToTree(e.FilePath);
                 ShowNotification(e.FilePath, ImgChangeType.Added);
@@ -258,7 +259,7 @@ namespace HaRepacker.GUI.HotSwap
                 return;
 
             // Auto-remove and show brief notification
-            _mainForm.Invoke(new Action(() =>
+            _mainForm.Dispatcher.Invoke(new Action(() =>
             {
                 RemoveFileFromTree(e.FilePath);
                 ShowNotification(e.FilePath, ImgChangeType.Deleted);
@@ -271,7 +272,7 @@ namespace HaRepacker.GUI.HotSwap
                 return;
 
             // Auto-handle rename and show brief notification
-            _mainForm.Invoke(new Action(() =>
+            _mainForm.Dispatcher.Invoke(new Action(() =>
             {
                 HandleRename(e.OldPath, e.FilePath);
                 ShowNotification(e.FilePath, ImgChangeType.Renamed, e.OldPath);

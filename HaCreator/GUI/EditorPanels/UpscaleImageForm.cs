@@ -1,22 +1,19 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
 using System.Drawing;
+using System.Drawing.Imaging;
 using System.IO;
-using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
-using System.Windows.Forms;
+using System.Windows;
+using System.Windows.Input;
+using System.Windows.Media.Imaging;
 
 namespace HaCreator.GUI.EditorPanels
 {
-    public partial class UpscaleImageForm : System.Windows.Forms.Form
+    public partial class UpscaleImageForm : Window
     {
-        private bool _bNotUserClosing = false;
-
-
         private bool _bUserAcceptedImage = false;
+        private readonly Bitmap _beforeImage;
         /// <summary>
         /// The return values for the user selection
         /// </summary>
@@ -42,15 +39,9 @@ namespace HaCreator.GUI.EditorPanels
         public UpscaleImageForm(Bitmap beforeImage)
         {
             InitializeComponent();
-
-            // disallow enable until its rendered
-            this.button_ok.Enabled = false;
-
-            this.FormClosing += OnFormClosing;
-            this.KeyDown += Load_KeyDown;
-            this.Load += UpscaleImageForm_Load;
-
-            this.pictureBox_before.Image = beforeImage;
+            EditorPanelLocalizer.Attach(this);
+            _beforeImage = beforeImage;
+            BeforeImage.Source = ToBitmapSource(beforeImage);
         }
 
         #region Window events
@@ -60,17 +51,24 @@ namespace HaCreator.GUI.EditorPanels
         /// <param name="sender"></param>
         /// <param name="e"></param>
         /// <returns></returns>
-        private async void UpscaleImageForm_Load(object sender, EventArgs e)
+        private async void Window_Loaded(object sender, RoutedEventArgs e)
         {
-            if (this.pictureBox_before.Image != null)
+            if (_beforeImage != null)
             {
-                Bitmap returnImage = await AiSingleImageUpscale((Bitmap)this.pictureBox_before.Image, 0.25f);
-
-                this._upscaledImage = returnImage;
-                this.pictureBox_after.Image = returnImage;
-
-                // disallow enable until its rendered
-                this.button_ok.Enabled = true;
+                try
+                {
+                    Bitmap returnImage = await AiSingleImageUpscale(_beforeImage, 0.25f);
+                    _upscaledImage = returnImage;
+                    AfterImage.Source = ToBitmapSource(returnImage);
+                    ProcessingStatus.Text = EditorPanelLocalizer.Text("Status_Ready", "Ready");
+                    ProcessingStatus.Foreground = System.Windows.Media.Brushes.SeaGreen;
+                    AcceptButton.IsEnabled = true;
+                }
+                catch (Exception ex)
+                {
+                    ProcessingStatus.Text = EditorPanelLocalizer.Format("Status_UpscaleFailed", ex.Message);
+                    ProcessingStatus.Foreground = System.Windows.Media.Brushes.Firebrick;
+                }
             }
         }
 
@@ -79,26 +77,24 @@ namespace HaCreator.GUI.EditorPanels
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void OnFormClosing(object sender, FormClosingEventArgs e)
+        private void Window_Closing(object sender, System.ComponentModel.CancelEventArgs e)
         {
-            if (e.CloseReason == CloseReason.UserClosing && !_bNotUserClosing)
-            {
+            if (DialogResult != true)
                 _bUserAcceptedImage = false;
-            }
-            this.pictureBox_after.Image = null;
-            this.pictureBox_before.Image = null;
+            AfterImage.Source = null;
+            BeforeImage.Source = null;
         }
 
-        private void Load_KeyDown(object sender, KeyEventArgs e)
+        private void Window_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
         {
-            if (e.KeyCode == Keys.Escape)
+            if (e.Key == Key.Escape)
             {
                 _bUserAcceptedImage = false;
                 Close();
             }
-            else if (e.KeyCode == Keys.Enter)
+            else if (e.Key == Key.Enter && AcceptButton.IsEnabled)
             {
-                button_ok_Click(null, null);
+                Accept_Click(null, null);
             }
         }
         #endregion
@@ -109,16 +105,11 @@ namespace HaCreator.GUI.EditorPanels
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private async void button_ok_Click(object sender, EventArgs e)
+        private void Accept_Click(object sender, RoutedEventArgs e)
         {
             _bUserAcceptedImage = true;
-            _bNotUserClosing = true;
+            DialogResult = true;
             Close();
-
-            await Task.Run(async () =>
-            {
-                await Task.Delay(2000); // fix image not unloaded
-            });
         }
 
         /// <summary>
@@ -126,8 +117,9 @@ namespace HaCreator.GUI.EditorPanels
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void button_cancel_Click(object sender, EventArgs e)
+        private void Cancel_Click(object sender, RoutedEventArgs e)
         {
+            _bUserAcceptedImage = false;
             Close();
         }
         #endregion
@@ -192,5 +184,22 @@ namespace HaCreator.GUI.EditorPanels
             }
         }
         #endregion
+
+        private static BitmapSource ToBitmapSource(Bitmap bitmap)
+        {
+            if (bitmap == null)
+                return null;
+
+            using MemoryStream stream = new MemoryStream();
+            bitmap.Save(stream, ImageFormat.Png);
+            stream.Position = 0;
+            BitmapImage image = new BitmapImage();
+            image.BeginInit();
+            image.CacheOption = BitmapCacheOption.OnLoad;
+            image.StreamSource = stream;
+            image.EndInit();
+            image.Freeze();
+            return image;
+        }
     }
 }

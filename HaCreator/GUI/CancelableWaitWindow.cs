@@ -1,61 +1,90 @@
-﻿using System;
-using System.Collections.Generic;
+using System;
 using System.ComponentModel;
-using System.Data;
-using System.Drawing;
-using System.Linq;
-using System.Text;
 using System.Threading;
-using System.Threading.Tasks;
-using System.Windows.Forms;
+using System.Windows;
+using HaCreator.GUI.Localization;
 
 namespace HaCreator.GUI
 {
-    public partial class CancelableWaitWindow : Form
+    public partial class CancelableWaitWindow : Window
     {
-        private bool finished = false;
-        private Thread actionThread;
-        public object result = null;
+        private bool finished;
+        private volatile bool canceled;
+        private readonly Thread actionThread;
+        public object result;
 
         public CancelableWaitWindow(string message, Func<object> action)
         {
             InitializeComponent();
-            this.label1.Text = message;
-            actionThread = new Thread(new ParameterizedThreadStart(x =>
+            messageText.Text = message;
+            if (Program.HaEditorWindow?.IsVisible == true)
             {
-                CancelableWaitWindow cww = (CancelableWaitWindow)x;
-                cww.result = action();
-                cww.Invoke((Action)delegate { cww.EndWait(); });
-            }));
+                Owner = Program.HaEditorWindow;
+                WindowStartupLocation = WindowStartupLocation.CenterOwner;
+            }
+            actionThread = new Thread(() =>
+            {
+                try
+                {
+                    object actionResult = action();
+                    if (!canceled)
+                        result = actionResult;
+                }
+                catch (ThreadInterruptedException)
+                {
+                    result = null;
+                }
+                finally
+                {
+                    Dispatcher.BeginInvoke(EndWait);
+                }
+            })
+            {
+                IsBackground = true,
+                Name = "HaCreator cancelable wait action"
+            };
         }
 
-        private void button1_Click(object sender, EventArgs e)
+        private void Window_Loaded(object sender, RoutedEventArgs e)
         {
-            button1.Enabled = false;
-            actionThread.Abort();
+            actionThread.Start();
+        }
 
-            // Is the thread stuck?
-            if (!actionThread.Join(5000))
+        private void Cancel_Click(object sender, RoutedEventArgs e)
+        {
+            cancelButton.IsEnabled = false;
+            canceled = true;
+            result = null;
+            if (actionThread.IsAlive)
+                actionThread.Interrupt();
+
+            if (actionThread.IsAlive && !actionThread.Join(5000))
             {
-                MessageBox.Show("Could not terminate actionThread after 5000ms. This usually means something has gone horribly wrong. The program may now be in an undefined state, try to save your work and restart.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(this,
+                    DialogTextExtension.Get("Dialog_CancelTimeoutMessage"),
+                    DialogTextExtension.Get("Dialog_CancelTimeoutTitle"), MessageBoxButton.OK, MessageBoxImage.Error);
             }
+
             EndWait();
         }
 
         public void EndWait()
         {
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.BeginInvoke(EndWait);
+                return;
+            }
+
+            if (finished)
+                return;
             finished = true;
             Close();
         }
 
-        private void CancelableWaitWindow_FormClosing(object sender, FormClosingEventArgs e)
+        private void Window_Closing(object sender, CancelEventArgs e)
         {
             e.Cancel = !finished;
-        }
-
-        private void CancelableWaitWindow_Load(object sender, EventArgs e)
-        {
-            actionThread.Start(this);
         }
     }
 }

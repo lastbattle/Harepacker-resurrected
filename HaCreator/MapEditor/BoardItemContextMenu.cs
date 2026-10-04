@@ -1,5 +1,6 @@
 ﻿using HaCreator.Collections;
 using HaCreator.GUI;
+using HaCreator.GUI.Localization;
 using HaCreator.GUI.InstanceEditor;
 using HaCreator.MapEditor.Instance;
 using HaCreator.MapEditor.Instance.Shapes;
@@ -50,7 +51,7 @@ namespace HaCreator.MapEditor
             List<ToolStripMenuItem> zCategory = new();
             List<ToolStripMenuItem> platformCategory = new();
 
-            ToolStripMenuItem editInstance = new ToolStripMenuItem("Edit this instance...");
+            ToolStripMenuItem editInstance = new ToolStripMenuItem(MapEditorText.Get("Context_EditInstance"));
             editInstance.Click += editInstance_Click;
             editInstance.Font = new System.Drawing.Font(editInstance.Font, System.Drawing.FontStyle.Bold);
             generalCategory.Add(editInstance);
@@ -58,7 +59,7 @@ namespace HaCreator.MapEditor
             // Portal
             if (target is PortalInstance && ((PortalInstance)target).tm != MapConstants.MaxMap)
             {
-                ToolStripMenuItem loadTargetMap = new ToolStripMenuItem("Load target map in a new tab");
+                ToolStripMenuItem loadTargetMap = new ToolStripMenuItem(MapEditorText.Get("Context_LoadTargetMap"));
                 loadTargetMap.Click += LoadPortalTargetMap_Click;
                 generalCategory.Add(loadTargetMap);
             }
@@ -70,7 +71,7 @@ namespace HaCreator.MapEditor
             // ToolTip
             if (target is ToolTipInstance && ((ToolTipInstance)target).CharacterToolTip == null)
             {
-                ToolStripMenuItem addChar = new ToolStripMenuItem("Add Character Tooltip");
+                ToolStripMenuItem addChar = new ToolStripMenuItem(MapEditorText.Get("Context_AddCharacterTooltip"));
                 addChar.Click += addChar_Click;
                 generalCategory.Add(addChar);
             }
@@ -78,10 +79,10 @@ namespace HaCreator.MapEditor
             // Background
             if (target is BackgroundInstance || target is LayeredItem)
             {
-                ToolStripMenuItem bringToFront = new ToolStripMenuItem("Bring to Front");
+                ToolStripMenuItem bringToFront = new ToolStripMenuItem(MapEditorText.Get("Context_BringToFront"));
                 bringToFront.Click += new EventHandler(bringToFront_Click);
                 zCategory.Add(bringToFront);
-                ToolStripMenuItem sendToBack = new ToolStripMenuItem("Send to Back");
+                ToolStripMenuItem sendToBack = new ToolStripMenuItem(MapEditorText.Get("Context_SendToBack"));
                 sendToBack.Click += new EventHandler(sendToBack_Click);
                 zCategory.Add(sendToBack);
             }
@@ -89,7 +90,7 @@ namespace HaCreator.MapEditor
             // Foothold
             if (target is FootholdAnchor)
             {
-                ToolStripMenuItem selectPlat = new ToolStripMenuItem("Select Connected");
+                ToolStripMenuItem selectPlat = new ToolStripMenuItem(MapEditorText.Get("Context_SelectConnected"));
                 selectPlat.Click += selectPlat_Click;
                 platformCategory.Add(selectPlat);
             }
@@ -97,14 +98,14 @@ namespace HaCreator.MapEditor
             // Layer
             if (target is IContainsLayerInfo)
             {
-                ToolStripMenuItem moveLayer = new ToolStripMenuItem("Change Layer/Platform...");
+                ToolStripMenuItem moveLayer = new ToolStripMenuItem(MapEditorText.Get("Context_ChangeLayerPlatform"));
                 moveLayer.Click += moveLayer_Click;
                 platformCategory.Add(moveLayer);
             }
 
             if (target is IContainsLayerInfo || (target is FootholdAnchor && getZmOfSelectedFoothold() != -1))
             {
-                ToolStripMenuItem selectZm = new ToolStripMenuItem("Select Platform");
+                ToolStripMenuItem selectZm = new ToolStripMenuItem(MapEditorText.Get("Context_SelectPlatform"));
                 selectZm.Click += selectZm_Click;
                 platformCategory.Add(selectZm);
                 /*ToolStripMenuItem editZm = new ToolStripMenuItem("Edit ZM...");

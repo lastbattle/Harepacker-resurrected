@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -72,6 +72,23 @@ namespace HaCreator.Collections
         public MapleLinesCollection Lines;
 
         private readonly Board board;
+        // Preserve the original order of equal-Z artwork across sorts and undo reinsertion.
+        // Weak keys avoid retaining deleted items once undo history releases them.
+        private readonly ConditionalWeakTable<BoardItem, DrawOrder> drawOrders = new();
+        private long nextDrawOrder;
+        private sealed class DrawOrder { public long Value; }
+
+        private void SortArtwork<T>(List<T> items, Comparison<T> comparison) where T : BoardItem
+        {
+            foreach (var item in items)
+                drawOrders.GetValue(item, _ => new DrawOrder { Value = nextDrawOrder++ });
+            items.Sort((a, b) =>
+            {
+                int result = comparison(a, b);
+                return result != 0 ? result : drawOrders.GetValue(a, _ => throw new InvalidOperationException()).Value
+                    .CompareTo(drawOrders.GetValue(b, _ => throw new InvalidOperationException()).Value);
+            });
+        }
 
         public BoardItemsManager(Board board)
         {
@@ -87,16 +104,21 @@ namespace HaCreator.Collections
 
         public void Clear()
         {
+            board.InvalidatePortalPairCache();
             foreach (IMapleList itemList in AllItemLists)
             {
                 itemList.Clear();
             }
+            board.ParentControl.RequestRender();
         }
 
         public void Remove(BoardItem item)
         {
             lock (board.ParentControl)
             {
+                if (item is PortalInstance)
+                    board.InvalidatePortalPairCache();
+
                 if (item is TileInstance || item is ObjectInstance)
                     TileObjs.Remove((LayeredItem)item);
                 else if (item is BackgroundInstance)
@@ -126,11 +148,13 @@ namespace HaCreator.Collections
                         if (listType.FullName == itemType.FullName)
                         {
                             itemList.Remove(item);
+                            board.ParentControl.RequestRender();
                             return;
                         }
                     }
                     throw new Exception("unknown type at boarditems.remove");
                 }
+                board.ParentControl.RequestRender();
             }
         }
 
@@ -138,6 +162,9 @@ namespace HaCreator.Collections
         {
             lock (board.ParentControl)
             {
+                if (item is PortalInstance)
+                    board.InvalidatePortalPairCache();
+
                 if (item is TileInstance || item is ObjectInstance)
                 {
                     TileObjs.Add((LayeredItem)item);
@@ -173,11 +200,13 @@ namespace HaCreator.Collections
                         if (listType.FullName == itemType.FullName)
                         {
                             itemList.Add(item);
+                            board.ParentControl.RequestRender();
                             return;
                         }
                     }
                     throw new Exception("unknown type at boarditems.add");
                 }
+                board.ParentControl.RequestRender();
             }
         }
 
@@ -194,7 +223,7 @@ namespace HaCreator.Collections
             {
                 for (int i = 0; i < 2; i++)
                 {
-                    TileObjs.Sort(
+                    SortArtwork(TileObjs,
                         delegate(LayeredItem a, LayeredItem b)
                         {
                             if (a.Layer.LayerNumber > b.Layer.LayerNumber)
@@ -268,7 +297,7 @@ namespace HaCreator.Collections
         {
             lock (board.ParentControl)
             {
-                BackBackgrounds.Sort(
+                SortArtwork(BackBackgrounds,
                     delegate(BackgroundInstance a, BackgroundInstance b)
                     {
 
@@ -284,7 +313,7 @@ namespace HaCreator.Collections
         {
             lock (board.ParentControl)
             {
-                FrontBackgrounds.Sort(
+                SortArtwork(FrontBackgrounds,
                     delegate(BackgroundInstance a, BackgroundInstance b)
                     {
 

@@ -104,7 +104,9 @@ namespace HaCreator.GUI
             IReadOnlyDictionary<ErrorLevel, List<Error>> errorSnapshot)
         {
             int totalErrors = errorSnapshot.Values.Sum(errors => errors.Count);
-            string mapLabel = string.IsNullOrWhiteSpace(mapIdentifier) ? "the current map" : mapIdentifier;
+            string mapLabel = string.IsNullOrWhiteSpace(mapIdentifier)
+                ? Localization.MapEditorText.Get("CurrentMapLabel")
+                : mapIdentifier;
             return $"HaCreator loaded {mapLabel} with {totalErrors} issue(s). Missing objects, tiles, or other assets are listed below.";
         }
 

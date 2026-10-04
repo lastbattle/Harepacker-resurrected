@@ -1,74 +1,59 @@
-﻿using System;
-using System.Windows.Forms;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
 
 namespace HaRepacker.GUI.Input
 {
-    public partial class NameInputBox : Form
+    public partial class NameInputBox : Window
     {
+        private string nameResult;
+
         public static bool Show(string title, int maxInputLength, out string name)
         {
-            NameInputBox form = new NameInputBox(title);
-            if (maxInputLength != 0) // 0 = not set a max length
+            NameInputBox form = new(title);
+            if (maxInputLength != 0)
                 form.nameBox.MaxLength = maxInputLength;
-
-            bool result = form.ShowDialog() == DialogResult.OK;
+            bool accepted = form.ShowDialog() == true;
             name = form.nameResult;
-            return result;
+            return accepted;
         }
-
-        private string nameResult = null;
 
         public NameInputBox(string title)
         {
             InitializeComponent();
-            DialogResult = DialogResult.Cancel;
-            Text = title;
+            Title = title;
+            labelName.Text = InputDialogSupport.Text(GetType(), "label1.Text", "Name:");
+            okButton.Content = InputDialogSupport.Text(GetType(), "okButton.Text", "OK");
+            cancelButton.Content = InputDialogSupport.Text(GetType(), "cancelButton.Text", "Cancel");
         }
 
-        /// <summary>
-        /// On key press
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void nameBox_KeyPress(object sender, KeyPressEventArgs e)
+        private void NameInputBox_Loaded(object sender, RoutedEventArgs e)
         {
-            if (e.KeyChar == (char)13)
+            Dispatcher.BeginInvoke(new System.Action(() =>
             {
-                okButton_Click(null, null);
-            }
+                nameBox.Focus();
+                Keyboard.Focus(nameBox);
+                nameBox.SelectAll();
+            }), System.Windows.Threading.DispatcherPriority.Input);
         }
 
-        /// <summary>
-        /// On key up
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void nameBox_KeyUp(object sender, KeyEventArgs e)
+        private void Input_KeyDown(object sender, KeyEventArgs e)
         {
-            //if (e.KeyCode == Keys.Escape) Close();
-            //if (e.KeyCode == Keys.Enter) done();
-            if (e.KeyCode == Keys.Escape)
+            if (e.Key == Key.Enter) Accept();
+        }
+
+        private void OkButton_Click(object sender, RoutedEventArgs e) => Accept();
+        private void CancelButton_Click(object sender, RoutedEventArgs e) => DialogResult = false;
+
+        private void Accept()
+        {
+            if (string.IsNullOrEmpty(nameBox.Text))
             {
-                DialogResult = DialogResult.Cancel;
-                Close();
+                InputDialogSupport.WarnInvalidInput();
+                return;
             }
-        }
-
-        private void okButton_Click(object sender, EventArgs e)
-        {
-            if (nameBox.Text != "" && nameBox.Text != null)
-            {
-                nameResult = nameBox.Text;
-                DialogResult = DialogResult.OK;
-                Close();
-            }
-            else MessageBox.Show(Properties.Resources.EnterValidInput, Properties.Resources.Warning, MessageBoxButtons.OK, MessageBoxIcon.Warning);
-        }
-
-        private void cancelButton_Click(object sender, EventArgs e)
-        {
-            DialogResult = DialogResult.Cancel;
-            Close();
+            nameResult = nameBox.Text;
+            DialogResult = true;
         }
     }
 }

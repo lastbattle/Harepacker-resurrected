@@ -1,192 +1,271 @@
-﻿using HaCreator.MapEditor;
+using HaCreator.MapEditor;
 using HaCreator.MapEditor.Info;
 using HaCreator.Wz;
 using MapleLib.WzLib.WzStructure.Data;
 using System;
-using System.Collections;
 using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
 using System.Drawing;
 using System.Linq;
-using System.Text;
-using System.Text.RegularExpressions;
-using System.Threading.Tasks;
-using System.Windows.Forms;
+using System.Runtime.InteropServices;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Interop;
+using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 
 namespace HaCreator.GUI.EditorPanels
 {
     public partial class LifePanel : UserControl
     {
-        private readonly List<string> reactors = new();
-        private readonly List<string> npcs = new();
-        private readonly List<string> mobs = new();
+        private enum LifeEntryType
+        {
+            Mob,
+            Npc,
+            Reactor
+        }
+
+        private sealed record LifeEntry(string Id, string Name, LifeEntryType Type)
+        {
+            // Keep the IMG ID visible/searchable, including its usual leading zeros.
+            public string DisplayName => string.IsNullOrWhiteSpace(Name)
+                ? Id.PadLeft(7, '0')
+                : $"{Name} ({Id.PadLeft(7, '0')})";
+        }
+
+        private readonly List<LifeEntry> reactors = new();
+        private readonly List<LifeEntry> npcs = new();
+        private readonly List<LifeEntry> mobs = new();
 
         private HaCreatorStateManager hcsm;
-        private HotSwapRefreshService _hotSwapService;
+        private HotSwapRefreshService hotSwapService;
+        private readonly Bitmap placeholderBitmap;
+        private readonly BitmapSource placeholderSource;
+        private int thumbnailLoadVersion;
+        private bool initializingImageFilter;
+        private readonly Queue<(AssetGalleryItem Item, int Version)> thumbnailQueue = new();
+        private readonly HashSet<AssetGalleryItem> queuedThumbnails = new();
+        private readonly HashSet<AssetGalleryItem> loadedThumbnails = new();
+        private bool thumbnailPumpScheduled;
 
         public LifePanel()
         {
             InitializeComponent();
+            EditorPanelLocalizer.Attach(this);
+            placeholderBitmap = global::HaCreator.Properties.Resources.placeholder;
+            placeholderSource = ConvertBitmap(placeholderBitmap);
+            lifeGallery.ItemRealized += LifeGallery_ItemRealized;
+            initializingImageFilter = true;
+            hideEntriesWithoutImagesCheckBox.IsChecked = ApplicationSettings.HideLifeEntriesWithoutImages;
+            initializingImageFilter = false;
         }
 
-        public void Initialize(HaCreatorStateManager hcsm)
+        public void Initialize(HaCreatorStateManager stateManager)
         {
-            this.hcsm = hcsm;
+            hcsm = stateManager;
             hcsm.SetLifePanel(this);
-
-            foreach (KeyValuePair<string, ReactorInfo> entry in Program.InfoManager.Reactors)
-            {
-                string reactorId = entry.Value.ID;
-                string reactorName = entry.Value.Name;
-
-                string combinedName = string.Format("{0} {1}", 
-                    reactorId,
-                    reactorName == string.Empty ? string.Empty : string.Format("({0})", reactorName));
-
-                reactors.Add(combinedName);
-            }
-            foreach (KeyValuePair<string, Tuple<string, string>> entry in Program.InfoManager.NpcNameCache)
-            {
-                string npcName = entry.Value.Item1;
-                string npcDesc = entry.Value.Item2;
-
-                string combinedName = string.Format("{0} - {1} {2}", 
-                    entry.Key, 
-                    npcName,
-                    npcDesc == string.Empty ? string.Empty : string.Format("({0})", npcDesc));
-
-                npcs.Add(combinedName);
-            }
-            foreach (KeyValuePair<string, string> entry in Program.InfoManager.MobNameCache)
-            {
-                mobs.Add(entry.Key + " - " + entry.Value);
-            }
-
+            RefreshAllSources();
             ReloadLifeList();
         }
 
-        private void lifeModeChanged(object sender, EventArgs e)
+        private void RefreshAllSources()
         {
-            ReloadLifeList();
+            RefreshReactorSource();
+            RefreshNpcSource();
+            RefreshMobSource();
         }
 
-        public static bool ContainsIgnoreCase(string haystack, string needle)
+        private void LifeModeChanged(object sender, RoutedEventArgs e)
         {
-            return haystack.IndexOf(needle, StringComparison.OrdinalIgnoreCase) != -1;
+            if (lifeGallery != null)
+                ReloadLifeList();
         }
 
         private void ReloadLifeList()
         {
-            string searchText = lifeSearchBox.Text;
-            bool getAll = searchText == "";
-            lifeListBox.Items.Clear();
-            List<string> items = [];
-            if (reactorRButton.Checked)
+            thumbnailLoadVersion++;
+            thumbnailQueue.Clear();
+            queuedThumbnails.Clear();
+            loadedThumbnails.Clear();
+            thumbnailPumpScheduled = false;
+
+            IEnumerable<LifeEntry> entries = reactorRButton.IsChecked == true
+                ? reactors
+                : npcRButton.IsChecked == true ? npcs : mobs;
+
+            using (lifeGallery.DeferUpdates())
             {
-                items.AddRange(getAll ? reactors : reactors.Where(x => ContainsIgnoreCase(x, searchText)));
+                lifeGallery.Clear();
+                foreach (LifeEntry entry in entries)
+                    lifeGallery.Add(placeholderSource, entry.DisplayName, entry);
             }
-            else if (npcRButton.Checked)
-            {
-                items.AddRange(getAll ? npcs : npcs.Where(x => ContainsIgnoreCase(x, searchText)));
-            }
-            else if (mobRButton.Checked)
-            {
-                items.AddRange(getAll ? mobs : mobs.Where(x => ContainsIgnoreCase(x, searchText)));
-            }
-            items.Sort();
-            lifeListBox.Items.AddRange(items.Cast<object>().ToArray());
+            lifePreview.Source = null;
         }
 
-        private void lifeListBox_SelectedValueChanged(object sender, EventArgs e)
+        private void LifeGallery_ItemRealized(object sender, AssetGalleryItemEventArgs e)
         {
-            lock (hcsm.MultiBoard)
+            AssetGalleryItem item = e.Item;
+            if (item?.Tag is not LifeEntry || loadedThumbnails.Contains(item) || !queuedThumbnails.Add(item))
+                return;
+
+            thumbnailQueue.Enqueue((item, thumbnailLoadVersion));
+            ScheduleThumbnailPump();
+        }
+
+        private void ScheduleThumbnailPump()
+        {
+            if (thumbnailPumpScheduled || thumbnailQueue.Count == 0)
+                return;
+
+            thumbnailPumpScheduled = true;
+            Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(ProcessNextThumbnail));
+        }
+
+        private void ProcessNextThumbnail()
+        {
+            thumbnailPumpScheduled = false;
+            while (thumbnailQueue.Count > 0)
             {
-                lifePictureBox.Image = new Bitmap(1, 1);
-                if (lifeListBox.SelectedItem == null) 
+                (AssetGalleryItem item, int version) = thumbnailQueue.Dequeue();
+                queuedThumbnails.Remove(item);
+                if (version != thumbnailLoadVersion || item.Tag is not LifeEntry entry ||
+                    !lifeGallery.IsRealized(item))
+                {
+                    continue;
+                }
+
+                bool hasImage = TryLoadThumbnail(entry, out BitmapSource thumbnail);
+                if (version != thumbnailLoadVersion)
                     return;
 
-                if (reactorRButton.Checked) // is reactor
-                {
-                    string reactorIdName = (string)lifeListBox.SelectedItem;
+                loadedThumbnails.Add(item);
+                if (!hasImage && ApplicationSettings.HideLifeEntriesWithoutImages)
+                    lifeGallery.Remove(item);
+                else
+                    item.Image = thumbnail;
+                break;
+            }
 
-                    const string regexPattern = @"^\d+"; // "1002009 (메이플아일랜드 범용리엑터)"
-                    string number = Regex.Match(reactorIdName, regexPattern).Value;
+            ScheduleThumbnailPump();
+        }
 
-                    ReactorInfo info = Program.InfoManager.Reactors[number];
-                    lifePictureBox.Image = new Bitmap(info.Image);
-                    hcsm.EnterEditMode(ItemTypes.Reactors);
-                    hcsm.MultiBoard.SelectedBoard.Mouse.SetHeldInfo(info);
-                }
-                else if (npcRButton.Checked) // npc
+        private bool TryLoadThumbnail(LifeEntry entry, out BitmapSource thumbnail)
+        {
+            try
+            {
+                MapleExtractableInfo info = entry.Type switch
                 {
-                    string id = ((string)lifeListBox.SelectedItem).Substring(0, ((string)lifeListBox.SelectedItem).IndexOf(" - "));
-                    NpcInfo info = NpcInfo.Get(id);
-                    if (info == null)
-                    {
-                        lifePictureBox.Image = null;
-                        return;
-                    }
-                    if(info.Height==1 && info.Width == 1)
-                    {
-                        info.Image = global::HaCreator.Properties.Resources.placeholder;
-                    }
-                    lifePictureBox.Image = new Bitmap(info.Image);
-                    hcsm.EnterEditMode(ItemTypes.NPCs);
-                    hcsm.MultiBoard.SelectedBoard.Mouse.SetHeldInfo(info);
-                }
-                else if (mobRButton.Checked) // mobs
-                {
-                    string id = ((string)lifeListBox.SelectedItem).Substring(0, ((string)lifeListBox.SelectedItem).IndexOf(" - "));
-                    MobInfo info = MobInfo.Get(id);
-                    if (info == null)
-                    {
-                        lifePictureBox.Image = null;
-                        return;
-                    }
-                    lifePictureBox.Image = new Bitmap(info.Image);
-                    hcsm.EnterEditMode(ItemTypes.Mobs);
-                    hcsm.MultiBoard.SelectedBoard.Mouse.SetHeldInfo(info);
-                }
+                    LifeEntryType.Reactor => Program.InfoManager.GetReactor(entry.Id),
+                    LifeEntryType.Npc => NpcInfo.Get(entry.Id),
+                    LifeEntryType.Mob => MobInfo.Get(entry.Id),
+                    _ => null
+                };
+
+                Bitmap image = info?.Image;
+                bool hasImage = image != null && info.Width > 1 && info.Height > 1 &&
+                    !BitmapsMatch(image, placeholderBitmap);
+                thumbnail = hasImage ? ConvertBitmap(image) : placeholderSource;
+                return hasImage;
+            }
+            catch (Exception exception)
+            {
+                System.Diagnostics.Debug.WriteLine($"Unable to load life thumbnail {entry.Id}: {exception.Message}");
+                thumbnail = placeholderSource;
+                return false;
             }
         }
 
-        #region Hot Swap
-        /// <summary>
-        /// Subscribes to hot swap events from the HotSwapRefreshService
-        /// </summary>
-        /// <param name="refreshService">The hot swap service to subscribe to</param>
+        private static bool BitmapsMatch(Bitmap left, Bitmap right)
+        {
+            if (ReferenceEquals(left, right))
+                return true;
+            if (left == null || right == null || left.Width != right.Width || left.Height != right.Height)
+                return false;
+
+            for (int y = 0; y < left.Height; y++)
+            {
+                for (int x = 0; x < left.Width; x++)
+                {
+                    if (left.GetPixel(x, y).ToArgb() != right.GetPixel(x, y).ToArgb())
+                        return false;
+                }
+            }
+            return true;
+        }
+
+        private void ImageFilterChanged(object sender, RoutedEventArgs e)
+        {
+            if (initializingImageFilter)
+                return;
+
+            ApplicationSettings.HideLifeEntriesWithoutImages = hideEntriesWithoutImagesCheckBox.IsChecked == true;
+            Program.SettingsManager?.SaveSettings();
+            if (hcsm != null)
+                ReloadLifeList();
+        }
+
+        private void LifeGallery_SelectionChanged(object sender, AssetGalleryItemEventArgs e)
+        {
+            if (hcsm?.MultiBoard.SelectedBoard == null || e.Item.Tag is not LifeEntry entry)
+                return;
+
+            lock (hcsm.MultiBoard)
+            {
+                switch (entry.Type)
+                {
+                    case LifeEntryType.Reactor:
+                        ReactorInfo reactorInfo = Program.InfoManager.GetReactor(entry.Id);
+                        if (reactorInfo == null)
+                            return;
+                        lifePreview.Source = ConvertBitmap(reactorInfo.Image);
+                        hcsm.EnterEditMode(ItemTypes.Reactors);
+                        hcsm.MultiBoard.SelectedBoard.Mouse.SetHeldInfo(reactorInfo);
+                        break;
+
+                    case LifeEntryType.Npc:
+                        NpcInfo npcInfo = NpcInfo.Get(entry.Id);
+                        if (npcInfo == null)
+                            return;
+                        if (npcInfo.Height == 1 && npcInfo.Width == 1)
+                            npcInfo.Image = global::HaCreator.Properties.Resources.placeholder;
+                        lifePreview.Source = ConvertBitmap(npcInfo.Image);
+                        hcsm.EnterEditMode(ItemTypes.NPCs);
+                        hcsm.MultiBoard.SelectedBoard.Mouse.SetHeldInfo(npcInfo);
+                        break;
+
+                    case LifeEntryType.Mob:
+                        MobInfo mobInfo = MobInfo.Get(entry.Id);
+                        if (mobInfo == null)
+                            return;
+                        lifePreview.Source = ConvertBitmap(mobInfo.Image);
+                        hcsm.EnterEditMode(ItemTypes.Mobs);
+                        hcsm.MultiBoard.SelectedBoard.Mouse.SetHeldInfo(mobInfo);
+                        break;
+                }
+
+                hcsm.MultiBoard.Focus();
+            }
+        }
+
         public void SubscribeToHotSwap(HotSwapRefreshService refreshService)
         {
-            if (_hotSwapService != null)
-            {
-                _hotSwapService.LifeDataChanged -= OnLifeDataChanged;
-            }
+            if (hotSwapService != null)
+                hotSwapService.LifeDataChanged -= OnLifeDataChanged;
 
-            _hotSwapService = refreshService;
-
-            if (_hotSwapService != null)
-            {
-                _hotSwapService.LifeDataChanged += OnLifeDataChanged;
-            }
+            hotSwapService = refreshService;
+            if (hotSwapService != null)
+                hotSwapService.LifeDataChanged += OnLifeDataChanged;
         }
 
-        /// <summary>
-        /// Handles life data change events
-        /// </summary>
         private void OnLifeDataChanged(object sender, LifeDataChangedEventArgs e)
         {
-            if (InvokeRequired)
+            if (!Dispatcher.CheckAccess())
             {
-                BeginInvoke(new Action(() => HandleLifeDataChange(e)));
+                Dispatcher.BeginInvoke(() => HandleLifeDataChange(e));
                 return;
             }
             HandleLifeDataChange(e);
         }
 
-        /// <summary>
-        /// Handles the life data change on the UI thread
-        /// </summary>
         private void HandleLifeDataChange(LifeDataChangedEventArgs e)
         {
             switch (e.LifeType)
@@ -203,80 +282,92 @@ namespace HaCreator.GUI.EditorPanels
             }
         }
 
-        /// <summary>
-        /// Refreshes the mob list from InfoManager
-        /// </summary>
         public void RefreshMobList()
         {
-            mobs.Clear();
-            // Create snapshot to avoid collection modified exception during enumeration
-            var mobSnapshot = Program.InfoManager.MobNameCache.ToList();
-            foreach (KeyValuePair<string, string> entry in mobSnapshot)
-            {
-                mobs.Add(entry.Key + " - " + entry.Value);
-            }
-
-            // Refresh display if mobs are currently shown
-            if (mobRButton.Checked)
-            {
+            RefreshMobSource();
+            if (mobRButton.IsChecked == true)
                 ReloadLifeList();
-            }
         }
 
-        /// <summary>
-        /// Refreshes the NPC list from InfoManager
-        /// </summary>
         public void RefreshNpcList()
         {
-            npcs.Clear();
-            // Create snapshot to avoid collection modified exception during enumeration
-            var npcSnapshot = Program.InfoManager.NpcNameCache.ToList();
-            foreach (KeyValuePair<string, Tuple<string, string>> entry in npcSnapshot)
-            {
-                string npcName = entry.Value.Item1;
-                string npcDesc = entry.Value.Item2;
-
-                string combinedName = string.Format("{0} - {1} {2}",
-                    entry.Key,
-                    npcName,
-                    npcDesc == string.Empty ? string.Empty : string.Format("({0})", npcDesc));
-
-                npcs.Add(combinedName);
-            }
-
-            // Refresh display if NPCs are currently shown
-            if (npcRButton.Checked)
-            {
+            RefreshNpcSource();
+            if (npcRButton.IsChecked == true)
                 ReloadLifeList();
-            }
         }
 
-        /// <summary>
-        /// Refreshes the reactor list from InfoManager
-        /// </summary>
         public void RefreshReactorList()
         {
-            reactors.Clear();
-            // Create snapshot to avoid collection modified exception during enumeration
-            var reactorSnapshot = Program.InfoManager.Reactors.ToList();
-            foreach (KeyValuePair<string, ReactorInfo> entry in reactorSnapshot)
-            {
-                string reactorId = entry.Value.ID;
-                string reactorName = entry.Value.Name;
-
-                string combinedName = string.Format("{0} {1}",
-                    reactorId,
-                    reactorName == string.Empty ? string.Empty : string.Format("({0})", reactorName));
-
-                reactors.Add(combinedName);
-            }
-
-            // Refresh display if reactors are currently shown
-            if (reactorRButton.Checked)
-            {
+            RefreshReactorSource();
+            if (reactorRButton.IsChecked == true)
                 ReloadLifeList();
+        }
+
+        private void RefreshMobSource()
+        {
+            Program.InfoManager.EnsureMobStringData();
+            mobs.Clear();
+            mobs.AddRange(Program.InfoManager.GetMobIds()
+                .Select(id => new LifeEntry(
+                    id,
+                    Program.InfoManager.MobNameCache.TryGetValue(id, out string name)
+                        ? name
+                        : string.Empty,
+                    LifeEntryType.Mob))
+                .OrderBy(item => item.DisplayName, StringComparer.OrdinalIgnoreCase));
+        }
+
+        private void RefreshNpcSource()
+        {
+            Program.InfoManager.EnsureNpcStringData();
+            npcs.Clear();
+            npcs.AddRange(Program.InfoManager.GetNpcIds()
+                .Select(id =>
+                {
+                    if (Program.InfoManager.NpcNameCache.TryGetValue(id, out var info))
+                    {
+                        string description = string.IsNullOrEmpty(info.Item2) ? string.Empty : $" ({info.Item2})";
+                        return new LifeEntry(id, $"{info.Item1}{description}", LifeEntryType.Npc);
+                    }
+                    return new LifeEntry(id, string.Empty, LifeEntryType.Npc);
+                })
+                .OrderBy(item => item.DisplayName, StringComparer.OrdinalIgnoreCase));
+        }
+
+        private void RefreshReactorSource()
+        {
+            reactors.Clear();
+            reactors.AddRange(Program.InfoManager.GetReactorIds()
+                .Select(id =>
+                {
+                    // IMG-directory startup only indexes IDs. Resolve metadata here so
+                    // every reactor can be found by name before its thumbnail is realized.
+                    string name = Program.InfoManager.GetReactor(id)?.Name;
+                    return new LifeEntry(id, name, LifeEntryType.Reactor);
+                })
+                .OrderBy(item => item.DisplayName, StringComparer.OrdinalIgnoreCase));
+        }
+
+        private static BitmapSource ConvertBitmap(Bitmap bitmap)
+        {
+            if (bitmap == null)
+                return null;
+
+            IntPtr handle = bitmap.GetHbitmap();
+            try
+            {
+                BitmapSource source = Imaging.CreateBitmapSourceFromHBitmap(
+                    handle, IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+                source.Freeze();
+                return source;
+            }
+            finally
+            {
+                DeleteObject(handle);
             }
         }
-        #endregion
+
+        [DllImport("gdi32.dll")]
+        private static extern bool DeleteObject(IntPtr handle);
     }
 }

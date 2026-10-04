@@ -3,28 +3,55 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:local="clr-namespace:HaCreator.GUI.EditorPanels"
         xmlns:ai="clr-namespace:HaCreator.MapEditor.AI"
         mc:Ignorable="d"
-        Title="AI Map Editor"
+        Title="{local:EditorPanelText Key='AI Map Editor'}"
         Width="1200" Height="700"
         MinWidth="900" MinHeight="400"
+        Background="{DynamicResource HareCanvasBrush}"
+        FontFamily="Segoe UI"
         WindowStartupLocation="CenterOwner"
         Closing="Window_Closing">
 
     <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/HaSharedLibrary;component/GUI/Themes/HarepackerTheme.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
         <!-- Bool to Visibility Converters -->
         <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+        <SolidColorBrush x:Key="DividerBrush" Color="#DCE3EC"/>
+        <SolidColorBrush x:Key="MutedBrush" Color="#64748B"/>
 
         <!-- Button Styles -->
-        <Style x:Key="ToolbarButtonStyle" TargetType="Button">
-            <Setter Property="Height" Value="28"/>
-            <Setter Property="Padding" Value="10,4"/>
+        <Style x:Key="ToolbarButtonStyle" TargetType="Button" BasedOn="{StaticResource HareButtonStyle}">
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="MinWidth" Value="76"/>
+            <Setter Property="Padding" Value="12,5"/>
             <Setter Property="Margin" Value="0,0,5,0"/>
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="BorderBrush" Value="{StaticResource DividerBrush}"/>
+            <Setter Property="Foreground" Value="#1E293B"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Chrome" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="1" CornerRadius="5" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Chrome" Property="Background" Value="#EEF2F7"/></Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
 
         <Style x:Key="PrimaryButtonStyle" TargetType="Button">
             <Setter Property="Height" Value="32"/>
-            <Setter Property="Background" Value="#4285F4"/>
+            <Setter Property="Background" Value="#2563EB"/>
             <Setter Property="Foreground" Value="White"/>
             <Setter Property="FontWeight" Value="Bold"/>
             <Setter Property="FontSize" Value="12"/>
@@ -34,13 +61,13 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Border Background="{TemplateBinding Background}"
-                                CornerRadius="3"
+                                CornerRadius="6"
                                 Padding="{TemplateBinding Padding}">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Background" Value="#5A95F5"/>
+                                <Setter Property="Background" Value="#1D4ED8"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter Property="Background" Value="#CCCCCC"/>
@@ -53,7 +80,7 @@
 
         <Style x:Key="SuccessButtonStyle" TargetType="Button">
             <Setter Property="Height" Value="32"/>
-            <Setter Property="Background" Value="#34A853"/>
+            <Setter Property="Background" Value="#16A34A"/>
             <Setter Property="Foreground" Value="White"/>
             <Setter Property="FontWeight" Value="Bold"/>
             <Setter Property="FontSize" Value="12"/>
@@ -63,7 +90,7 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Border Background="{TemplateBinding Background}"
-                                CornerRadius="3"
+                                CornerRadius="6"
                                 Padding="{TemplateBinding Padding}">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
@@ -89,13 +116,13 @@
         <Style x:Key="SubLabelStyle" TargetType="TextBlock">
             <Setter Property="FontWeight" Value="Bold"/>
             <Setter Property="FontSize" Value="10"/>
-            <Setter Property="Foreground" Value="#646464"/>
+            <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
             <Setter Property="Margin" Value="0,0,0,3"/>
         </Style>
 
         <!-- User Message Bubble Style -->
         <Style x:Key="UserMessageBubbleStyle" TargetType="Border">
-            <Setter Property="Background" Value="#DCF8C6"/>
+            <Setter Property="Background" Value="#DBEAFE"/>
             <Setter Property="CornerRadius" Value="12,12,0,12"/>
             <Setter Property="Padding" Value="12,8"/>
             <Setter Property="Margin" Value="60,4,8,4"/>
@@ -105,7 +132,9 @@
 
         <!-- Assistant Message Bubble Style -->
         <Style x:Key="AssistantMessageBubbleStyle" TargetType="Border">
-            <Setter Property="Background" Value="#F1F0F0"/>
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="BorderBrush" Value="{StaticResource DividerBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="CornerRadius" Value="12,12,12,0"/>
             <Setter Property="Padding" Value="12,8"/>
             <Setter Property="Margin" Value="8,4,60,4"/>
@@ -113,13 +142,7 @@
             <Setter Property="MaxWidth" Value="450"/>
         </Style>
 
-        <!-- Commands Box Style -->
-        <Style x:Key="CommandsBoxStyle" TargetType="Border">
-            <Setter Property="Background" Value="#2D2D2D"/>
-            <Setter Property="CornerRadius" Value="6"/>
-            <Setter Property="Padding" Value="8"/>
-            <Setter Property="Margin" Value="0,8,0,0"/>
-        </Style>
+
 
         <!-- Chat Message Data Template -->
         <DataTemplate x:Key="ChatMessageTemplate" DataType="{x:Type ai:ChatMessage}">
@@ -181,7 +204,7 @@
                                     </Style.Triggers>
                                 </Style>
                             </StackPanel.Style>
-                            <TextBlock Text="Thinking" FontStyle="Italic" Foreground="#666666" FontSize="13"/>
+                            <TextBlock Text="{local:EditorPanelText Key='Thinking'}" FontStyle="Italic" Foreground="#666666" FontSize="13"/>
                             <TextBlock Text=" . . ." FontStyle="Italic" Foreground="#666666" FontSize="13"/>
                         </StackPanel>
 
@@ -238,7 +261,7 @@
                             </RichTextBox>
 
                             <!-- Commands section (collapsible) -->
-                            <Expander Header="Generated Commands"
+                            <Expander Header="{Binding EditSummary}"
                                       IsExpanded="True"
                                       Margin="0,8,0,0"
                                       FontSize="11">
@@ -252,19 +275,36 @@
                                         </Style.Triggers>
                                     </Style>
                                 </Expander.Style>
-                                <Border Style="{StaticResource CommandsBoxStyle}">
-                                    <TextBox Text="{Binding CommandsContent, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                             IsReadOnly="False"
-                                             AcceptsReturn="True"
-                                             TextWrapping="Wrap"
-                                             FontFamily="Consolas"
-                                             FontSize="11"
-                                             Foreground="#FFFFFF"
-                                             Background="Transparent"
-                                             BorderThickness="0"
-                                             MaxHeight="200"
-                                             VerticalScrollBarVisibility="Auto"/>
-                                </Border>
+                                <StackPanel>
+                                    <TextBlock Text="{local:EditorPanelText Key='AIEditor_ReviewHelp'}"
+                                               TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" Margin="0,6"/>
+                                    <WrapPanel Margin="0,0,0,6">
+                                        <Button Content="{local:EditorPanelText Key='AIEditor_SelectAll'}" Tag="all" Click="SelectReview_Click" Style="{StaticResource ToolbarButtonStyle}"/>
+                                        <Button Content="{local:EditorPanelText Key='AIEditor_SelectNone'}" Tag="none" Click="SelectReview_Click" Style="{StaticResource ToolbarButtonStyle}"/>
+                                        <Button Content="{local:EditorPanelText Key='AIEditor_CopySelected'}" Click="CopyReview_Click" Style="{StaticResource ToolbarButtonStyle}" ToolTip="{local:EditorPanelText Key='AIEditor_CopySelectedTip'}"/>
+                                        <Button Content="{local:EditorPanelText Key='AIEditor_CopyCompact'}" Tag="compact" Click="CopyReview_Click" Style="{StaticResource ToolbarButtonStyle}" ToolTip="{local:EditorPanelText Key='AIEditor_CopyCompactTip'}"/>
+                                    </WrapPanel>
+                                    <ListBox ItemsSource="{Binding Edits}" MaxHeight="280" Background="Transparent" BorderThickness="0"
+                                             ScrollViewer.HorizontalScrollBarVisibility="Disabled" VirtualizingPanel.IsVirtualizing="True">
+                                        <ListBox.ItemContainerStyle>
+                                            <Style TargetType="ListBoxItem"><Setter Property="HorizontalContentAlignment" Value="Stretch"/></Style>
+                                        </ListBox.ItemContainerStyle>
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Margin="0,4">
+                                                    <Grid.ColumnDefinitions><ColumnDefinition Width="26"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                                    <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" VerticalAlignment="Top"
+                                                              Checked="ReviewSelection_Changed" Unchecked="ReviewSelection_Changed" ToolTip="{local:EditorPanelText Key='AIEditor_IncludeEdit'}"/>
+                                                    <StackPanel Grid.Column="1">
+                                                        <TextBlock Text="{Binding Title}" Foreground="#1E293B" FontWeight="SemiBold"/>
+                                                        <TextBlock Text="{Binding Details}" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" Margin="0,3"/>
+                                                        <TextBlock Text="{Binding DisplayStatus}" Foreground="#2563EB" ToolTip="{Binding Result}"/>
+                                                    </StackPanel>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+                                </StackPanel>
                             </Expander>
 
                             <TextBlock Text="{Binding TimestampDisplay}"
@@ -277,6 +317,7 @@
                 </Border>
             </Grid>
         </DataTemplate>
+        </ResourceDictionary>
     </Window.Resources>
 
     <Grid>
@@ -286,18 +327,17 @@
         </Grid.RowDefinitions>
 
         <!-- Menu Bar -->
-        <Menu Grid.Row="0" Background="White">
-            <MenuItem Header="_Tools">
-                <MenuItem x:Name="menuSettings" Header="_Settings" Click="BtnSettings_Click"
-                          ToolTip="Configure OpenRouter API key and model"/>
-                <Separator/>
-                <MenuItem x:Name="menuRunTests" Header="_Run Tests" Click="BtnRunTests_Click"
-                          ToolTip="Run automated tests to verify AI agent capabilities"/>
+        <Menu Grid.Row="0" Height="36" Background="White" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1">
+            <MenuItem Header="{local:EditorPanelText Key='AIEditor_ToolsMenu'}">
+                <MenuItem x:Name="menuAISettings" Header="{local:EditorPanelText Key='AIEditor_SettingsMenu'}" Click="BtnAISettings_Click"
+                          ToolTip="{local:EditorPanelText Key='AIEditor_SettingsTip'}"/>
+                <MenuItem x:Name="menuMcpConnection" Header="{local:EditorPanelText Key='AIEditor_McpMenu'}" Click="BtnMcpConnection_Click"
+                          ToolTip="{local:EditorPanelText Key='Show the local MCP endpoint and authorization token for external clients'}"/>
             </MenuItem>
         </Menu>
 
         <!-- Main Content: Left (Map Context) | Right (Chat) -->
-        <Grid Grid.Row="1" Margin="5,0,5,5">
+        <Grid Grid.Row="1" Margin="12">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" MinWidth="150"/>
                 <ColumnDefinition Width="5"/>
@@ -316,15 +356,27 @@
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="Map Context (auto-loaded):"
+                    <TextBlock Grid.Column="0" Text="{local:EditorPanelText Key='Map context'}"
                                Style="{StaticResource SubLabelStyle}"/>
-                    <Button x:Name="btnRefresh" Grid.Column="1" Content="Refresh"
+                    <Button x:Name="btnRefresh" Grid.Column="1" Content="{local:EditorPanelText Key='Refresh'}"
                             Style="{StaticResource ToolbarButtonStyle}"
                             Height="22" Padding="8,2" Margin="0"
                             Click="BtnRefresh_Click"
-                            ToolTip="Refresh map context after making changes"/>
+                            ToolTip="{local:EditorPanelText Key='Refresh map context after making changes'}"/>
                 </Grid>
-                <TextBox x:Name="txtMapContext" Grid.Row="1"
+                <TabControl Grid.Row="1" Margin="0,6,0,0">
+                    <TabItem Header="{local:EditorPanelText Key='AIEditor_MapView'}">
+                        <Grid Background="#20242A">
+                            <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                            <Image x:Name="imgMapPreview" Stretch="Uniform" Margin="4"
+                                   MouseLeftButtonDown="MapPreview_MouseLeftButtonDown" Cursor="Cross"
+                                   ToolTip="{local:EditorPanelText Key='AIEditor_MapClickTip'}"/>
+                            <TextBlock Grid.Row="1" Text="{local:EditorPanelText Key='AIEditor_MapLegend'}"
+                                       Foreground="#CBD5E1" FontSize="11" Margin="8" TextWrapping="Wrap"/>
+                        </Grid>
+                    </TabItem>
+                    <TabItem Header="{local:EditorPanelText Key='AIEditor_Geometry'}">
+                <TextBox x:Name="txtMapContext"
                          IsReadOnly="True"
                          AcceptsReturn="True"
                          TextWrapping="Wrap"
@@ -332,7 +384,10 @@
                          VerticalScrollBarVisibility="Auto"
                          FontFamily="Consolas"
                          FontSize="10"
-                         Background="#FAFAFA"/>
+                         Padding="10"
+                         Background="White" BorderBrush="{StaticResource DividerBrush}"/>
+                    </TabItem>
+                </TabControl>
             </Grid>
 
             <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Center"
@@ -348,15 +403,23 @@
                 </Grid.RowDefinitions>
 
                 <!-- Toolbar -->
-                <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,5">
-                    <Button x:Name="btnClearChat" Content="New Chat"
+                <WrapPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,5">
+                    <Button Content="{local:EditorPanelText Key='AIEditor_PasteChanges'}" Click="PasteReview_Click" Style="{StaticResource ToolbarButtonStyle}"
+                            ToolTip="{local:EditorPanelText Key='AIEditor_PasteTip'}"/>
+                    <Button x:Name="btnClearChat" Content="{local:EditorPanelText Key='New Chat'}"
                             Style="{StaticResource ToolbarButtonStyle}"
                             Click="BtnClearChat_Click"
-                            ToolTip="Start a new conversation"/>
-                </StackPanel>
+                            ToolTip="{local:EditorPanelText Key='Start a new conversation'}"/>
+                    <Button x:Name="btnUndo" Content="{local:EditorPanelText Key='AIEditor_Undo'}"
+                            Style="{StaticResource ToolbarButtonStyle}" Click="BtnUndo_Click"
+                            ToolTip="{local:EditorPanelText Key='AIEditor_UndoTip'}"/>
+                    <Button x:Name="btnStop" Content="{local:EditorPanelText Key='AIEditor_Stop'}" IsEnabled="False"
+                            Style="{StaticResource ToolbarButtonStyle}" Click="BtnStop_Click"
+                            ToolTip="{local:EditorPanelText Key='AIEditor_StopTip'}"/>
+                </WrapPanel>
 
                 <!-- Chat Messages Area -->
-                <Border Grid.Row="1" BorderBrush="#E0E0E0" BorderThickness="1" CornerRadius="4" Background="White">
+                <Border Grid.Row="1" BorderBrush="{StaticResource DividerBrush}" BorderThickness="1" CornerRadius="7" Background="White">
                     <ScrollViewer x:Name="chatScrollViewer"
                                   VerticalScrollBarVisibility="Auto"
                                   HorizontalScrollBarVisibility="Disabled">
@@ -380,7 +443,7 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
-                    <Border Grid.Column="0" BorderBrush="#CCCCCC" BorderThickness="1" CornerRadius="4" Background="White">
+                    <Border Grid.Column="0" BorderBrush="{StaticResource DividerBrush}" BorderThickness="1" CornerRadius="7" Background="White">
                         <TextBox x:Name="txtMessageInput"
                                  AcceptsReturn="True"
                                  TextWrapping="Wrap"
@@ -391,25 +454,67 @@
                                  Padding="8"
                                  BorderThickness="0"
                                  PreviewKeyDown="TxtMessageInput_PreviewKeyDown"
-                                 TextChanged="TxtMessageInput_TextChanged"/>
+                                 TextChanged="TxtMessageInput_TextChanged"
+                                 SelectionChanged="TxtMessageInput_SelectionChanged"
+                                 ToolTip="{local:EditorPanelText Key='AIEditor_MentionTip'}"/>
                     </Border>
+                    <Popup x:Name="mentionPopup" PlacementTarget="{Binding ElementName=txtMessageInput}"
+                           Placement="Top" StaysOpen="False" AllowsTransparency="True">
+                        <Border Background="White" BorderBrush="#94A3B8" BorderThickness="1" Padding="6" Width="540">
+                            <StackPanel>
+                                <TextBlock Text="{local:EditorPanelText Key='AIEditor_MentionHeader'}" FontWeight="SemiBold" Margin="4"/>
+                                <ListBox x:Name="mentionSuggestions" MaxHeight="240" DisplayMemberPath="Display"
+                                         PreviewMouseLeftButtonUp="MentionSuggestion_Click" Focusable="False"
+                                         ScrollViewer.HorizontalScrollBarVisibility="Auto"/>
+                                <TextBlock x:Name="mentionStatus" TextWrapping="Wrap" Margin="4" Foreground="#64748B" FontSize="11"/>
+                            </StackPanel>
+                        </Border>
+                    </Popup>
 
                     <Button x:Name="btnSend" Grid.Column="1"
-                            Content="Send"
+                            Content="{local:EditorPanelText Key='Ask'}"
                             Style="{StaticResource PrimaryButtonStyle}"
                             Width="70"
                             Margin="8,0,0,0"
                             Click="BtnSend_Click"
-                            ToolTip="Send message (Enter)"/>
+                            ToolTip="{local:EditorPanelText Key='Ask message (Enter)'}"/>
                 </Grid>
 
-                <!-- Execute Commands Button -->
-                <Button x:Name="btnExecute" Grid.Row="3"
-                        Content="Execute Latest Commands"
-                        Style="{StaticResource SuccessButtonStyle}"
-                        Margin="0,8,0,0"
-                        Click="BtnExecute_Click"
-                        ToolTip="Apply the commands from the last AI response"/>
+                <!-- Chat status and related apply controls -->
+                <StackPanel Grid.Row="3">
+                    <Grid Margin="0,6,0,0">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <Grid.Resources>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="TextWrapping" Value="NoWrap"/>
+                                <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+                                <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
+                                <Setter Property="FontSize" Value="11"/>
+                                <Setter Property="ToolTip" Value="{Binding Text, RelativeSource={RelativeSource Self}}"/>
+                            </Style>
+                        </Grid.Resources>
+                        <TextBlock x:Name="txtSelectedModel" MaxWidth="160"/>
+                        <TextBlock Grid.Column="1" Text="{local:EditorPanelText Key='AIEditor_MentionHint'}"/>
+                        <TextBlock x:Name="txtProgress" Grid.Column="2" Text="{local:EditorPanelText Key='AIEditor_Idle'}"/>
+                    </Grid>
+                    <Border Margin="0,8,0,0" Padding="10,8" Background="White"
+                            BorderBrush="{StaticResource DividerBrush}" BorderThickness="1" CornerRadius="7">
+                        <Grid MinHeight="32">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <CheckBox x:Name="chkLiveEdits" Content="{local:EditorPanelText Key='AIEditor_LiveEdits'}" VerticalAlignment="Center"
+                                      Margin="0,0,12,0" Click="LiveEdits_Click"
+                                      ToolTip="{local:EditorPanelText Key='AIEditor_LiveEditsTip'}"/>
+                            <Button x:Name="btnExecute" Grid.Column="1" IsEnabled="False"
+                                    Content="{local:EditorPanelText Key='AIEditor_ApplySelected'}"
+                                    Style="{StaticResource SuccessButtonStyle}" Padding="12,0"
+                                    Click="BtnExecute_Click"
+                                    ToolTip="{local:EditorPanelText Key='AIEditor_ApplySelectedTip'}"/>
+                        </Grid>
+                    </Border>
+                </StackPanel>
             </Grid>
         </Grid>
     </Grid>

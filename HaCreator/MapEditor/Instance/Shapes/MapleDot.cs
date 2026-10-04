@@ -104,6 +104,11 @@ namespace HaCreator.MapEditor.Instance.Shapes
 
         public override void Draw(SpriteBatch sprite, XNA.Color color, int xShift, int yShift)
         {
+            // Show foothold connection targets clearly while drawing. Keep other
+            // unselected structural handles subdued in normal editing.
+            if (!Selected && !(this is FootholdAnchor && Board.Mouse.State == MouseState.Footholds))
+                color *= 0.24f;
+
             Board.ParentControl.FillRectangle(sprite, new XNA.Rectangle(this.X - UserSettings.DotWidth + xShift, this.Y - UserSettings.DotWidth + yShift, UserSettings.DotWidth * 2, UserSettings.DotWidth * 2), color);
         }
 

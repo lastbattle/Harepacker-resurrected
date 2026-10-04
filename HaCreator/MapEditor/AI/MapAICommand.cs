@@ -92,6 +92,7 @@ namespace HaCreator.MapEditor.AI
         CreateLayer,        // Create new layer
         DeleteLayer,        // Remove layer
         SetLayerTileset,    // Change layer tileset
+        ChangeTileset,      // Retheme existing terrain without changing geometry
         MoveToLayer,        // Move items between layers
 
         // Z-Order commands

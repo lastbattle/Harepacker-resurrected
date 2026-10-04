@@ -23,7 +23,12 @@
 
   <ItemGroup>
     <ProjectReference Include="..\MapleLib\MapleLib\MapleLib.csproj" />
+    <ProjectReference Include="..\HaSharedLibrary\HaSharedLibrary.csproj" />
     <PackageReference Include="System.Drawing.Common" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\HaRepacker\GUI\WzKeyBruteforceProbe.cs" Link="WzKeyBruteforceProbe.cs" />
   </ItemGroup>
 
   <ItemGroup>

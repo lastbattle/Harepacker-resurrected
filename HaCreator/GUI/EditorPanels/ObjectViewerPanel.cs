@@ -7,81 +7,138 @@ using HaCreator.MapEditor.UndoRedo;
 using MapleLib.WzLib.WzStructure.Data;
 using System;
 using System.Collections.Generic;
-using System.Drawing;
+using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Linq;
-using System.Windows.Forms;
+using System.Runtime.CompilerServices;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Threading;
 
 namespace HaCreator.GUI.EditorPanels
 {
-    /// <summary>
-    /// Panel that displays all objects on the active board in a hierarchical TreeView.
-    /// Provides bidirectional selection sync, search/filter, jump-to-object, and batch operations.
-    /// </summary>
+    public sealed class ObjectHierarchyNode : INotifyPropertyChanged
+    {
+        private bool isBoardSelected;
+        private bool isExpanded;
+        private bool isSelected;
+
+        public ObjectHierarchyNode(string label, object tag, bool isVisible, ObjectHierarchyNode parent = null)
+        {
+            Label = label;
+            Tag = tag;
+            IsVisible = isVisible;
+            Parent = parent;
+        }
+
+        public string Label { get; }
+        public object Tag { get; }
+        public bool IsVisible { get; }
+        public ObjectHierarchyNode Parent { get; }
+        public ObservableCollection<ObjectHierarchyNode> Children { get; } = new();
+
+        public bool IsBoardSelected
+        {
+            get => isBoardSelected;
+            set => SetField(ref isBoardSelected, value);
+        }
+
+        public bool IsExpanded
+        {
+            get => isExpanded;
+            set => SetField(ref isExpanded, value);
+        }
+
+        public bool IsSelected
+        {
+            get => isSelected;
+            set => SetField(ref isSelected, value);
+        }
+
+        public event PropertyChangedEventHandler PropertyChanged;
+
+        private void SetField(ref bool field, bool value, [CallerMemberName] string propertyName = null)
+        {
+            if (field == value)
+                return;
+            field = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        }
+    }
+
     public partial class ObjectViewerPanel : UserControl
     {
         private HaCreatorStateManager hcsm;
-        private Board _currentBoard;
-        private bool _suppressSelectionSync;
-        private System.Windows.Forms.Timer _refreshTimer;
+        private Board currentBoard;
+        private bool suppressSelectionSync;
+        private readonly DispatcherTimer refreshTimer;
+        private readonly ContextMenu contextMenu = new();
+        private ObjectHierarchyNode contextNode;
 
         public ObjectViewerPanel()
         {
             InitializeComponent();
-        }
+            EditorPanelLocalizer.Attach(this);
+            DataContext = this;
 
-        /// <summary>
-        /// Initializes the panel with the state manager and sets up event subscriptions.
-        /// </summary>
-        public void Initialize(HaCreatorStateManager hcsm)
-        {
-            this.hcsm = hcsm;
-            hcsm.SetObjectViewerPanel(this);
-
-            // Subscribe to selection changes
-            hcsm.MultiBoard.SelectedItemChanged += OnBoardSelectionChanged;
-
-            // Setup refresh timer for debounced updates
-            _refreshTimer = new System.Windows.Forms.Timer();
-            _refreshTimer.Interval = 200; // 200ms debounce
-            _refreshTimer.Tick += (s, e) =>
+            refreshTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
+            refreshTimer.Tick += (_, _) =>
             {
-                _refreshTimer.Stop();
+                refreshTimer.Stop();
                 RefreshTreeView();
             };
+            BuildContextMenu();
+            objectTreeView.ContextMenu = contextMenu;
+        }
 
-            // Initial load
+        public ObservableCollection<ObjectHierarchyNode> RootNodes { get; } = new();
+
+        public void Initialize(HaCreatorStateManager stateManager)
+        {
+            hcsm = stateManager;
+            hcsm.SetObjectViewerPanel(this);
+            hcsm.MultiBoard.SelectedItemChanged += OnBoardSelectionChanged;
             OnBoardChanged(hcsm.MultiBoard.SelectedBoard);
         }
 
-        /// <summary>
-        /// Called when the active board changes (tab switch) or when board content changes.
-        /// </summary>
         public void OnBoardChanged(Board newBoard)
         {
-            _currentBoard = newBoard;
+            currentBoard = newBoard;
             RefreshTreeView();
         }
 
-        #region Tree Population
+        private void BuildContextMenu()
+        {
+            contextMenu.Items.Add(CreateMenuItem(EditorPanelLocalizer.Text("Menu_SelectOnBoard", "Select on board"), SelectOnBoard_Click));
+            contextMenu.Items.Add(CreateMenuItem(EditorPanelLocalizer.Text("Menu_JumpToObject", "Jump to object"), JumpToObject_Click));
+            contextMenu.Items.Add(new Separator());
+            contextMenu.Items.Add(CreateMenuItem(EditorPanelLocalizer.Text("Menu_EditProperties", "Edit properties..."), EditProperties_Click));
+            contextMenu.Items.Add(CreateMenuItem(EditorPanelLocalizer.Text("Menu_Delete", "Delete"), Delete_Click));
+            contextMenu.Items.Add(new Separator());
+            contextMenu.Items.Add(CreateMenuItem(EditorPanelLocalizer.Text("Menu_SelectAllOfType", "Select all of type"), SelectAllOfType_Click));
+            contextMenu.Items.Add(CreateMenuItem(EditorPanelLocalizer.Text("Menu_SelectAllInLayer", "Select all in layer"), SelectAllInLayer_Click));
+        }
 
-        /// <summary>
-        /// Refreshes the tree view with items from the current board.
-        /// </summary>
+        private static MenuItem CreateMenuItem(string header, RoutedEventHandler handler)
+        {
+            MenuItem item = new() { Header = header };
+            item.Click += handler;
+            return item;
+        }
+
         private void RefreshTreeView()
         {
-            if (InvokeRequired)
+            if (!Dispatcher.CheckAccess())
             {
-                BeginInvoke(new Action(RefreshTreeView));
+                Dispatcher.BeginInvoke(new Action(RefreshTreeView));
                 return;
             }
 
-            objectTreeView.BeginUpdate();
-            objectTreeView.Nodes.Clear();
-
-            Board board = _currentBoard;
-            if (board == null || hcsm == null || hcsm.MultiBoard == null)
+            RootNodes.Clear();
+            if (currentBoard?.BoardItems == null || hcsm?.MultiBoard == null)
             {
-                objectTreeView.EndUpdate();
                 UpdateStatistics();
                 return;
             }
@@ -90,385 +147,128 @@ namespace HaCreator.GUI.EditorPanels
             {
                 lock (hcsm.MultiBoard)
                 {
-                    if (board.BoardItems == null)
-                    {
-                        objectTreeView.EndUpdate();
-                        UpdateStatistics();
-                        return;
-                    }
-
-                    string searchFilter = searchBox.Text?.ToLowerInvariant() ?? "";
-                    ItemTypes visibleTypes = board.VisibleTypes;
-
-                    // Add category nodes for all types
-                    AddTilesCategory(board, searchFilter, visibleTypes);
-                    AddObjectsCategory(board, searchFilter, visibleTypes);
-                    AddBackgroundsCategory(board, searchFilter, visibleTypes);
-                    AddFlatCategory("NPCs", board.BoardItems.NPCs.Cast<BoardItem>(), searchFilter, visibleTypes, ItemTypes.NPCs);
-                    AddFlatCategory("Mobs", board.BoardItems.Mobs.Cast<BoardItem>(), searchFilter, visibleTypes, ItemTypes.Mobs);
-                    AddFlatCategory("Reactors", board.BoardItems.Reactors.Cast<BoardItem>(), searchFilter, visibleTypes, ItemTypes.Reactors);
-                    AddFlatCategory("Portals", board.BoardItems.Portals.Cast<BoardItem>(), searchFilter, visibleTypes, ItemTypes.Portals);
-                    AddFootholdsCategory(board, searchFilter, visibleTypes);
-                    AddRopesCategory(board, searchFilter, visibleTypes);
-                    AddFlatCategory("Chairs", board.BoardItems.Chairs.Cast<BoardItem>(), searchFilter, visibleTypes, ItemTypes.Chairs);
-                    AddTooltipsCategory(board, searchFilter, visibleTypes);
-                    AddFlatCategory("Misc", board.BoardItems.MiscItems.Cast<BoardItem>(), searchFilter, visibleTypes, ItemTypes.Misc);
-                    AddFlatCategory("MirrorFieldData", board.BoardItems.MirrorFieldDatas.Cast<BoardItem>(), searchFilter, visibleTypes, ItemTypes.MirrorFieldData);
+                    string filter = searchBox.Text?.Trim() ?? string.Empty;
+                    ItemTypes visibleTypes = currentBoard.VisibleTypes;
+                    AddLayeredCategory("Tiles", "TileLayer", currentBoard.BoardItems.TileObjs.OfType<TileInstance>(), filter,
+                        visibleTypes, ItemTypes.Tiles, item => item.Layer?.LayerNumber ?? 0, item => item.Z);
+                    AddLayeredCategory("Objects", "ObjectLayer", currentBoard.BoardItems.TileObjs.OfType<ObjectInstance>(), filter,
+                        visibleTypes, ItemTypes.Objects, item => item.Layer?.LayerNumber ?? 0, item => item.Z);
+                    AddBackgroundsCategory(filter, visibleTypes);
+                    AddFlatCategory("NPCs", currentBoard.BoardItems.NPCs.Cast<BoardItem>(), filter, visibleTypes, ItemTypes.NPCs);
+                    AddFlatCategory("Mobs", currentBoard.BoardItems.Mobs.Cast<BoardItem>(), filter, visibleTypes, ItemTypes.Mobs);
+                    AddFlatCategory("Reactors", currentBoard.BoardItems.Reactors.Cast<BoardItem>(), filter, visibleTypes, ItemTypes.Reactors);
+                    AddFlatCategory("Portals", currentBoard.BoardItems.Portals.Cast<BoardItem>(), filter, visibleTypes, ItemTypes.Portals);
+                    AddLayeredCategory("Footholds", "FootholdLayer", currentBoard.BoardItems.FHAnchors, filter,
+                        visibleTypes, ItemTypes.Footholds, item => item.LayerNumber, _ => 0);
+                    AddFlatCategory("Ropes/Ladders", currentBoard.BoardItems.RopeAnchors.Cast<BoardItem>(), filter, visibleTypes, ItemTypes.Ropes);
+                    AddFlatCategory("Chairs", currentBoard.BoardItems.Chairs.Cast<BoardItem>(), filter, visibleTypes, ItemTypes.Chairs);
+                    AddFlatCategory("Tooltips", currentBoard.BoardItems.ToolTips.Cast<BoardItem>()
+                        .Concat(currentBoard.BoardItems.CharacterToolTips.Cast<BoardItem>()), filter, visibleTypes, ItemTypes.ToolTips);
+                    AddFlatCategory("Misc", currentBoard.BoardItems.MiscItems.Cast<BoardItem>(), filter, visibleTypes, ItemTypes.Misc);
+                    AddFlatCategory("MirrorFieldData", currentBoard.BoardItems.MirrorFieldDatas.Cast<BoardItem>(), filter,
+                        visibleTypes, ItemTypes.MirrorFieldData);
                 }
             }
-            catch (Exception ex)
+            catch (Exception exception)
             {
-                System.Diagnostics.Debug.WriteLine($"ObjectViewerPanel.RefreshTreeView error: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"ObjectViewerPanel.RefreshTreeView error: {exception.Message}");
             }
 
-            objectTreeView.EndUpdate();
-            UpdateStatistics();
             UpdateSelectionFromBoard();
+            UpdateStatistics();
         }
 
-        private void AddTilesCategory(Board board, string searchFilter, ItemTypes visibleTypes)
+        private void AddLayeredCategory<T>(string categoryName, string layerKey, IEnumerable<T> source, string filter,
+            ItemTypes visibleTypes, ItemTypes itemType, Func<T, int> getLayer, Func<T, int> getZ) where T : BoardItem
         {
-            var tiles = board.BoardItems.TileObjs
-                .OfType<TileInstance>()
-                .Where(t => MatchesSearch(t, searchFilter))
-                .ToList();
-
-            if (tiles.Count == 0)
-                return;
-
-            bool isVisible = (visibleTypes & ItemTypes.Tiles) != 0;
-            TreeNode categoryNode = new TreeNode($"Tiles ({tiles.Count})");
-            categoryNode.Tag = "Tiles";
-            ApplyVisibilityStyle(categoryNode, isVisible);
-
-            // Group by layer
-            var byLayer = tiles.GroupBy(t => t.Layer?.LayerNumber ?? 0).OrderBy(g => g.Key);
-            foreach (var group in byLayer)
-            {
-                TreeNode layerNode = new TreeNode($"Layer {group.Key} ({group.Count()})");
-                layerNode.Tag = $"TileLayer_{group.Key}";
-                ApplyVisibilityStyle(layerNode, isVisible);
-
-                foreach (var tile in group.OrderBy(t => t.Z))
-                {
-                    TreeNode itemNode = CreateItemNode(tile, isVisible);
-                    layerNode.Nodes.Add(itemNode);
-                }
-                categoryNode.Nodes.Add(layerNode);
-            }
-
-            objectTreeView.Nodes.Add(categoryNode);
-        }
-
-        private void AddObjectsCategory(Board board, string searchFilter, ItemTypes visibleTypes)
-        {
-            var objects = board.BoardItems.TileObjs
-                .OfType<ObjectInstance>()
-                .Where(o => MatchesSearch(o, searchFilter))
-                .ToList();
-
-            if (objects.Count == 0)
-                return;
-
-            bool isVisible = (visibleTypes & ItemTypes.Objects) != 0;
-            TreeNode categoryNode = new TreeNode($"Objects ({objects.Count})");
-            categoryNode.Tag = "Objects";
-            ApplyVisibilityStyle(categoryNode, isVisible);
-
-            // Group by layer
-            var byLayer = objects.GroupBy(o => o.Layer?.LayerNumber ?? 0).OrderBy(g => g.Key);
-            foreach (var group in byLayer)
-            {
-                TreeNode layerNode = new TreeNode($"Layer {group.Key} ({group.Count()})");
-                layerNode.Tag = $"ObjectLayer_{group.Key}";
-                ApplyVisibilityStyle(layerNode, isVisible);
-
-                foreach (var obj in group.OrderBy(o => o.Z))
-                {
-                    TreeNode itemNode = CreateItemNode(obj, isVisible);
-                    layerNode.Nodes.Add(itemNode);
-                }
-                categoryNode.Nodes.Add(layerNode);
-            }
-
-            objectTreeView.Nodes.Add(categoryNode);
-        }
-
-        private void AddBackgroundsCategory(Board board, string searchFilter, ItemTypes visibleTypes)
-        {
-            var backBgs = board.BoardItems.BackBackgrounds
-                .Where(b => MatchesSearch(b, searchFilter))
-                .ToList();
-            var frontBgs = board.BoardItems.FrontBackgrounds
-                .Where(b => MatchesSearch(b, searchFilter))
-                .ToList();
-
-            int totalCount = backBgs.Count + frontBgs.Count;
-            if (totalCount == 0)
-                return;
-
-            bool isVisible = (visibleTypes & ItemTypes.Backgrounds) != 0;
-            TreeNode categoryNode = new TreeNode($"Backgrounds ({totalCount})");
-            categoryNode.Tag = "Backgrounds";
-            ApplyVisibilityStyle(categoryNode, isVisible);
-
-            if (backBgs.Count > 0)
-            {
-                TreeNode backNode = new TreeNode($"Back ({backBgs.Count})");
-                backNode.Tag = "BackgroundsBack";
-                ApplyVisibilityStyle(backNode, isVisible);
-
-                foreach (var bg in backBgs.OrderBy(b => b.Z))
-                {
-                    TreeNode itemNode = CreateItemNode(bg, isVisible);
-                    backNode.Nodes.Add(itemNode);
-                }
-                categoryNode.Nodes.Add(backNode);
-            }
-
-            if (frontBgs.Count > 0)
-            {
-                TreeNode frontNode = new TreeNode($"Front ({frontBgs.Count})");
-                frontNode.Tag = "BackgroundsFront";
-                ApplyVisibilityStyle(frontNode, isVisible);
-
-                foreach (var bg in frontBgs.OrderBy(b => b.Z))
-                {
-                    TreeNode itemNode = CreateItemNode(bg, isVisible);
-                    frontNode.Nodes.Add(itemNode);
-                }
-                categoryNode.Nodes.Add(frontNode);
-            }
-
-            objectTreeView.Nodes.Add(categoryNode);
-        }
-
-        private void AddFootholdsCategory(Board board, string searchFilter, ItemTypes visibleTypes)
-        {
-            var anchors = board.BoardItems.FHAnchors
-                .Where(a => MatchesSearch(a, searchFilter))
-                .ToList();
-
-            if (anchors.Count == 0)
-                return;
-
-            bool isVisible = (visibleTypes & ItemTypes.Footholds) != 0;
-            TreeNode categoryNode = new TreeNode($"Footholds ({anchors.Count})");
-            categoryNode.Tag = "Footholds";
-            ApplyVisibilityStyle(categoryNode, isVisible);
-
-            // Group by layer
-            var byLayer = anchors.GroupBy(a => a.LayerNumber).OrderBy(g => g.Key);
-            foreach (var group in byLayer)
-            {
-                TreeNode layerNode = new TreeNode($"Layer {group.Key} ({group.Count()})");
-                layerNode.Tag = $"FootholdLayer_{group.Key}";
-                ApplyVisibilityStyle(layerNode, isVisible);
-
-                foreach (var anchor in group)
-                {
-                    TreeNode itemNode = CreateItemNode(anchor, isVisible);
-                    layerNode.Nodes.Add(itemNode);
-                }
-                categoryNode.Nodes.Add(layerNode);
-            }
-
-            objectTreeView.Nodes.Add(categoryNode);
-        }
-
-        private void AddRopesCategory(Board board, string searchFilter, ItemTypes visibleTypes)
-        {
-            var anchors = board.BoardItems.RopeAnchors
-                .Where(a => MatchesSearch(a, searchFilter))
-                .ToList();
-
-            if (anchors.Count == 0)
-                return;
-
-            bool isVisible = (visibleTypes & ItemTypes.Ropes) != 0;
-            TreeNode categoryNode = new TreeNode($"Ropes/Ladders ({anchors.Count})");
-            categoryNode.Tag = "Ropes";
-            ApplyVisibilityStyle(categoryNode, isVisible);
-
-            foreach (var anchor in anchors)
-            {
-                TreeNode itemNode = CreateItemNode(anchor, isVisible);
-                categoryNode.Nodes.Add(itemNode);
-            }
-
-            objectTreeView.Nodes.Add(categoryNode);
-        }
-
-        private void AddTooltipsCategory(Board board, string searchFilter, ItemTypes visibleTypes)
-        {
-            var tooltips = board.BoardItems.ToolTips
-                .Cast<BoardItem>()
-                .Concat(board.BoardItems.CharacterToolTips.Cast<BoardItem>())
-                .Where(t => MatchesSearch(t, searchFilter))
-                .ToList();
-
-            if (tooltips.Count == 0)
-                return;
-
-            bool isVisible = (visibleTypes & ItemTypes.ToolTips) != 0;
-            TreeNode categoryNode = new TreeNode($"Tooltips ({tooltips.Count})");
-            categoryNode.Tag = "Tooltips";
-            ApplyVisibilityStyle(categoryNode, isVisible);
-
-            foreach (var tooltip in tooltips)
-            {
-                TreeNode itemNode = CreateItemNode(tooltip, isVisible);
-                categoryNode.Nodes.Add(itemNode);
-            }
-
-            objectTreeView.Nodes.Add(categoryNode);
-        }
-
-        private void AddFlatCategory(string categoryName, IEnumerable<BoardItem> items, string searchFilter, ItemTypes visibleTypes, ItemTypes itemType)
-        {
-            var filteredItems = items.Where(i => MatchesSearch(i, searchFilter)).ToList();
-
-            if (filteredItems.Count == 0)
+            List<T> items = source.Where(item => MatchesSearch(item, filter)).ToList();
+            if (items.Count == 0)
                 return;
 
             bool isVisible = (visibleTypes & itemType) != 0;
-            TreeNode categoryNode = new TreeNode($"{categoryName} ({filteredItems.Count})");
-            categoryNode.Tag = categoryName;
-            ApplyVisibilityStyle(categoryNode, isVisible);
-
-            foreach (var item in filteredItems)
+            ObjectHierarchyNode category = new($"{categoryName} ({items.Count})", categoryName, isVisible);
+            foreach (IGrouping<int, T> group in items.GroupBy(getLayer).OrderBy(group => group.Key))
             {
-                TreeNode itemNode = CreateItemNode(item, isVisible);
-                categoryNode.Nodes.Add(itemNode);
+                ObjectHierarchyNode layer = new($"Layer {group.Key} ({group.Count()})", $"{layerKey}_{group.Key}", isVisible, category);
+                foreach (T item in group.OrderBy(getZ))
+                    layer.Children.Add(CreateItemNode(item, isVisible, layer));
+                category.Children.Add(layer);
             }
-
-            objectTreeView.Nodes.Add(categoryNode);
+            RootNodes.Add(category);
         }
 
-        private TreeNode CreateItemNode(BoardItem item, bool isTypeVisible)
+        private void AddBackgroundsCategory(string filter, ItemTypes visibleTypes)
         {
-            string description = GetShortDescription(item);
-            string position = $"@ ({item.X}, {item.Y})";
+            List<BackgroundInstance> back = currentBoard.BoardItems.BackBackgrounds.Where(item => MatchesSearch(item, filter)).ToList();
+            List<BackgroundInstance> front = currentBoard.BoardItems.FrontBackgrounds.Where(item => MatchesSearch(item, filter)).ToList();
+            if (back.Count + front.Count == 0)
+                return;
 
-            TreeNode node = new TreeNode($"{description} {position}");
-            node.Tag = item;
-
-            ApplyVisibilityStyle(node, isTypeVisible);
-
-            // Highlight selected items
-            if (item.Selected)
-            {
-                node.BackColor = SystemColors.Highlight;
-                node.ForeColor = SystemColors.HighlightText;
-            }
-
-            return node;
+            bool isVisible = (visibleTypes & ItemTypes.Backgrounds) != 0;
+            ObjectHierarchyNode category = new($"Backgrounds ({back.Count + front.Count})", "Backgrounds", isVisible);
+            AddBackgroundGroup(category, "Back", back, isVisible);
+            AddBackgroundGroup(category, "Front", front, isVisible);
+            RootNodes.Add(category);
         }
 
-        private void ApplyVisibilityStyle(TreeNode node, bool isVisible)
+        private static void AddBackgroundGroup(ObjectHierarchyNode category, string name, List<BackgroundInstance> items, bool isVisible)
         {
-            if (!isVisible)
-            {
-                node.ForeColor = SystemColors.GrayText;
-            }
+            if (items.Count == 0)
+                return;
+            ObjectHierarchyNode group = new($"{name} ({items.Count})", $"Backgrounds{name}", isVisible, category);
+            foreach (BackgroundInstance item in items.OrderBy(item => item.Z))
+                group.Children.Add(CreateItemNode(item, isVisible, group));
+            category.Children.Add(group);
         }
 
-        private string GetShortDescription(BoardItem item)
+        private void AddFlatCategory(string categoryName, IEnumerable<BoardItem> source, string filter,
+            ItemTypes visibleTypes, ItemTypes itemType)
         {
-            if (item is TileInstance tile)
-            {
-                var info = (HaCreator.MapEditor.Info.TileInfo)tile.BaseInfo;
-                return $"{info.tS}\\{info.u}\\{info.no}";
-            }
-            else if (item is ObjectInstance obj)
-            {
-                var info = (HaCreator.MapEditor.Info.ObjectInfo)obj.BaseInfo;
-                return $"{info.oS}\\{info.l0}\\{info.l1}\\{info.l2}";
-            }
-            else if (item is BackgroundInstance bg)
-            {
-                var info = (HaCreator.MapEditor.Info.BackgroundInfo)bg.BaseInfo;
-                return $"{info.bS}\\{info.Type}\\{info.no}";
-            }
-            else if (item is PortalInstance portal)
-            {
-                return $"{portal.pn} ({portal.pt})";
-            }
-            else if (item is MobInstance mob)
-            {
-                var info = (HaCreator.MapEditor.Info.MobInfo)mob.BaseInfo;
-                return $"{info.Name} ({info.ID})";
-            }
-            else if (item is NpcInstance npc)
-            {
-                var info = (HaCreator.MapEditor.Info.NpcInfo)npc.BaseInfo;
-                return $"{info.StringName} ({info.ID})";
-            }
-            else if (item is ReactorInstance reactor)
-            {
-                var info = (HaCreator.MapEditor.Info.ReactorInfo)reactor.BaseInfo;
-                return $"Reactor {info.ID}";
-            }
-            else if (item is FootholdAnchor fh)
-            {
-                return $"Anchor";
-            }
-            else if (item is RopeAnchor rope)
-            {
-                return rope.ParentRope?.ladder == true ? "Ladder" : "Rope";
-            }
-            else if (item is Chair)
-            {
-                return "Chair";
-            }
-            else if (item is ToolTipInstance)
-            {
-                return "Tooltip";
-            }
-            else if (item is ToolTipChar)
-            {
-                return "CharTooltip";
-            }
-            else if (item is MirrorFieldData mirror)
-            {
-                return $"Mirror ({mirror.MirrorFieldDataType})";
-            }
-            else if (item is INamedMisc misc)
-            {
-                return misc.Name;
-            }
-
-            return item.GetType().Name;
+            List<BoardItem> items = source.Where(item => MatchesSearch(item, filter)).ToList();
+            if (items.Count == 0)
+                return;
+            bool isVisible = (visibleTypes & itemType) != 0;
+            ObjectHierarchyNode category = new($"{categoryName} ({items.Count})", categoryName, isVisible);
+            foreach (BoardItem item in items)
+                category.Children.Add(CreateItemNode(item, isVisible, category));
+            RootNodes.Add(category);
         }
 
-        private bool MatchesSearch(BoardItem item, string searchFilter)
+        private static ObjectHierarchyNode CreateItemNode(BoardItem item, bool isVisible, ObjectHierarchyNode parent)
+            => new($"{GetShortDescription(item)} @ ({item.X}, {item.Y})", item, isVisible, parent);
+
+        private static bool MatchesSearch(BoardItem item, string filter) =>
+            string.IsNullOrEmpty(filter) || HaCreatorStateManager.CreateItemDescription(item).Contains(filter, StringComparison.OrdinalIgnoreCase);
+
+        private static string GetShortDescription(BoardItem item) => item switch
         {
-            if (string.IsNullOrEmpty(searchFilter))
-                return true;
+            TileInstance tile => $"{((HaCreator.MapEditor.Info.TileInfo)tile.BaseInfo).tS}\\{((HaCreator.MapEditor.Info.TileInfo)tile.BaseInfo).u}\\{((HaCreator.MapEditor.Info.TileInfo)tile.BaseInfo).no}",
+            ObjectInstance obj => $"{((HaCreator.MapEditor.Info.ObjectInfo)obj.BaseInfo).oS}\\{((HaCreator.MapEditor.Info.ObjectInfo)obj.BaseInfo).l0}\\{((HaCreator.MapEditor.Info.ObjectInfo)obj.BaseInfo).l1}\\{((HaCreator.MapEditor.Info.ObjectInfo)obj.BaseInfo).l2}",
+            BackgroundInstance background => $"{((HaCreator.MapEditor.Info.BackgroundInfo)background.BaseInfo).bS}\\{((HaCreator.MapEditor.Info.BackgroundInfo)background.BaseInfo).Type}\\{((HaCreator.MapEditor.Info.BackgroundInfo)background.BaseInfo).no}",
+            PortalInstance portal => $"{portal.pn} ({portal.pt})",
+            MobInstance mob => $"{((HaCreator.MapEditor.Info.MobInfo)mob.BaseInfo).Name} ({((HaCreator.MapEditor.Info.MobInfo)mob.BaseInfo).ID})",
+            NpcInstance npc => $"{((HaCreator.MapEditor.Info.NpcInfo)npc.BaseInfo).StringName} ({((HaCreator.MapEditor.Info.NpcInfo)npc.BaseInfo).ID})",
+            ReactorInstance reactor => $"Reactor {((HaCreator.MapEditor.Info.ReactorInfo)reactor.BaseInfo).ID}",
+            FootholdAnchor => "Anchor",
+            RopeAnchor rope => rope.ParentRope?.ladder == true ? "Ladder" : "Rope",
+            Chair => "Chair",
+            ToolTipInstance => "Tooltip",
+            ToolTipChar => "CharTooltip",
+            MirrorFieldData mirror => $"Mirror ({mirror.MirrorFieldDataType})",
+            INamedMisc misc => misc.Name,
+            _ => item.GetType().Name
+        };
 
-            string desc = HaCreatorStateManager.CreateItemDescription(item).ToLowerInvariant();
-            return desc.Contains(searchFilter);
-        }
-
-        #endregion
-
-        #region Selection Synchronization
-
-        /// <summary>
-        /// Called when board selection changes - syncs tree selection from board.
-        /// </summary>
         private void OnBoardSelectionChanged(BoardItem selectedItem)
         {
-            if (_suppressSelectionSync)
+            if (suppressSelectionSync)
                 return;
-
-            if (InvokeRequired)
+            if (!Dispatcher.CheckAccess())
             {
-                BeginInvoke(new Action(() => OnBoardSelectionChanged(selectedItem)));
+                Dispatcher.BeginInvoke(new Action(() => OnBoardSelectionChanged(selectedItem)));
                 return;
             }
-
-            _suppressSelectionSync = true;
+            suppressSelectionSync = true;
             try
             {
                 UpdateSelectionFromBoard();
@@ -476,365 +276,232 @@ namespace HaCreator.GUI.EditorPanels
             }
             finally
             {
-                _suppressSelectionSync = false;
+                suppressSelectionSync = false;
             }
         }
 
         private void UpdateSelectionFromBoard()
         {
-            if (_currentBoard == null)
+            if (currentBoard == null || hcsm == null)
                 return;
-
-            // Clear all highlights first
-            ClearAllHighlights(objectTreeView.Nodes);
-
-            // Highlight selected items - use ToList() to avoid collection modification exception
-            List<BoardItem> selectedItems;
+            HashSet<BoardItem> selected;
             lock (hcsm.MultiBoard)
-            {
-                selectedItems = _currentBoard.SelectedItems.ToList();
-            }
+                selected = new HashSet<BoardItem>(currentBoard.SelectedItems);
 
-            foreach (BoardItem item in selectedItems)
+            ObjectHierarchyNode nodeToReveal = null;
+            foreach (ObjectHierarchyNode node in EnumerateNodes(RootNodes))
             {
-                TreeNode node = FindNodeByItem(objectTreeView.Nodes, item);
-                if (node != null)
-                {
-                    node.BackColor = SystemColors.Highlight;
-                    node.ForeColor = SystemColors.HighlightText;
-                    node.EnsureVisible();
-                    objectTreeView.SelectedNode = node;
-                }
+                node.IsBoardSelected = node.Tag is BoardItem item && selected.Contains(item);
+                node.IsSelected = false;
+                if (node.IsBoardSelected)
+                    nodeToReveal = node;
             }
-        }
-
-        private void ClearAllHighlights(TreeNodeCollection nodes)
-        {
-            foreach (TreeNode node in nodes)
+            if (nodeToReveal != null)
             {
-                if (node.Tag is BoardItem item)
-                {
-                    // Restore visibility-based styling
-                    bool isVisible = (_currentBoard.VisibleTypes & item.Type) != 0;
-                    node.BackColor = SystemColors.Window;
-                    node.ForeColor = isVisible ? SystemColors.WindowText : SystemColors.GrayText;
-                }
-                ClearAllHighlights(node.Nodes);
+                for (ObjectHierarchyNode parent = nodeToReveal.Parent; parent != null; parent = parent.Parent)
+                    parent.IsExpanded = true;
+                nodeToReveal.IsSelected = true;
             }
         }
 
-        private TreeNode FindNodeByItem(TreeNodeCollection nodes, BoardItem item)
+        private static IEnumerable<ObjectHierarchyNode> EnumerateNodes(IEnumerable<ObjectHierarchyNode> nodes)
         {
-            foreach (TreeNode node in nodes)
+            foreach (ObjectHierarchyNode node in nodes)
             {
-                if (node.Tag == item)
-                    return node;
-
-                TreeNode found = FindNodeByItem(node.Nodes, item);
-                if (found != null)
-                    return found;
+                yield return node;
+                foreach (ObjectHierarchyNode child in EnumerateNodes(node.Children))
+                    yield return child;
             }
-            return null;
         }
 
-        /// <summary>
-        /// Called when tree selection changes - selects item on board and scrolls to it.
-        /// </summary>
-        private void ObjectTreeView_AfterSelect(object sender, TreeViewEventArgs e)
+        private void ObjectTreeView_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
         {
-            if (_suppressSelectionSync)
+            if (suppressSelectionSync || e.NewValue is not ObjectHierarchyNode { Tag: BoardItem item })
                 return;
-
-            if (e.Node?.Tag is not BoardItem item)
-                return;
-
-            _suppressSelectionSync = true;
+            suppressSelectionSync = true;
             try
             {
                 lock (hcsm.MultiBoard)
                 {
-                    // Clear existing selection unless Ctrl is held
-                    if (!IsKeyDown(Keys.ControlKey))
-                    {
-                        InputHandler.ClearSelectedItems(_currentBoard);
-                    }
-
-                    // Select the item on the board
+                    if ((Keyboard.Modifiers & ModifierKeys.Control) == 0)
+                        InputHandler.ClearSelectedItems(currentBoard);
                     item.Selected = true;
-
-                    // Scroll the board to center on the selected item
                     CenterViewOnItem(item);
-
                     hcsm.MultiBoard.Focus();
                 }
+                UpdateSelectionFromBoard();
                 UpdateStatistics();
             }
             finally
             {
-                _suppressSelectionSync = false;
+                suppressSelectionSync = false;
             }
         }
 
-        private bool IsKeyDown(Keys key)
+        private void ObjectTreeView_MouseDoubleClick(object sender, MouseButtonEventArgs e)
         {
-            return (Control.ModifierKeys & Keys.Control) == Keys.Control;
+            if (objectTreeView.SelectedItem is ObjectHierarchyNode { Tag: BoardItem item })
+                CenterViewOnItem(item);
         }
 
-        #endregion
+        private void ObjectTreeView_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            DependencyObject element = e.OriginalSource as DependencyObject;
+            while (element != null && element is not TreeViewItem)
+                element = VisualTreeHelper.GetParent(element);
+            if (element is TreeViewItem treeItem && treeItem.DataContext is ObjectHierarchyNode node)
+            {
+                treeItem.IsSelected = true;
+                contextNode = node;
+            }
+        }
 
-        #region Jump to Object
-
-        /// <summary>
-        /// Centers the viewport on the specified item.
-        /// </summary>
         private void CenterViewOnItem(BoardItem item)
         {
-            if (_currentBoard == null || hcsm == null)
+            if (currentBoard == null || hcsm == null)
                 return;
-
             lock (hcsm.MultiBoard)
             {
-                // Get viewport size in virtual (map) coordinates, accounting for zoom
-                float zoom = _currentBoard.Zoom;
-                int viewW = (int)(hcsm.MultiBoard.CurrentDXWindowSize.Width / zoom);
-                int viewH = (int)(hcsm.MultiBoard.CurrentDXWindowSize.Height / zoom);
-
-                // Calculate scroll position to center the item
-                // Screen position formula: screenPos = (itemPos + centerPoint - scroll) * zoom
-                // To center: we want itemPos + centerPoint - scroll = viewW / 2 (in virtual coords)
-                // So: scroll = itemPos + centerPoint - viewW / 2
-                int targetHScroll = item.X + _currentBoard.CenterPoint.X - viewW / 2;
-                int targetVScroll = item.Y + _currentBoard.CenterPoint.Y - viewH / 2;
-
-                // Clamp to valid scroll range (0 to mapSize)
-                targetHScroll = Math.Max(0, targetHScroll);
-                targetVScroll = Math.Max(0, targetVScroll);
-
-                _currentBoard.hScroll = targetHScroll;
-                _currentBoard.vScroll = targetVScroll;
+                float zoom = currentBoard.Zoom;
+                int viewWidth = (int)(hcsm.MultiBoard.CurrentDXWindowSize.Width / zoom);
+                int viewHeight = (int)(hcsm.MultiBoard.CurrentDXWindowSize.Height / zoom);
+                currentBoard.hScroll = Math.Max(0, item.X + currentBoard.CenterPoint.X - viewWidth / 2);
+                currentBoard.vScroll = Math.Max(0, item.Y + currentBoard.CenterPoint.Y - viewHeight / 2);
             }
         }
-
-        private void ObjectTreeView_NodeMouseDoubleClick(object sender, TreeNodeMouseClickEventArgs e)
-        {
-            if (e.Node?.Tag is BoardItem item)
-            {
-                CenterViewOnItem(item);
-            }
-        }
-
-        #endregion
-
-        #region Statistics
 
         private void UpdateStatistics()
         {
-            if (_currentBoard == null)
+            if (currentBoard == null || hcsm == null)
             {
-                lblTotalCount.Text = "Total: 0";
-                lblSelectedCount.Text = "| Selected: 0";
+                totalCountText.Text = EditorPanelLocalizer.Format("Format_Total", 0);
+                selectedCountText.Text = EditorPanelLocalizer.Format("Format_Selected", 0);
                 return;
             }
-
             lock (hcsm.MultiBoard)
             {
-                int total = _currentBoard.BoardItems.Count;
-                int selected = _currentBoard.SelectedItems.Count;
-
-                lblTotalCount.Text = $"Total: {total}";
-                lblSelectedCount.Text = $"| Selected: {selected}";
+                totalCountText.Text = EditorPanelLocalizer.Format("Format_Total", currentBoard.BoardItems.Count);
+                selectedCountText.Text = EditorPanelLocalizer.Format("Format_Selected", currentBoard.SelectedItems.Count);
             }
         }
 
-        #endregion
-
-        #region UI Event Handlers
-
-        private void SearchBox_TextChanged(object sender, EventArgs e)
+        private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
         {
-            // Debounce the search
-            _refreshTimer.Stop();
-            _refreshTimer.Start();
+            refreshTimer.Stop();
+            refreshTimer.Start();
         }
 
-        private void BtnRefresh_Click(object sender, EventArgs e)
+        private void Refresh_Click(object sender, RoutedEventArgs e) => RefreshTreeView();
+
+        private void ExpandAll_Click(object sender, RoutedEventArgs e) => SetExpanded(RootNodes, true);
+
+        private void CollapseAll_Click(object sender, RoutedEventArgs e) => SetExpanded(RootNodes, false);
+
+        private static void SetExpanded(IEnumerable<ObjectHierarchyNode> nodes, bool value)
         {
-            RefreshTreeView();
+            foreach (ObjectHierarchyNode node in nodes)
+            {
+                node.IsExpanded = value;
+                SetExpanded(node.Children, value);
+            }
         }
 
-        private void BtnExpandAll_Click(object sender, EventArgs e)
+        private void Viewer_PreviewKeyDown(object sender, KeyEventArgs e)
         {
-            objectTreeView.ExpandAll();
-        }
-
-        private void BtnCollapseAll_Click(object sender, EventArgs e)
-        {
-            objectTreeView.CollapseAll();
-        }
-
-        private void ObjectTreeView_KeyDown(object sender, KeyEventArgs e)
-        {
-            if (e.KeyCode == Keys.Delete)
+            if (e.Key == Key.Delete)
             {
                 DeleteSelectedItems();
                 e.Handled = true;
             }
-            else if (e.KeyCode == Keys.Enter)
-            {
-                if (objectTreeView.SelectedNode?.Tag is BoardItem item)
-                {
-                    CenterViewOnItem(item);
-                    e.Handled = true;
-                }
-            }
-        }
-
-        #endregion
-
-        #region Context Menu
-
-        private void ContextMenuStrip_Opening(object sender, System.ComponentModel.CancelEventArgs e)
-        {
-            bool hasItem = objectTreeView.SelectedNode?.Tag is BoardItem;
-            bool hasCategory = objectTreeView.SelectedNode?.Tag is string;
-
-            selectOnBoardMenuItem.Enabled = hasItem;
-            jumpToObjectMenuItem.Enabled = hasItem;
-            editPropertiesMenuItem.Enabled = hasItem;
-            deleteMenuItem.Enabled = hasItem || (_currentBoard?.SelectedItems.Count > 0);
-            selectAllOfTypeMenuItem.Enabled = hasCategory || hasItem;
-            selectAllInLayerMenuItem.Enabled = objectTreeView.SelectedNode?.Tag is string tag && tag.Contains("Layer");
-        }
-
-        private void SelectOnBoardMenuItem_Click(object sender, EventArgs e)
-        {
-            if (objectTreeView.SelectedNode?.Tag is BoardItem item)
-            {
-                lock (hcsm.MultiBoard)
-                {
-                    InputHandler.ClearSelectedItems(_currentBoard);
-                    item.Selected = true;
-                    hcsm.MultiBoard.Focus();
-                }
-            }
-        }
-
-        private void JumpToObjectMenuItem_Click(object sender, EventArgs e)
-        {
-            if (objectTreeView.SelectedNode?.Tag is BoardItem item)
+            else if (e.Key == Key.Enter && objectTreeView.SelectedItem is ObjectHierarchyNode { Tag: BoardItem item })
             {
                 CenterViewOnItem(item);
+                e.Handled = true;
             }
         }
 
-        private void EditPropertiesMenuItem_Click(object sender, EventArgs e)
+        private BoardItem ContextBoardItem => contextNode?.Tag as BoardItem;
+
+        private void SelectOnBoard_Click(object sender, RoutedEventArgs e)
         {
-            if (objectTreeView.SelectedNode?.Tag is BoardItem item)
+            if (ContextBoardItem is not BoardItem item)
+                return;
+            lock (hcsm.MultiBoard)
             {
-                // Use the existing edit mechanism
-                hcsm.MultiBoard.EditInstanceClicked(item);
+                InputHandler.ClearSelectedItems(currentBoard);
+                item.Selected = true;
+                hcsm.MultiBoard.Focus();
             }
+            UpdateSelectionFromBoard();
+            UpdateStatistics();
         }
 
-        private void DeleteMenuItem_Click(object sender, EventArgs e)
+        private void JumpToObject_Click(object sender, RoutedEventArgs e)
         {
-            DeleteSelectedItems();
+            if (ContextBoardItem is BoardItem item)
+                CenterViewOnItem(item);
         }
+
+        private void EditProperties_Click(object sender, RoutedEventArgs e)
+        {
+            if (ContextBoardItem is BoardItem item)
+                hcsm.MultiBoard.EditInstanceClicked(item);
+        }
+
+        private void Delete_Click(object sender, RoutedEventArgs e) => DeleteSelectedItems();
 
         private void DeleteSelectedItems()
         {
-            if (_currentBoard == null)
+            if (currentBoard == null)
                 return;
-
             lock (hcsm.MultiBoard)
             {
-                List<BoardItem> itemsToDelete = _currentBoard.SelectedItems.ToList();
-                if (itemsToDelete.Count == 0 && objectTreeView.SelectedNode?.Tag is BoardItem singleItem)
+                List<BoardItem> items = currentBoard.SelectedItems.ToList();
+                if (items.Count == 0 && ContextBoardItem is BoardItem contextItem)
+                    items.Add(contextItem);
+                List<UndoRedoAction> actions = new();
+                foreach (BoardItem item in items)
                 {
-                    itemsToDelete.Add(singleItem);
-                }
-
-                if (itemsToDelete.Count == 0)
-                    return;
-
-                List<UndoRedoAction> actions = new List<UndoRedoAction>();
-
-                foreach (BoardItem item in itemsToDelete)
-                {
-                    // Skip special items that require confirmation
-                    if (item is ToolTipDot || item is MiscDot || item is VRDot || item is MinimapDot)
+                    if (item is ToolTipDot or MiscDot or VRDot or MinimapDot)
                         continue;
-
                     item.RemoveItem(actions);
                 }
-
                 if (actions.Count > 0)
-                {
-                    _currentBoard.UndoRedoMan.AddUndoBatch(actions);
-                }
+                    currentBoard.UndoRedoMan.AddUndoBatch(actions);
             }
-
             RefreshTreeView();
         }
 
-        private void SelectAllOfTypeMenuItem_Click(object sender, EventArgs e)
+        private void SelectAllOfType_Click(object sender, RoutedEventArgs e)
         {
-            TreeNode selectedNode = objectTreeView.SelectedNode;
-            if (selectedNode == null)
+            if (contextNode == null)
                 return;
+            ObjectHierarchyNode category = contextNode;
+            while (category.Parent != null)
+                category = category.Parent;
+            SelectItemsInNode(category);
+        }
 
-            // Find the category node
-            TreeNode categoryNode = selectedNode;
-            while (categoryNode.Parent != null && categoryNode.Parent.Tag is string)
-            {
-                categoryNode = categoryNode.Parent;
-            }
-            if (categoryNode.Parent != null)
-            {
-                categoryNode = categoryNode.Parent;
-            }
+        private void SelectAllInLayer_Click(object sender, RoutedEventArgs e)
+        {
+            ObjectHierarchyNode layer = contextNode;
+            while (layer != null && (layer.Tag is not string value || !value.Contains("Layer", StringComparison.Ordinal)))
+                layer = layer.Parent;
+            if (layer != null)
+                SelectItemsInNode(layer);
+        }
 
+        private void SelectItemsInNode(ObjectHierarchyNode node)
+        {
             lock (hcsm.MultiBoard)
             {
-                InputHandler.ClearSelectedItems(_currentBoard);
-                SelectAllItemsInNode(categoryNode);
+                InputHandler.ClearSelectedItems(currentBoard);
+                foreach (BoardItem item in EnumerateNodes(new[] { node }).Select(treeNode => treeNode.Tag).OfType<BoardItem>())
+                    item.Selected = true;
                 hcsm.MultiBoard.Focus();
             }
-
             UpdateSelectionFromBoard();
             UpdateStatistics();
         }
-
-        private void SelectAllInLayerMenuItem_Click(object sender, EventArgs e)
-        {
-            TreeNode selectedNode = objectTreeView.SelectedNode;
-            if (selectedNode?.Tag is not string tag || !tag.Contains("Layer"))
-                return;
-
-            lock (hcsm.MultiBoard)
-            {
-                InputHandler.ClearSelectedItems(_currentBoard);
-                SelectAllItemsInNode(selectedNode);
-                hcsm.MultiBoard.Focus();
-            }
-
-            UpdateSelectionFromBoard();
-            UpdateStatistics();
-        }
-
-        private void SelectAllItemsInNode(TreeNode node)
-        {
-            if (node.Tag is BoardItem item)
-            {
-                item.Selected = true;
-            }
-
-            foreach (TreeNode child in node.Nodes)
-            {
-                SelectAllItemsInNode(child);
-            }
-        }
-
-        #endregion
     }
 }

@@ -1,0 +1,181 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="Title" xml:space="preserve"><value>Skill Editor</value></data>
+  <data name="CommandLabel" xml:space="preserve"><value>Skills</value></data>
+  <data name="Purpose" xml:space="preserve"><value>Browse, validate, preview, and losslessly edit player skills and special Skill data.</value></data>
+  <data name="Save" xml:space="preserve"><value>Save</value></data>
+  <data name="Undo" xml:space="preserve"><value>Undo</value></data>
+  <data name="Redo" xml:space="preserve"><value>Redo</value></data>
+  <data name="ValidateCurrent" xml:space="preserve"><value>Validate current skill</value></data>
+  <data name="ValidateAll" xml:space="preserve"><value>Validate all loaded changes</value></data>
+  <data name="Duplicate" xml:space="preserve"><value>Duplicate</value></data>
+  <data name="NewSkill" xml:space="preserve"><value>New skill</value></data>
+  <data name="Source" xml:space="preserve"><value>Source</value></data>
+  <data name="Search" xml:space="preserve"><value>Search by skill ID or name</value></data>
+  <data name="Scope" xml:space="preserve"><value>Scope</value></data>
+  <data name="All" xml:space="preserve"><value>All</value></data>
+  <data name="Player" xml:space="preserve"><value>Player</value></data>
+  <data name="Special" xml:space="preserve"><value>Special data</value></data>
+  <data name="Books" xml:space="preserve"><value>Jobs and skill books</value></data>
+  <data name="Skills" xml:space="preserve"><value>Skills</value></data>
+  <data name="Overview" xml:space="preserve"><value>Overview</value></data>
+  <data name="Levels" xml:space="preserve"><value>Levels</value></data>
+  <data name="Visuals" xml:space="preserve"><value>Visuals</value></data>
+  <data name="Relationships" xml:space="preserve"><value>Relationships</value></data>
+  <data name="KnownProperties" xml:space="preserve"><value>Known properties</value></data>
+  <data name="RawProperties" xml:space="preserve"><value>Raw properties</value></data>
+  <data name="Validation" xml:space="preserve"><value>Validation</value></data>
+  <data name="SkillId" xml:space="preserve"><value>Skill ID</value></data>
+  <data name="Book" xml:space="preserve"><value>Book / job</value></data>
+  <data name="Name" xml:space="preserve"><value>Name</value></data>
+  <data name="Description" xml:space="preserve"><value>Description</value></data>
+  <data name="EditText" xml:space="preserve"><value>Edit text metadata</value></data>
+  <data name="OtherImageWarning" xml:space="preserve"><value>This also modifies String/Skill.img.</value></data>
+  <data name="FormulaMode" xml:space="preserve"><value>Formula mode</value></data>
+  <data name="ExplicitMode" xml:space="preserve"><value>Explicit levels</value></data>
+  <data name="PreviewLevel" xml:space="preserve"><value>Preview level</value></data>
+  <data name="Property" xml:space="preserve"><value>Property</value></data>
+  <data name="Type" xml:space="preserve"><value>WZ type</value></data>
+  <data name="RawValue" xml:space="preserve"><value>Raw value</value></data>
+  <data name="Evaluated" xml:space="preserve"><value>Evaluated</value></data>
+  <data name="PvpCommon" xml:space="preserve"><value>PVPcommon</value></data>
+  <data name="VisualTracks" xml:space="preserve"><value>Visual tracks</value></data>
+  <data name="ShowCharacter" xml:space="preserve"><value>Show character</value></data>
+  <data name="Action" xml:space="preserve"><value>Action</value></data>
+  <data name="Auto" xml:space="preserve"><value>Auto</value></data>
+  <data name="Facing" xml:space="preserve"><value>Facing</value></data>
+  <data name="FacingLeft" xml:space="preserve"><value>Left</value></data>
+  <data name="FacingRight" xml:space="preserve"><value>Right</value></data>
+  <data name="CharacterPreset" xml:space="preserve"><value>Character preset</value></data>
+  <data name="Male" xml:space="preserve"><value>Default male</value></data>
+  <data name="Female" xml:space="preserve"><value>Default female</value></data>
+  <data name="Custom" xml:space="preserve"><value>Custom</value></data>
+  <data name="Play" xml:space="preserve"><value>Play or pause preview</value></data>
+  <data name="PreviousFrame" xml:space="preserve"><value>Previous frame</value></data>
+  <data name="NextFrame" xml:space="preserve"><value>Next frame</value></data>
+  <data name="Materialize" xml:space="preserve"><value>Materialize link</value></data>
+  <data name="Import" xml:space="preserve"><value>Import</value></data>
+  <data name="Export" xml:space="preserve"><value>Export</value></data>
+  <data name="Add" xml:space="preserve"><value>Add</value></data>
+  <data name="Delete" xml:space="preserve"><value>Delete</value></data>
+  <data name="Rename" xml:space="preserve"><value>Rename</value></data>
+  <data name="ChangeType" xml:space="preserve"><value>Change type</value></data>
+  <data name="CopyPath" xml:space="preserve"><value>Copy path</value></data>
+  <data name="RelationshipKind" xml:space="preserve"><value>Relationship</value></data>
+  <data name="TargetSkill" xml:space="preserve"><value>Target skill</value></data>
+  <data name="Path" xml:space="preserve"><value>WZ path</value></data>
+  <data name="Status" xml:space="preserve"><value>Status</value></data>
+  <data name="Ready" xml:space="preserve"><value>Ready</value></data>
+  <data name="Loading" xml:space="preserve"><value>Loading…</value></data>
+  <data name="Saving" xml:space="preserve"><value>Saving…</value></data>
+  <data name="Dirty" xml:space="preserve"><value>Unsaved changes</value></data>
+  <data name="PreservedRaw" xml:space="preserve"><value>Unknown fields are preserved in Raw properties.</value></data>
+  <data name="NoSelection" xml:space="preserve"><value>Select a skill to begin.</value></data>
+  <data name="NoDataSource" xml:space="preserve"><value>No active MapleStory data source is available.</value></data>
+  <data name="LoadFailed" xml:space="preserve"><value>Could not load the skill: {0}</value></data>
+  <data name="SaveSucceeded" xml:space="preserve"><value>Saved {0} image(s).</value></data>
+  <data name="SaveFailed" xml:space="preserve"><value>Save failed: {0}</value></data>
+  <data name="PartialSave" xml:space="preserve"><value>Partial save. Reload these recovery paths before continuing: {0}</value></data>
+  <data name="ValidationSummary" xml:space="preserve"><value>{0} error(s), {1} warning(s)</value></data>
+  <data name="UnsavedPrompt" xml:space="preserve"><value>Save changes to skill {0} before continuing?</value></data>
+  <data name="Discard" xml:space="preserve"><value>Discard</value></data>
+  <data name="Cancel" xml:space="preserve"><value>Cancel</value></data>
+  <data name="ConfirmDelete" xml:space="preserve"><value>Delete raw property '{0}'? This preserves no backup outside Undo.</value></data>
+  <data name="ConfirmMaterialize" xml:space="preserve"><value>Materialize this link into a detached copy? The serialized link will be replaced.</value></data>
+  <data name="ActionFallback" xml:space="preserve"><value>{0} → {1}: {2}</value></data>
+  <data name="NoAction" xml:space="preserve"><value>No action declared</value></data>
+  <data name="UnsupportedSemantic" xml:space="preserve"><value>This structure remains fully editable in Raw properties.</value></data>
+  <data name="Level" xml:space="preserve"><value>Level</value></data>
+  <data name="Absent" xml:space="preserve"><value>(absent)</value></data>
+  <data name="PngImageFilter" xml:space="preserve"><value>PNG image|*.png</value></data>
+  <data name="Ok" xml:space="preserve"><value>OK</value></data>
+  <data name="OperationFailed" xml:space="preserve"><value>Operation failed: {0}</value></data>
+  <data name="EditProperty" xml:space="preserve"><value>Edit {0}</value></data>
+  <data name="EditStringMetadata" xml:space="preserve"><value>Edit String metadata</value></data>
+  <data name="EditRawProperty" xml:space="preserve"><value>Edit raw property</value></data>
+  <data name="EditFormula" xml:space="preserve"><value>Edit formula</value></data>
+  <data name="DeleteRawProperty" xml:space="preserve"><value>Delete raw property</value></data>
+  <data name="RenameRawProperty" xml:space="preserve"><value>Rename raw property</value></data>
+  <data name="AddRawProperty" xml:space="preserve"><value>Add raw property</value></data>
+  <data name="ChangeRawPropertyType" xml:space="preserve"><value>Change raw property type</value></data>
+  <data name="AlphaEnd" xml:space="preserve"><value>Alpha end</value></data>
+  <data name="AlphaStart" xml:space="preserve"><value>Alpha start</value></data>
+  <data name="ApplyProfile" xml:space="preserve"><value>Apply profile</value></data>
+  <data name="Body" xml:space="preserve"><value>Body</value></data>
+  <data name="CopyCell" xml:space="preserve"><value>Copy cell</value></data>
+  <data name="CopyPropertyToLoaded" xml:space="preserve"><value>Copy property to loaded skills</value></data>
+  <data name="CustomProfile" xml:space="preserve"><value>Custom profile</value></data>
+  <data name="Delay" xml:space="preserve"><value>Delay</value></data>
+  <data name="DeleteSkill" xml:space="preserve"><value>Delete skill</value></data>
+  <data name="DuplicateProperty" xml:space="preserve"><value>Duplicate property</value></data>
+  <data name="Equipment" xml:space="preserve"><value>Equipment</value></data>
+  <data name="EquipmentHint" xml:space="preserve"><value>Enter item IDs separated by commas</value></data>
+  <data name="ExportData" xml:space="preserve"><value>Export data</value></data>
+  <data name="ExportIcon" xml:space="preserve"><value>Export icon</value></data>
+  <data name="Face" xml:space="preserve"><value>Face</value></data>
+  <data name="FillDown" xml:space="preserve"><value>Fill down</value></data>
+  <data name="Fit" xml:space="preserve"><value>Fit</value></data>
+  <data name="FrameDelete" xml:space="preserve"><value>Delete frame</value></data>
+  <data name="FrameDuplicate" xml:space="preserve"><value>Duplicate frame</value></data>
+  <data name="Hair" xml:space="preserve"><value>Hair</value></data>
+  <data name="Head" xml:space="preserve"><value>Head</value></data>
+  <data name="HoldStage" xml:space="preserve"><value>Hold stage</value></data>
+  <data name="ImportData" xml:space="preserve"><value>Import data</value></data>
+  <data name="ImportIcon" xml:space="preserve"><value>Import icon</value></data>
+  <data name="MoveLeft" xml:space="preserve"><value>Move left</value></data>
+  <data name="MoveRight" xml:space="preserve"><value>Move right</value></data>
+  <data name="NavigateRelationship" xml:space="preserve"><value>Go to relationship</value></data>
+  <data name="OnionSkin" xml:space="preserve"><value>Onion skin</value></data>
+  <data name="OriginX" xml:space="preserve"><value>Origin X</value></data>
+  <data name="OriginY" xml:space="preserve"><value>Origin Y</value></data>
+  <data name="PlaybackSpeed" xml:space="preserve"><value>Playback speed</value></data>
+  <data name="RekeyFrames" xml:space="preserve"><value>Rekey frames</value></data>
+  <data name="ReleaseStage" xml:space="preserve"><value>Release stage</value></data>
+  <data name="RenameMoveSkill" xml:space="preserve"><value>Rename or move skill</value></data>
+  <data name="RenderedDescription" xml:space="preserve"><value>Rendered description</value></data>
+  <data name="ResolveLink" xml:space="preserve"><value>Resolve link</value></data>
+  <data name="Z" xml:space="preserve"><value>Z</value></data>
+  <data name="Zoom" xml:space="preserve"><value>Zoom</value></data>
+  <data name="EditorMode" xml:space="preserve"><value>Editor mode</value></data><data name="ModePlayer" xml:space="preserve"><value>Player skill</value></data><data name="ModeAttackType" xml:space="preserve"><value>Attack type</value></data><data name="ModeItemSkill" xml:space="preserve"><value>Item skill</value></data><data name="ModeMobSkill" xml:space="preserve"><value>Monster skill</value></data><data name="ModeBattlefield" xml:space="preserve"><value>Battlefield</value></data><data name="ModeMiniGame" xml:space="preserve"><value>Mini-game</value></data><data name="ModeRecipe" xml:space="preserve"><value>Recipe</value></data><data name="ModeDragon" xml:space="preserve"><value>Dragon</value></data><data name="ModeModernGraph" xml:space="preserve"><value>Modern graph</value></data><data name="ModeGeneric" xml:space="preserve"><value>Generic data</value></data>
+  <data name="ValidationNoSelection" xml:space="preserve"><value>No skill is selected.</value></data>
+  <data name="ValidationInvalidSkillId" xml:space="preserve"><value>Skill ID '{0}' must contain digits only.</value></data>
+  <data name="ValidationIdMismatch" xml:space="preserve"><value>Serialized node '{0}' does not match selected skill ID '{1}'.</value></data>
+  <data name="ValidationDuplicateProperty" xml:space="preserve"><value>Duplicate property name '{0}'.</value></data>
+  <data name="ValidationInvalidCanvasDelay" xml:space="preserve"><value>Animation delays must be greater than zero.</value></data>
+  <data name="ValidationInvalidContainerDelay" xml:space="preserve"><value>A zero or negative delay is preserved and previewed with a bounded fallback.</value></data>
+  <data name="ValidationBrokenExistingUol" xml:space="preserve"><value>The pre-existing UOL target '{0}' is broken or cyclic.</value></data>
+  <data name="ValidationBrokenIntroducedUol" xml:space="preserve"><value>The edited UOL target '{0}' is broken or cyclic.</value></data>
+  <data name="ValidationFormulaInvalid" xml:space="preserve"><value>The formula is malformed or uses unsupported syntax.</value></data>
+  <data name="ValidationFormulaDivisionByZero" xml:space="preserve"><value>The formula divides by zero at level {0}.</value></data>
+  <data name="ValidationMissingProgression" xml:space="preserve"><value>The skill has neither common formulas nor an explicit level table.</value></data>
+  <data name="ValidationMissingIcon" xml:space="preserve"><value>The skill has no icon.</value></data>
+  <data name="ValidationMissingString" xml:space="preserve"><value>String metadata is missing.</value></data>
+  <data name="ValidationMissingStringName" xml:space="preserve"><value>The localized skill name is missing.</value></data>
+  <data name="ValidationMissingMaximum" xml:space="preserve"><value>The skill has no declared maximum or explicit levels.</value></data>
+  <data name="ValidationMaximumMismatch" xml:space="preserve"><value>common/maxLevel ({0}) differs from maxLevel ({1}).</value></data>
+  <data name="ValidationUnexpectedBook" xml:space="preserve"><value>Skill ID {0} appears in unexpected book {1}.</value></data>
+  <data name="ValidationMissingReference" xml:space="preserve"><value>Referenced skill {0} was not found.</value></data>
+  <data name="ValidationAmbiguousReference" xml:space="preserve"><value>Referenced skill {0} exists in more than one book.</value></data>
+  <data name="ValidationPlaceholderImage" xml:space="preserve"><value>This is a zero-length or placeholder image.</value></data>
+  <data name="ValidationModernGraph" xml:space="preserve"><value>The modern process graph is preserved but has no specialized validator.</value></data>
+  <data name="ValidationEmptyAction" xml:space="preserve"><value>The declared character action is empty.</value></data>
+  <data name="Active" xml:space="preserve"><value>Active</value></data>
+  <data name="Passive" xml:space="preserve"><value>Passive</value></data>
+  <data name="Hidden" xml:space="preserve"><value>Hidden</value></data>
+  <data name="Warnings" xml:space="preserve"><value>Warnings</value></data>
+  <data name="SearchProperties" xml:space="preserve"><value>Exact property search</value></data>
+  <data name="Classification" xml:space="preserve"><value>Classification</value></data>
+  <data name="MaximumLevel" xml:space="preserve"><value>Maximum level</value></data>
+  <data name="RequirementsFlags" xml:space="preserve"><value>Requirements and flags</value></data>
+  <data name="DragonAssets" xml:space="preserve"><value>Open Dragon assets</value></data>
+  <data name="TimelineFrames" xml:space="preserve"><value>Animation frames</value></data>
+  <data name="TimelineClipboardTooltip" xml:space="preserve"><value>Select a frame, then press Ctrl+C to copy or Ctrl+V to paste it after the selection.</value></data>
+  <data name="FrameCopied" xml:space="preserve"><value>Frame copied.</value></data>
+  <data name="FramePasted" xml:space="preserve"><value>Frame pasted.</value></data>
+  <data name="ClipboardHasNoImage" xml:space="preserve"><value>The clipboard does not contain an image frame.</value></data>
+  <data name="WebpImageFilter" xml:space="preserve"><value>WebP image (*.webp)|*.webp</value></data>
+</root>

@@ -6,6 +6,7 @@ using MapleLib.WzLib.WzProperties;
 using System.Collections;
 using System.Drawing;
 using HaRepacker.Comparer;
+using HaRepacker.GUI;
 using System.IO;
 using System.Linq;
 
@@ -219,7 +220,7 @@ namespace HaRepacker
             }
             else
             {
-                MessageBox.Show("Cannot insert node \"" + node.Text + "\" because a node with the same name already exists. Skipping.", "Skipping Node", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show(string.Format(UiLocalization.Translate("Cannot insert node \"{0}\" because a node with the same name already exists. Skipping."), node.Text), UiLocalization.Translate("Skipping Node"), MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return false;
             }
         }
@@ -265,13 +266,13 @@ namespace HaRepacker
                 }
                 else
                 {
-                    Warning.Error("Could not insert property, make sure all types are correct");
+                    Warning.Error(UiLocalization.Translate("Could not insert property; make sure all types are correct."));
                     return null;
                 }
             }
             else
             {
-                MessageBox.Show("Cannot insert object \"" + obj.Name + "\" because an object with the same name already exists. Skipping.", "Skipping Object", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show(string.Format(UiLocalization.Translate("Cannot insert object \"{0}\" because an object with the same name already exists. Skipping."), obj.Name), UiLocalization.Translate("Skipping Object"), MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return null;
             }
         }

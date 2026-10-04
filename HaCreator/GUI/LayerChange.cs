@@ -1,5 +1,6 @@
 ﻿using HaCreator.MapEditor;
 using HaCreator.MapEditor.Info;
+using HaCreator.GUI.Localization;
 using HaCreator.MapEditor.Input;
 using HaCreator.MapEditor.Instance;
 using HaCreator.MapEditor.UndoRedo;
@@ -11,7 +12,8 @@ using System.Drawing;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using System.Windows.Forms;
+using System.Windows;
+using System.Windows.Controls;
 
 namespace HaCreator.GUI
 {
@@ -73,11 +75,11 @@ namespace HaCreator.GUI
 
         protected override void okButton_Click(object sender, EventArgs e)
         {
+            if (layerBox.SelectedIndex < 0 || zmBox.SelectedItem is not int zm) return;
             Layer targetLayer = board.Layers[layerBox.SelectedIndex];
-            int zm = (int)zmBox.SelectedItem;
             if (!LayerCapableOfHoldingSelectedItems(targetLayer))
             {
-                MessageBox.Show("Error: Target layer cannot hold the selected items because they contain tiles with a tS different from the layer's", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show(DialogTextExtension.Get("Dialog_LayerTileSetMismatch"), DialogTextExtension.Get("Dialog_CannotChangeLayer"), MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
             List<UndoRedoAction> actions = new List<UndoRedoAction>();
@@ -101,11 +103,15 @@ namespace HaCreator.GUI
             Close();
         }
 
-        private void layerBox_SelectedIndexChanged(object sender, EventArgs e)
+        private void LayerBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
+            if (layerBox.SelectedIndex < 0) return;
             zmBox.Items.Clear();
             board.Layers[layerBox.SelectedIndex].zMList.ToList().ForEach(x => zmBox.Items.Add(x));
             zmBox.SelectedIndex = 0;
         }
+
+        private void Cancel_Click(object sender, RoutedEventArgs e) => cancelButton_Click(sender, EventArgs.Empty);
+        private void Ok_Click(object sender, RoutedEventArgs e) => okButton_Click(sender, EventArgs.Empty);
     }
 }

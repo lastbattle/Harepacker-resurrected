@@ -104,12 +104,12 @@
   - **NPC data**: No longer preloaded, loaded when user views NPC selector
   - Reduced parallel extraction degree to prevent memory spikes
 - `HaCreator/CustomControls/MapBrowser.cs` - Added `LoadMapImageOnDemand()` for lazy map loading
-- `HaCreator/GUI/Load.cs` - Added on-demand map loading and MapInfo creation
+- `HaCreator/GUI/MapLoadService.cs` - Handles on-demand map loading and MapInfo creation from the docked map explorer
 - `HaCreator/MapEditor/HaCreatorStateManager.cs` - Added on-demand map loading for simulator and MapInfo creation
 - `HaCreator/GUI/InstanceEditor/LoadNpcSelector.cs` - NPCs now load on-demand when viewed
 - `HaCreator/Wz/MapLoader.cs` - Added defensive null check for MapInfo with on-demand creation
 - `MapleLib/MapleLib/Img/LRUCache.cs` - Disabled disposal on eviction (other caches hold property references)
-- `MapleLib/MapleLib/Img/ImgFileSystemManager.cs` - Uses freeResources=true (lazy loading doesn't work for IMG files)
+- `MapleLib/MapleLib/Img/ImgFileSystemManager.cs` - Parses standalone IMG metadata with shareable readers; binary/canvas payloads remain lazy
 
 **Memory Optimization Summary**:
 | Data Type | Before | After |
@@ -118,19 +118,21 @@
 | Objects (~1000s) | All loaded at startup | Only loaded when accessed |
 | Backgrounds (~100s) | All loaded at startup | Only loaded when accessed |
 | Maps (~1000s) | All WzImages kept in memory | Only metadata kept; WzImage loaded on-demand |
-| NPCs (~1000s) | All loaded at startup | Loaded individually when viewed |
-| Mobs (~1000s) | All icons loaded at startup | Names from String.wz only; icons load on-demand |
-| Items (~10000s) | All icons loaded at startup | Names from String.wz only; icons load on-demand |
-| Skills (~1000s) | All loaded at startup | Names from String.wz only; images load on-demand |
+| NPCs (~1000s) | All loaded at startup | IDs listed from filenames; loaded individually when viewed |
+| Mobs (~1000s) | All icons loaded at startup | IDs listed from filenames; map-owned assets load on-demand |
+| Items (~10000s) | All icons loaded at startup | Names and icons load when an item selector needs them |
+| Skills (~1000s) | All loaded at startup | Names load in selector workflows; active-character images load on-demand |
+| BGM | All Sound IMGs parsed at startup | The opened map's BGM image/property only |
+| Reactors | Entire category parsed at startup | IDs referenced by the opened map; picker thumbnails on-demand |
 | MapInfo | Created for all maps at startup | Created on-demand when map is opened |
 | Image Cache | Unbounded (40GB+) | LRU cache limited to 512MB |
 
-**Expected Results**: Initial memory usage reduced from 40GB+ to ~2-4GB for a 4GB extracted directory
+**Measured result**: The post-V/64-bit probe uses about 99 MB working set after startup extraction; see `docs/perf/post-v-img-startup.md`.
 
 **Key Implementation Details**:
-- **freeResources=true**: IMG files are fully parsed and file handles closed immediately. Lazy loading (freeResources=false) doesn't work for IMG files because each file has its own reader that gets into a bad state after structure parsing.
+- **Lazy standalone readers**: IMG files are opened with read/write/delete sharing, property metadata is parsed once, and the reader position is restored after parsing. Sound/canvas properties retain offsets and read only selected payloads. Packing and saving paths calculate checksums when required; read-only startup does not scan whole files for checksums.
 - **No disposal on LRU eviction**: When images are evicted from the LRU cache, they are NOT disposed because other caches (MobIconCache, ItemIconCache, etc.) hold references to WzImageProperty objects inside the WzImages. Disposing would invalidate these references.
-- **MapInfo on-demand**: MapInfo is created lazily when a map is actually opened, not during ExtractMaps. This is handled in `Load.cs`, `HaCreatorStateManager.cs`, and `MapLoader.CreateMapFromImage`.
+- **MapInfo on-demand**: MapInfo is created lazily when a map is actually opened, not during ExtractMaps. This is handled in `MapLoadService.cs`, `HaCreatorStateManager.cs`, and `MapLoader.CreateMapFromImage`.
 
 ### Phase 8 Completed Files
 - `MapleLib/MapleLib/Img/BatchConverter.cs` - Batch conversion tool for multiple versions:
@@ -2095,6 +2097,7 @@ The canvas separation feature has been implemented with the following components
 | 1.7 | 2025-12-31 | Claude | **Concurrent IMG Packing & Base.wz Fix**: (1) IMG files within the same WZ category are now processed concurrently using `Parallel.ForEach` with `MAX_DEGREE_OF_PARALLELISM = Environment.ProcessorCount - 1`, significantly improving packing speed. (2) Fixed Base.wz extraction - the extraction service now properly handles Base.wz which typically contains only directory structure with no IMG files. |
 | 1.8 | 2025-12-31 | Claude | **Concurrent WZ Extraction**: WZ categories (Map.wz, Mob.wz, String.wz, etc.) are now extracted concurrently using `Parallel.ForEachAsync` with `MAX_EXTRACTION_PARALLELISM = Environment.ProcessorCount - 1`. Progress display shows aggregate status ("5 active, 3/17 complete") instead of chaotically jumping file names. See Appendix H for details. |
 | 1.9 | 2025-12-31 | Claude | **WZ File Selection**: Added CheckedListBox UI to "Extract WZ to IMG Files" dialog allowing users to select which WZ files to extract. Includes "Scan WZ Files" button to discover files, "Select All/None" buttons. Standard WZ files are auto-checked; backup files (e.g., `Map.wz_BAK_...`) shown but unchecked. See Appendix I for details. |
+| 2.0 | 2026-08-10 | Codex | **Post-V startup loading**: made category indexes and standalone payloads lazy; restricted startup extraction to map-list/editor-shell data; moved BGM, reactor, mob/NPC, skill/item names, and Quest data to their owning map, character, selector, or editor workflows. |
 
 ---
 

@@ -9,10 +9,12 @@ namespace HaCreator.MapEditor.Input
     public enum MouseState
     {
         Selection,
+        Eraser,
         StaticObjectAdding,
         RandomTiles,
         Footholds,
         Ropes,
+        Regions,
         Chairs,
         Tooltip,
         Clock

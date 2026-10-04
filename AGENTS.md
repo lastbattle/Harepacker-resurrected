@@ -2,7 +2,7 @@
 
 ## Purpose
 This file gives coding agents a reliable operating guide for `Harepacker-resurrected`.
-Use it to make focused, low-risk changes that match this codebase.
+Use it to make changes that match this codebase.
 
 ## Project Snapshot
 - Solution: `MapleHaSuite.sln`
@@ -17,6 +17,11 @@ Use it to make focused, low-risk changes that match this codebase.
   - `UnitTest_MapSimulator`
   - `UnitTest_WzFile`
   - `UnitTest_Perf`
+  - `UnitTest_SkillEditor`
+  - `UnitTest_WorldMapEditor`
+  - `UnitTest_AnimationEditor`
+  - `UnitTest_AudioEditor`
+  - `UnitTest_MapleGame`
 - Platform: Windows
 - Current target framework in active projects: `net10.0-windows`
 
@@ -77,9 +82,15 @@ Notes:
   - Name filtering: `Get-ChildItem -Recurse -File -Filter <name> | Where-Object { $_.FullName -notmatch '\\(bin|obj)\\' -and $_.Extension -notin '.dll', '.exe', '.pdb', '.cache', '.resources' }`
   - Text search: `Get-ChildItem -Recurse -File | Where-Object { $_.FullName -notmatch '\\(bin|obj)\\' -and $_.Extension -notin '.dll', '.exe', '.pdb', '.cache', '.resources' } | Select-String -Pattern <text>`
 - Do not change framework/runtime targets or package baselines unless requested.
-- When committing, include only files added or modified by the agent in this task; do not include unrelated pre-existing uncommitted changes; include a short commit message description/body of what changed in addition to the title/subject line.
-- For commits that include `HaCreator` changes, prefix the commit subject with `[HaCreator] ` (example: `[HaCreator] Update minimap render bounds`).
+
+## Git
+- When committing, include only files added or modified by the agent in this task; do not include unrelated pre-existing uncommitted changes. Every commit must include a detailed commit message body in addition to the title/subject line. The body should explain what changed, why it changed, and important implementation details or tradeoffs. Mention validation or manual verification only when it adds useful context; do not add boilerplate lines such as a build command succeeding with existing warnings or manual UI verification not being run.
+- For commits that include `HaCreator/MapSimulator/` changes, prefix the commit subject with `[HaCreator] [MapSimulator] ` (example: `[HaCreator] [MapSimulator] Update minimap render bounds`).
+- For commits that include other `HaCreator` changes, prefix the commit subject with `[HaCreator] ` (example: `[HaCreator] Update editor panel layout`).
 - For commits that include `HaRepacker` changes, prefix the commit subject with `[HaRepacker] ` (example: `[HaRepacker] Fix IMG node rename validation`).
+- For commits that include `MapleGame.Client/` changes, prefix the commit subject with `[MapleGame.Client] ` (example: `[MapleGame.Client] Update client launch dialog`).
+- For commits that include `MapleGame.Runtime/` changes, prefix the commit subject with `[MapleGame.Runtime] ` (example: `[MapleGame.Runtime] Fix game state initialization`).
+- For commits that include `docs/` changes, prefix the commit subject with `[docs] ` (example: `[docs] Update WZ format overview`).
 - For UI behavior changes, include manual verification steps in your summary.
 
 ## High-Risk Areas (Extra Caution)

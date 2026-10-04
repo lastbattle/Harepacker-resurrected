@@ -20,10 +20,14 @@ namespace HaRepacker.FHMapper
 {
     public class FHMapper
     {
-        public static string SettingsPath = Path.Combine(ConfigurationManager.GetLocalFolderPath(), "Settings.ini");
+        public static string SettingsPath =
+            HaSharedLibrary.Configuration.UserDataPaths.HaRepackerFhMapperSettingsFile;
         public List<Object> settings = new List<object>();
         private readonly MainPanel MainPanel;
         private TreeNode node;
+
+        private IReadOnlyCollection<WzFile> LoadedWzFiles =>
+            Program.WzFileManager?.WzFileList ?? (IReadOnlyCollection<WzFile>)Array.Empty<WzFile>();
 
         // Fonts
         private static Font FONT_DISPLAY_MAPID = new Font("Segoe UI", 20);
@@ -63,16 +67,19 @@ namespace HaRepacker.FHMapper
                 string streetName = string.Empty;
 
                 string mapNameStringPath = "String.wz/Map.img";
-                WzImage mapNameImages = (WzImage)WzFile.GetObjectFromMultipleWzFilePath(mapNameStringPath, Program.WzFileManager.WzFileList);
-                foreach (WzSubProperty subAreaImgProp in mapNameImages.WzProperties)
+                WzImage mapNameImages = (WzImage)WzFile.GetObjectFromMultipleWzFilePath(mapNameStringPath, LoadedWzFiles);
+                if (mapNameImages != null)
                 {
-                    foreach (WzSubProperty mapImg in subAreaImgProp.WzProperties)
+                    foreach (WzSubProperty subAreaImgProp in mapNameImages.WzProperties)
                     {
-                        if (mapImg.Name == mapIdName)
+                        foreach (WzSubProperty mapImg in subAreaImgProp.WzProperties)
                         {
-                            mapName = mapImg["mapName"].ReadString(string.Empty);
-                            streetName = mapImg["streetName"].ReadString(string.Empty);
-                            break;
+                            if (mapImg.Name == mapIdName)
+                            {
+                                mapName = mapImg["mapName"].ReadString(string.Empty);
+                                streetName = mapImg["streetName"].ReadString(string.Empty);
+                                break;
+                            }
                         }
                     }
                 }
@@ -244,7 +251,7 @@ namespace HaRepacker.FHMapper
                                     mobNamePath = string.Format("String.wz/Npc.img/{0}/name", lifeId);
                                 }
 
-                                WzStringProperty linkInfo = (WzStringProperty)WzFile.GetObjectFromMultipleWzFilePath(mobWzPath, Program.WzFileManager.WzFileList);
+                                WzStringProperty linkInfo = (WzStringProperty)WzFile.GetObjectFromMultipleWzFilePath(mobWzPath, LoadedWzFiles);
                                 if (linkInfo != null)
                                 {
                                     lifeId = int.Parse(linkInfo.GetString());
@@ -256,7 +263,7 @@ namespace HaRepacker.FHMapper
                                 else
                                     mobLinkWzPath = string.Format("Npc.wz/{0}.img/stand/0", lifeStrId);
 
-                                WzCanvasProperty lifeImg = (WzCanvasProperty)WzFile.GetObjectFromMultipleWzFilePath(mobLinkWzPath, Program.WzFileManager.WzFileList);
+                                WzCanvasProperty lifeImg = (WzCanvasProperty)WzFile.GetObjectFromMultipleWzFilePath(mobLinkWzPath, LoadedWzFiles);
                                 if (lifeImg != null)
                                 {
                                     PointF canvasOriginPosition = lifeImg.GetCanvasOriginPosition();
@@ -277,7 +284,7 @@ namespace HaRepacker.FHMapper
                                 }
 
                                 // Get monster name
-                                WzStringProperty stringName = (WzStringProperty)WzFile.GetObjectFromMultipleWzFilePath(mobNamePath, Program.WzFileManager.WzFileList);
+                                WzStringProperty stringName = (WzStringProperty)WzFile.GetObjectFromMultipleWzFilePath(mobNamePath, LoadedWzFiles);
                                 if (stringName != null)
                                     drawBuf.DrawString(string.Format("SP: {0}, Name: {1}, ID: {2}", sp.Name, stringName.GetString(), lifeId), FONT_DISPLAY_PORTAL_LFIE_FOOTHOLD, new SolidBrush(Color.Red), x_text + 7, y_text + 7.3F);
                                 else
@@ -360,7 +367,7 @@ namespace HaRepacker.FHMapper
                             continue;
 
                         string bgObjImagePath = "Map.wz/Back/" + bS + ".img/Back/" + no;
-                        WzCanvasProperty wzBgCanvas = (WzCanvasProperty)WzFile.GetObjectFromMultipleWzFilePath(bgObjImagePath, Program.WzFileManager.WzFileList);
+                        WzCanvasProperty wzBgCanvas = (WzCanvasProperty)WzFile.GetObjectFromMultipleWzFilePath(bgObjImagePath, LoadedWzFiles);
                         if (wzBgCanvas != null)
                         {
                             PointF canvasOriginPosition = wzBgCanvas.GetCanvasOriginPosition();
@@ -392,7 +399,7 @@ namespace HaRepacker.FHMapper
                 using (Graphics toolTipBuf = Graphics.FromImage(toolTip))
                 {
                     string stringTooltipPath = "String.wz/ToolTipHelp.img/Mapobject/" + mapIdName;
-                    WzSubProperty wzToolTip = (WzSubProperty)WzFile.GetObjectFromMultipleWzFilePath(stringTooltipPath, Program.WzFileManager.WzFileList);
+                    WzSubProperty wzToolTip = (WzSubProperty)WzFile.GetObjectFromMultipleWzFilePath(stringTooltipPath, LoadedWzFiles);
 
                     if (wzToolTip == null)
                     {
@@ -459,7 +466,7 @@ namespace HaRepacker.FHMapper
 
                             string imgObjPath = string.Format("{0}/Obj/{1}/{2}/{3}/{4}/0", wzFile.WzDirectory.Name, imgName, l0, l1, l2);
 
-                            WzImageProperty objData = (WzImageProperty)WzFile.GetObjectFromMultipleWzFilePath(imgObjPath, Program.WzFileManager.WzFileList);
+                            WzImageProperty objData = (WzImageProperty)WzFile.GetObjectFromMultipleWzFilePath(imgObjPath, LoadedWzFiles);
                             tryagain:
                             if (objData is WzCanvasProperty)
                             {
@@ -523,7 +530,7 @@ namespace HaRepacker.FHMapper
 
                     // Browse to the tileset
                     string tilePath = wzFile.WzDirectory.Name + "/Tile/" + tileSetName + ".img";
-                    WzImage tileSet = (WzImage)WzFile.GetObjectFromMultipleWzFilePath(tilePath, Program.WzFileManager.WzFileList);
+                    WzImage tileSet = (WzImage)WzFile.GetObjectFromMultipleWzFilePath(tilePath, LoadedWzFiles);
                     if (!tileSet.Parsed)
                         tileSet.ParseImage();
 
@@ -652,7 +659,7 @@ namespace HaRepacker.FHMapper
                 settings = settings,
                 MobSpawnPoints = MSPs
             };
-            showMap.FormClosed += new FormClosedEventHandler(DisplayMapClosed);
+            showMap.Closed += DisplayMapClosed;
             try
             {
                 showMap.scale = zoom;
@@ -661,7 +668,7 @@ namespace HaRepacker.FHMapper
             }
             catch (FormatException)
             {
-                MessageBox.Show("You must set the render scale to a valid number.", "Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show(UiLocalization.Translate("You must set the render scale to a valid number."), UiLocalization.Translate("Warning"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return false;
             }
         }
@@ -673,7 +680,7 @@ namespace HaRepacker.FHMapper
             return BitConverter.ToInt32(md5, 0) & 0xFFFFFF;
         }
 
-        private void DisplayMapClosed(object sender, FormClosedEventArgs e)
+        private void DisplayMapClosed(object sender, EventArgs e)
         {
             ((WzNode)node).Reparse();
         }
@@ -707,16 +714,11 @@ namespace HaRepacker.FHMapper
                 settings.Add(Regex.Match(theSettings, @"(?<=!DSt:)\d*,?\d*(?=!)").Value);
                 settings.Add(bool.Parse(Regex.Match(theSettings, @"(?<=!DSc:)\w+(?=!)").Value));
             }
-            catch { MessageBox.Show("Failed to load settings.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error); return; }
-            foreach (Form form in Application.OpenForms)
-            {
-                DisplayMap mapForm;
-                if (form.Name == "DisplayMap")// If the Map window is open, update its settings
-                {
-                    mapForm = (DisplayMap)form;
+            catch { MessageBox.Show(UiLocalization.Translate("Failed to load settings."), UiLocalization.Translate("Error"), MessageBoxButtons.OK, MessageBoxIcon.Error); return; }
+            // If a rendered map window is open, update its live settings.
+            if (System.Windows.Application.Current != null)
+                foreach (DisplayMap mapForm in System.Windows.Application.Current.Windows.OfType<DisplayMap>())
                     mapForm.settings = settings;
-                }
-            }
         }
     }
 }

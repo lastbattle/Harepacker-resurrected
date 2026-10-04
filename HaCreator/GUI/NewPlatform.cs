@@ -1,79 +1,53 @@
-﻿using System;
 using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
-using System.Drawing;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using System.Windows.Forms;
+using System.Globalization;
+using System.Windows;
+using System.Windows.Controls;
 
 namespace HaCreator.GUI
 {
-    public partial class NewPlatform : Form
+    public partial class NewPlatform : Window
     {
-        public int result = 0;
-        private SortedSet<int> zms;
+        public int result;
+        private readonly SortedSet<int> zms;
 
         public NewPlatform(SortedSet<int> zms)
         {
             this.zms = zms;
             InitializeComponent();
-            zmBox_ValueChanged(null, null);
+            if (Program.HaEditorWindow?.IsVisible == true)
+                Owner = Program.HaEditorWindow;
+            ValidatePlatform();
         }
 
-        private void NewPlatform_KeyDown(object sender, KeyEventArgs e)
+        private void Platform_TextChanged(object sender, TextChangedEventArgs e)
         {
-            if (e.KeyCode == Keys.Escape)
-            {
-                DialogResult = System.Windows.Forms.DialogResult.Cancel;
-                Close();
-            }
-            else if (e.KeyCode == Keys.Enter && okButton.Enabled)
-            {
-                okButton_Click(null, null);
-            }
+            ValidatePlatform();
         }
 
-        private void cancelButton_Click(object sender, EventArgs e)
+        private void Step_Click(object sender, RoutedEventArgs e)
         {
-            DialogResult = System.Windows.Forms.DialogResult.Cancel;
-            Close();
+            int.TryParse(platformBox.Text, NumberStyles.Integer, CultureInfo.InvariantCulture, out int current);
+            int delta = ReferenceEquals(sender, incrementButton) ? 1 : -1;
+            platformBox.Text = (current + delta).ToString(CultureInfo.InvariantCulture);
+            platformBox.SelectAll();
         }
 
-        private void okButton_Click(object sender, EventArgs e)
+        private void ValidatePlatform()
         {
-            result = (int)zmBox.Value;
-            DialogResult = System.Windows.Forms.DialogResult.OK;
+            if (okButton == null)
+                return;
+
+            bool valid = int.TryParse(platformBox.Text, NumberStyles.Integer, CultureInfo.InvariantCulture, out int value);
+            bool exists = valid && zms.Contains(value);
+            statusLabel.Text = !valid ? "Enter a valid integer." : exists ? "Already exists" : string.Empty;
+            okButton.IsEnabled = valid && !exists;
         }
 
-        private void zmBox_ValueChanged(object sender, EventArgs e)
+        private void Ok_Click(object sender, RoutedEventArgs e)
         {
-            if (zms.Contains((int)zmBox.Value))
-            {
-                statusLabel.Text = "Already exists";
-                okButton.Enabled = false;
-            }
-            else
-            {
-                statusLabel.Text = "";
-                okButton.Enabled = true;
-            }
-        }
-
-        private void zmBox_KeyUp(object sender, KeyEventArgs e)
-        {
-            zmBox_ValueChanged(null, null);
-        }
-
-        private void zmBox_KeyDown(object sender, KeyEventArgs e)
-        {
-            zmBox_ValueChanged(null, null);
-        }
-
-        private void zmBox_KeyPress(object sender, KeyPressEventArgs e)
-        {
-            zmBox_ValueChanged(null, null);
+            if (!int.TryParse(platformBox.Text, NumberStyles.Integer, CultureInfo.InvariantCulture, out result))
+                return;
+            DialogResult = true;
         }
     }
 }

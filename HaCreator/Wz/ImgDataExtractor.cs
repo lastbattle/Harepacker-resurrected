@@ -42,29 +42,16 @@ namespace HaCreator.Wz
         /// </summary>
         public void ExtractAll()
         {
-            ReportProgress("Extracting String data...");
-            ExtractStringData();
+            ReportProgress("Extracting map names...");
+            ExtractMapStringData();
 
-            ReportProgress("Extracting Mob data...");
-            ExtractMobData();
+            // Reactor assets are resolved from the IDs in the opened map.
+            // Sound assets are resolved from that map's BGM path.  Scanning
+            // either complete category here materializes gigabytes of payload
+            // data in current post-V exports before a map is selected.
 
-            ReportProgress("Extracting NPC data...");
-            ExtractNpcData();
-
-            ReportProgress("Extracting Reactor data...");
-            ExtractReactorData();
-
-            ReportProgress("Extracting Sound data...");
-            ExtractSoundData();
-
-            ReportProgress("Extracting Quest data...");
-            ExtractQuestData();
-
-            ReportProgress("Extracting Skill data...");
-            ExtractSkillData();
-
-            ReportProgress("Extracting Item data...");
-            ExtractItemData();
+            // Quest and selector name catalogues are populated when their
+            // editors are opened rather than during application startup.
 
             ReportProgress("Extracting Map marks...");
             ExtractMapMarks();
@@ -92,11 +79,29 @@ namespace HaCreator.Wz
         /// </summary>
         public void ExtractStringData()
         {
-            if (_infoManager.MapsNameCache.Count != 0)
+            if (_infoManager.MapsNameCache.Count != 0 &&
+                _infoManager.NpcNameCache.Count != 0 &&
+                _infoManager.MobNameCache.Count != 0 &&
+                _infoManager.SkillNameCache.Count != 0 &&
+                _infoManager.ItemNameCache.Count != 0)
                 return;
 
-            // NPC strings
-            var npcImg = _dataSource.GetImage("String", "Npc.img");
+            ExtractNpcStringData();
+            ExtractMapStringData();
+            ExtractRemainingStringData();
+        }
+
+        /// <summary>
+        /// Loads only localized NPC names and descriptions. MapSimulator uses
+        /// this when it first builds an NPC tooltip so the rest of String data
+        /// remains deferred.
+        /// </summary>
+        public void ExtractNpcStringData()
+        {
+            if (_infoManager.NpcNameCache.Count != 0)
+                return;
+
+            WzImage npcImg = _dataSource.GetImage("String", "Npc.img");
             if (npcImg != null)
             {
                 npcImg.ParseImage();
@@ -110,34 +115,13 @@ namespace HaCreator.Wz
                         _infoManager.NpcNameCache[npcId] = new Tuple<string, string>(npcName, npcFunc);
                 }
             }
+        }
 
-            // Map strings
-            var mapImg = _dataSource.GetImage("String", "Map.img");
-            if (mapImg != null)
-            {
-                mapImg.ParseImage();
-                foreach (WzSubProperty mapCat in mapImg.WzProperties)
-                {
-                    foreach (WzSubProperty map in mapCat.WzProperties)
-                    {
-                        WzStringProperty streetNameProp = (WzStringProperty)map["streetName"];
-                        WzStringProperty mapNameProp = (WzStringProperty)map["mapName"];
-
-                        string mapIdStr = map.Name.Length == 9 ? map.Name : WzInfoTools.AddLeadingZeros(map.Name, 9);
-                        string categoryName = map.Parent.Name;
-
-                        if (mapNameProp == null)
-                            _infoManager.MapsNameCache[mapIdStr] = new Tuple<string, string, string>("NO NAME", "NO NAME", "NO NAME");
-                        else
-                        {
-                            _infoManager.MapsNameCache[mapIdStr] = new Tuple<string, string, string>(
-                                streetNameProp?.Value ?? string.Empty,
-                                mapNameProp.Value,
-                                categoryName);
-                        }
-                    }
-                }
-            }
+        /// <summary>Loads only localized mob names for the life asset picker.</summary>
+        public void ExtractMobStringData()
+        {
+            if (_infoManager.MobNameCache.Count != 0)
+                return;
 
             // Mob strings
             var mobImg = _dataSource.GetImage("String", "Mob.img");
@@ -153,6 +137,12 @@ namespace HaCreator.Wz
                         _infoManager.MobNameCache[mobId] = mobName;
                 }
             }
+
+        }
+
+        private void ExtractRemainingStringData()
+        {
+            ExtractMobStringData();
 
             // Skill strings
             var skillImg = _dataSource.GetImage("String", "Skill.img");
@@ -216,6 +206,39 @@ namespace HaCreator.Wz
             {
                 petImg.ParseImage();
                 ExtractItemStrings(petImg.WzProperties, "Pet");
+            }
+        }
+
+        /// <summary>
+        /// Loads only the map-name catalogue required by the startup map
+        /// picker. Other String images are deferred to selector workflows.
+        /// </summary>
+        public void ExtractMapStringData()
+        {
+            if (_infoManager.MapsNameCache.Count != 0)
+                return;
+
+            WzImage mapImg = _dataSource.GetImage("String", "Map.img");
+            if (mapImg == null)
+                return;
+
+            mapImg.ParseImage();
+            foreach (WzSubProperty mapCategory in mapImg.WzProperties)
+            {
+                foreach (WzSubProperty map in mapCategory.WzProperties)
+                {
+                    WzStringProperty streetName = map["streetName"] as WzStringProperty;
+                    WzStringProperty mapName = map["mapName"] as WzStringProperty;
+                    string mapId = map.Name.Length == 9
+                        ? map.Name
+                        : WzInfoTools.AddLeadingZeros(map.Name, 9);
+                    _infoManager.MapsNameCache[mapId] = mapName == null
+                        ? new Tuple<string, string, string>("NO NAME", "NO NAME", "NO NAME")
+                        : new Tuple<string, string, string>(
+                            streetName?.Value ?? string.Empty,
+                            mapName.Value,
+                            map.Parent.Name);
+                }
             }
         }
 
@@ -419,6 +442,57 @@ namespace HaCreator.Wz
                 foreach (WzImageProperty prop in sayImg.WzProperties)
                     _infoManager.QuestSays.Add(prop.Name, prop as WzSubProperty);
             }
+
+            // Recent clients store one quest per image under Quest/QuestData instead
+            // of the four legacy aggregate images above. Merge any such images so
+            // mixed layouts also work without relying on a client version check.
+            IEnumerable<WzImage> questDataImages = GetQuestDataImages();
+            foreach (WzImage questImg in questDataImages)
+            {
+                if (questImg == null)
+                    continue;
+
+                questImg.ParseImage();
+
+                string questId = WzInfoTools.RemoveExtension(questImg.Name);
+                AddQuestDataProperty(_infoManager.QuestInfos, questId, questImg["QuestInfo"]);
+                AddQuestDataProperty(_infoManager.QuestActs, questId, questImg["Act"]);
+                AddQuestDataProperty(_infoManager.QuestChecks, questId, questImg["Check"]);
+                AddQuestDataProperty(_infoManager.QuestSays, questId, questImg["Say"]);
+            }
+        }
+
+        private IEnumerable<WzImage> GetQuestDataImages()
+        {
+            if (_dataSource is not ImgFileSystemDataSource)
+                return _dataSource.GetImagesInDirectory("Quest", "QuestData");
+
+            // Newer clients contain tens of thousands of small quest images. The
+            // IMG filesystem cache is thread-safe, and bounded parallel reads avoid
+            // making the editor appear hung while opening every file serially.
+            string[] questIds = _dataSource
+                .GetImageNamesInDirectory("Quest", "QuestData")
+                .ToArray();
+            WzImage[] questImages = new WzImage[questIds.Length];
+
+            Parallel.For(
+                0,
+                questIds.Length,
+                new ParallelOptions { MaxDegreeOfParallelism = 4 },
+                index => questImages[index] = _dataSource.GetImage(
+                    "Quest",
+                    $"QuestData/{questIds[index]}.img"));
+
+            return questImages;
+        }
+
+        private static void AddQuestDataProperty(
+            Dictionary<string, WzSubProperty> destination,
+            string questId,
+            WzObject property)
+        {
+            if (property is WzSubProperty subProperty && !destination.ContainsKey(questId))
+                destination.Add(questId, subProperty);
         }
 
         /// <summary>

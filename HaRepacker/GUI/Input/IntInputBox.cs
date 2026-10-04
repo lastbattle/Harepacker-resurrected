@@ -1,73 +1,53 @@
-﻿using System;
-using System.Windows.Forms;
+using System.Globalization;
+using System.Windows;
+using System.Windows.Input;
 
 namespace HaRepacker.GUI.Input
 {
-    public partial class IntInputBox : Form
+    public partial class IntInputBox : Window
     {
-        private bool bHideNameInputBox = false;
+        private bool bHideNameInputBox;
+        private string nameResult;
+        private int? intResult;
 
-        public static bool Show(string title, 
-            string defaultName, int defaultValue,
+        public static bool Show(string title, string defaultName, int defaultValue,
             out string name, out int? integer, bool bHideNameInputBox = false)
         {
-            IntInputBox form = new IntInputBox(title);
-            form.bHideNameInputBox = bHideNameInputBox;
+            IntInputBox form = new(title) { bHideNameInputBox = bHideNameInputBox };
             if (bHideNameInputBox)
-            {
-                form.nameBox.Visible = false;
-                form.label_name.Visible = false;
-            }
-
-            // Set default value 
+                form.namePanel.Visibility = Visibility.Collapsed;
             if (defaultName != null)
                 form.nameBox.Text = defaultName;
             if (defaultValue != 0)
-                form.valueBox.Value = defaultValue;
-
-            bool result = form.ShowDialog() == DialogResult.OK;
+                form.valueBox.Text = defaultValue.ToString(CultureInfo.CurrentCulture);
+            bool accepted = form.ShowDialog() == true;
             name = form.nameResult;
             integer = form.intResult;
-            return result;
+            return accepted;
         }
-
-        private string nameResult = null;
-        private int? intResult = null;
 
         public IntInputBox(string title)
         {
             InitializeComponent();
-            DialogResult = DialogResult.Cancel;
-            Text = title;
+            Title = title;
+            labelName.Text = InputDialogSupport.Text(GetType(), "label_name.Text", "Name:");
+            labelValue.Text = InputDialogSupport.Text(GetType(), "label2.Text", "Value:");
+            okButton.Content = InputDialogSupport.Text(GetType(), "okButton.Text", "OK");
+            cancelButton.Content = InputDialogSupport.Text(GetType(), "cancelButton.Text", "Cancel");
         }
 
-        private void nameBox_KeyPress(object sender, KeyPressEventArgs e)
-        {
-            if (e.KeyChar == (char)13)
-                okButton_Click(null, null);
-        }
+        private void Input_KeyDown(object sender, KeyEventArgs e) { if (e.Key == Key.Enter) Accept(); }
+        private void OkButton_Click(object sender, RoutedEventArgs e) => Accept();
+        private void CancelButton_Click(object sender, RoutedEventArgs e) => DialogResult = false;
 
-        /// <summary>
-        /// On ok clicked
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void okButton_Click(object sender, EventArgs e)
+        private void Accept()
         {
-            if ((nameBox.Text != "" && nameBox.Text != null) || bHideNameInputBox)
-            {
-                nameResult = nameBox.Text;
-                intResult = valueBox.Value;
-                DialogResult = DialogResult.OK;
-                Close();
-            }
-            else MessageBox.Show(Properties.Resources.EnterValidInput, Properties.Resources.Warning, MessageBoxButtons.OK, MessageBoxIcon.Warning);
-        }
-
-        private void cancelButton_Click(object sender, EventArgs e)
-        {
-            DialogResult = DialogResult.Cancel;
-            Close();
+            if ((!bHideNameInputBox && string.IsNullOrEmpty(nameBox.Text)) ||
+                !int.TryParse(valueBox.Text, NumberStyles.Integer, CultureInfo.CurrentCulture, out int value))
+            { InputDialogSupport.WarnInvalidInput(); return; }
+            nameResult = nameBox.Text;
+            intResult = value;
+            DialogResult = true;
         }
     }
 }

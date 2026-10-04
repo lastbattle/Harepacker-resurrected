@@ -1,0 +1,460 @@
+<UserControl x:Class="HaCreator.GUI.Quest.NpcConversationPreview"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             MinWidth="520"
+             MinHeight="285">
+    <UserControl.Resources>
+        <SolidColorBrush x:Key="PreviewChromeBrush" Color="#B8C2C9"/>
+        <SolidColorBrush x:Key="PreviewChromeDarkBrush" Color="#87959E"/>
+        <SolidColorBrush x:Key="PreviewFooterBrush" Color="#0E9AC2"/>
+        <SolidColorBrush x:Key="PreviewFooterDarkBrush" Color="#087A9E"/>
+        <SolidColorBrush x:Key="EditorAccentBrush" Color="#007ACC"/>
+
+        <Style x:Key="PreviewToolbarButtonStyle" TargetType="Button">
+            <Setter Property="MinHeight" Value="24"/>
+            <Setter Property="Padding" Value="8,2"/>
+            <Setter Property="Margin" Value="4,0,0,0"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+
+        <Style x:Key="EditorToolButtonStyle" TargetType="Button">
+            <Setter Property="MinWidth" Value="30"/>
+            <Setter Property="Height" Value="24"/>
+            <Setter Property="Margin" Value="0,0,4,0"/>
+            <Setter Property="Padding" Value="6,1"/>
+            <Setter Property="Background" Value="#FFFFFF"/>
+            <Setter Property="BorderBrush" Value="#C6CDD7"/>
+            <Setter Property="Foreground" Value="#344054"/>
+            <Setter Property="FontFamily" Value="Consolas"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Focusable" Value="False"/>
+        </Style>
+
+        <Style x:Key="MapleButtonStyle" TargetType="Border">
+            <Setter Property="Background" Value="#A9E620"/>
+            <Setter Property="BorderBrush" Value="#74A800"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Padding" Value="8,2"/>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="23"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <Grid Grid.Row="0" Margin="0,0,0,5">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <StackPanel VerticalAlignment="Center">
+                <TextBlock Text="MapleStory conversation studio"
+                           FontWeight="SemiBold"
+                           Foreground="#344054"/>
+                <TextBlock x:Name="SpeakerSourceText"
+                           FontSize="11"
+                           Foreground="#667085"
+                           TextTrimming="CharacterEllipsis"/>
+            </StackPanel>
+
+            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                <ToggleButton x:Name="EditorModeToggle"
+                              IsChecked="True"
+                              Margin="0,0,8,0"
+                              VerticalAlignment="Center"
+                              ToolTip="Switch between editing the conversation markup and viewing the formatted client output">
+                    <ToggleButton.Style>
+                        <Style TargetType="ToggleButton">
+                            <Setter Property="Content" Value="Rendered preview"/>
+                            <Setter Property="Foreground" Value="#475467"/>
+                            <Setter Property="FontSize" Value="11"/>
+                            <Setter Property="FontWeight" Value="SemiBold"/>
+                            <Setter Property="Cursor" Value="Hand"/>
+                            <Setter Property="Focusable" Value="False"/>
+                            <Setter Property="Background" Value="Transparent"/>
+                            <Setter Property="BorderThickness" Value="0"/>
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="ToggleButton">
+                                        <Border Background="Transparent" Padding="2,3">
+                                            <StackPanel Orientation="Horizontal">
+                                                <ContentPresenter VerticalAlignment="Center"
+                                                                  Margin="0,0,6,0"/>
+                                                <Grid Width="34" Height="18" VerticalAlignment="Center">
+                                                    <Border x:Name="Track"
+                                                            Background="#98A2B3"
+                                                            CornerRadius="9"/>
+                                                    <Ellipse x:Name="Thumb"
+                                                             Width="14"
+                                                             Height="14"
+                                                             Margin="2"
+                                                             HorizontalAlignment="Left"
+                                                             Fill="White"/>
+                                                </Grid>
+                                            </StackPanel>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsChecked" Value="True">
+                                                <Setter TargetName="Track" Property="Background" Value="{StaticResource EditorAccentBrush}"/>
+                                                <Setter TargetName="Thumb" Property="HorizontalAlignment" Value="Right"/>
+                                            </Trigger>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="Track" Property="Opacity" Value="0.82"/>
+                                            </Trigger>
+                                            <Trigger Property="IsEnabled" Value="False">
+                                                <Setter Property="Opacity" Value="0.5"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                            <Style.Triggers>
+                                <Trigger Property="IsChecked" Value="True">
+                                    <Setter Property="Content" Value="Edit markup"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </ToggleButton.Style>
+                </ToggleButton>
+                <Button Content="Change NPC"
+                        Style="{StaticResource PreviewToolbarButtonStyle}"
+                        Click="ChangeNpc_Click"/>
+                <Button x:Name="PortraitSideButton"
+                        Content="Portrait: left"
+                        Style="{StaticResource PreviewToolbarButtonStyle}"
+                        Click="PortraitSide_Click"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- Formatting tools operate on the selection inside the client dialogue box. -->
+        <Border Grid.Row="1"
+                Margin="0,0,0,5"
+                Padding="6,5"
+                Background="#F3F6FA"
+                BorderBrush="#D8DEE8"
+                BorderThickness="1"
+                CornerRadius="4">
+            <DockPanel LastChildFill="True">
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="8,0,0,0">
+                    <ComboBox x:Name="FormattingTokenCombo"
+                              Width="155"
+                              Height="24"
+                              DisplayMemberPath="Label"
+                              SelectionChanged="FormattingTokenCombo_SelectionChanged"
+                              ToolTip="Supported MapleStory formatting tokens"/>
+                    <Button Content="Select / insert"
+                            Height="24"
+                            Margin="4,0,0,0"
+                            Padding="8,1"
+                            Click="InsertSelectedToken_Click"/>
+                </StackPanel>
+
+                <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                              VerticalScrollBarVisibility="Disabled">
+                    <StackPanel Orientation="Horizontal">
+                        <Button Content="B" Tag="#e|#n" FontWeight="Bold"
+                                ToolTip="Bold selected text (Ctrl+B)"
+                                Style="{StaticResource EditorToolButtonStyle}"
+                                Click="FormattingButton_Click"/>
+                        <Button Content="Blue" Tag="#b|#k" Foreground="#2563EB"
+                                ToolTip="Blue text (Ctrl+Shift+B)"
+                                Style="{StaticResource EditorToolButtonStyle}"
+                                Click="FormattingButton_Click"/>
+                        <Button Content="Red" Tag="#r|#k" Foreground="#DC2626"
+                                ToolTip="Red text (Ctrl+Shift+R)"
+                                Style="{StaticResource EditorToolButtonStyle}"
+                                Click="FormattingButton_Click"/>
+                        <Button Content="Purple" Tag="#d|#k" Foreground="#A13EB0"
+                                ToolTip="Purple text"
+                                Style="{StaticResource EditorToolButtonStyle}"
+                                Click="FormattingButton_Click"/>
+                        <Button Content="Green" Tag="#g|#k" Foreground="#16803C"
+                                ToolTip="Green text"
+                                Style="{StaticResource EditorToolButtonStyle}"
+                                Click="FormattingButton_Click"/>
+                        <Button Content="Menu" Tag="#L0#|#l"
+                                ToolTip="Clickable menu choice"
+                                Style="{StaticResource EditorToolButtonStyle}"
+                                Click="FormattingButton_Click"/>
+                        <Button Content="Item icon..." Tag="ItemIcon"
+                                ToolTip="Choose an item and insert its icon token"
+                                Style="{StaticResource EditorToolButtonStyle}"
+                                Click="SelectorButton_Click"/>
+                        <Button Content="NPC name..." Tag="NpcName"
+                                ToolTip="Choose an NPC and insert its name token"
+                                Style="{StaticResource EditorToolButtonStyle}"
+                                Click="SelectorButton_Click"/>
+                        <Button Content="Mob name..." Tag="MobName"
+                                ToolTip="Choose a monster and insert its name token"
+                                Style="{StaticResource EditorToolButtonStyle}"
+                                Click="SelectorButton_Click"/>
+                        <Button Content="Mob image..." Tag="MobImage"
+                                ToolTip="Choose a monster and insert its stand/0 canvas"
+                                Style="{StaticResource EditorToolButtonStyle}"
+                                Click="SelectorButton_Click"/>
+                        <Button Content="WZ image..." Tag="WzImage"
+                                ToolTip="Browse the loaded WZ/IMG source and insert a canvas path"
+                                Style="{StaticResource EditorToolButtonStyle}"
+                                Click="SelectorButton_Click"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </DockPanel>
+        </Border>
+
+        <!-- The same dialogue surface is used for editing and rendered preview. -->
+        <Border Grid.Row="2"
+                Padding="4"
+                Background="{StaticResource PreviewChromeBrush}"
+                BorderBrush="{StaticResource PreviewChromeDarkBrush}"
+                BorderThickness="1"
+                CornerRadius="7">
+            <Grid ClipToBounds="True">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="30"/>
+                </Grid.RowDefinitions>
+
+                <Border Grid.Row="0"
+                        Background="#FBFBFB"
+                        BorderBrush="#D5DADD"
+                        BorderThickness="1"
+                        CornerRadius="4,4,2,2">
+                    <Grid x:Name="ConversationLayout">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition x:Name="LeftConversationColumn" Width="126"/>
+                            <ColumnDefinition x:Name="RightConversationColumn" Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <Border x:Name="PortraitPanel"
+                                Grid.Column="0"
+                                Background="#F0F0F0"
+                                BorderBrush="#D3D3D3"
+                                BorderThickness="0,0,1,0">
+                            <Grid Margin="8,6,8,7">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="23"/>
+                                </Grid.RowDefinitions>
+
+                                <Image x:Name="PortraitImage"
+                                       Grid.Row="0"
+                                       Margin="2"
+                                       MaxWidth="104"
+                                       MaxHeight="104"
+                                       Stretch="Uniform"
+                                       VerticalAlignment="Bottom"
+                                       RenderOptions.BitmapScalingMode="NearestNeighbor"/>
+
+                                <Border Grid.Row="1"
+                                        Margin="0,2,0,0"
+                                        Background="#777777"
+                                        BorderBrush="#555555"
+                                        BorderThickness="1"
+                                        CornerRadius="3">
+                                    <TextBlock x:Name="SpeakerNameText"
+                                               Margin="4,1"
+                                               Foreground="White"
+                                               FontSize="11"
+                                               TextAlignment="Center"
+                                               TextTrimming="CharacterEllipsis"
+                                               VerticalAlignment="Center"/>
+                                </Border>
+                            </Grid>
+                        </Border>
+
+                        <Grid x:Name="DialoguePanel" Grid.Column="1" Margin="7,5">
+                            <RichTextBox x:Name="DialogueText"
+                                         Padding="5"
+                                         IsReadOnly="False"
+                                         IsDocumentEnabled="True"
+                                         Focusable="True"
+                                         Background="Transparent"
+                                         BorderThickness="0"
+                                         VerticalScrollBarVisibility="Auto"
+                                         HorizontalScrollBarVisibility="Disabled"
+                                         FontFamily="Arial"
+                                         FontSize="12"
+                                         Foreground="#565656"
+                                         SpellCheck.IsEnabled="False"
+                                         AutomationProperties.Name="Formatted NPC conversation editor"
+                                         TextChanged="DialogueText_TextChanged">
+                                <RichTextBox.Style>
+                                    <Style TargetType="RichTextBox">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsChecked, ElementName=EditorModeToggle}" Value="True">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </RichTextBox.Style>
+                            </RichTextBox>
+
+                            <TextBox x:Name="MarkupEditor"
+                                     Padding="7,5"
+                                     AcceptsReturn="True"
+                                     AcceptsTab="True"
+                                     TextWrapping="Wrap"
+                                     VerticalScrollBarVisibility="Auto"
+                                     HorizontalScrollBarVisibility="Disabled"
+                                     Background="#FBFBFB"
+                                     Foreground="#3B3B3B"
+                                     BorderBrush="#CBD5E1"
+                                     BorderThickness="1"
+                                     CaretBrush="#111827"
+                                     SelectionBrush="#B9D7F5"
+                                     FontFamily="Consolas"
+                                     FontSize="12"
+                                     SpellCheck.IsEnabled="False"
+                                     AutomationProperties.Name="NPC conversation markup editor"
+                                     TextChanged="MarkupEditor_TextChanged"
+                                     SelectionChanged="MarkupEditor_SelectionChanged"
+                                     PreviewKeyDown="MarkupEditor_PreviewKeyDown">
+                                <TextBox.Style>
+                                    <Style TargetType="TextBox">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsChecked, ElementName=EditorModeToggle}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBox.Style>
+                            </TextBox>
+
+                            <Border HorizontalAlignment="Right"
+                                    VerticalAlignment="Top"
+                                    Margin="0,3,18,0"
+                                    Padding="5,1"
+                                    Background="#E8F2FC"
+                                    BorderBrush="#9DC5EC"
+                                    BorderThickness="1"
+                                    CornerRadius="3"
+                                    IsHitTestVisible="False">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsChecked, ElementName=EditorModeToggle}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <TextBlock Text="MARKUP EDITOR"
+                                           Foreground="#2563EB"
+                                           FontFamily="Consolas"
+                                           FontSize="9"
+                                           FontWeight="SemiBold"/>
+                            </Border>
+                        </Grid>
+                    </Grid>
+                </Border>
+
+                <Border Grid.Row="1"
+                        Margin="0,3,0,0"
+                        Background="{StaticResource PreviewFooterBrush}"
+                        BorderBrush="{StaticResource PreviewFooterDarkBrush}"
+                        BorderThickness="0,1,0,0"
+                        CornerRadius="0,0,4,4">
+                    <Grid Margin="5,3">
+                        <Border HorizontalAlignment="Left" Style="{StaticResource MapleButtonStyle}">
+                            <TextBlock Text="END CHAT" Foreground="White" FontSize="9" FontWeight="Bold"/>
+                        </Border>
+
+                        <StackPanel x:Name="NavigationButtons"
+                                    HorizontalAlignment="Right"
+                                    Orientation="Horizontal">
+                            <Border x:Name="PreviousButton" Margin="0,0,4,0" Style="{StaticResource MapleButtonStyle}">
+                                <TextBlock Text="&lt; PREV" Foreground="White" FontSize="9" FontWeight="Bold"/>
+                            </Border>
+                            <Button x:Name="YesButton"
+                                    Margin="0,0,4,0"
+                                    Padding="0"
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    Cursor="Hand"
+                                    Visibility="Collapsed"
+                                    Click="YesButton_Click">
+                                <Border Style="{StaticResource MapleButtonStyle}">
+                                    <TextBlock Text="YES" Foreground="White" FontSize="9" FontWeight="Bold"/>
+                                </Border>
+                            </Button>
+                            <Button x:Name="NoButton"
+                                    Margin="0,0,4,0"
+                                    Padding="0"
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    Cursor="Hand"
+                                    Visibility="Collapsed"
+                                    Click="NoButton_Click">
+                                <Border Style="{StaticResource MapleButtonStyle}">
+                                    <TextBlock Text="NO" Foreground="White" FontSize="9" FontWeight="Bold"/>
+                                </Border>
+                            </Button>
+                            <Button x:Name="OkButton"
+                                    Padding="0"
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    Cursor="Hand"
+                                    Visibility="Collapsed"
+                                    Click="OkButton_Click">
+                                <Border Style="{StaticResource MapleButtonStyle}">
+                                    <TextBlock Text="OK" Foreground="White" FontSize="9" FontWeight="Bold"/>
+                                </Border>
+                            </Button>
+                            <Border x:Name="NextButton" Style="{StaticResource MapleButtonStyle}">
+                                <TextBlock x:Name="NextButtonText" Text="NEXT &gt;" Foreground="White" FontSize="9" FontWeight="Bold"/>
+                            </Border>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="3"
+                Background="{StaticResource EditorAccentBrush}"
+                CornerRadius="0,0,4,4">
+            <Grid Margin="7,0">
+                <TextBlock x:Name="EditorHintText"
+                           Foreground="White"
+                           FontFamily="Consolas"
+                           FontSize="10"
+                           Text="Type # or choose a formatting tool for hints."
+                           TextTrimming="CharacterEllipsis"
+                           VerticalAlignment="Center"/>
+                <TextBlock x:Name="EditorStatusText"
+                           HorizontalAlignment="Right"
+                           Foreground="White"
+                           FontFamily="Consolas"
+                           FontSize="10"
+                           Text="Ln 1, Col 1"
+                           VerticalAlignment="Center"/>
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="4"
+                Margin="0,5,0,0"
+                Padding="8,4"
+                Background="#F3F6FA"
+                BorderBrush="#D8DEE8"
+                BorderThickness="1"
+                CornerRadius="4">
+            <TextBlock FontFamily="Consolas" FontSize="10" Foreground="#475467" TextWrapping="Wrap">
+                <Run FontWeight="Bold" Text="Quick reference: "/>
+                <Run Foreground="#2563EB" Text="#b blue #k"/>
+                <Run Text="   "/>
+                <Run Foreground="#DC2626" Text="#r red #k"/>
+                <Run Text="   #e bold #n   #d purple #k   #L0#choice#l   #iITEM# icon   #pNPC# name   #mMAP# name   #oMOB# name   #sSKILL# icon   #B50# progress   #RQUEST# count   #x 0%   #fWZ/PATH# image"/>
+            </TextBlock>
+        </Border>
+    </Grid>
+</UserControl>

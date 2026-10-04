@@ -1,51 +1,45 @@
-﻿using System;
-using System.Windows.Forms;
+using System.Globalization;
+using System.Windows;
+using System.Windows.Input;
 
 namespace HaRepacker.GUI.Input
 {
-    public partial class FloatingPointInputBox : Form
+    public partial class FloatingPointInputBox : Window
     {
+        private string nameResult;
+        private double? doubleResult;
+
         public static bool Show(string title, out string name, out double? value)
         {
-            FloatingPointInputBox form = new FloatingPointInputBox(title);
-            bool result = form.ShowDialog() == DialogResult.OK;
+            FloatingPointInputBox form = new(title);
+            bool accepted = form.ShowDialog() == true;
             name = form.nameResult;
             value = form.doubleResult;
-            return result;
+            return accepted;
         }
-
-        private string nameResult = null;
-        private double? doubleResult = null;
 
         public FloatingPointInputBox(string title)
         {
             InitializeComponent();
-            DialogResult = DialogResult.Cancel;
-            Text = title;
+            Title = title;
+            labelName.Text = InputDialogSupport.Text(GetType(), "label1.Text", "Name:");
+            labelValue.Text = InputDialogSupport.Text(GetType(), "label2.Text", "Value:");
+            okButton.Content = InputDialogSupport.Text(GetType(), "okButton.Text", "OK");
+            cancelButton.Content = InputDialogSupport.Text(GetType(), "cancelButton.Text", "Cancel");
         }
 
-        private void nameBox_KeyPress(object sender, KeyPressEventArgs e)
-        {
-            if (e.KeyChar == (char)13)
-                okButton_Click(null, null);
-        }
+        private void Input_KeyDown(object sender, KeyEventArgs e) { if (e.Key == Key.Enter) Accept(); }
+        private void OkButton_Click(object sender, RoutedEventArgs e) => Accept();
+        private void CancelButton_Click(object sender, RoutedEventArgs e) => DialogResult = false;
 
-        private void okButton_Click(object sender, EventArgs e)
+        private void Accept()
         {
-            if (nameBox.Text != "" && nameBox.Text != null)
-            {
-                nameResult = nameBox.Text;
-                doubleResult = valueBox.Value;
-                DialogResult = DialogResult.OK;
-                Close();
-            }
-            else MessageBox.Show(Properties.Resources.EnterValidInput, Properties.Resources.Warning, MessageBoxButtons.OK, MessageBoxIcon.Warning);
-        }
-
-        private void cancelButton_Click(object sender, EventArgs e)
-        {
-            DialogResult = DialogResult.Cancel;
-            Close();
+            if (string.IsNullOrEmpty(nameBox.Text) ||
+                !double.TryParse(valueBox.Text, NumberStyles.Float, CultureInfo.CurrentCulture, out double value))
+            { InputDialogSupport.WarnInvalidInput(); return; }
+            nameResult = nameBox.Text;
+            doubleResult = value;
+            DialogResult = true;
         }
     }
 }

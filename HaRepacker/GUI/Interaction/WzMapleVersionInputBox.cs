@@ -1,73 +1,45 @@
+using System;
+using System.Windows;
+using HaRepacker.GUI;
 using MapleLib.Configuration;
 using MapleLib.WzLib;
-using System;
-using System.Drawing;
-using System.Windows.Forms;
 
 namespace HaRepacker.GUI.Interaction
 {
-    public partial class WzMapleVersionInputBox : Form
+    public partial class WzMapleVersionInputBox : ThemedDialogWindow
     {
-        public static bool Show(string title, out WzMapleVersion MapleVersionEncryptionSelected)
+        public static bool Show(string title, out WzMapleVersion mapleVersionEncryptionSelected)
         {
-            WzMapleVersionInputBox form = new WzMapleVersionInputBox(title);
-            bool result = form.ShowDialog() == DialogResult.OK;
-
-            if (result)
-                MapleVersionEncryptionSelected = (form.comboBox_wzEncryptionType.SelectedItem as EncryptionKey)?.MapleVersion
-                    ?? WzMapleVersion.BMS;
-            else
-                MapleVersionEncryptionSelected = WzMapleVersion.BMS; // default
-
+            using WzMapleVersionInputBox form = new(title);
+            bool result = form.ShowDialog() == System.Windows.Forms.DialogResult.OK;
+            mapleVersionEncryptionSelected = result
+                ? (form.comboBox_wzEncryptionType.SelectedItem as EncryptionKey)?.MapleVersion ?? WzMapleVersion.BMS
+                : WzMapleVersion.BMS;
             return result;
         }
 
         public WzMapleVersionInputBox(string title)
         {
             InitializeComponent();
-            DialogResult = DialogResult.Cancel;
-            Text = title;
-
+            Title = title;
             WzEncryptionUiShared.Populate(comboBox_wzEncryptionType);
             comboBox_wzEncryptionType.SelectedIndex = MainForm.GetIndexByWzMapleVersion(Program.ConfigurationManager.ApplicationSettings.MapleVersion);
-
-            // Localization
-            label_wzEncrytionType.Text = HaRepacker.Properties.Resources.InteractionWzMapleVersionInfo;
+            label_wzEncrytionType.Text = Properties.Resources.InteractionWzMapleVersionInfo;
+            okButton.Content = WpfDialogSupport.Text(typeof(WzMapleVersionInputBox), "okButton.Text", "OK");
+            cancelButton.Content = WpfDialogSupport.Text(typeof(WzMapleVersionInputBox), "cancelButton.Text", "Cancel");
         }
 
-        private void keyPress(object sender, KeyPressEventArgs e)
+        private void okButton_Click(object sender, RoutedEventArgs e)
         {
-            if (e.KeyChar == (char)13)
-                okButton_Click(null, null);
-        }
-
-        private void okButton_Click(object sender, EventArgs e)
-        {
-            if (comboBox_wzEncryptionType.SelectedIndex == -1)
+            if (comboBox_wzEncryptionType.SelectedIndex < 0)
             {
-                MessageBox.Show(HaRepacker.Properties.Resources.EnterValidInput, HaRepacker.Properties.Resources.Warning, MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            } else
-            {
-                DialogResult = DialogResult.OK;
+                MessageBox.Show(Properties.Resources.EnterValidInput, Properties.Resources.Warning, MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
             }
+            DialogResult = true;
         }
 
-        private void cancelButton_Click(object sender, EventArgs e)
-        {
-            DialogResult = DialogResult.Cancel;
-            Close();
-        }
-
-        /// <summary>
-        /// When the selected index changes
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void comboBox_Encryption_SelectedIndexChanged(object sender, EventArgs e)
-        {
-
-        }
+        private void cancelButton_Click(object sender, RoutedEventArgs e) => DialogResult = false;
+        private void comboBox_Encryption_SelectedIndexChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e) { }
     }
 }
-
-

@@ -1,0 +1,22 @@
+<gui:ThemedDialogWindow x:Class="HaRepacker.GUI.FirstRunForm"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:gui="clr-namespace:HaRepacker.GUI"
+        Width="520" SizeToContent="Height" ResizeMode="NoResize" WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource HareCanvasBrush}" Foreground="{DynamicResource HareTextBrush}"
+        FontFamily="Segoe UI" FontSize="13" Closing="FirstRunForm_FormClosing">
+    <gui:ThemedDialogWindow.Resources><ResourceDictionary><ResourceDictionary.MergedDictionaries>
+        <ResourceDictionary Source="/HaSharedLibrary;component/GUI/Themes/HarepackerTheme.xaml"/>
+    </ResourceDictionary.MergedDictionaries></ResourceDictionary></gui:ThemedDialogWindow.Resources>
+    <Grid Margin="24">
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <StackPanel>
+            <TextBlock Text="Choose the startup integration you want to enable." Style="{StaticResource HareMutedTextStyle}" Margin="0,4,0,0"/>
+        </StackPanel>
+        <Border Grid.Row="1" Style="{StaticResource HareCardStyle}" Margin="0,18,0,0">
+            <CheckBox x:Name="autoAssociateBox" Content="Automatically associate WZ files with HaRepacker" IsChecked="True"/>
+        </Border>
+        <Button x:Name="confirmButton" Grid.Row="2" Content="OK" Width="110" HorizontalAlignment="Right" Margin="0,18,0,0"
+                IsDefault="True" Style="{StaticResource HarePrimaryButtonStyle}" Click="button1_Click"/>
+    </Grid>
+</gui:ThemedDialogWindow>

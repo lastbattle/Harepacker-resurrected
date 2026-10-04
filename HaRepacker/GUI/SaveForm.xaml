@@ -1,0 +1,53 @@
+<gui:ThemedDialogWindow x:Class="HaRepacker.GUI.SaveForm"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:gui="clr-namespace:HaRepacker.GUI" Width="590" SizeToContent="Height" ResizeMode="NoResize" WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource HareCanvasBrush}" Foreground="{DynamicResource HareTextBrush}" FontFamily="Segoe UI" FontSize="13">
+    <gui:ThemedDialogWindow.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/HaSharedLibrary;component/GUI/Themes/HarepackerTheme.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </gui:ThemedDialogWindow.Resources>
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <StackPanel>
+            <TextBlock Text="Choose the output format and WZ encoding options." Style="{StaticResource HareMutedTextStyle}" Margin="0,4,0,0"/>
+        </StackPanel>
+        <StackPanel Grid.Row="1" Margin="0,18,0,0">
+            <Border Style="{StaticResource HareCardStyle}">
+                <StackPanel>
+                    <TextBlock x:Name="formatHeader" Style="{StaticResource HareSectionTitleStyle}"/>
+                    <RadioButton x:Name="radioButton_wzFile" Content="Save as .wz file" IsChecked="True" GroupName="Format" Margin="0,12,0,0" Checked="FileFormat_CheckedChanged"/>
+                    <RadioButton x:Name="radioButton1" Content="Save as .ms file" GroupName="Format" Margin="0,9,0,0" Checked="FileFormat_CheckedChanged"/>
+                </StackPanel>
+            </Border>
+            <Border x:Name="groupBox_wzSaveSelection" Style="{StaticResource HareCardStyle}" Margin="0,12,0,0">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="140"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock x:Name="versionLabel" VerticalAlignment="Center"/>
+                    <TextBox x:Name="versionBox" Grid.Column="1" Width="120" HorizontalAlignment="Left" InputScope="Number"/>
+                    <TextBlock x:Name="encryptionLabel" Grid.Row="1" VerticalAlignment="Center" Margin="0,12,0,0"/>
+                    <ComboBox x:Name="encryptionBox" Grid.Row="1" Grid.Column="1" Margin="0,12,0,0" SelectionChanged="encryptionBox_SelectedIndexChanged"/>
+                    <CheckBox x:Name="checkBox_64BitFile" Grid.Row="2" Grid.Column="1" Margin="0,12,0,0" Checked="checkBox_64BitFile_CheckedChanged" Unchecked="checkBox_64BitFile_CheckedChanged"/>
+                </Grid>
+            </Border>
+        </StackPanel>
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
+            <Button Content="Cancel" Width="100" IsCancel="True"/>
+            <Button x:Name="saveButton" Content="Save" Width="120" Margin="8,0,0,0" IsDefault="True" Style="{StaticResource HarePrimaryButtonStyle}" Click="SaveButton_Click"/>
+        </StackPanel>
+    </Grid>
+</gui:ThemedDialogWindow>

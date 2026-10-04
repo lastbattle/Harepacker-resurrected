@@ -1,131 +1,104 @@
-﻿using System;
-using System.Collections.Generic;
+using System;
 using System.ComponentModel;
-using System.Data;
-using System.Drawing;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using System.Windows.Controls.Primitives;
-using System.Windows.Forms;
+using HaCreator.GUI.Localization;
+using System.Globalization;
+using System.Windows;
+using Forms = System.Windows.Forms;
 
 namespace HaCreator.GUI.Input
 {
-    public partial class NameValueInput : Form
+    public sealed class NameValueInput : IDisposable
     {
+        public delegate string ValidationCallback(string name, int value);
+
+        private readonly NameValueInputWindow window;
+
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         public int SelectedValue { get; set; }
 
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         public string SelectedName { get; set; }
 
-        /// <summary>
-        /// Delegate for validation
-        /// </summary>
-        /// <param name="name"></param>
-        /// <param name="value"></param>
-        /// <returns>string.empty if all is fine, otherwise return the reason</returns>
-        public delegate string ValidationCallback(string name, int value);
-        // Event handler for validation
-        private ValidationCallback _validationCallback;
-
-
-        /// <summary>
-        /// Constructor
-        /// </summary>
         public NameValueInput(ValidationCallback validationCallback)
         {
-            this._validationCallback = validationCallback;
-
-            this.SelectedValue = 0;
-            this.SelectedName = null;
-
-            InitializeComponent();
+            window = new NameValueInputWindow(validationCallback);
+            window.Accepted += (_, result) =>
+            {
+                SelectedName = result.Name;
+                SelectedValue = result.Value;
+            };
         }
 
-        #region Window
         public void SetWindowInfo(string overrideNameLabel, string overrideValueLabel, string overrideTitle)
         {
-            if (overrideNameLabel != null)
-            {
-                label_name.Text = overrideNameLabel;
-            }
-            if (overrideValueLabel != null)
-            {
-                label_value.Text = overrideValueLabel;
-            }
-            if (overrideTitle != null)
-            {
-                Text = overrideTitle;
-            }
+            window.SetWindowInfo(overrideNameLabel, overrideValueLabel, overrideTitle);
         }
 
-        /// <summary>
-        /// Form window keydown
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void Load_KeyDown(object sender, KeyEventArgs e)
+        public Forms.DialogResult ShowDialog()
         {
-            if (e.KeyCode == Keys.Escape)
-            {
-                Close(); // close window
-            }
-            else if (e.KeyCode == Keys.Enter)
-            {
-                //loadButton_Click(null, null);
-            }
+            bool? accepted = window.ShowDialog();
+            if (accepted == true)
+                return Forms.DialogResult.OK;
+
+            SelectedName = null;
+            SelectedValue = 0;
+            return Forms.DialogResult.Cancel;
         }
-        #endregion
 
-        #region UI events
-        /// <summary>
-        /// On OK button clicked
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void button_ok_Click(object sender, EventArgs e)
+        public void Dispose()
         {
-            // validate and close
+            if (window.IsLoaded)
+                window.Close();
+        }
+    }
 
-            string nameInput = textBox_input.Text;
-            int valueInput =  (int) numericUpDown_input.Value;
-            if (valueInput < 0 && valueInput > int.MaxValue)
+    internal partial class NameValueInputWindow : Window
+    {
+        private readonly NameValueInput.ValidationCallback validationCallback;
+        internal event EventHandler<(string Name, int Value)> Accepted;
+
+        internal NameValueInputWindow(NameValueInput.ValidationCallback validationCallback)
+        {
+            this.validationCallback = validationCallback;
+            InitializeComponent();
+            if (Program.HaEditorWindow?.IsVisible == true)
+                Owner = Program.HaEditorWindow;
+        }
+
+        internal void SetWindowInfo(string nameLabel, string valueLabel, string title)
+        {
+            if (nameLabel != null)
+                labelName.Text = nameLabel;
+            if (valueLabel != null)
+                labelValue.Text = valueLabel;
+            if (title != null)
+                Title = title;
+        }
+
+        private void Ok_Click(object sender, RoutedEventArgs e)
+        {
+            if (!int.TryParse(valueInput.Text, NumberStyles.Integer, CultureInfo.InvariantCulture, out int value))
             {
-                MessageBox.Show("Please enter a valid integer value.", "Invalid Input",
-                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show(this, DialogTextExtension.Get("Dialog_EnterValidInteger"), DialogTextExtension.Get("Dialog_InvalidInput"),
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 
-            // Call the validation callback
-            string validationCallbackError = _validationCallback(nameInput, valueInput);
-            if (_validationCallback != null && validationCallbackError == string.Empty)
+            string name = nameInput.Text;
+            string error = validationCallback?.Invoke(name, value) ?? string.Empty;
+            if (!string.IsNullOrEmpty(error))
             {
-                SelectedName = nameInput;
-                SelectedValue = valueInput;
+                MessageBox.Show(this, error, DialogTextExtension.Get("Dialog_ValidationFailed"), MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
 
-                DialogResult = DialogResult.OK;
-                Close();
-            }
-            else
-            {
-                MessageBox.Show(validationCallbackError, "Validation Failed",MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            }
+            Accepted?.Invoke(this, (name, value));
+            DialogResult = true;
         }
 
-        /// <summary>
-        /// On cancel button clicked
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void button_cancel_Click(object sender, EventArgs e)
+        private void Cancel_Click(object sender, RoutedEventArgs e)
         {
-            this.SelectedValue = 0;
-            this.SelectedName = null;
-
-            DialogResult = DialogResult.Cancel;
-            Close();
+            DialogResult = false;
         }
-        #endregion
     }
 }

@@ -56,7 +56,9 @@ namespace HaCreator.MapEditor.Info
 
         public static ReactorInfo Get(string id)
         {
-            ReactorInfo result = Program.InfoManager.Reactors[id];
+            ReactorInfo result = Program.InfoManager.GetReactor(id);
+            if (result == null)
+                return null;
             result.ParseImageIfNeeded();
             return result;
         }

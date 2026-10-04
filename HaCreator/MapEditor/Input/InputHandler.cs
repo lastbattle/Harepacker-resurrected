@@ -9,6 +9,7 @@ using HaCreator.MapEditor.Instance;
 using HaCreator.MapEditor.Instance.Misc;
 using HaCreator.MapEditor.Instance.Shapes;
 using HaCreator.Exceptions;
+using HaCreator.GUI.Localization;
 using HaCreator.MapEditor.Info;
 using HaRepacker.Utils;
 
@@ -302,7 +303,7 @@ namespace HaCreator.MapEditor.Input
                                         if (!askedVr)
                                         {
                                             askedVr = true;
-                                            if (MessageBox.Show("This will remove the map's VR. This is not undoable, you must re-add VR from the map's main menu. Continue?", "Confirm", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
+                                            if (MessageBox.Show(MapEditorText.Get("RemoveVrConfirm"), MapEditorText.Get("ConfirmTitle"), MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
                                             {
                                                 selectedBoard.VRRectangle.RemoveItem(null);
                                             }
@@ -313,7 +314,7 @@ namespace HaCreator.MapEditor.Input
                                         if (!askedMm)
                                         {
                                             askedMm = true;
-                                            if (MessageBox.Show("This will remove the map's minimap. This is not undoable, you must re-add the minimap from the map's main menu. Continue?", "Confirm", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
+                                            if (MessageBox.Show(MapEditorText.Get("RemoveMinimapConfirm"), MapEditorText.Get("ConfirmTitle"), MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
                                             {
                                                 selectedBoard.MinimapRectangle.RemoveItem(null);
                                             }
@@ -327,6 +328,7 @@ namespace HaCreator.MapEditor.Input
                             case MouseState.StaticObjectAdding:
                             case MouseState.Chairs:
                             case MouseState.Ropes:
+                            case MouseState.Regions:
                                 parentBoard.InvokeReturnToSelectionState();
                                 break;
                             case MouseState.Footholds:
@@ -419,7 +421,7 @@ namespace HaCreator.MapEditor.Input
                                 if (!Clipboard.TryGetData<string>(SerializationManager.HaClipboardData, out string clipboardData)
                                     || string.IsNullOrEmpty(clipboardData))
                                 {
-                                    MessageBox.Show("Clipboard data is unavailable or invalid.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                                    MessageBox.Show(MapEditorText.Get("ClipboardInvalid"), MapEditorText.Get("ErrorTitle"), MessageBoxButtons.OK, MessageBoxIcon.Error);
                                     return;
                                 }
 
@@ -427,12 +429,12 @@ namespace HaCreator.MapEditor.Input
                             }
                             catch (SerializationException de)
                             {
-                                MessageBox.Show(de.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                                MessageBox.Show(de.Message, MapEditorText.Get("ErrorTitle"), MessageBoxButtons.OK, MessageBoxIcon.Error);
                                 return;
                             }
                             catch (Exception e)
                             {
-                                MessageBox.Show(string.Format("An error occurred: {0}", e.ToString()), "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                                MessageBox.Show(MapEditorText.Format("GenericError", e), MapEditorText.Get("ErrorTitle"), MessageBoxButtons.OK, MessageBoxIcon.Error);
                                 return;
                             }
 
@@ -452,7 +454,7 @@ namespace HaCreator.MapEditor.Input
                                             tS = currtS;
                                         else
                                         {
-                                            MessageBox.Show("Clipboard contains two tiles with different tile sets, cannot paste.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                                            MessageBox.Show(MapEditorText.Get("ClipboardDifferentTileSets"), MapEditorText.Get("ErrorTitle"), MessageBoxButtons.OK, MessageBoxIcon.Error);
                                             return;
                                         }
                                     }
@@ -464,12 +466,12 @@ namespace HaCreator.MapEditor.Input
                             }
                             if (needsLayer && (selectedBoard.SelectedLayerIndex < 0 || selectedBoard.SelectedPlatform < 0))
                             {
-                                MessageBox.Show("Layered items in clipboard and no layer/platform selected, cannot paste.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                                MessageBox.Show(MapEditorText.Get("ClipboardNoLayerSelected"), MapEditorText.Get("ErrorTitle"), MessageBoxButtons.OK, MessageBoxIcon.Error);
                                 return;
                             }
                             if (tS != null && selectedBoard.SelectedLayer.tS != null && tS != selectedBoard.SelectedLayer.tS)
                             {
-                                MessageBox.Show("Clipboard contains tile in a different set than the current selected layer, cannot paste.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                                MessageBox.Show(MapEditorText.Get("ClipboardTileSetMismatch"), MapEditorText.Get("ErrorTitle"), MessageBoxButtons.OK, MessageBoxIcon.Error);
                                 return;
                             }
 
@@ -531,7 +533,7 @@ namespace HaCreator.MapEditor.Input
                         break;
                     case Keys.S:
                         if (ctrl)
-                            parentBoard.OnExportRequested();
+                            parentBoard.OnSaveRequested();
                         break;
                     case Keys.O:
                         if (ctrl)
@@ -587,10 +589,6 @@ namespace HaCreator.MapEditor.Input
                     target.Selected = true;
                     parentBoard.EditInstanceClicked(target);
                 }
-                else if (selectedBoard.Mouse.State == MouseState.Footholds)
-                {
-                    selectedBoard.Mouse.CreateFhAnchor();
-                }
             }
         }
 
@@ -636,13 +634,17 @@ namespace HaCreator.MapEditor.Input
                     selectedBoard.Mouse.State == MouseState.Chairs ||
                     selectedBoard.Mouse.State == MouseState.Ropes ||
                     selectedBoard.Mouse.State == MouseState.Tooltip ||
+                    selectedBoard.Mouse.State == MouseState.Regions ||
                     selectedBoard.Mouse.State == MouseState.Clock) //handle clicks that are meant to add an item to the board
                 {
                     selectedBoard.Mouse.PlaceObject();
                 }
                 else if (selectedBoard.Mouse.State == MouseState.Footholds)
                 {
-                    selectedBoard.Mouse.TryConnectFoothold();
+                    // A normal click starts the next foothold point. Clicking an
+                    // existing anchor continues the current polyline.
+                    if (!selectedBoard.Mouse.TryConnectFoothold())
+                        selectedBoard.Mouse.CreateFhAnchor();
                 }
             }
         }
@@ -677,6 +679,27 @@ namespace HaCreator.MapEditor.Input
                     //ClearSelectedItems(selectedBoard);
                     selectedBoard.Mouse.MinimapBrowseOngoing = true;
                     HandleMinimapBrowse(selectedBoard, realPosition);
+                }
+                else if (selectedBoard.Mouse.State == MouseState.Eraser)
+                {
+                    BoardItem itemToRemove = item == null
+                        ? selectedItem
+                        : selectedItem == null || !selectedItemHigher ? item : selectedItem;
+
+                    // These handles own larger, non-undoable structures. Keep their existing
+                    // explicit removal commands instead of making a single click destructive.
+                    if (itemToRemove == null || itemToRemove is ToolTipDot || itemToRemove is MiscDot ||
+                        itemToRemove is VRDot || itemToRemove is MinimapDot)
+                    {
+                        return;
+                    }
+
+                    List<UndoRedoAction> actions = new List<UndoRedoAction>();
+                    itemToRemove.RemoveItem(actions);
+                    if (actions.Count > 0)
+                    {
+                        selectedBoard.UndoRedoMan.AddUndoBatch(actions);
+                    }
                 }
                 else if (selectedBoard.Mouse.State == MouseState.Selection)
                 {

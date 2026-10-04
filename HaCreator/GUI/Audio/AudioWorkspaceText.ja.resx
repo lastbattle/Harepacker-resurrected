@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root><resheader name="resmimetype"><value>text/microsoft-resx</value></resheader><resheader name="version"><value>2.0</value></resheader><resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader><resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="Title"><value>オーディオスタジオ</value></data><data name="NewProject"><value>新規</value></data><data name="OpenProject"><value>開く</value></data><data name="SaveProject"><value>保存</value></data><data name="ImportAudio"><value>インポート</value></data><data name="ExportAudio"><value>エクスポート</value></data><data name="BakeToWz"><value>WZ/IMGへ書き出し</value></data><data name="Undo"><value>元に戻す</value></data><data name="Redo"><value>やり直す</value></data><data name="Render"><value>レンダー</value></data><data name="Play"><value>再生</value></data><data name="Pause"><value>一時停止</value></data><data name="Stop"><value>停止</value></data><data name="Loop"><value>ループ</value></data><data name="Snap"><value>スナップ</value></data><data name="Metronome"><value>メトロノーム</value></data><data name="ZoomOut"><value>縮小</value></data><data name="ZoomIn"><value>拡大</value></data><data name="ActiveSource"><value>アクティブソース</value></data><data name="ComparisonSource"><value>比較ソースなし</value></data><data name="Assets"><value>アセット</value></data><data name="SourceSet"><value>ソースセット</value></data><data name="Search"><value>サウンド、パス、別名を検索</value></data><data name="AllSounds"><value>すべてのサウンド</value></data><data name="Favorites"><value>お気に入り</value></data><data name="Recent"><value>最近使用</value></data><data name="CenterEditor"><value>エディター</value></data><data name="Overview"><value>概要</value></data><data name="Timeline"><value>タイムライン</value></data><data name="Selection"><value>選択範囲</value></data><data name="RightInspector"><value>インスペクター</value></data><data name="SourceMetadata"><value>ソースメタデータ</value></data><data name="ClipProperties"><value>クリッププロパティ</value></data><data name="EffectRack"><value>エフェクトラック</value></data><data name="BakeSettings"><value>書き出し設定</value></data><data name="WhereUsed"><value>使用箇所</value></data><data name="StatusReady"><value>準備完了</value></data><data name="StatusCatalogEmpty"><value>サウンドアセットがありません。ソースセットを選択してください。</value></data><data name="MetadataUnavailable"><value>メタデータを表示するサウンドを選択してください。</value></data><data name="Duration"><value>長さ</value></data><data name="Format"><value>形式</value></data><data name="SampleRate"><value>サンプルレート</value></data><data name="Channels"><value>チャンネル</value></data><data name="Payload"><value>データサイズ</value></data><data name="Warning"><value>警告</value></data><data name="Track"><value>トラック</value></data><data name="Master"><value>マスター</value></data><data name="Loudness"><value>統合ラウドネス</value></data><data name="Status"><value>状態</value></data><data name="OpenProjectFilter"><value>Audio Studio プロジェクト (*.hasound.json)|*.hasound.json|すべてのファイル (*.*)|*.*</value></data><data name="ImportFilter"><value>オーディオファイル (*.mp3;*.wav)|*.mp3;*.wav|MP3 (*.mp3)|*.mp3|PCM WAV (*.wav)|*.wav</value></data><data name="WavExportFilter"><value>WAV オーディオ (*.wav)|*.wav</value></data><data name="Mp3ExportFilter"><value>MP3 オーディオ (*.mp3)|*.mp3</value></data><data name="UnsavedPrompt"><value>Audio Studio の変更を保存しますか？</value></data><data name="UnsavedTitle"><value>未保存のオーディオ変更</value></data><data name="ProjectSaved"><value>プロジェクトを保存しました。</value></data><data name="ProjectOpened"><value>プロジェクトを開きました。</value></data><data name="Imported"><value>{0}をインポート</value></data><data name="Baked"><value>レンダーしたオーディオをWZへ書き出せます。</value></data><data name="CatalogLoading"><value>サウンドメタデータを読み込み中…</value></data>
+  <data name="TargetImage"><value>Target image</value></data>
+  <data name="ParentPath"><value>Parent property path</value></data>
+  <data name="PropertyName"><value>Property name</value></data>
+  <data name="Category"><value>Category</value></data>
+  <data name="Encoding"><value>Encoding</value></data>
+  <data name="ReplaceMode"><value>Replace mode</value></data>
+  <data name="Name"><value>Name</value></data>
+  <data name="Path"><value>Path</value></data>
+  <data name="Locked"><value>Locked</value></data>
+  <data name="AddEffect"><value>Add effect</value></data>
+  <data name="RefreshCatalog"><value>Refresh sound catalog</value></data>
+  <data name="TimelineZoom"><value>Timeline zoom</value></data>
+  <data name="WaveformOverview"><value>Waveform overview</value></data>
+  <data name="MultitrackTimeline"><value>Multitrack timeline</value></data>
+  <data name="PlaybackPosition"><value>Playback position</value></data>
+  <data name="SoundTree"><value>Sound image and category tree</value></data>
+  <data name="AssetResults"><value>Sound asset results</value></data>
+  <data name="ResultCount"><value>{0} result(s)</value></data>
+  <data name="ActiveSourceOption"><value>Active source</value></data>
+  <data name="NoComparison"><value>No comparison</value></data>
+  <data name="BgmCategory"><value>BGM</value></data>
+  <data name="AmbienceCategory"><value>Ambience</value></data>
+  <data name="SfxCategory"><value>SFX</value></data>
+  <data name="VoiceCategory"><value>Voice</value></data>
+  <data name="PcmWav"><value>PCM WAV</value></data>
+  <data name="Mp3"><value>MP3</value></data>
+  <data name="ReplaceOrAdd"><value>Replace or add</value></data>
+  <data name="AddOnly"><value>Add only</value></data>
+  <data name="RenderCancelled"><value>Render cancelled.</value></data>
+  <data name="PlaybackUnavailable"><value>Playback unavailable: {0}</value></data>
+  <data name="CatalogWarning"><value>Sound catalog warning: {0}</value></data>
+  <data name="GainNormalize"><value>Gain / normalize</value></data>
+  <data name="ParametricEq"><value>Parametric EQ</value></data>
+  <data name="CompressorLimiter"><value>Compressor / limiter</value></data>
+  <data name="UiCategory"><value>UI</value></data>
+  <data name="MobCategory"><value>Mob</value></data>
+  <data name="RegionalCategory"><value>Regional</value></data>
+  <data name="Volume"><value>Volume</value></data>
+  <data name="Pan"><value>Pan</value></data>
+  <data name="CatalogCancelled"><value>Catalog loading cancelled.</value></data>
+  <data name="CatalogWarningMessage"><value>Sound catalog warning: {0}</value></data>
+  <data name="OpenFailed"><value>Unable to open project: {0}</value></data>
+  <data name="SaveFailed"><value>Unable to save project: {0}</value></data>
+  <data name="Exported"><value>Exported {0}</value></data>
+  <data name="ExportFailed"><value>Export failed: {0}</value></data>
+  <data name="RenderingPreview"><value>Rendering preview…</value></data>
+  <data name="PlayingPreview"><value>Playing preview</value></data>
+  <data name="PlaybackWarning"><value>Playback device warning: {0}</value></data>
+  <data name="SelectAsset"><value>Select an asset first.</value></data>
+  <data name="UsageIndex"><value>Usage index: {0} references</value></data>
+  <data name="AddClipRequired"><value>Add a clip before adding an effect.</value></data>
+  <data name="NoDataSource"><value>No active WZ/IMG data source is mounted.</value></data>
+  <data name="TargetImageRequired"><value>Enter a target Sound image path.</value></data>
+  <data name="PropertyRequired"><value>Enter a target property name.</value></data>
+  <data name="BakeFailed"><value>Bake failed: {0}</value></data>
+  <data name="AddedAsset"><value>Added {0}</value></data>
+  <data name="ClipSplit"><value>Clip split</value></data>
+  <data name="EffectAdded"><value>Gain effect added to the selected clip.</value></data>
+  <data name="NewProjectStatus"><value>New project</value></data>
+  <data name="UndoComplete"><value>Undo complete</value></data>
+  <data name="RedoComplete"><value>Redo complete</value></data>
+  <data name="Paused"><value>Paused</value></data>
+  <data name="PlaceCursor"><value>Place the cursor over an unlocked clip to split.</value></data>
+  <data name="MoveCursor"><value>Move the cursor inside a clip before splitting.</value></data>
+  <data name="AudioAi" xml:space="preserve"><value>オーディオ AI</value></data>
+  <data name="AiPrompt" xml:space="preserve"><value>音楽ブリーフ</value></data>
+  <data name="GenerateCandidate" xml:space="preserve"><value>候補を生成</value></data>
+  <data name="AiLocalStatus" xml:space="preserve"><value>ローカル ACE-Step エンドポイント</value></data>
+  <data name="AiUnavailable" xml:space="preserve"><value>ローカルオーディオ AI は利用できません: {0}</value></data>
+  <data name="InstallAceStep" xml:space="preserve"><value>ローカル ACE-Step をインストール／起動</value></data>
+  <data name="AceStepInstallTitle" xml:space="preserve"><value>ACE-Step 1.5 のインストール</value></data>
+  <data name="AceStepInstallPrompt" xml:space="preserve"><value>ACE-Step 1.5 がインストールされていないか、実行されていません。今すぐダウンロードして設定しますか？
+
+推定ダウンロード容量：
+• モデルウェイト：約 11 GB
+• Python／ランタイム依存関係：約 6.5 GB
+
+少なくとも 20 GB の空きディスク容量を確保してください。実際のサイズはモデルと GPU バックエンドによって異なります。モデルウェイトは初回生成時に ACE-Step がダウンロードします。</value></data>
+  <data name="AceStepReady" xml:space="preserve"><value>ACE-Step の準備が完了しました。モデルウェイトは初回生成時にダウンロードされます。</value></data>
+  <data name="AceStepSetupFailed" xml:space="preserve"><value>ACE-Step の設定に失敗しました: {0}</value></data>
+  <data name="OpenAceStepFolder"><value>モデルフォルダーを開く</value></data>
+  <data name="DeleteAceStep"><value>モデルを削除</value></data>
+  <data name="AceStepStoragePath"><value>モデルの保存先: {0}</value></data>
+  <data name="DeleteAceStepPrompt"><value>管理対象の ACE-Step ランタイムとモデルウェイトを削除しますか？後で再インストールできます。ダウンロード済みモデルと Python 環境が削除されます。</value></data>
+  <data name="AceStepNotInstalled"><value>ACE-Step はインストールされていません。</value></data>
+  <data name="AceStepDeleted"><value>ACE-Step ランタイムとモデルを削除しました。</value></data>
+  <data name="AiStarting"><value>ACE-Step を起動しています…</value></data>
+  <data name="AiGenerating"><value>オーディオを生成しています…初回実行時はモデルウェイトのダウンロードに数分かかることがあります。</value></data>
+  <data name="AiCandidateReady"><value>候補オーディオを生成し、タイムラインに追加しました。</value></data>
+  <data name="AiPromptRequired"><value>生成する前に音楽ブリーフを入力してください。</value></data>
+  <data name="AiNoCandidate"><value>生成は完了しましたが、候補オーディオが返されませんでした。</value></data>
+  <data name="AiDuration"><value>長さ（秒）</value></data>
+  <data name="AiDurationHint"><value>プリセットを選択するか、10～600 秒を入力してください。</value></data>
+  <data name="AiOutputFormat"><value>出力形式</value></data>
+  <data name="AiDurationInvalid"><value>生成時間を 10～600 秒の範囲で入力してください。</value></data>
+  <data name="AiRefinePrompt"><value>ブリーフを詳細化</value></data>
+  <data name="AiRefining"><value>音楽ブリーフを詳細化しています…</value></data>
+  <data name="AiPromptRefined"><value>音楽ブリーフを詳細化しました。生成前に内容を確認してください。</value></data>
+  <data name="AiRefineNotConfigured"><value>ブリーフを詳細化する前にテキスト AI モデルを設定してください。</value></data>
+  <data name="AiRefineCancelled"><value>ブリーフの詳細化をキャンセルしました。</value></data>
+  <data name="AiRefineFailed"><value>ブリーフの詳細化に失敗しました: {0}</value></data>
+  <data name="AiRefineRecommendation"><value>テキストモデルを使うとブリーフをより正確にできます。使用を強くおすすめします。今すぐ設定しますか？「いいえ」を選ぶと raw ブリーフのまま生成できます。</value></data>
+  <data name="AiRefineSkipped"><value>ブリーフの詳細化をスキップしました。raw ブリーフで生成できます。</value></data>
+</root>

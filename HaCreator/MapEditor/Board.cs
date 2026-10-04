@@ -44,6 +44,7 @@ namespace HaCreator.MapEditor
         private int _vScroll = 0;
         private int _mag = 16;
         private float _zoom = 1.0f;
+        private bool initialViewPending = true;
 
         // Zoom limits
         public const float MinZoom = 0.1f;
@@ -60,15 +61,62 @@ namespace HaCreator.MapEditor
         private System.Windows.Controls.TabItem page = null;
         private bool dirty;
         private readonly int uid;
+        private TimeSpan livePreviewTotalTime = TimeSpan.Zero;
+        private GameTime livePreviewGameTime = new GameTime();
 
         private static int uidCounter = 0;
 
-        // Cached portal connection pairs for efficient rendering
-        private List<(PortalInstance, PortalInstance)> _cachedPortalPairs = null;
-        private int _cachedPortalCount = -1;
+        private readonly struct PortalConnectionPair
+        {
+            public readonly int StartX;
+            public readonly int StartY;
+            public readonly int BoundsX;
+            public readonly int BoundsY;
+            public readonly int BoundsWidth;
+            public readonly int BoundsHeight;
+            public readonly int Width;
+            public readonly float Rotation;
 
-        public ItemTypes VisibleTypes { get { return visibleTypes; } set { visibleTypes = value; } }
-        public ItemTypes EditedTypes { get { return editedTypes; } set { editedTypes = value; } }
+            public PortalConnectionPair(PortalInstance first, PortalInstance second)
+            {
+                StartX = first.X;
+                StartY = first.Y;
+                BoundsX = Math.Min(first.X, second.X);
+                BoundsY = Math.Min(first.Y, second.Y);
+                BoundsWidth = Math.Abs(second.X - first.X);
+                BoundsHeight = Math.Abs(second.Y - first.Y);
+
+                Vector2 delta = new Vector2(second.X - first.X, second.Y - first.Y);
+                Width = (int)Vector2.Distance(Vector2.Zero, delta);
+                Rotation = (float)Math.Atan2(delta.Y, delta.X);
+            }
+        }
+
+        // Cached portal connection data for efficient rendering.
+        private readonly List<PortalConnectionPair> _cachedPortalPairs = new List<PortalConnectionPair>();
+        private int _cachedPortalCount = -1;
+        private bool _portalPairCacheDirty = true;
+
+        public ItemTypes VisibleTypes
+        {
+            get { return visibleTypes; }
+            set
+            {
+                if (visibleTypes == value) return;
+                visibleTypes = value;
+                parent?.RequestRender();
+            }
+        }
+        public ItemTypes EditedTypes
+        {
+            get { return editedTypes; }
+            set
+            {
+                if (editedTypes == value) return;
+                editedTypes = value;
+                parent?.RequestRender();
+            }
+        }
 
         /// <summary>
         /// Constructor
@@ -236,7 +284,7 @@ namespace HaCreator.MapEditor
             {
                 foreach (BackgroundInstance bg in boardItems.BackBackgrounds)
                 {
-                    bg.Draw(sprite, bg.GetColor(sel, bg.Selected), xShift, yShift);
+                    DrawItem(bg, sprite, xShift, yShift, sel);
                 }
             }
         }
@@ -259,7 +307,7 @@ namespace HaCreator.MapEditor
             {
                 foreach (BackgroundInstance bg in boardItems.FrontBackgrounds)
                 {
-                    bg.Draw(sprite, bg.GetColor(sel, bg.Selected), xShift, yShift);
+                    DrawItem(bg, sprite, xShift, yShift, sel);
                 }
             }
         }
@@ -316,7 +364,7 @@ namespace HaCreator.MapEditor
                 foreach (BoardItem item in list)
                 {
                     if (parent.IsItemInRange(item.X, item.Y, item.Width, item.Height, xShift - item.Origin.X, yShift - item.Origin.Y) && ((sel.visibleTypes & item.Type) != 0))
-                        item.Draw(sprite, item.GetColor(sel, item.Selected), xShift, yShift);
+                        DrawItem(item, sprite, xShift, yShift, sel);
                 }
             }
             else if ((sel.visibleTypes & list.ListType) != 0)
@@ -327,7 +375,7 @@ namespace HaCreator.MapEditor
                     {
                         if (parent.IsItemInRange(item.X, item.Y, item.Width, item.Height, xShift - item.Origin.X, yShift - item.Origin.Y))
                         {
-                            item.Draw(sprite, item.GetColor(sel, item.Selected), xShift, yShift);
+                            DrawItem(item, sprite, xShift, yShift, sel);
                         }
                     }
 
@@ -336,18 +384,18 @@ namespace HaCreator.MapEditor
                     {
                         Color portalLineColor = (sel.editedTypes & ItemTypes.Portals) == ItemTypes.Portals ? Color.LightBlue : MultiBoard.InactiveColor;
 
-                        foreach (var (portal1, portal2) in GetPortalConnectionPairs())
+                        foreach (PortalConnectionPair connection in GetPortalConnectionPairs())
                         {
-                            // Calculate screen positions
-                            int x1 = MultiBoard.VirtualToPhysical(portal1.X, centerPoint.X, hScroll, 0);
-                            int y1 = MultiBoard.VirtualToPhysical(portal1.Y, centerPoint.Y, vScroll, 0);
-                            int x2 = MultiBoard.VirtualToPhysical(portal2.X, centerPoint.X, hScroll, 0);
-                            int y2 = MultiBoard.VirtualToPhysical(portal2.Y, centerPoint.Y, vScroll, 0);
+                            if (!parent.IsItemInRange(connection.BoundsX, connection.BoundsY,
+                                connection.BoundsWidth, connection.BoundsHeight, xShift, yShift))
+                            {
+                                continue;
+                            }
 
-                            // Draw the line
                             parent.DrawLine(sprite,
-                                new Vector2(x1, y1),
-                                new Vector2(x2, y2),
+                                new Vector2(connection.StartX + xShift, connection.StartY + yShift),
+                                connection.Width,
+                                connection.Rotation,
                                 portalLineColor);
                         }
                     }
@@ -363,69 +411,98 @@ namespace HaCreator.MapEditor
             }
         }
 
-        /// <summary>
-        /// Gets cached portal connection pairs for local teleport portals.
-        /// Rebuilds cache if portals have changed.
-        /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private List<(PortalInstance, PortalInstance)> GetPortalConnectionPairs()
+        private void DrawItem(BoardItem item, SpriteBatch sprite, int xShift, int yShift, SelectionInfo selection)
+        {
+            Color color = item.GetColor(selection, item.Selected);
+            if (parent.DrawLivePreview(item, sprite, color, xShift, yShift, hScroll, vScroll, centerPoint))
+            {
+                // Preserve editor-only overlays from the normal draw path without redrawing frame zero.
+                item.Draw(sprite, Color.Transparent, xShift, yShift);
+                DrawLivePreviewEditorMarker(item, sprite, xShift, yShift, selection);
+                return;
+            }
+
+            item.Draw(sprite, color, xShift, yShift);
+        }
+
+        private void DrawLivePreviewEditorMarker(BoardItem item, SpriteBatch sprite, int xShift, int yShift, SelectionInfo selection)
+        {
+            if (item is not BackgroundInstance background || background.type == BackgroundType.Regular)
+                return;
+
+            bool backgroundEditable = (selection.editedTypes & ItemTypes.Backgrounds) == ItemTypes.Backgrounds;
+            if (!backgroundEditable && !background.Selected)
+                return;
+
+            Color markerColor = background.Selected ? UserSettings.SelectedColor : UserSettings.OriginColor;
+            Rectangle sourceFrame = new Rectangle(
+                background.X + xShift - background.Origin.X,
+                background.Y + yShift - background.Origin.Y,
+                Math.Max(1, background.Width),
+                Math.Max(1, background.Height));
+
+            parent.DrawRectangle(sprite, sourceFrame, markerColor);
+
+            int originX = background.X + xShift;
+            int originY = background.Y + yShift;
+            parent.DrawLine(sprite, new Vector2(originX - 8, originY), new Vector2(originX + 8, originY), markerColor);
+            parent.DrawLine(sprite, new Vector2(originX, originY - 8), new Vector2(originX, originY + 8), markerColor);
+            parent.DrawDot(sprite, originX, originY, markerColor, 1);
+        }
+
+        /// <summary>
+        /// Gets cached portal connection data for local teleport portals.
+        /// Rebuilds the topology and line geometry only when portal state changes.
+        /// </summary>
+        private List<PortalConnectionPair> GetPortalConnectionPairs()
         {
             int currentCount = BoardItems.Portals.Count;
 
-            // Rebuild cache if portal count changed or cache doesn't exist
-            if (_cachedPortalPairs == null || _cachedPortalCount != currentCount)
+            if (!_portalPairCacheDirty && _cachedPortalCount == currentCount)
+                return _cachedPortalPairs;
+
+            _cachedPortalPairs.Clear();
+            _cachedPortalCount = currentCount;
+
+            // Build lookup dictionary for O(1) portal name lookups.
+            var portalsByName = new Dictionary<string, PortalInstance>(currentCount, StringComparer.Ordinal);
+            foreach (PortalInstance portal in BoardItems.Portals)
             {
-                _cachedPortalPairs = new List<(PortalInstance, PortalInstance)>();
-                _cachedPortalCount = currentCount;
-
-                // Build lookup dictionary for O(1) portal name lookups
-                var portalsByName = new Dictionary<string, PortalInstance>();
-                var localTeleportPortals = new List<PortalInstance>();
-
-                foreach (var portal in BoardItems.Portals)
-                {
-                    if (portal.pt == PortalType.Hidden || portal.pt == PortalType.Invisible)
-                    {
-                        localTeleportPortals.Add(portal);
-                    }
-                    // Store all portals by name for target lookup
-                    if (!string.IsNullOrEmpty(portal.pn) && !portalsByName.ContainsKey(portal.pn))
-                    {
-                        portalsByName[portal.pn] = portal;
-                    }
-                }
-
-                // Build pairs using HashSet to avoid duplicates
-                var processedPairs = new HashSet<(string, string)>();
-                foreach (var portal1 in localTeleportPortals)
-                {
-                    if (string.IsNullOrEmpty(portal1.tn) || !portalsByName.TryGetValue(portal1.tn, out var portal2))
-                        continue;
-                    if (portal1 == portal2)
-                        continue;
-
-                    // Create unique pair identifier
-                    var pair = string.CompareOrdinal(portal1.pn, portal2.pn) < 0
-                        ? (portal1.pn, portal2.pn)
-                        : (portal2.pn, portal1.pn);
-
-                    if (!processedPairs.Contains(pair))
-                    {
-                        processedPairs.Add(pair);
-                        _cachedPortalPairs.Add((portal1, portal2));
-                    }
-                }
+                if (!string.IsNullOrEmpty(portal.pn))
+                    portalsByName.TryAdd(portal.pn, portal);
             }
 
+            // Build pairs using HashSet to avoid duplicate bidirectional links.
+            var processedPairs = new HashSet<(string, string)>();
+            foreach (PortalInstance portal1 in BoardItems.Portals)
+            {
+                if ((portal1.pt != PortalType.Hidden && portal1.pt != PortalType.Invisible)
+                    || string.IsNullOrEmpty(portal1.tn)
+                    || !portalsByName.TryGetValue(portal1.tn, out PortalInstance portal2)
+                    || portal1 == portal2)
+                {
+                    continue;
+                }
+
+                var pair = string.CompareOrdinal(portal1.pn, portal2.pn) < 0
+                    ? (portal1.pn, portal2.pn)
+                    : (portal2.pn, portal1.pn);
+
+                if (processedPairs.Add(pair))
+                    _cachedPortalPairs.Add(new PortalConnectionPair(portal1, portal2));
+            }
+
+            _portalPairCacheDirty = false;
             return _cachedPortalPairs;
         }
 
         /// <summary>
-        /// Invalidates the cached portal pairs. Call when portal pn/tn properties change.
+        /// Invalidates the cached portal pairs when portal topology or geometry changes.
         /// </summary>
         public void InvalidatePortalPairCache()
         {
-            _cachedPortalPairs = null;
+            _portalPairCacheDirty = true;
             _cachedPortalCount = -1;
         }
 
@@ -464,7 +541,7 @@ namespace HaCreator.MapEditor
         public int mag
         {
             get { return _mag; }
-            set { lock (parent) { _mag = value; } }
+            set { lock (parent) { _mag = value; parent.RequestRender(); } }
         }
 
         /// <summary>
@@ -477,8 +554,11 @@ namespace HaCreator.MapEditor
             {
                 lock (parent)
                 {
-                    _zoom = Math.Max(MinZoom, Math.Min(MaxZoom, value));
+                    float zoom = Math.Max(MinZoom, Math.Min(MaxZoom, value));
+                    if (_zoom == zoom) return;
+                    _zoom = zoom;
                     parent.AdjustScrollBars();
+                    parent.RequestRender();
                 }
             }
         }
@@ -531,13 +611,13 @@ namespace HaCreator.MapEditor
         public System.Drawing.Bitmap MiniMap
         {
             get { return miniMap; }
-            set { lock (parent) { miniMap = value; miniMapTexture = null; } }
+            set { lock (parent) { miniMap = value; miniMapTexture = null; parent.RequestRender(); } }
         }
 
         public System.Drawing.Point MinimapPosition
         {
             get { return miniMapPos; }
-            set { miniMapPos = value; }
+            set { miniMapPos = value; parent?.RequestRender(); }
         }
 
         public int hScroll
@@ -550,8 +630,10 @@ namespace HaCreator.MapEditor
             {
                 lock (parent)
                 {
+                    if (_hScroll == value) return;
                     _hScroll = value;
                     parent.SetHScrollbarValue(_hScroll);
+                    parent.RequestRender();
                 }
             }
         }
@@ -559,7 +641,7 @@ namespace HaCreator.MapEditor
         public Point CenterPoint
         {
             get { return centerPoint; }
-            internal set { centerPoint = value; }
+            internal set { centerPoint = value; parent?.RequestRender(); }
         }
 
         public int vScroll
@@ -572,8 +654,10 @@ namespace HaCreator.MapEditor
             {
                 lock (parent)
                 {
+                    if (_vScroll == value) return;
                     _vScroll = value;
                     parent.SetVScrollbarValue(_vScroll);
+                    parent.RequestRender();
                 }
             }
         }
@@ -605,6 +689,7 @@ namespace HaCreator.MapEditor
             {
                 mapSize = value;
                 minimapArea = new Rectangle(0, 0, mapSize.X / _mag, mapSize.Y / _mag);
+                parent?.RequestRender();
             }
         }
 
@@ -620,6 +705,7 @@ namespace HaCreator.MapEditor
             { 
                 vrRect = value;
                 ((System.Windows.Controls.MenuItem) menu.Items[1]).IsEnabled = value == null;
+                parent.RequestRender();
             }
         }
 
@@ -631,6 +717,7 @@ namespace HaCreator.MapEditor
                 mmRect = value;
                 ((System.Windows.Controls.MenuItem)menu.Items[2]).IsEnabled = value == null;
                 parent.OnMinimapStateChanged(this, mmRect != null);
+                parent.RequestRender();
             }
         }
 
@@ -689,6 +776,7 @@ namespace HaCreator.MapEditor
                 lock (parent)
                 {
                     selectedLayerIndex = value;
+                    parent.RequestRender();
                 }
             }
         }
@@ -696,7 +784,7 @@ namespace HaCreator.MapEditor
         public bool SelectedAllLayers
         {
             get { return selectedAllLayers; }
-            set { selectedAllLayers = value; }
+            set { selectedAllLayers = value; parent.RequestRender(); }
         }
 
         public System.Windows.Controls.ContextMenu Menu
@@ -712,13 +800,13 @@ namespace HaCreator.MapEditor
         public int SelectedPlatform
         {
             get { return selectedPlatform; }
-            set { selectedPlatform = value; }
+            set { selectedPlatform = value; parent.RequestRender(); }
         }
 
         public bool SelectedAllPlatforms
         {
             get { return selectedAllPlats; }
-            set { selectedAllPlats = value; }
+            set { selectedAllPlats = value; parent.RequestRender(); }
         }
 
         public SelectionInfo GetUserSelectionInfo()
@@ -728,9 +816,39 @@ namespace HaCreator.MapEditor
 
         public bool Loading { get { return loading; } set { loading = value; } }
 
+        internal bool InitialViewPending
+        {
+            get { return initialViewPending; }
+        }
+
+        internal void MarkInitialViewInitialized()
+        {
+            initialViewPending = false;
+        }
+
         public SerializationManager SerializationManager
         {
             get { return serMan; }
+        }
+
+        internal GameTime LivePreviewGameTime
+        {
+            get { return livePreviewGameTime; }
+        }
+
+        internal GameTime AdvanceLivePreviewTime(TimeSpan elapsed)
+        {
+            if (elapsed < TimeSpan.Zero)
+                elapsed = TimeSpan.Zero;
+
+            livePreviewTotalTime += elapsed;
+            livePreviewGameTime = new GameTime(livePreviewTotalTime, elapsed);
+            return livePreviewGameTime;
+        }
+
+        internal void PauseLivePreviewTime()
+        {
+            livePreviewGameTime = new GameTime(livePreviewTotalTime, TimeSpan.Zero);
         }
 
         public System.Windows.Controls.TabItem TabPage

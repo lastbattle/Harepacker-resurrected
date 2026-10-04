@@ -1,0 +1,68 @@
+<Window x:Class="HaCreator.GUI.Cutscene.CutsceneAssetPicker"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:HaCreator.GUI.Cutscene"
+        Width="760" Height="520" MinWidth="620" MinHeight="420"
+        WindowStartupLocation="CenterOwner"
+        PreviewKeyDown="Window_PreviewKeyDown">
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/HaSharedLibrary;component/GUI/Themes/HarepackerTheme.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Window.Resources>
+    <Grid Margin="20" Background="{StaticResource HareCanvasBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock x:Name="purposeTextBlock" Style="{StaticResource HareMutedTextStyle}" TextWrapping="Wrap"/>
+        <Border Grid.Row="1" Style="{StaticResource HareToolbarStyle}" Margin="0,12,0,12">
+            <StackPanel>
+                <ComboBox x:Name="assetGroupComboBox" Margin="0,0,0,8" Visibility="Collapsed"
+                          SelectionChanged="AssetGroupComboBox_SelectionChanged"/>
+                <TextBox x:Name="searchTextBox" ToolTip="{local:CutsceneEditorText Cutscene_AssetSearchTooltip}"
+                         TextChanged="SearchTextBox_TextChanged"/>
+            </StackPanel>
+        </Border>
+
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="3*" MinWidth="280"/>
+                <ColumnDefinition Width="8"/>
+                <ColumnDefinition Width="2*" MinWidth="220"/>
+            </Grid.ColumnDefinitions>
+            <Border Grid.Column="0" Style="{StaticResource HareCardStyle}">
+                <ListBox x:Name="assetListBox" SelectionChanged="AssetListBox_SelectionChanged"
+                         MouseDoubleClick="AssetListBox_MouseDoubleClick"/>
+            </Border>
+            <GridSplitter Grid.Column="1" Width="8" HorizontalAlignment="Stretch"/>
+            <Border Grid.Column="2" Style="{StaticResource HareCardStyle}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <Border Background="{StaticResource HareCanvasBrush}" BorderBrush="{StaticResource HareBorderBrush}" BorderThickness="1">
+                        <Image x:Name="previewImage" Margin="8" Stretch="Uniform" RenderOptions.BitmapScalingMode="NearestNeighbor"/>
+                    </Border>
+                    <TextBlock x:Name="selectedPathTextBlock" Grid.Row="1" Margin="0,10,0,0"
+                               Style="{StaticResource HareMutedTextStyle}" TextWrapping="Wrap"/>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <DockPanel Grid.Row="3" Margin="0,12,0,0">
+            <TextBlock x:Name="resultCountTextBlock" VerticalAlignment="Center" Style="{StaticResource HareMutedTextStyle}"/>
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                <Button Content="{local:CutsceneEditorText Cutscene_Cancel}" IsCancel="True" Click="Cancel_Click"/>
+                <Button x:Name="selectButton" Margin="8,0,0,0" Style="{StaticResource HarePrimaryButtonStyle}"
+                        Content="{local:CutsceneEditorText Cutscene_Select}" IsDefault="True" IsEnabled="False" Click="Select_Click"/>
+            </StackPanel>
+        </DockPanel>
+    </Grid>
+</Window>

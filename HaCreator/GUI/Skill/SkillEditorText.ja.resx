@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="Title" xml:space="preserve"><value>スキルエディター</value></data>
+  <data name="CommandLabel" xml:space="preserve"><value>スキル</value></data>
+  <data name="Purpose" xml:space="preserve"><value>プレイヤースキルと特殊な Skill データを閲覧、検証、プレビューし、損失なく編集します。</value></data>
+  <data name="Save" xml:space="preserve"><value>保存</value></data>
+  <data name="Undo" xml:space="preserve"><value>元に戻す</value></data>
+  <data name="Redo" xml:space="preserve"><value>やり直し</value></data>
+  <data name="ValidateCurrent" xml:space="preserve"><value>現在のスキルを検証</value></data>
+  <data name="ValidateAll" xml:space="preserve"><value>読み込んだすべての変更を検証</value></data>
+  <data name="Duplicate" xml:space="preserve"><value>複製</value></data>
+  <data name="NewSkill" xml:space="preserve"><value>新しいスキル</value></data>
+  <data name="Source" xml:space="preserve"><value>ソース</value></data>
+  <data name="Search" xml:space="preserve"><value>スキル ID または名前で検索</value></data>
+  <data name="Scope" xml:space="preserve"><value>範囲</value></data>
+  <data name="All" xml:space="preserve"><value>すべて</value></data>
+  <data name="Player" xml:space="preserve"><value>プレイヤー</value></data>
+  <data name="Special" xml:space="preserve"><value>特殊データ</value></data>
+  <data name="Books" xml:space="preserve"><value>職業とスキルブック</value></data>
+  <data name="Skills" xml:space="preserve"><value>スキル</value></data>
+  <data name="Overview" xml:space="preserve"><value>概要</value></data>
+  <data name="Levels" xml:space="preserve"><value>レベル</value></data>
+  <data name="Visuals" xml:space="preserve"><value>ビジュアル</value></data>
+  <data name="Relationships" xml:space="preserve"><value>関連</value></data>
+  <data name="KnownProperties" xml:space="preserve"><value>既知のプロパティ</value></data>
+  <data name="RawProperties" xml:space="preserve"><value>Raw プロパティ</value></data>
+  <data name="Validation" xml:space="preserve"><value>検証</value></data>
+  <data name="SkillId" xml:space="preserve"><value>スキル ID</value></data>
+  <data name="Book" xml:space="preserve"><value>スキルブック / 職業</value></data>
+  <data name="Name" xml:space="preserve"><value>名前</value></data>
+  <data name="Description" xml:space="preserve"><value>説明</value></data>
+  <data name="EditText" xml:space="preserve"><value>テキストメタデータを編集</value></data>
+  <data name="OtherImageWarning" xml:space="preserve"><value>String/Skill.img も変更されます。</value></data>
+  <data name="FormulaMode" xml:space="preserve"><value>数式モード</value></data>
+  <data name="ExplicitMode" xml:space="preserve"><value>明示的なレベル</value></data>
+  <data name="PreviewLevel" xml:space="preserve"><value>プレビューレベル</value></data>
+  <data name="Property" xml:space="preserve"><value>プロパティ</value></data>
+  <data name="Type" xml:space="preserve"><value>WZ タイプ</value></data>
+  <data name="RawValue" xml:space="preserve"><value>Raw 値</value></data>
+  <data name="Evaluated" xml:space="preserve"><value>評価値</value></data>
+  <data name="PvpCommon" xml:space="preserve"><value>PVPcommon</value></data>
+  <data name="VisualTracks" xml:space="preserve"><value>ビジュアルトラック</value></data>
+  <data name="ShowCharacter" xml:space="preserve"><value>キャラクターを表示</value></data>
+  <data name="Action" xml:space="preserve"><value>アクション</value></data>
+  <data name="Auto" xml:space="preserve"><value>自動</value></data>
+  <data name="Facing" xml:space="preserve"><value>向き</value></data>
+  <data name="FacingLeft" xml:space="preserve"><value>左向き</value></data>
+  <data name="FacingRight" xml:space="preserve"><value>右向き</value></data>
+  <data name="CharacterPreset" xml:space="preserve"><value>キャラクタープリセット</value></data>
+  <data name="Male" xml:space="preserve"><value>デフォルト男性</value></data>
+  <data name="Female" xml:space="preserve"><value>デフォルト女性</value></data>
+  <data name="Custom" xml:space="preserve"><value>カスタム</value></data>
+  <data name="Play" xml:space="preserve"><value>プレビューを再生または一時停止</value></data>
+  <data name="PreviousFrame" xml:space="preserve"><value>前のフレーム</value></data>
+  <data name="NextFrame" xml:space="preserve"><value>次のフレーム</value></data>
+  <data name="Materialize" xml:space="preserve"><value>リンクを実体化</value></data>
+  <data name="Import" xml:space="preserve"><value>インポート</value></data>
+  <data name="Export" xml:space="preserve"><value>エクスポート</value></data>
+  <data name="Add" xml:space="preserve"><value>追加</value></data>
+  <data name="Delete" xml:space="preserve"><value>削除</value></data>
+  <data name="Rename" xml:space="preserve"><value>名前を変更</value></data>
+  <data name="ChangeType" xml:space="preserve"><value>種類を変更</value></data>
+  <data name="CopyPath" xml:space="preserve"><value>パスをコピー</value></data>
+  <data name="RelationshipKind" xml:space="preserve"><value>関連</value></data>
+  <data name="TargetSkill" xml:space="preserve"><value>対象スキル</value></data>
+  <data name="Path" xml:space="preserve"><value>WZ パス</value></data>
+  <data name="Status" xml:space="preserve"><value>状態</value></data>
+  <data name="Ready" xml:space="preserve"><value>準備完了</value></data>
+  <data name="Loading" xml:space="preserve"><value>読み込み中…</value></data>
+  <data name="Saving" xml:space="preserve"><value>保存中…</value></data>
+  <data name="Dirty" xml:space="preserve"><value>未保存の変更</value></data>
+  <data name="PreservedRaw" xml:space="preserve"><value>不明なフィールドは Raw プロパティに保持されます。</value></data>
+  <data name="NoSelection" xml:space="preserve"><value>スキルを選択して開始してください。</value></data>
+  <data name="NoDataSource" xml:space="preserve"><value>アクティブな MapleStory データソースがありません。</value></data>
+  <data name="LoadFailed" xml:space="preserve"><value>スキルを読み込めませんでした: {0}</value></data>
+  <data name="SaveSucceeded" xml:space="preserve"><value>{0} 個の画像を保存しました。</value></data>
+  <data name="SaveFailed" xml:space="preserve"><value>保存に失敗しました: {0}</value></data>
+  <data name="PartialSave" xml:space="preserve"><value>一部保存。続行する前に次の復旧パスを再読み込みしてください: {0}</value></data>
+  <data name="ValidationSummary" xml:space="preserve"><value>{0} 件のエラー、{1} 件の警告</value></data>
+  <data name="UnsavedPrompt" xml:space="preserve"><value>続行する前にスキル {0} の変更を保存しますか？</value></data>
+  <data name="Discard" xml:space="preserve"><value>破棄</value></data>
+  <data name="Cancel" xml:space="preserve"><value>キャンセル</value></data>
+  <data name="ConfirmDelete" xml:space="preserve"><value>Raw プロパティ '{0}' を削除しますか？Undo 以外にはバックアップが保存されません。</value></data>
+  <data name="ConfirmMaterialize" xml:space="preserve"><value>このリンクを切り離したコピーとして実体化しますか？シリアル化されたリンクは置き換えられます。</value></data>
+  <data name="ActionFallback" xml:space="preserve"><value>{0} → {1}: {2}</value></data>
+  <data name="NoAction" xml:space="preserve"><value>アクションは定義されていません</value></data>
+  <data name="UnsupportedSemantic" xml:space="preserve"><value>この構造は Raw プロパティで引き続き完全に編集できます。</value></data>
+  <data name="Level" xml:space="preserve"><value>レベル</value></data>
+  <data name="Absent" xml:space="preserve"><value>(なし)</value></data>
+  <data name="PngImageFilter" xml:space="preserve"><value>PNG 画像|*.png</value></data>
+  <data name="Ok" xml:space="preserve"><value>OK</value></data>
+  <data name="OperationFailed" xml:space="preserve"><value>操作に失敗しました: {0}</value></data>
+  <data name="EditProperty" xml:space="preserve"><value>{0}を編集</value></data>
+  <data name="EditStringMetadata" xml:space="preserve"><value>String メタデータを編集</value></data>
+  <data name="EditRawProperty" xml:space="preserve"><value>Raw プロパティを編集</value></data>
+  <data name="EditFormula" xml:space="preserve"><value>数式を編集</value></data>
+  <data name="DeleteRawProperty" xml:space="preserve"><value>Raw プロパティを削除</value></data>
+  <data name="RenameRawProperty" xml:space="preserve"><value>Raw プロパティの名前を変更</value></data>
+  <data name="AddRawProperty" xml:space="preserve"><value>Raw プロパティを追加</value></data>
+  <data name="ChangeRawPropertyType" xml:space="preserve"><value>Raw プロパティの種類を変更</value></data>
+  <data name="AlphaEnd" xml:space="preserve"><value>アルファ終了</value></data><data name="AlphaStart" xml:space="preserve"><value>アルファ開始</value></data><data name="ApplyProfile" xml:space="preserve"><value>プロファイルを適用</value></data><data name="Body" xml:space="preserve"><value>体</value></data><data name="CopyCell" xml:space="preserve"><value>セルをコピー</value></data><data name="CopyPropertyToLoaded" xml:space="preserve"><value>プロパティを読み込み済みスキルへコピー</value></data><data name="CustomProfile" xml:space="preserve"><value>カスタムプロファイル</value></data><data name="Delay" xml:space="preserve"><value>遅延</value></data><data name="DeleteSkill" xml:space="preserve"><value>スキルを削除</value></data><data name="DuplicateProperty" xml:space="preserve"><value>プロパティを複製</value></data><data name="Equipment" xml:space="preserve"><value>装備</value></data><data name="EquipmentHint" xml:space="preserve"><value>アイテム ID をカンマ区切りで入力</value></data><data name="ExportData" xml:space="preserve"><value>データをエクスポート</value></data><data name="ExportIcon" xml:space="preserve"><value>アイコンをエクスポート</value></data><data name="Face" xml:space="preserve"><value>顔</value></data><data name="FillDown" xml:space="preserve"><value>下へ入力</value></data><data name="Fit" xml:space="preserve"><value>合わせる</value></data><data name="FrameDelete" xml:space="preserve"><value>フレームを削除</value></data><data name="FrameDuplicate" xml:space="preserve"><value>フレームを複製</value></data><data name="Hair" xml:space="preserve"><value>髪型</value></data><data name="Head" xml:space="preserve"><value>頭</value></data><data name="HoldStage" xml:space="preserve"><value>ホールド段階</value></data><data name="ImportData" xml:space="preserve"><value>データをインポート</value></data><data name="ImportIcon" xml:space="preserve"><value>アイコンをインポート</value></data><data name="MoveLeft" xml:space="preserve"><value>左へ移動</value></data><data name="MoveRight" xml:space="preserve"><value>右へ移動</value></data><data name="NavigateRelationship" xml:space="preserve"><value>関連項目へ移動</value></data><data name="OnionSkin" xml:space="preserve"><value>オニオンスキン</value></data><data name="OriginX" xml:space="preserve"><value>原点 X</value></data><data name="OriginY" xml:space="preserve"><value>原点 Y</value></data><data name="PlaybackSpeed" xml:space="preserve"><value>再生速度</value></data><data name="RekeyFrames" xml:space="preserve"><value>フレームを再採番</value></data><data name="ReleaseStage" xml:space="preserve"><value>リリース段階</value></data><data name="RenameMoveSkill" xml:space="preserve"><value>スキルの名前変更または移動</value></data><data name="RenderedDescription" xml:space="preserve"><value>レンダリング済みの説明</value></data><data name="ResolveLink" xml:space="preserve"><value>リンクを解決</value></data><data name="Z" xml:space="preserve"><value>Z</value></data><data name="Zoom" xml:space="preserve"><value>ズーム</value></data>
+  <data name="EditorMode" xml:space="preserve"><value>エディターモード</value></data><data name="ModePlayer" xml:space="preserve"><value>プレイヤースキル</value></data><data name="ModeAttackType" xml:space="preserve"><value>攻撃タイプ</value></data><data name="ModeItemSkill" xml:space="preserve"><value>アイテムスキル</value></data><data name="ModeMobSkill" xml:space="preserve"><value>モンスタースキル</value></data><data name="ModeBattlefield" xml:space="preserve"><value>戦場</value></data><data name="ModeMiniGame" xml:space="preserve"><value>ミニゲーム</value></data><data name="ModeRecipe" xml:space="preserve"><value>レシピ</value></data><data name="ModeDragon" xml:space="preserve"><value>ドラゴン</value></data><data name="ModeModernGraph" xml:space="preserve"><value>モダングラフ</value></data><data name="ModeGeneric" xml:space="preserve"><value>汎用データ</value></data>
+  <data name="ValidationNoSelection" xml:space="preserve"><value>スキルが選択されていません。</value></data>
+  <data name="ValidationInvalidSkillId" xml:space="preserve"><value>スキル ID「{0}」には数字のみ使用できます。</value></data>
+  <data name="ValidationIdMismatch" xml:space="preserve"><value>シリアル化ノード「{0}」が選択中のスキル ID「{1}」と一致しません。</value></data>
+  <data name="ValidationDuplicateProperty" xml:space="preserve"><value>プロパティ名「{0}」が重複しています。</value></data>
+  <data name="ValidationInvalidCanvasDelay" xml:space="preserve"><value>アニメーションの遅延は 0 より大きい必要があります。</value></data>
+  <data name="ValidationInvalidContainerDelay" xml:space="preserve"><value>0 以下の遅延は保持され、制限付きの代替値でプレビューされます。</value></data>
+  <data name="ValidationBrokenExistingUol" xml:space="preserve"><value>既存の UOL ターゲット「{0}」が壊れているか循環しています。</value></data>
+  <data name="ValidationBrokenIntroducedUol" xml:space="preserve"><value>編集した UOL ターゲット「{0}」が壊れているか循環しています。</value></data>
+  <data name="ValidationFormulaInvalid" xml:space="preserve"><value>数式が不正か、未対応の構文を使用しています。</value></data>
+  <data name="ValidationFormulaDivisionByZero" xml:space="preserve"><value>数式はレベル {0} でゼロ除算になります。</value></data>
+  <data name="ValidationMissingProgression" xml:space="preserve"><value>スキルに common 数式も明示的なレベル表もありません。</value></data>
+  <data name="ValidationMissingIcon" xml:space="preserve"><value>スキルにアイコンがありません。</value></data>
+  <data name="ValidationMissingString" xml:space="preserve"><value>文字列メタデータがありません。</value></data>
+  <data name="ValidationMissingStringName" xml:space="preserve"><value>ローカライズされたスキル名がありません。</value></data>
+  <data name="ValidationMissingMaximum" xml:space="preserve"><value>スキルに宣言された最大レベルまたは明示的なレベルがありません。</value></data>
+  <data name="ValidationMaximumMismatch" xml:space="preserve"><value>common/maxLevel（{0}）が maxLevel（{1}）と一致しません。</value></data>
+  <data name="ValidationUnexpectedBook" xml:space="preserve"><value>スキル ID {0} は予期しないスキルブック {1} にあります。</value></data>
+  <data name="ValidationMissingReference" xml:space="preserve"><value>参照先スキル {0} が見つかりません。</value></data>
+  <data name="ValidationAmbiguousReference" xml:space="preserve"><value>参照先スキル {0} が複数のスキルブックに存在します。</value></data>
+  <data name="ValidationPlaceholderImage" xml:space="preserve"><value>長さ 0 またはプレースホルダーの画像です。</value></data>
+  <data name="ValidationModernGraph" xml:space="preserve"><value>最新のプロセスグラフは保持されますが、専用の検証機能はありません。</value></data>
+  <data name="ValidationEmptyAction" xml:space="preserve"><value>宣言されたキャラクターアクションが空です。</value></data>
+  <data name="Active" xml:space="preserve"><value>アクティブ</value></data>
+  <data name="Passive" xml:space="preserve"><value>パッシブ</value></data>
+  <data name="Hidden" xml:space="preserve"><value>非表示</value></data>
+  <data name="Warnings" xml:space="preserve"><value>警告</value></data>
+  <data name="SearchProperties" xml:space="preserve"><value>プロパティ名の完全一致検索</value></data>
+  <data name="Classification" xml:space="preserve"><value>分類</value></data>
+  <data name="MaximumLevel" xml:space="preserve"><value>最大レベル</value></data>
+  <data name="RequirementsFlags" xml:space="preserve"><value>条件とフラグ</value></data>
+  <data name="DragonAssets" xml:space="preserve"><value>ドラゴン素材を開く</value></data>
+  <data name="TimelineFrames" xml:space="preserve"><value>アニメーション フレーム</value></data>
+  <data name="TimelineClipboardTooltip" xml:space="preserve"><value>フレームを選択し、Ctrl+C でコピー、Ctrl+V で選択位置の後に貼り付けます。</value></data>
+  <data name="FrameCopied" xml:space="preserve"><value>フレームをコピーしました。</value></data>
+  <data name="FramePasted" xml:space="preserve"><value>フレームを貼り付けました。</value></data>
+  <data name="ClipboardHasNoImage" xml:space="preserve"><value>クリップボードに画像フレームがありません。</value></data>
+  <data name="WebpImageFilter" xml:space="preserve"><value>WebP 画像 (*.webp)|*.webp</value></data>
+</root>

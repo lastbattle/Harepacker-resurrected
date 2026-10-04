@@ -53,6 +53,8 @@ namespace HaCreator.Wz
 
         private void InsertImage()
         {
+            using IDisposable writeLease = Program.BeginRuntimeAssetWrite("save map data");
+
             // Check if we're using IMG filesystem mode
             if (Program.DataSource != null && Program.WzManager == null)
             {
@@ -132,6 +134,9 @@ namespace HaCreator.Wz
         {
             board.MapInfo.Save(image,
                 board.VRRectangle == null ? (System.Drawing.Rectangle?) null : new System.Drawing.Rectangle(board.VRRectangle.X, board.VRRectangle.Y, board.VRRectangle.Width, board.VRRectangle.Height));
+
+            if (board.MapInfo.directionInfo != null)
+                image["directionInfo"] = board.MapInfo.directionInfo.ToProperty();
 
             if (board.MapInfo.mapType == MapType.RegularMap)
             {
@@ -965,17 +970,11 @@ namespace HaCreator.Wz
                         itemProp.Name = targetObjectWzProperty.WzProperties.Count.ToString(); // "0"
 
                         Microsoft.Xna.Framework.Rectangle rect = mirrorFieldData.Rectangle;
-                        /*
-                            int width = rb.X.Value - lt.X.Value;
-                            int height = rb.Y.Value - lt.Y.Value;
-                            Rectangle rectangle = new Rectangle(
-                                lt.X.Value - offset.X.Value,
-                                lt.Y.Value - offset.Y.Value,
-                                width,
-                                height);*/
-
+                        // Both readers subtract the reflection offset from the stored bounds.
+                        // Add it here so a saved map and its detached preview share geometry.
                         InfoTool.SetLtRbRectangle(itemProp,
-                            new System.Drawing.Rectangle(rect.X, rect.Y, rect.Width, rect.Height) // convert Microsoft.Xna.Framework.Rectangle to System.Drawing.Rectangle
+                            new System.Drawing.Rectangle(rect.X + (int)mirrorFieldData.Offset.X,
+                                rect.Y + (int)mirrorFieldData.Offset.Y, rect.Width, rect.Height)
                             );
 
                         itemProp["offset"] = InfoTool.SetVector(mirrorFieldData.Offset.X, mirrorFieldData.Offset.Y);

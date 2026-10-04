@@ -388,6 +388,20 @@ HaEditor.xaml.cs
 - [ ] Delete + add same file quickly → correct final state
 - [ ] File locked by external app → graceful error handling
 
+### Watcher safety and ownership invariants
+
+Watcher paths are canonicalized before registration, including volume roots,
+and registration/removal is atomic so concurrent callers cannot leak duplicate
+native watchers. Debounce timers are published before they are armed; stale
+callbacks and callbacks queued during disposal are ignored. File state uses the
+canonical full path, path-boundary-aware cleanup, and a content hash when a
+timestamp/length-only comparison would miss an edit that restores the original
+metadata.
+
+The watcher does not own caller-provided source data. `Dispose` stops native
+watchers and timers, clears pending changes, and suppresses callbacks that race
+with disposal.
+
 ### Thread Safety
 - [ ] Modify files while scrolling panel → no crash
 - [ ] Add/delete during map editing → no enumeration errors
@@ -399,6 +413,10 @@ HaEditor.xaml.cs
 ## Overview
 
 The HaRepacker hot-swap system monitors currently-opened `.img` directories for external modifications and **automatically applies changes** with a brief notification. External file changes (add, remove, modify, rename) from Windows Explorer are assumed to be intentional and are immediately reflected in the UI.
+
+When HaRepacker opens a version directory, watcher registration uses lazy file-state tracking. It does not recursively enumerate or hash every existing `.img` file. `FileSystemWatcher` begins observing each category immediately, and size/timestamp/hash state is captured only when a file is opened or changed. This keeps opening very large extracted versions proportional to the number of top-level categories instead of total file count or byte size. Delete and rename events remain authoritative even when the affected file did not yet have a cached state.
+
+The version-directory loader batches all root tree nodes into one UI-thread update. Filesystem manager construction and watcher setup run on the worker thread; only the WinForms tree mutation is dispatched to the UI thread.
 
 **Note:** This system only supports loose `.img` file directories (extracted/unpacked format), not packed `.wz` files.
 
@@ -847,3 +865,19 @@ var watcher = new FileSystemWatcher(directoryPath)
 - [ ] External modify during tree navigation → no crash
 - [ ] Multiple .img files modified simultaneously → all notifications queued
 - [ ] Reload during background parsing → proper cancellation
+
+### Life asset picker names and filtering
+
+The Assets panel's Mobs, NPCs, and Reactors gallery displays and sorts name-first
+labels (`Name (ID)`), with the seven-digit IMG ID retained for disambiguation.
+Unnamed entries fall back to their ID. The search box matches partial names or
+IDs, case-insensitively; NPC descriptions are searchable too. Filters remain
+active when switching life types or refreshing after a hot swap.
+Reactor metadata is resolved when rebuilding the reactor list so name searches
+also include reactors whose thumbnails have never been displayed. Thumbnail
+loading remains deferred until entries are realized.
+
+The life picker explicitly loads `String/Mob.img` and `String/Npc.img` before
+reading their name caches. IMG startup defers those catalogs, so reading the
+caches alone would produce ID-only labels until another editor loaded names.
+These targeted loads leave unrelated item, skill, and quest catalogs deferred.

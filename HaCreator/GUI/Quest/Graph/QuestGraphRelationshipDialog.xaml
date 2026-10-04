@@ -1,0 +1,123 @@
+<Window x:Class="HaCreator.GUI.Quest.Graph.QuestGraphRelationshipDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:quest="clr-namespace:HaCreator.GUI.Quest"
+        Title="{quest:QuestText QuestEditor_GraphRelationshipDialogTitle}"
+        Width="520"
+        SizeToContent="Height"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource HareCanvasBrush}">
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/HaSharedLibrary;component/GUI/Themes/HarepackerTheme.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Window.Resources>
+
+    <Grid Margin="18">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="145"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <TextBlock Grid.Row="0"
+                   Grid.ColumnSpan="2"
+                   Margin="0,0,0,16"
+                   Foreground="{StaticResource HareMutedTextBrush}"
+                   TextWrapping="Wrap"
+                   Text="{quest:QuestText QuestEditor_GraphRelationshipScope}"/>
+
+        <TextBlock Grid.Row="1"
+                   VerticalAlignment="Center"
+                   Foreground="{StaticResource HareTextBrush}"
+                   Text="{quest:QuestText QuestEditor_GraphRelationshipSource}"/>
+        <TextBlock x:Name="SourceQuestText"
+                   Grid.Row="1"
+                   Grid.Column="1"
+                   Padding="8,6"
+                   Foreground="{StaticResource HareTextBrush}"
+                   Background="{StaticResource HareSurfaceAltBrush}"/>
+
+        <TextBlock Grid.Row="2"
+                   Margin="0,12,0,0"
+                   VerticalAlignment="Center"
+                   Foreground="{StaticResource HareTextBrush}"
+                   Text="{quest:QuestText QuestEditor_GraphRelationshipType}"/>
+        <ComboBox x:Name="RelationshipTypeBox"
+                  Grid.Row="2"
+                  Grid.Column="1"
+                  Margin="0,12,0,0"
+                  MinHeight="30"
+                  SelectionChanged="RelationshipTypeBox_SelectionChanged"/>
+
+        <TextBlock Grid.Row="3"
+                   Margin="0,12,0,0"
+                   VerticalAlignment="Center"
+                   Foreground="{StaticResource HareTextBrush}"
+                   Text="{quest:QuestText QuestEditor_GraphRelationshipTarget}"/>
+        <ComboBox x:Name="TargetQuestBox"
+                  Grid.Row="3"
+                  Grid.Column="1"
+                  Margin="0,12,0,0"
+                  MinHeight="30"
+                  IsTextSearchEnabled="True"
+                  SelectionChanged="TargetQuestBox_SelectionChanged"/>
+
+        <TextBlock x:Name="StateLabel"
+                   Grid.Row="4"
+                   Margin="0,12,0,0"
+                   VerticalAlignment="Center"
+                   Foreground="{StaticResource HareTextBrush}"
+                   Text="{quest:QuestText QuestEditor_GraphRelationshipState}"/>
+        <ComboBox x:Name="StateBox"
+                  Grid.Row="4"
+                  Grid.Column="1"
+                  Margin="0,12,0,0"
+                  MinHeight="30"
+                  SelectionChanged="StateBox_SelectionChanged"/>
+
+        <Border Grid.Row="5"
+                Grid.ColumnSpan="2"
+                Margin="0,18,0,0"
+                Padding="12"
+                Background="{StaticResource HareSurfaceAltBrush}"
+                BorderBrush="{StaticResource HareBorderBrush}"
+                BorderThickness="1"
+                CornerRadius="4">
+            <StackPanel>
+                <TextBlock FontWeight="SemiBold"
+                           Foreground="{StaticResource HareTextBrush}"
+                           Text="{quest:QuestText QuestEditor_GraphRelationshipPreview}"/>
+                <TextBlock x:Name="PreviewText"
+                           Margin="0,6,0,0"
+                           Foreground="{StaticResource HareMutedTextBrush}"
+                           TextWrapping="Wrap"/>
+                <StackPanel Margin="0,16,0,0"
+                            HorizontalAlignment="Right"
+                            Orientation="Horizontal">
+                    <Button Width="92"
+                            Margin="0,0,8,0"
+                            IsCancel="True"
+                            Style="{StaticResource HareButtonStyle}"
+                            Content="{quest:QuestText QuestEditor_GraphRelationshipCancel}"/>
+                    <Button x:Name="ApplyButton"
+                            Width="110"
+                            IsDefault="True"
+                            Style="{StaticResource HarePrimaryButtonStyle}"
+                            Click="ApplyButton_Click"
+                            Content="{quest:QuestText QuestEditor_GraphRelationshipApply}"/>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

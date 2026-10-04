@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="Title" xml:space="preserve"><value>技能編輯器</value></data>
+  <data name="CommandLabel" xml:space="preserve"><value>技能</value></data>
+  <data name="Purpose" xml:space="preserve"><value>瀏覽、驗證、預覽並無損編輯玩家技能與特殊 Skill 資料。</value></data>
+  <data name="Save" xml:space="preserve"><value>儲存</value></data>
+  <data name="Undo" xml:space="preserve"><value>復原</value></data>
+  <data name="Redo" xml:space="preserve"><value>重做</value></data>
+  <data name="ValidateCurrent" xml:space="preserve"><value>驗證目前技能</value></data>
+  <data name="ValidateAll" xml:space="preserve"><value>驗證所有已載入的變更</value></data>
+  <data name="Duplicate" xml:space="preserve"><value>複製</value></data>
+  <data name="NewSkill" xml:space="preserve"><value>新增技能</value></data>
+  <data name="Source" xml:space="preserve"><value>來源</value></data>
+  <data name="Search" xml:space="preserve"><value>依技能 ID 或名稱搜尋</value></data>
+  <data name="Scope" xml:space="preserve"><value>範圍</value></data>
+  <data name="All" xml:space="preserve"><value>全部</value></data>
+  <data name="Player" xml:space="preserve"><value>玩家</value></data>
+  <data name="Special" xml:space="preserve"><value>特殊資料</value></data>
+  <data name="Books" xml:space="preserve"><value>職業與技能書</value></data>
+  <data name="Skills" xml:space="preserve"><value>技能</value></data>
+  <data name="Overview" xml:space="preserve"><value>概覽</value></data>
+  <data name="Levels" xml:space="preserve"><value>等級</value></data>
+  <data name="Visuals" xml:space="preserve"><value>視覺效果</value></data>
+  <data name="Relationships" xml:space="preserve"><value>關係</value></data>
+  <data name="KnownProperties" xml:space="preserve"><value>已知屬性</value></data>
+  <data name="RawProperties" xml:space="preserve"><value>Raw 屬性</value></data>
+  <data name="Validation" xml:space="preserve"><value>驗證</value></data>
+  <data name="SkillId" xml:space="preserve"><value>技能 ID</value></data>
+  <data name="Book" xml:space="preserve"><value>技能書 / 職業</value></data>
+  <data name="Name" xml:space="preserve"><value>名稱</value></data>
+  <data name="Description" xml:space="preserve"><value>描述</value></data>
+  <data name="EditText" xml:space="preserve"><value>編輯文字中繼資料</value></data>
+  <data name="OtherImageWarning" xml:space="preserve"><value>這也會修改 String/Skill.img。</value></data>
+  <data name="FormulaMode" xml:space="preserve"><value>公式模式</value></data>
+  <data name="ExplicitMode" xml:space="preserve"><value>明確等級</value></data>
+  <data name="PreviewLevel" xml:space="preserve"><value>預覽等級</value></data>
+  <data name="Property" xml:space="preserve"><value>屬性</value></data>
+  <data name="Type" xml:space="preserve"><value>WZ 類型</value></data>
+  <data name="RawValue" xml:space="preserve"><value>Raw 值</value></data>
+  <data name="Evaluated" xml:space="preserve"><value>計算值</value></data>
+  <data name="PvpCommon" xml:space="preserve"><value>PVPcommon</value></data>
+  <data name="VisualTracks" xml:space="preserve"><value>視覺軌道</value></data>
+  <data name="ShowCharacter" xml:space="preserve"><value>顯示角色</value></data>
+  <data name="Action" xml:space="preserve"><value>動作</value></data>
+  <data name="Auto" xml:space="preserve"><value>自動</value></data>
+  <data name="Facing" xml:space="preserve"><value>朝向</value></data>
+  <data name="FacingLeft" xml:space="preserve"><value>左</value></data>
+  <data name="FacingRight" xml:space="preserve"><value>右</value></data>
+  <data name="CharacterPreset" xml:space="preserve"><value>角色預設</value></data>
+  <data name="Male" xml:space="preserve"><value>預設男性</value></data>
+  <data name="Female" xml:space="preserve"><value>預設女性</value></data>
+  <data name="Custom" xml:space="preserve"><value>自訂</value></data>
+  <data name="Play" xml:space="preserve"><value>播放或暫停預覽</value></data>
+  <data name="PreviousFrame" xml:space="preserve"><value>上一影格</value></data>
+  <data name="NextFrame" xml:space="preserve"><value>下一影格</value></data>
+  <data name="Materialize" xml:space="preserve"><value>實體化連結</value></data>
+  <data name="Import" xml:space="preserve"><value>匯入</value></data>
+  <data name="Export" xml:space="preserve"><value>匯出</value></data>
+  <data name="Add" xml:space="preserve"><value>新增</value></data>
+  <data name="Delete" xml:space="preserve"><value>刪除</value></data>
+  <data name="Rename" xml:space="preserve"><value>重新命名</value></data>
+  <data name="ChangeType" xml:space="preserve"><value>變更類型</value></data>
+  <data name="CopyPath" xml:space="preserve"><value>複製路徑</value></data>
+  <data name="RelationshipKind" xml:space="preserve"><value>關係</value></data>
+  <data name="TargetSkill" xml:space="preserve"><value>目標技能</value></data>
+  <data name="Path" xml:space="preserve"><value>WZ 路徑</value></data>
+  <data name="Status" xml:space="preserve"><value>狀態</value></data>
+  <data name="Ready" xml:space="preserve"><value>就緒</value></data>
+  <data name="Loading" xml:space="preserve"><value>載入中…</value></data>
+  <data name="Saving" xml:space="preserve"><value>儲存中…</value></data>
+  <data name="Dirty" xml:space="preserve"><value>未儲存的變更</value></data>
+  <data name="PreservedRaw" xml:space="preserve"><value>未知欄位會保留在 Raw 屬性中。</value></data>
+  <data name="NoSelection" xml:space="preserve"><value>請選取技能以開始。</value></data>
+  <data name="NoDataSource" xml:space="preserve"><value>沒有可用的作用中 MapleStory 資料來源。</value></data>
+  <data name="LoadFailed" xml:space="preserve"><value>無法載入技能: {0}</value></data>
+  <data name="SaveSucceeded" xml:space="preserve"><value>已儲存 {0} 個影像。</value></data>
+  <data name="SaveFailed" xml:space="preserve"><value>儲存失敗: {0}</value></data>
+  <data name="PartialSave" xml:space="preserve"><value>部分儲存。繼續前請重新載入這些復原路徑: {0}</value></data>
+  <data name="ValidationSummary" xml:space="preserve"><value>{0} 個錯誤，{1} 個警告</value></data>
+  <data name="UnsavedPrompt" xml:space="preserve"><value>繼續前要儲存技能 {0} 的變更嗎？</value></data>
+  <data name="Discard" xml:space="preserve"><value>捨棄</value></data>
+  <data name="Cancel" xml:space="preserve"><value>取消</value></data>
+  <data name="ConfirmDelete" xml:space="preserve"><value>要刪除 Raw 屬性 '{0}' 嗎？除 Undo 外不會保留備份。</value></data>
+  <data name="ConfirmMaterialize" xml:space="preserve"><value>要將此連結實體化為獨立複本嗎？序列化的連結將會被取代。</value></data>
+  <data name="ActionFallback" xml:space="preserve"><value>{0} → {1}: {2}</value></data>
+  <data name="NoAction" xml:space="preserve"><value>未宣告動作</value></data>
+  <data name="UnsupportedSemantic" xml:space="preserve"><value>此結構仍可在 Raw 屬性中完整編輯。</value></data>
+  <data name="Level" xml:space="preserve"><value>等級</value></data>
+  <data name="Absent" xml:space="preserve"><value>(缺少)</value></data>
+  <data name="PngImageFilter" xml:space="preserve"><value>PNG 影像|*.png</value></data>
+  <data name="Ok" xml:space="preserve"><value>確定</value></data>
+  <data name="OperationFailed" xml:space="preserve"><value>操作失敗: {0}</value></data>
+  <data name="EditProperty" xml:space="preserve"><value>編輯 {0}</value></data>
+  <data name="EditStringMetadata" xml:space="preserve"><value>編輯 String 中繼資料</value></data>
+  <data name="EditRawProperty" xml:space="preserve"><value>編輯 Raw 屬性</value></data>
+  <data name="EditFormula" xml:space="preserve"><value>編輯公式</value></data>
+  <data name="DeleteRawProperty" xml:space="preserve"><value>刪除 Raw 屬性</value></data>
+  <data name="RenameRawProperty" xml:space="preserve"><value>重新命名 Raw 屬性</value></data>
+  <data name="AddRawProperty" xml:space="preserve"><value>新增 Raw 屬性</value></data>
+  <data name="ChangeRawPropertyType" xml:space="preserve"><value>變更 Raw 屬性類型</value></data>
+  <data name="AlphaEnd" xml:space="preserve"><value>透明度結束值</value></data><data name="AlphaStart" xml:space="preserve"><value>透明度起始值</value></data><data name="ApplyProfile" xml:space="preserve"><value>套用設定檔</value></data><data name="Body" xml:space="preserve"><value>身體</value></data><data name="CopyCell" xml:space="preserve"><value>複製儲存格</value></data><data name="CopyPropertyToLoaded" xml:space="preserve"><value>將屬性複製到已載入技能</value></data><data name="CustomProfile" xml:space="preserve"><value>自訂設定檔</value></data><data name="Delay" xml:space="preserve"><value>延遲</value></data><data name="DeleteSkill" xml:space="preserve"><value>刪除技能</value></data><data name="DuplicateProperty" xml:space="preserve"><value>複製屬性</value></data><data name="Equipment" xml:space="preserve"><value>裝備</value></data><data name="EquipmentHint" xml:space="preserve"><value>以逗號分隔輸入物品 ID</value></data><data name="ExportData" xml:space="preserve"><value>匯出資料</value></data><data name="ExportIcon" xml:space="preserve"><value>匯出圖示</value></data><data name="Face" xml:space="preserve"><value>臉型</value></data><data name="FillDown" xml:space="preserve"><value>向下填滿</value></data><data name="Fit" xml:space="preserve"><value>符合視窗</value></data><data name="FrameDelete" xml:space="preserve"><value>刪除影格</value></data><data name="FrameDuplicate" xml:space="preserve"><value>複製影格</value></data><data name="Hair" xml:space="preserve"><value>髮型</value></data><data name="Head" xml:space="preserve"><value>頭部</value></data><data name="HoldStage" xml:space="preserve"><value>按住階段</value></data><data name="ImportData" xml:space="preserve"><value>匯入資料</value></data><data name="ImportIcon" xml:space="preserve"><value>匯入圖示</value></data><data name="MoveLeft" xml:space="preserve"><value>向左移動</value></data><data name="MoveRight" xml:space="preserve"><value>向右移動</value></data><data name="NavigateRelationship" xml:space="preserve"><value>前往關聯項目</value></data><data name="OnionSkin" xml:space="preserve"><value>洋蔥皮</value></data><data name="OriginX" xml:space="preserve"><value>原點 X</value></data><data name="OriginY" xml:space="preserve"><value>原點 Y</value></data><data name="PlaybackSpeed" xml:space="preserve"><value>播放速度</value></data><data name="RekeyFrames" xml:space="preserve"><value>重新編號影格</value></data><data name="ReleaseStage" xml:space="preserve"><value>放開階段</value></data><data name="RenameMoveSkill" xml:space="preserve"><value>重新命名或移動技能</value></data><data name="RenderedDescription" xml:space="preserve"><value>轉譯說明</value></data><data name="ResolveLink" xml:space="preserve"><value>解析連結</value></data><data name="Z" xml:space="preserve"><value>Z</value></data><data name="Zoom" xml:space="preserve"><value>縮放</value></data>
+  <data name="EditorMode" xml:space="preserve"><value>編輯模式</value></data><data name="ModePlayer" xml:space="preserve"><value>玩家技能</value></data><data name="ModeAttackType" xml:space="preserve"><value>攻擊類型</value></data><data name="ModeItemSkill" xml:space="preserve"><value>物品技能</value></data><data name="ModeMobSkill" xml:space="preserve"><value>怪物技能</value></data><data name="ModeBattlefield" xml:space="preserve"><value>戰場</value></data><data name="ModeMiniGame" xml:space="preserve"><value>小遊戲</value></data><data name="ModeRecipe" xml:space="preserve"><value>配方</value></data><data name="ModeDragon" xml:space="preserve"><value>龍</value></data><data name="ModeModernGraph" xml:space="preserve"><value>現代圖表</value></data><data name="ModeGeneric" xml:space="preserve"><value>一般資料</value></data>
+  <data name="ValidationNoSelection" xml:space="preserve"><value>未選取技能。</value></data>
+  <data name="ValidationInvalidSkillId" xml:space="preserve"><value>技能 ID「{0}」只能包含數字。</value></data>
+  <data name="ValidationIdMismatch" xml:space="preserve"><value>序列化節點「{0}」與所選技能 ID「{1}」不一致。</value></data>
+  <data name="ValidationDuplicateProperty" xml:space="preserve"><value>屬性名稱「{0}」重複。</value></data>
+  <data name="ValidationInvalidCanvasDelay" xml:space="preserve"><value>動畫延遲必須大於零。</value></data>
+  <data name="ValidationInvalidContainerDelay" xml:space="preserve"><value>零或負延遲將保留，並使用有界後備值預覽。</value></data>
+  <data name="ValidationBrokenExistingUol" xml:space="preserve"><value>原有 UOL 目標「{0}」已損壞或存在循環。</value></data>
+  <data name="ValidationBrokenIntroducedUol" xml:space="preserve"><value>已編輯的 UOL 目標「{0}」已損壞或存在循環。</value></data>
+  <data name="ValidationFormulaInvalid" xml:space="preserve"><value>公式格式錯誤或使用了不支援的語法。</value></data>
+  <data name="ValidationFormulaDivisionByZero" xml:space="preserve"><value>公式在等級 {0} 時除以零。</value></data>
+  <data name="ValidationMissingProgression" xml:space="preserve"><value>技能既沒有 common 公式，也沒有明確等級表。</value></data>
+  <data name="ValidationMissingIcon" xml:space="preserve"><value>技能沒有圖示。</value></data>
+  <data name="ValidationMissingString" xml:space="preserve"><value>缺少字串中繼資料。</value></data>
+  <data name="ValidationMissingStringName" xml:space="preserve"><value>缺少本地化技能名稱。</value></data>
+  <data name="ValidationMissingMaximum" xml:space="preserve"><value>技能沒有宣告最高等級或明確等級。</value></data>
+  <data name="ValidationMaximumMismatch" xml:space="preserve"><value>common/maxLevel（{0}）與 maxLevel（{1}）不一致。</value></data>
+  <data name="ValidationUnexpectedBook" xml:space="preserve"><value>技能 ID {0} 出現在非預期技能書 {1} 中。</value></data>
+  <data name="ValidationMissingReference" xml:space="preserve"><value>找不到參照的技能 {0}。</value></data>
+  <data name="ValidationAmbiguousReference" xml:space="preserve"><value>參照的技能 {0} 存在於多個技能書中。</value></data>
+  <data name="ValidationPlaceholderImage" xml:space="preserve"><value>這是零長度或預留位置圖像。</value></data>
+  <data name="ValidationModernGraph" xml:space="preserve"><value>現代流程圖已保留，但沒有專用驗證器。</value></data>
+  <data name="ValidationEmptyAction" xml:space="preserve"><value>宣告的角色動作為空。</value></data>
+  <data name="Active" xml:space="preserve"><value>主動</value></data>
+  <data name="Passive" xml:space="preserve"><value>被動</value></data>
+  <data name="Hidden" xml:space="preserve"><value>隱藏</value></data>
+  <data name="Warnings" xml:space="preserve"><value>警告</value></data>
+  <data name="SearchProperties" xml:space="preserve"><value>精確屬性名稱搜尋</value></data>
+  <data name="Classification" xml:space="preserve"><value>分類</value></data>
+  <data name="MaximumLevel" xml:space="preserve"><value>最高等級</value></data>
+  <data name="RequirementsFlags" xml:space="preserve"><value>需求與旗標</value></data>
+  <data name="DragonAssets" xml:space="preserve"><value>開啟龍素材</value></data>
+  <data name="TimelineFrames" xml:space="preserve"><value>動畫影格</value></data>
+  <data name="TimelineClipboardTooltip" xml:space="preserve"><value>選取一個影格，然後按 Ctrl+C 複製，或按 Ctrl+V 貼到所選影格之後。</value></data>
+  <data name="FrameCopied" xml:space="preserve"><value>已複製影格。</value></data>
+  <data name="FramePasted" xml:space="preserve"><value>已貼上影格。</value></data>
+  <data name="ClipboardHasNoImage" xml:space="preserve"><value>剪貼簿中沒有圖像影格。</value></data>
+  <data name="WebpImageFilter" xml:space="preserve"><value>WebP 影像 (*.webp)|*.webp</value></data>
+</root>

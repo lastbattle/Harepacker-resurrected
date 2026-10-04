@@ -10,6 +10,7 @@ using System.Security.Principal;
 using System.Globalization;
 using MapleLib.Configuration;
 using HaSharedLibrary;
+using HaSharedLibrary.Configuration;
 using System.Runtime.CompilerServices;
 using MapleLib;
 
@@ -24,11 +25,16 @@ namespace HaRepacker
             set { _wzFileManager = value; }
         }
 
+        public static WzFileManager EnsureWzFileManager()
+        {
+            return _wzFileManager ??= new WzFileManager();
+        }
+
         public static NamedPipeServerStream pipe;
         public static Thread pipeThread;
 
-        private static ConfigurationManager _ConfigurationManager; // default for VS UI designer
-        public static ConfigurationManager ConfigurationManager
+        private static HaRepackerSettingsStore _ConfigurationManager; // default for VS UI designer
+        public static HaRepackerSettingsStore ConfigurationManager
         {
             get { return _ConfigurationManager; }
             private set { }
@@ -71,7 +77,9 @@ namespace HaRepacker
             string wzToLoad = null;
             if (args.Length > 0)
                 wzToLoad = args[0];
-            Application.Run(new MainForm(wzToLoad, true, firstRun));
+            var app = System.Windows.Application.Current ?? new System.Windows.Application();
+            app.ShutdownMode = System.Windows.ShutdownMode.OnMainWindowClose;
+            app.Run(new MainForm(wzToLoad, true, firstRun));
             EndApplication(true, true);
         }
 
@@ -109,11 +117,7 @@ namespace HaRepacker
         /// <returns></returns>
         public static string GetLocalFolderPath()
         {
-            string appdata = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-            string our_folder = Path.Combine(appdata, pipeName);
-            if (!Directory.Exists(our_folder))
-                Directory.CreateDirectory(our_folder);
-            return our_folder;
+            return UserDataPaths.HaRepackerDirectory;
         }
 
 
@@ -137,7 +141,7 @@ namespace HaRepacker
 
         public static bool PrepareApplication(bool from_internal)
         {
-            _ConfigurationManager = new ConfigurationManager();
+            _ConfigurationManager = new HaRepackerSettingsStore();
 
             bool loaded = _ConfigurationManager.Load();
             if (!loaded)

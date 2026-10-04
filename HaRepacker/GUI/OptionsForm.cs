@@ -1,108 +1,83 @@
-using System;
-using System.Windows.Forms;
-using HaRepacker.GUI.Panels;
-using System.Diagnostics;
+using System.Windows;
 using MapleLib.WzLib.Serializer;
 
 namespace HaRepacker.GUI
 {
-    public partial class OptionsForm : Form
+    public partial class OptionsForm : ThemedDialogWindow
     {
         public OptionsForm()
         {
             InitializeComponent();
-
-            sortBox.Checked = Program.ConfigurationManager.UserSettings.Sort;
-            loadRelated.Checked = Program.ConfigurationManager.UserSettings.AutoloadRelatedWzFiles;
-            apngIncompEnable.Checked = Program.ConfigurationManager.UserSettings.UseApngIncompatibilityFrame;
-            autoAssociateBox.Checked = Program.ConfigurationManager.UserSettings.AutoAssociate;
-            if (Program.ConfigurationManager.UserSettings.DefaultXmlFolder != "")
-            {
-                defXmlFolderEnable.Checked = true;
-                defXmlFolderBox.Text = Program.ConfigurationManager.UserSettings.DefaultXmlFolder;
-            }
-            indentBox.Value = Program.ConfigurationManager.UserSettings.Indentation;
+            ApplyLocalizedText();
+            sortBox.IsChecked = Program.ConfigurationManager.UserSettings.Sort;
+            loadRelated.IsChecked = Program.ConfigurationManager.UserSettings.AutoloadRelatedWzFiles;
+            apngIncompEnable.IsChecked = Program.ConfigurationManager.UserSettings.UseApngIncompatibilityFrame;
+            autoAssociateBox.IsChecked = Program.ConfigurationManager.UserSettings.AutoAssociate;
+            string defaultFolder = Program.ConfigurationManager.UserSettings.DefaultXmlFolder;
+            defXmlFolderEnable.IsChecked = !string.IsNullOrEmpty(defaultFolder);
+            defXmlFolderBox.Text = defaultFolder;
+            indentBox.Text = Program.ConfigurationManager.UserSettings.Indentation.ToString();
             lineBreakBox.SelectedIndex = (int)Program.ConfigurationManager.UserSettings.LineBreakType;
-
-            // Theme color
-            themeColor__comboBox.SelectedIndex = Program.ConfigurationManager.UserSettings.ThemeColor;
+            themeColorComboBox.SelectedIndex = Program.ConfigurationManager.UserSettings.ThemeColor;
+            UpdateFolderState();
         }
 
+        private string Text(string key, string fallback) => WpfDialogSupport.Text(typeof(OptionsForm), key, fallback);
 
-        /// <summary>
-        /// Process command key on the form
-        /// </summary>
-        /// <param name="msg"></param>
-        /// <param name="keyData"></param>
-        /// <returns></returns>
-        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+        private void ApplyLocalizedText()
         {
-            // ...
-            if (keyData == (Keys.Escape))
+            Title = Text("$this.Text", "Options");
+            generalHeader.Text = Text("label5.Text", "General");
+            sortBox.Content = Text("sortBox.Text", "Sort TreeView by default (slow!)");
+            loadRelated.Content = Text("loadRelated.Text", "Auto-load related Wz files");
+            apngIncompEnable.Content = Text("apngIncompEnable.Text", "Use APNG incompatibility frame");
+            autoAssociateBox.Content = Text("autoAssociateBox.Text", "Automatically associate WZ files with HaRepacker");
+            defXmlFolderEnable.Content = Text("defXmlFolderEnable.Text", "Default XML Folder:");
+            indentationLabel.Text = Text("label1.Text", "Indentation");
+            lineBreakLabel.Text = Text("label2.Text", "Line break");
+            themeLabel.Text = Text("label3.Text", "Theme Color:");
+            lineBreakBox.Items.Add(Text("lineBreakBox.Items", "None"));
+            lineBreakBox.Items.Add(Text("lineBreakBox.Items1", "Windows"));
+            lineBreakBox.Items.Add(Text("lineBreakBox.Items2", "Unix"));
+            themeColorComboBox.Items.Add(Text("themeColor__comboBox.Items", "Black"));
+            themeColorComboBox.Items.Add(Text("themeColor__comboBox.Items1", "White"));
+            browseButton.Content = Text("browse.Text", "...");
+            okButton.Content = Text("okButton.Text", "OK");
+            cancelButton.Content = Text("cancelButton.Text", "Cancel");
+        }
+
+        private void cancelButton_Click(object sender, RoutedEventArgs e) => Close();
+
+        private void okButton_Click(object sender, RoutedEventArgs e)
+        {
+            int indentation = WpfDialogSupport.ParseInteger(indentBox.Text, -1);
+            if (indentation < 0)
             {
-                Close(); // exit window
-                return true;
-            }
-            return base.ProcessCmdKey(ref msg, keyData);
-        }
-
-        private void cancelButton_Click(object sender, EventArgs e)
-        {
-            Close();
-        }
-
-        private void okButton_Click(object sender, EventArgs e)
-        {
-            if (indentBox.Value < 0)
-            {
-                Warning.Error(HaRepacker.Properties.Resources.OptionsIndentError);
+                Warning.Error(Properties.Resources.OptionsIndentError);
                 return;
             }
-
-            Program.ConfigurationManager.UserSettings.Sort = sortBox.Checked;
-            Program.ConfigurationManager.UserSettings.AutoloadRelatedWzFiles = loadRelated.Checked;
-            Program.ConfigurationManager.UserSettings.UseApngIncompatibilityFrame = apngIncompEnable.Checked;
-            Program.ConfigurationManager.UserSettings.AutoAssociate = autoAssociateBox.Checked;
-            if (defXmlFolderEnable.Checked)
-                Program.ConfigurationManager.UserSettings.DefaultXmlFolder = defXmlFolderBox.Text;
-            else
-                Program.ConfigurationManager.UserSettings.DefaultXmlFolder = "";
-            Program.ConfigurationManager.UserSettings.Indentation = indentBox.Value;
+            Program.ConfigurationManager.UserSettings.Sort = sortBox.IsChecked == true;
+            Program.ConfigurationManager.UserSettings.AutoloadRelatedWzFiles = loadRelated.IsChecked == true;
+            Program.ConfigurationManager.UserSettings.UseApngIncompatibilityFrame = apngIncompEnable.IsChecked == true;
+            Program.ConfigurationManager.UserSettings.AutoAssociate = autoAssociateBox.IsChecked == true;
+            Program.ConfigurationManager.UserSettings.DefaultXmlFolder = defXmlFolderEnable.IsChecked == true ? defXmlFolderBox.Text : string.Empty;
+            Program.ConfigurationManager.UserSettings.Indentation = indentation;
             Program.ConfigurationManager.UserSettings.LineBreakType = (LineBreak)lineBreakBox.SelectedIndex;
-            Program.ConfigurationManager.UserSettings.ThemeColor = themeColor__comboBox.SelectedIndex;
-
+            Program.ConfigurationManager.UserSettings.ThemeColor = themeColorComboBox.SelectedIndex;
             Program.ConfigurationManager.Save();
             Close();
         }
 
-        private void browse_Click(object sender, EventArgs e)
+        private void browse_Click(object sender, RoutedEventArgs e) =>
+            defXmlFolderBox.Text = SavedFolderBrowser.Show(Properties.Resources.SelectDefaultXmlFolder);
+
+        private void defXmlFolderEnable_CheckedChanged(object sender, RoutedEventArgs e) => UpdateFolderState();
+
+        private void UpdateFolderState()
         {
-            defXmlFolderBox.Text = SavedFolderBrowser.Show(HaRepacker.Properties.Resources.SelectDefaultXmlFolder);
-        }
-
-        private void defXmlFolderEnable_CheckedChanged(object sender, EventArgs e)
-        {
-            browse.Enabled = defXmlFolderEnable.Checked;
-            defXmlFolderBox.Enabled = defXmlFolderEnable.Checked;
-        }
-
-        /// <summary>
-        /// OpenAI API hyperlink url
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void linkLabel1_LinkClicked(object sender, LinkLabelLinkClickedEventArgs e) {
-            Process myProcess = new Process();
-
-            try {
-                // true is the default, but it is important not to set it to false
-                myProcess.StartInfo.UseShellExecute = true;
-                myProcess.StartInfo.FileName = ((LinkLabel)sender).Text;
-                myProcess.Start();
-            }
-            catch (Exception ex) {
-                Console.WriteLine(ex.Message);
-            }
+            bool enabled = defXmlFolderEnable.IsChecked == true;
+            browseButton.IsEnabled = enabled;
+            defXmlFolderBox.IsEnabled = enabled;
         }
     }
 }

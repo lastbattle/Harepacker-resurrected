@@ -1,5 +1,6 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text.RegularExpressions;
 
@@ -71,6 +72,18 @@ namespace HaCreator.MapEditor.AI
                     command.TargetY = int.Parse(coords.Groups[2].Value);
                 }
 
+                if (command.Type == CommandType.Move)
+                {
+                    var positions = CoordinatePattern.Matches(commandText);
+                    if (positions.Count > 1)
+                    {
+                        command.Parameters["source_x"] = command.TargetX.Value;
+                        command.Parameters["source_y"] = command.TargetY.Value;
+                        command.TargetX = int.Parse(positions[^1].Groups[1].Value);
+                        command.TargetY = int.Parse(positions[^1].Groups[2].Value);
+                    }
+                }
+
                 // Parse quoted strings (for names like portal names)
                 var quotedMatches = QuotedStringPattern.Matches(commandText);
                 if (quotedMatches.Count > 0)
@@ -96,27 +109,21 @@ namespace HaCreator.MapEditor.AI
                 // Parse property assignments
                 ParseProperties(commandText, command);
 
-                // Parse direction/flip
-                if (normalized.Contains("FLIP") ||
-                    normalized.Contains("FACING LEFT") ||
-                    normalized.Contains("FLIPPED"))
-                {
-                    command.Parameters["flip"] = true;
-                }
-                else if (normalized.Contains("FACING RIGHT") || normalized.Contains("NOT FLIPPED"))
-                {
+                // Explicit negation must be tested before the positive flip keywords.
+                if (Regex.IsMatch(normalized, @"\b(?:FACING RIGHT|NOT FLIPPED)\b"))
                     command.Parameters["flip"] = false;
-                }
+                else if (Regex.IsMatch(normalized, @"\b(?:FLIP(?!\s*[=:])|FLIPPED|FACING LEFT)\b"))
+                    command.Parameters["flip"] = true;
 
                 // Parse layer
-                var layerMatch = Regex.Match(normalized, @"LAYER\s*[=:]?\s*(\d+)");
+                var layerMatch = Regex.Match(normalized, @"\bLAYER\s*[=:]?\s*(-?\d+)");
                 if (layerMatch.Success)
                 {
                     command.Parameters["layer"] = int.Parse(layerMatch.Groups[1].Value);
                 }
 
                 // Parse Z-order
-                var zMatch = Regex.Match(normalized, @"Z\s*[=:]?\s*(-?\d+)");
+                var zMatch = Regex.Match(normalized, @"\bZ\s*[=:]?\s*(-?\d+)");
                 if (zMatch.Success)
                 {
                     command.Parameters["z"] = int.Parse(zMatch.Groups[1].Value);
@@ -279,7 +286,7 @@ namespace HaCreator.MapEditor.AI
                 {
                     ParseTeamProperties(commandText, command);
                 }
-                if (command.Type == CommandType.SetLayerTileset)
+                if (command.Type == CommandType.SetLayerTileset || command.Type == CommandType.ChangeTileset)
                 {
                     ParseLayerTilesetProperties(commandText, command);
                 }
@@ -341,6 +348,8 @@ namespace HaCreator.MapEditor.AI
 
         private CommandType ParseCommandType(string normalized)
         {
+            if (normalized.StartsWith("CHANGE TILESET"))
+                return CommandType.ChangeTileset;
             if (normalized.StartsWith("TILE STRUCTURE"))
                 return CommandType.TileStructure;
             if (normalized.StartsWith("TILE PLATFORM"))
@@ -503,7 +512,7 @@ namespace HaCreator.MapEditor.AI
                 {
                     command.Parameters[key] = boolVal;
                 }
-                else if (float.TryParse(value, out float floatVal))
+                else if (float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out float floatVal))
                 {
                     command.Parameters[key] = floatVal;
                 }
@@ -632,7 +641,7 @@ namespace HaCreator.MapEditor.AI
             }
 
             // Parse raw_position flag (disable ground-snapping)
-            if (Regex.IsMatch(commandText, @"\bRAW_POSITION\b", RegexOptions.IgnoreCase))
+            if (Regex.IsMatch(commandText, @"\bRAW_POSITION\b(?!\s*[=:])", RegexOptions.IgnoreCase))
             {
                 command.Parameters["raw_position"] = true;
             }
@@ -951,13 +960,13 @@ namespace HaCreator.MapEditor.AI
             var rateMatch = Regex.Match(commandText, @"RATE\s*=\s*([\d.]+)", RegexOptions.IgnoreCase);
             if (rateMatch.Success)
             {
-                command.Parameters["rate"] = float.Parse(rateMatch.Groups[1].Value);
+                command.Parameters["rate"] = float.Parse(rateMatch.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture);
             }
             else
             {
                 var valueMatch = Regex.Match(commandText, @"MOB_?RATE\s+([\d.]+)", RegexOptions.IgnoreCase);
                 if (valueMatch.Success)
-                    command.Parameters["rate"] = float.Parse(valueMatch.Groups[1].Value);
+                    command.Parameters["rate"] = float.Parse(valueMatch.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture);
             }
         }
 
@@ -1044,17 +1053,17 @@ namespace HaCreator.MapEditor.AI
         private void ParseHelpProperties(string commandText, MapAICommand command)
         {
             // Parse: SET HELP "help text"
-            var quotedMatches = QuotedStringPattern.Matches(commandText);
-            if (quotedMatches.Count > 0)
-                command.Parameters["text"] = quotedMatches[0].Groups[1].Value;
+            var match = Regex.Match(commandText, @"^\s*SET\s+HELP\s+""([^""]*)""\s*$", RegexOptions.IgnoreCase);
+            if (match.Success)
+                command.Parameters["text"] = match.Groups[1].Value;
         }
 
         private void ParseMapDescProperties(string commandText, MapAICommand command)
         {
             // Parse: SET MAP_DESC "description"
-            var quotedMatches = QuotedStringPattern.Matches(commandText);
-            if (quotedMatches.Count > 0)
-                command.Parameters["desc"] = quotedMatches[0].Groups[1].Value;
+            var match = Regex.Match(commandText, @"^\s*SET\s+(?:MAP_DESC|MAPDESC|DESCRIPTION)\s+""([^""]*)""\s*$", RegexOptions.IgnoreCase);
+            if (match.Success)
+                command.Parameters["desc"] = match.Groups[1].Value;
         }
 
         private void ParseDropProperties(string commandText, MapAICommand command)
@@ -1066,7 +1075,7 @@ namespace HaCreator.MapEditor.AI
 
             var rateMatch = Regex.Match(commandText, @"RATE\s*=\s*([\d.]+)", RegexOptions.IgnoreCase);
             if (rateMatch.Success)
-                command.Parameters["rate"] = float.Parse(rateMatch.Groups[1].Value);
+                command.Parameters["rate"] = float.Parse(rateMatch.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture);
         }
 
         private void ParseDecayProperties(string commandText, MapAICommand command)
@@ -1087,13 +1096,13 @@ namespace HaCreator.MapEditor.AI
             var rateMatch = Regex.Match(commandText, @"RATE\s*=\s*([\d.]+)", RegexOptions.IgnoreCase);
             if (rateMatch.Success)
             {
-                command.Parameters["rate"] = float.Parse(rateMatch.Groups[1].Value);
+                command.Parameters["rate"] = float.Parse(rateMatch.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture);
             }
             else
             {
                 var valueMatch = Regex.Match(commandText, @"RECOVERY\s+([\d.]+)", RegexOptions.IgnoreCase);
                 if (valueMatch.Success)
-                    command.Parameters["rate"] = float.Parse(valueMatch.Groups[1].Value);
+                    command.Parameters["rate"] = float.Parse(valueMatch.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture);
             }
         }
 

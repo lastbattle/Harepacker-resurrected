@@ -8,9 +8,16 @@
              
              mc:Ignorable="d" 
              d:DesignHeight="600" d:DesignWidth="800">
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/HaSharedLibrary;component/GUI/Themes/HarepackerTheme.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </UserControl.Resources>
     
    
-    <Grid>
+    <Grid Background="{StaticResource HareCanvasBrush}">
         <WindowsFormsHost x:Name="winFormDXHolder" Margin="0,0,20,20" Visibility="Collapsed">
             <customControls:DirectXHolder x:Name="DxContainer" 
                                      DragEnter="DxContainer_DragEnter"

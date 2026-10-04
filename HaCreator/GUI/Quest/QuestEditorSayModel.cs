@@ -1,5 +1,7 @@
 ﻿using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.ComponentModel;
+using System.Linq;
 
 namespace HaCreator.GUI.Quest
 {
@@ -16,6 +18,15 @@ namespace HaCreator.GUI.Quest
         private ObservableCollection<QuestEditorSayResponseModel> _yesResponses = [];
         private ObservableCollection<QuestEditorSayResponseModel> _noResponses = [];
         private ObservableCollection<QuestEditorSayResponseModel> _askResponses = [];
+
+        private QuestEditorConversationPreviewLine _selectedPreviewLine;
+
+        public QuestEditorSayModel()
+        {
+            _yesResponses.CollectionChanged += Responses_CollectionChanged;
+            _noResponses.CollectionChanged += Responses_CollectionChanged;
+            RebuildPreviewLines();
+        }
 
         /// <summary>
         /// The NPC conversation
@@ -69,8 +80,11 @@ namespace HaCreator.GUI.Quest
             get => _yesResponses;
             set
             {
-                _yesResponses = value;
+                _yesResponses.CollectionChanged -= Responses_CollectionChanged;
+                _yesResponses = value ?? [];
+                _yesResponses.CollectionChanged += Responses_CollectionChanged;
                 OnPropertyChanged(nameof(YesResponses));
+                RebuildPreviewLines();
             }
         }
 
@@ -82,8 +96,11 @@ namespace HaCreator.GUI.Quest
             get => _noResponses;
             set
             {
-                _noResponses = value;
+                _noResponses.CollectionChanged -= Responses_CollectionChanged;
+                _noResponses = value ?? [];
+                _noResponses.CollectionChanged += Responses_CollectionChanged;
                 OnPropertyChanged(nameof(NoResponses));
+                RebuildPreviewLines();
             }
         }
 
@@ -100,6 +117,41 @@ namespace HaCreator.GUI.Quest
             }
         }
 
+        public ObservableCollection<QuestEditorConversationPreviewLine> PreviewLines { get; } = [];
+
+        public QuestEditorConversationPreviewLine SelectedPreviewLine
+        {
+            get => _selectedPreviewLine;
+            set
+            {
+                if (_selectedPreviewLine != value)
+                {
+                    _selectedPreviewLine = value;
+                    OnPropertyChanged(nameof(SelectedPreviewLine));
+                }
+            }
+        }
+
+        private void Responses_CollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
+        {
+            RebuildPreviewLines();
+        }
+
+        private void RebuildPreviewLines()
+        {
+            object selectedConversation = _selectedPreviewLine?.Conversation;
+            PreviewLines.Clear();
+            PreviewLines.Add(new QuestEditorConversationPreviewLine("Main conversation", this));
+
+            for (int i = 0; i < _yesResponses.Count; i++)
+                PreviewLines.Add(new QuestEditorConversationPreviewLine($"Yes response {i + 1}", _yesResponses[i]));
+            for (int i = 0; i < _noResponses.Count; i++)
+                PreviewLines.Add(new QuestEditorConversationPreviewLine($"No response {i + 1}", _noResponses[i]));
+
+            SelectedPreviewLine = PreviewLines.FirstOrDefault(line => line.Conversation == selectedConversation)
+                ?? PreviewLines[0];
+        }
+
         #region Property Changed Event
         public event PropertyChangedEventHandler PropertyChanged;
 
@@ -108,6 +160,18 @@ namespace HaCreator.GUI.Quest
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         }
         #endregion
+    }
+
+    public sealed class QuestEditorConversationPreviewLine
+    {
+        public QuestEditorConversationPreviewLine(string label, object conversation)
+        {
+            Label = label;
+            Conversation = conversation;
+        }
+
+        public string Label { get; }
+        public object Conversation { get; }
     }
 
     public class QuestEditorSayResponseModel : INotifyPropertyChanged

@@ -1,10 +1,13 @@
 using System;
+using HaCreator.GUI.EditorPanels;
 using System.ComponentModel;
+using System.Collections.ObjectModel;
+using System.Linq;
 
 namespace HaCreator.MapEditor.AI
 {
     /// <summary>
-    /// Role enum matching OpenRouter API message roles
+    /// Role enum matching OpenAI-compatible API message roles
     /// </summary>
     public enum ChatRole
     {
@@ -26,6 +29,28 @@ namespace HaCreator.MapEditor.AI
         private bool _isProcessing;
         private bool _hasError;
         private string _errorMessage;
+        private bool _commandsApplied;
+
+        public ObservableCollection<MapEditReviewItem> Edits { get; } = new();
+        public string EditSummary => EditorPanelLocalizer.Format("AIEditor_EditSummary",
+            Edits.Count, Edits.Count(e => e.Status == "Applied"), Edits.Count(e => e.IsPending && e.IsSelected));
+        public string HistorySummary => Edits.Count == 0
+            ? (CommandsApplied ? "Edits already applied; do not repeat." : "Edits proposed; not applied.")
+            : $"{Edits.Count(e => e.Status == "Applied")} edits already applied; do not repeat. {Edits.Count(e => e.IsPending)} proposed; not applied. {Edits.Count(e => !e.IsPending && e.Status != "Applied")} failed or interrupted. Query current map state before new edits.";
+        public void AddEdit(MapMcpToolCallResult result, bool applied)
+        {
+            var row = new MapEditReviewItem(result, applied);
+            row.PropertyChanged += (_, _) => OnPropertyChanged(nameof(EditSummary));
+            Edits.Add(row);
+            CommandsContent += result.Command + Environment.NewLine;
+            OnPropertyChanged(nameof(EditSummary));
+        }
+
+        public bool CommandsApplied
+        {
+            get => _commandsApplied;
+            set { _commandsApplied = value; OnPropertyChanged(nameof(CommandsApplied)); }
+        }
 
         public ChatMessage(ChatRole role, string content)
         {

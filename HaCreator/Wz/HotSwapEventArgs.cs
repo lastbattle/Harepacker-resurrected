@@ -168,4 +168,16 @@ namespace HaCreator.Wz
             StringDataType = stringDataType;
         }
     }
+
+    /// <summary>Event args for WorldMap surface, link, fog, or exclusion changes.</summary>
+    public sealed class WorldMapDataChangedEventArgs : AssetChangedEventArgs
+    {
+        public string ImageName { get; }
+
+        public WorldMapDataChangedEventArgs(AssetChangeType changeType, string relativePath)
+            : base(changeType, "Map", relativePath)
+        {
+            ImageName = System.IO.Path.GetFileNameWithoutExtension(relativePath ?? string.Empty);
+        }
+    }
 }

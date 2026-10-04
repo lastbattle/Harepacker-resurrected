@@ -53,6 +53,9 @@ namespace HaCreator.Wz
         /// Raised when string data changes
         /// </summary>
         public event EventHandler<StringDataChangedEventArgs> StringDataChanged;
+
+        /// <summary>Raised when a Map/WorldMap image or exclusion list changes.</summary>
+        public event EventHandler<WorldMapDataChangedEventArgs> WorldMapDataChanged;
         #endregion
 
         #region Constructor
@@ -140,6 +143,13 @@ namespace HaCreator.Wz
             // Determine which type of asset changed based on the path
             if (categoryLower == "map" && !string.IsNullOrEmpty(relativePath))
             {
+                string normalizedMapPath = relativePath.Replace('\\', '/').TrimStart('/');
+                if (normalizedMapPath.StartsWith("worldmap/", StringComparison.OrdinalIgnoreCase))
+                {
+                    RaiseOnUIThread(() => WorldMapDataChanged?.Invoke(this,
+                        new WorldMapDataChangedEventArgs(changeType, normalizedMapPath)));
+                    return;
+                }
                 ProcessMapCategoryChange(relativePath, changeType);
             }
             else if (categoryLower == "mob")

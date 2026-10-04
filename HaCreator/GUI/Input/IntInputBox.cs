@@ -1,73 +1,63 @@
-﻿using System;
-using System.Windows.Forms;
+using System.Globalization;
+using System.ComponentModel;
+using System.Windows;
 
 namespace HaCreator.GUI.Input
 {
-    public partial class IntInputBox : Form
+    public partial class IntInputBox : Window
     {
-        private bool bHideNameInputBox = false;
+        private bool bHideNameInputBox;
+        private string nameResult;
+        private int? intResult;
 
-        public static bool Show(string title, 
-            string defaultName, int defaultValue,
+        public static bool Show(string title, string defaultName, int defaultValue,
             out string name, out int? integer, bool bHideNameInputBox = false)
         {
-            IntInputBox form = new IntInputBox(title);
-            form.bHideNameInputBox = bHideNameInputBox;
+            IntInputBox window = new IntInputBox(title) { bHideNameInputBox = bHideNameInputBox };
             if (bHideNameInputBox)
-            {
-                form.nameBox.Visible = false;
-                form.label_name.Visible = false;
-            }
-
-            // Set default value 
+                window.nameRow.Visibility = Visibility.Collapsed;
             if (defaultName != null)
-                form.nameBox.Text = defaultName;
+                window.nameBox.Text = defaultName;
             if (defaultValue != 0)
-                form.valueBox.Value = defaultValue;
+                window.valueBox.Text = defaultValue.ToString(CultureInfo.InvariantCulture);
 
-            bool result = form.ShowDialog() == DialogResult.OK;
-            name = form.nameResult;
-            integer = form.intResult;
-            return result;
+            bool accepted = window.ShowDialog() == true;
+            name = window.nameResult;
+            integer = window.intResult;
+            return accepted;
         }
-
-        private string nameResult = null;
-        private int? intResult = null;
 
         public IntInputBox(string title)
         {
             InitializeComponent();
-            DialogResult = DialogResult.Cancel;
-            Text = title;
+            Title = title;
+            if (Program.HaEditorWindow?.IsVisible == true)
+                Owner = Program.HaEditorWindow;
+            ComponentResourceManager resources = new ComponentResourceManager(typeof(IntInputBox));
+            labelName.Text = resources.GetString("label_name.Text") ?? "Name:";
+            labelValue.Text = resources.GetString("label2.Text") ?? "Value:";
+            okButton.Content = resources.GetString("okButton.Text") ?? "OK";
+            cancelButton.Content = resources.GetString("cancelButton.Text") ?? "Cancel";
         }
 
-        private void nameBox_KeyPress(object sender, KeyPressEventArgs e)
+        private void OkButton_Click(object sender, RoutedEventArgs e)
         {
-            if (e.KeyChar == (char)13)
-                okButton_Click(null, null);
-        }
-
-        /// <summary>
-        /// On ok clicked
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void okButton_Click(object sender, EventArgs e)
-        {
-            if ((nameBox.Text != "" && nameBox.Text != null) || bHideNameInputBox)
+            if (((!string.IsNullOrEmpty(nameBox.Text)) || bHideNameInputBox) &&
+                int.TryParse(valueBox.Text, NumberStyles.Integer, CultureInfo.InvariantCulture, out int value))
             {
                 nameResult = nameBox.Text;
-                intResult = valueBox.Value;
-                DialogResult = DialogResult.OK;
-                Close();
+                intResult = value;
+                DialogResult = true;
+                return;
             }
-            else MessageBox.Show(Properties.Resources.EnterValidInput, Properties.Resources.Warning, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+
+            MessageBox.Show(this, Properties.Resources.EnterValidInput, Properties.Resources.Warning,
+                MessageBoxButton.OK, MessageBoxImage.Warning);
         }
 
-        private void cancelButton_Click(object sender, EventArgs e)
+        private void CancelButton_Click(object sender, RoutedEventArgs e)
         {
-            DialogResult = DialogResult.Cancel;
-            Close();
+            DialogResult = false;
         }
     }
 }
