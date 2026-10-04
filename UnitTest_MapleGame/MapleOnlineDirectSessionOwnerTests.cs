@@ -26,6 +26,24 @@ namespace UnitTest_MapleGame
         }
 
         [Fact]
+        public void LoginBridge_AcceptsChannelRoleInbound_OnlyWhileDirectMigrationInFlight()
+        {
+            using var bridge = new LoginOfficialSessionBridgeManager();
+            var handler = (IMapleOnlineStageHandler)bridge;
+            bridge.TryConfigurePacketMapping(141, LoginPacketType.SetField, out _);
+            var setFieldPacket = new MapleOnlineInboundPacket(
+                MapleServerRole.Channel, 7, 141, new byte[] { 0x8D, 0x00, 0x01 }, "test", DateTime.UtcNow);
+
+            handler.HandleInboundPacket(setFieldPacket);
+            Assert.False(bridge.TryDequeue(out _));
+
+            bridge.DirectChannelInboundEnabled = true;
+            handler.HandleInboundPacket(setFieldPacket);
+            Assert.True(bridge.TryDequeue(out LoginPacketInboxMessage message));
+            Assert.Equal(LoginPacketType.SetField, message.PacketType);
+        }
+
+        [Fact]
         public async Task Owner_RoutesDirectSessionPackets_ToRegisteredStageHandler()
         {
             using MapleTestFakeServer server = MapleTestFakeServer.Start(95);
@@ -47,6 +65,30 @@ namespace UnitTest_MapleGame
             Assert.Equal(MapleServerRole.Login, packet.Role);
             Assert.Equal(0x0005, packet.Opcode);
             Assert.Equal(owner.CurrentGeneration(MapleServerRole.Login), packet.Generation);
+        }
+
+        [Fact]
+        public async Task Owner_FansOutChannelRolePackets_ToHandlersOptingIntoChannel()
+        {
+            using MapleTestFakeServer channelServer = MapleTestFakeServer.Start(95);
+            using var owner = new MapleOnlineDirectSessionOwner();
+            var loginHandler = new RecordingStageHandler(MapleServerRole.Login);
+            loginHandler.AcceptAdditionalRole(MapleServerRole.Channel);
+            owner.RegisterStageHandler(loginHandler);
+
+            await owner.ConnectAsync(MapleServerRole.Channel, IPAddress.Loopback.ToString(), channelServer.Port);
+            await channelServer.SendPacketAsync(new byte[] { 0x8D, 0x00, 0x02 });
+
+            MapleOnlineInboundPacket packet = await WaitUntilAsync(
+                () =>
+                {
+                    owner.DrainPendingInbound();
+                    return loginHandler.Received.FirstOrDefault();
+                },
+                received => received != null);
+
+            Assert.Equal(MapleServerRole.Channel, packet.Role);
+            Assert.Equal(141, packet.Opcode);
         }
 
         [Fact]
@@ -110,6 +152,8 @@ namespace UnitTest_MapleGame
 
         private sealed class RecordingStageHandler : IMapleOnlineStageHandler
         {
+            private readonly HashSet<MapleServerRole> _extraAcceptedRoles = new();
+
             public RecordingStageHandler(MapleServerRole role)
             {
                 Role = role;
@@ -117,6 +161,11 @@ namespace UnitTest_MapleGame
 
             public MapleServerRole Role { get; }
             public List<MapleOnlineInboundPacket> Received { get; } = new();
+
+            public void AcceptAdditionalRole(MapleServerRole role) => _extraAcceptedRoles.Add(role);
+
+            public bool AcceptsPacketRole(MapleServerRole packetRole) =>
+                packetRole == Role || _extraAcceptedRoles.Contains(packetRole);
 
             public void HandleInboundPacket(MapleOnlineInboundPacket packet)
             {

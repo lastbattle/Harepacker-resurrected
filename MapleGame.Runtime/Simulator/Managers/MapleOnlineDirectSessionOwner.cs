@@ -27,6 +27,14 @@ namespace HaCreator.MapSimulator.Managers
     {
         MapleServerRole Role { get; }
 
+        /// <summary>
+        /// Roles whose packets this handler consumes. Native routing dispatches
+        /// by current stage, so after a migration the login stage still
+        /// consumes its opcodes from the channel connection; handlers opt in
+        /// explicitly instead of the owner hardcoding stage rules.
+        /// </summary>
+        bool AcceptsPacketRole(MapleServerRole packetRole) => packetRole == Role;
+
         /// <summary>Called on the game thread while draining the owner queue.</summary>
         void HandleInboundPacket(MapleOnlineInboundPacket packet);
 
@@ -239,7 +247,7 @@ namespace HaCreator.MapSimulator.Managers
                 bool delivered = false;
                 foreach (IMapleOnlineStageHandler handler in handlers)
                 {
-                    if (handler.Role != packet.Role)
+                    if (!handler.AcceptsPacketRole(packet.Role))
                         continue;
                     handler.HandleInboundPacket(packet);
                     delivered = true;

@@ -47950,6 +47950,7 @@ foreach (var pair in runtimeServices.Catalog.GetMapNames())
 
             _loginRuntime.Reset();
             HideLoginUtilityDialog();
+            _loginOfficialSessionBridge.DirectChannelInboundEnabled = false;
             _gameState.PlayerControlEnabled = true;
         }
 

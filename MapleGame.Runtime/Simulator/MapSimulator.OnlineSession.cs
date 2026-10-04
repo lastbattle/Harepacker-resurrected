@@ -89,6 +89,7 @@ namespace HaCreator.MapSimulator
             var endpoint = new IPEndPoint(handoff.ServerAddress, handoff.Port);
             _onlineLastChannelEndpoint = endpoint;
             _onlineTargetStage = MapleServerRole.Channel;
+            _loginOfficialSessionBridge.DirectChannelInboundEnabled = true;
             _onlineMigrationInProgress = true;
             _ = MigrateToChannelAsync(endpoint, handoff.CharacterId);
         }
@@ -105,6 +106,7 @@ namespace HaCreator.MapSimulator
             {
                 _onlineSessionStatus = $"Channel migration to {endpoint} failed: {ex.Message}";
                 _onlineTargetStage = MapleServerRole.Login;
+                _loginOfficialSessionBridge.DirectChannelInboundEnabled = false;
             }
             finally
             {

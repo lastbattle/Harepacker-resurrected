@@ -146,6 +146,15 @@ namespace HaCreator.MapSimulator.Managers
         public bool IsOnlineDirectSessionConnected =>
             _onlineSessionOwner?.IsRoleConnected(MapleServerRole.Login) == true;
 
+        /// <summary>
+        /// Set by the runtime while a direct migration is in flight so
+        /// login-stage packets arriving on the channel connection (SetField
+        /// and friends) still reach the login stage, matching the native
+        /// stage-router model. Cleared when the field is entered or the
+        /// migration fails.
+        /// </summary>
+        public bool DirectChannelInboundEnabled { get; set; }
+
         public bool TryConfigurePacketMapping(int opcode, LoginPacketType packetType, out string status)
         {
             if (opcode <= 0)
@@ -925,10 +934,26 @@ namespace HaCreator.MapSimulator.Managers
 
         MapleServerRole IMapleOnlineStageHandler.Role => MapleServerRole.Login;
 
+        bool IMapleOnlineStageHandler.AcceptsPacketRole(MapleServerRole packetRole) =>
+            packetRole == MapleServerRole.Login ||
+            (packetRole == MapleServerRole.Channel && DirectChannelInboundEnabled);
+
         void IMapleOnlineStageHandler.HandleInboundPacket(MapleOnlineInboundPacket packet)
         {
-            if (packet == null || packet.Role != MapleServerRole.Login)
+            if (packet == null)
+            {
                 return;
+            }
+
+            if (packet.Role != MapleServerRole.Login && packet.Role != MapleServerRole.Channel)
+            {
+                return;
+            }
+
+            if (packet.Role == MapleServerRole.Channel && !DirectChannelInboundEnabled)
+            {
+                return;
+            }
 
             if (!TryMapInboundPacket(packet.RawPacket, $"direct-session:{packet.RemoteEndpoint}", out LoginPacketInboxMessage message))
             {
