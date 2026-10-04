@@ -32,6 +32,8 @@ used for the native observations below. All decompilation was read-only.
 | N04a | `0x9e0300` | `CWvsContext::IssueConnect` | Obtains the `CClientSocket` singleton, calls `Close`, builds a `CONNECTCONTEXT` with the supplied address and `bLogin = 0`, then calls `Connect` on the same owner. |
 | N04b | `0x4add50` | `CClientSocket::OnMigrateCommand` | Success branch ensures an `CInterStage`, decodes a 4-byte address and 2-byte port, then calls `IssueConnect`. Failure branch throws a `CDisconnectException` for non-guests and returns guests to the title path. |
 | N04c | `0x4ae990` | `CClientSocket::Close` | `ClearSendReceiveCtx` (crypto teardown), `closesocket`, handle reset to `-1`. |
+| N05 | `0x4aef10` / `0x4af9f0` | `CClientSocket::OnConnect` / `SendPacket` | Every successful connection emits opcode 0x1A with `[u16 length][hwid blob]` (blob file-validated: version 0x5F, format 8, cap 0x2000). |
+| N06 | `0x9dc4d1` / `0x9df13d` | `SendMigrateToShopRequest` / `SendMigrateToITCRequest` | Shop migration request is opcode 43 with `Encode4(update_time)`; ITC is opcode 180 empty; both on the current connection, then the N04 flow dials the service endpoint. `ConnectLogin` (0x4b0590) is obfuscated. |
 
 ## Resolved native follow-up
 

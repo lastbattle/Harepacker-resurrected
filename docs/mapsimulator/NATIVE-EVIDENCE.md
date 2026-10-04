@@ -121,6 +121,29 @@ branch skips the send for specific `bLogin` values. Managed follow-up: the
 direct session should send this packet after its handshake with a configurable
 hwid blob source.
 
+## N06: Cash Shop and ITC migration request call sites
+
+Fresh decompilation against the same identified v95 input, completing the P02
+requirement to recover the shop and ITC migration call sites:
+
+- `CWvsContext::SendMigrateToShopRequest`, `0x9dc4d1`: guests are refused with a
+  chat log message. After the pending anti-macro question, initial quiz,
+  exclusive-request throttle (500 ms via `get_update_time`), and field option
+  `0x10` gates pass, it sends `COutPacket(43)` with `Encode4(get_update_time())`
+  on the current connection and records `m_bMigrateFromWishItem`. The server
+  then drives the N04 migrate/issue-connect flow to the shop endpoint.
+- `CWvsContext::SendMigrateToITCRequest`, `0x9df13d`: the same gate set, then
+  `COutPacket(180)` with no payload, followed by the same migrate flow.
+- `CClientSocket::ConnectLogin`, `0x4b0590`: fully obfuscated; no recovery this
+  pass. The initial login connection's send behavior after connect is still
+  covered only by N05's socket-level observation.
+
+Established: all service-stage migrations share the N04/N05 close/connect +
+hwid flow; only the request opcode on the current connection differs (shop 43
+with a timestamp, ITC 180 empty). The managed owner already supports migrating
+any role; the cash/ITC bridges need the request opcode wired to the field
+session before dialing the shop endpoint (P11 scope).
+
 ## Extending this record
 
 Give each future observation a stable ID, executable/data identity, address and
