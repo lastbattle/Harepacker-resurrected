@@ -275,7 +275,7 @@ Adapt (do not copy directly) missing lifecycle/buffering patterns from:
 - April 28, 2026 packet construction follow-up:
   - MapSimulator packet and payload construction paths that were manually assembling little-endian byte arrays now use `MapleLib.PacketLib.PacketWriter`, including the local-utility follow-character request payload, raw opcode framing helpers, and related packet-owned parity payload builders.
   - Remaining `BitConverter.GetBytes`/`BinaryPrimitives.Write*LittleEndian` uses under `HaCreator/MapSimulator` are limited to non-packet construction cases such as endpoint address decoding, checksum/search scratch buffers, or in-place mutation of already-decoded payload buffers.
-- April 26, 2026 IDA v95 client evidence (`D:\Installations\MapleStoryGlobal v95\MapleStory.exe`, md5 `600b1c2dda171684007f080aed6947eb`):
+- IDA-pro MCP client evidence (see [NATIVE-EVIDENCE.md](NATIVE-EVIDENCE.md); links to the relevant source views can be added when available):
   - `CLogin::OnSelectCharacterResult` (`0x5dea80`) and `CLogin::OnSelectCharacterByVACResult` (`0x5de670`) decode the channel endpoint from the login packet and call `CWvsContext::IssueConnect`.
   - `CClientSocket::OnMigrateCommand` (`0x4add50`) decodes the next endpoint and calls `CWvsContext::IssueConnect`.
   - `CWvsContext::IssueConnect` (`0x9e0300`) uses `TSingleton<CClientSocket>::ms_pInstance`, calls `CClientSocket::Close`, builds one `CONNECTCONTEXT`, and calls `CClientSocket::Connect`; `CClientSocket::Close` (`0x4ae990`) clears send/receive context and closes the existing socket handle.

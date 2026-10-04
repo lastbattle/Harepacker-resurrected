@@ -1,8 +1,10 @@
 # MapSimulator Client Parity Backlog
 
+> Historical research record (reviewed during the documentation audit). The execution authority is [the mapsimulator index](README.md), [the current-state audit](CURRENT-STATE.md), and [the execution plan](EXECUTION-PLAN.md). Status words in this file describe a historical implementation snapshot; they do not prove native or live-server parity. Cite the current `MapleGame.Runtime/Simulator/...` owner, package ID, and validation evidence when opening work. The retained `HaCreator.MapSimulator` namespace is an intentional compatibility namespace.
+
 ## Purpose
 
-This document is the single source of truth for MapSimulator parity work against the MapleStory client.
+This document is a historical research record for the MapSimulator parity work. Use the mapsimulator index and execution plan for current ownership, status, and ordering.
 
 It does three things that the old notes did not do well:
 
@@ -14,17 +16,17 @@ It does three things that the old notes did not do well:
 
 ### Code seams reviewed
 
-- `HaCreator/MapSimulator/MapSimulator.cs`
-- `HaCreator/MapSimulator/Physics/CVecCtrl.cs`
-- `HaCreator/MapSimulator/Character/CharacterLoader.cs`
-- `HaCreator/MapSimulator/Character/CharacterAssembler.cs`
-- `HaCreator/MapSimulator/Character/PlayerCharacter.cs`
-- `HaCreator/MapSimulator/Character/Skills/SkillManager.cs`
-- `HaCreator/MapSimulator/Effects/CombatEffects.cs`
-- `HaCreator/MapSimulator/Pools/PortalPool.cs`
-- `HaCreator/MapSimulator/UI/StatusBarUI.cs`
-- `HaCreator/MapSimulator/UI/Windows/SkillUI.cs`
-- `HaCreator/MapSimulator/UI/Windows/QuickSlotUI.cs`
+- `MapleGame.Runtime/Simulator/MapSimulator.cs`
+- `MapleGame.Runtime/Simulator/Physics/CVecCtrl.cs`
+- `MapleGame.Runtime/Simulator/Character/CharacterLoader.cs`
+- `MapleGame.Runtime/Simulator/Character/CharacterAssembler.cs`
+- `MapleGame.Runtime/Simulator/Character/PlayerCharacter.cs`
+- `MapleGame.Runtime/Simulator/Character/Skills/SkillManager.cs`
+- `MapleGame.Runtime/Simulator/Effects/CombatEffects.cs`
+- `MapleGame.Runtime/Simulator/Pools/PortalPool.cs`
+- `MapleGame.Runtime/Simulator/UI/StatusBarUI.cs`
+- `MapleGame.Runtime/Simulator/UI/Windows/SkillUI.cs`
+- `MapleGame.Runtime/Simulator/UI/Windows/QuickSlotUI.cs`
 
 ### Client references checked
 
@@ -130,7 +132,7 @@ The main baseline updates worth keeping visible are:
 
 - Avatar parity moved out of the stub phase: action coverage, rare-action rendering, facial expression behavior, and anchor fallback rules are implemented, while mount and transform handling is partially in place.
 - Skill parity is broader than the old notes implied: the simulator now loads and casts the full player skill catalog, supports runtime job swaps, shows buff and cooldown feedback, and covers more movement-family and summon behavior.
-- Physics and movement now have real runtime seams for ladder lookup, float collision, movement-path snapshots, and moving-platform foothold sync.
+- Physics and movement now have runtime seams for ladder lookup, movement-path snapshots, and moving-platform foothold sync; float collision still requires owner-level native validation.
 - Combat and UI both shifted from "missing feature" to "refinement": HP indicators, damage rendering, status-bar layout, warning flashes, chat strip behavior, skill UI layout, and tooltip reuse all exist but still need client-accurate polish.
 - NPC and quest interaction now have a usable simulator baseline through dialogue overlays, quest lists, and common quest-state mutations, but full scripting and inventory-backed requirements remain incomplete.
 
@@ -143,7 +145,7 @@ This is no longer a blank area, but a refinement area.
 | Status | Area | Gap | Why it matters | Primary seam |
 |--------|------|-----|----------------|--------------|
 | Implemented | Ladder / rope lookup | `CVecCtrl` now owns the ladder/rope lookup seam and resolves ladder metadata for grab/re-grab paths instead of exposing a stub helper | Core climb behavior now routes through the same vector-controller seam the client uses | `CVecCtrl.cs`, `PlayerCharacter.SetLadderLookup` (`CUserLocal::SetMoveAction`, `CUser::SetMoveAction`) |
-| Implemented | Float collision | `CVecCtrl::CollisionDetectFloat` now uses the configured foothold lookup plus saved float-state crossing checks to land on footholds during swim/fly motion instead of carrying a TODO block | Swim/fly landing and platform-contact behavior now runs inside the vector controller instead of a partial fallback path | `CVecCtrl.cs` (`CVecCtrl::CollisionDetectFloat`) |
+| Partial | Float collision | The current `CVecCtrl::CollisionDetectFloat` owner still contains a commented-out foothold landing path and active map-bound clamps; any compensating player path must be traced separately | Native `CVecCtrl::CollisionDetectFloat` performs candidate lookup, layer filtering, landing selection, velocity projection, elapsed-time consumption, and owner callbacks | `CVecCtrl.cs` (`CVecCtrl::CollisionDetectFloat`) |
 | Implemented | Floating-map parity | The player runtime now carries both `fly` and `needSkillForFly` map attributes through map init/reconnect, preserves the skill gate on buff start/end, and keeps flying maps on a true no-sink float branch instead of reusing swim-style idle drift | Free-fly maps now hover like the client while skill-gated flying maps only enter float control when the active flight buff is actually live | `MapSimulator.cs`, `PlayerManager.cs`, `PlayerCharacter`, `CVecCtrl`, `SkillManager.cs` (`CUserLocal::Update`, `info/fly`, `info/needSkillForFly`) |
 | Implemented | Movement path parity | The player runtime now accumulates `CMovePath`-style gather durations from the live clock, uses client-style `200/500/1000` ms flush windows with grounded gating, stamps tail durations on snapshot/flush, and exposes encode/decode plus deterministic playback sampling for passive-position and move-path sync snapshots | Movement sync now follows the same cadence and replay surface the client expects instead of acting like a dormant controller helper | `PlayerCharacter.cs`, `CVecCtrl.cs`, broader movement serialization layer (`CMovePath::*`) |
 | Implemented | Dynamic foothold passenger sync | Moving platforms and the transport deck now preserve synthetic foothold identity across large per-frame deltas, validate against the predicted post-move surface, and feed refreshed platform/deck bounds back into the player and grounded-mob movement seams | Edge passengers now stay attached to moving foothold surfaces through the normal physics path instead of dropping when a platform or ship deck shifts past their previous world position between frames | `PassengerSyncController.cs`, `DynamicFoothold.cs`, `TransportationField.cs`, `MapSimulator.cs` |
@@ -161,7 +163,7 @@ If the goal is visible parity first, the next work should be sequenced like this
 3. UI feedback pass:
    Add quick-slot validation, quest or balloon feedback, chat surfaces, and complete skill-window behavior.
 4. Movement refinement pass:
-   Remove the remaining ladder/float stubs, add passive transfer-field handoff, and tighten platform/dynamic foothold sync.
+   Implement and verify the remaining float collision contract, add passive transfer-field handoff, and tighten platform/dynamic foothold sync.
 5. Interaction pass:
    Add NPC talk/quest flow, follow and direction-mode handling, and richer reactor interactions.
 

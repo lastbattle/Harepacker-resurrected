@@ -1,4 +1,6 @@
 
+
+> Historical research record (reviewed during the documentation audit). The execution authority is [the mapsimulator index](README.md), [the current-state audit](CURRENT-STATE.md), and [the execution plan](EXECUTION-PLAN.md). Status words in this file describe a historical implementation snapshot; they do not prove native or live-server parity. Cite the current `MapleGame.Runtime/Simulator/...` owner, package ID, and validation evidence when opening work. The retained `HaCreator.MapSimulator` namespace is an intentional compatibility namespace.
 # MapSimulator Client Parity Backlog
 
 
@@ -7,7 +9,7 @@
 
 
 
-This document is the single source of truth for MapSimulator parity work against the MapleStory client.
+This document is a historical research record for the MapSimulator parity work. Use the mapsimulator index and execution plan for current ownership, status, and ordering.
 
 
 
@@ -31,27 +33,27 @@ It does three things that the old notes did not do well:
 
 
 
-- `HaCreator/MapSimulator/MapSimulator.cs`
+- `MapleGame.Runtime/Simulator/MapSimulator.cs`
 
-- `HaCreator/MapSimulator/Physics/CVecCtrl.cs`
+- `MapleGame.Runtime/Simulator/Physics/CVecCtrl.cs`
 
-- `HaCreator/MapSimulator/Character/CharacterLoader.cs`
+- `MapleGame.Runtime/Simulator/Character/CharacterLoader.cs`
 
-- `HaCreator/MapSimulator/Character/CharacterAssembler.cs`
+- `MapleGame.Runtime/Simulator/Character/CharacterAssembler.cs`
 
-- `HaCreator/MapSimulator/Character/PlayerCharacter.cs`
+- `MapleGame.Runtime/Simulator/Character/PlayerCharacter.cs`
 
-- `HaCreator/MapSimulator/Character/Skills/SkillManager.cs`
+- `MapleGame.Runtime/Simulator/Character/Skills/SkillManager.cs`
 
-- `HaCreator/MapSimulator/Effects/CombatEffects.cs`
+- `MapleGame.Runtime/Simulator/Effects/CombatEffects.cs`
 
-- `HaCreator/MapSimulator/Pools/PortalPool.cs`
+- `MapleGame.Runtime/Simulator/Pools/PortalPool.cs`
 
-- `HaCreator/MapSimulator/UI/StatusBarUI.cs`
+- `MapleGame.Runtime/Simulator/UI/StatusBarUI.cs`
 
-- `HaCreator/MapSimulator/UI/Windows/SkillUI.cs`
+- `MapleGame.Runtime/Simulator/UI/Windows/SkillUI.cs`
 
-- `HaCreator/MapSimulator/UI/Windows/QuickSlotUI.cs`
+- `MapleGame.Runtime/Simulator/UI/Windows/QuickSlotUI.cs`
 
 
 
