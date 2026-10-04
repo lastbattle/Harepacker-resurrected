@@ -63,8 +63,11 @@ namespace HaCreator.MapSimulator
     {
         private const int DefaultLowHpWarningThresholdPercent = 20;
         private const int DefaultLowMpWarningThresholdPercent = 20;
-        private const bool EnableOfflineClientMode = true;
-        private const bool EnablePacketConnectionsByDefault = !EnableOfflineClientMode;
+        // Session authority is selected by the host (P01). Online authority owns
+        // a client-owned direct connection and server-authored state; the
+        // offline default preserves editor preview behavior.
+        private readonly bool _offlineClientMode;
+        private readonly MapleOnlineDirectSessionOwner _onlineSessionOwner;
         private const int ReactorCollisionCheckIntervalMs = 1000;
         private const int PetAutoSpeechPreLevelReminderCooldownMs = 420000;
         private const int PetAutoSpeechLowHpAlertCooldownMs = 60000;
@@ -526,7 +529,7 @@ namespace HaCreator.MapSimulator
         private readonly TournamentOfficialSessionBridgeManager _tournamentOfficialSessionBridge;
         private readonly CookieHousePointInboxManager _cookieHousePointInbox = new CookieHousePointInboxManager();
         private readonly CookieHouseOfficialSessionBridgeManager _cookieHouseOfficialSessionBridge;
-        private bool _cookieHousePointInboxEnabled = EnablePacketConnectionsByDefault;
+        private bool _cookieHousePointInboxEnabled;
         private int _cookieHousePointInboxConfiguredPort = CookieHousePointInboxManager.DefaultPort;
         private int _cookieHouseContextPoint;
         private bool _bossHpBarAssetsLoaded;
@@ -561,7 +564,7 @@ namespace HaCreator.MapSimulator
         private readonly CashServiceOfficialSessionBridgeManager _cashShopOfficialSessionBridge;
         private readonly CashServiceOfficialSessionBridgeManager _mtsOfficialSessionBridge;
 
-        private bool _loginPacketInboxEnabled = EnablePacketConnectionsByDefault;
+        private bool _loginPacketInboxEnabled;
 
         private int _loginPacketInboxConfiguredPort = LoginPacketInboxManager.DefaultPort;
         private bool _loginOfficialSessionBridgeEnabled;
@@ -2337,6 +2340,7 @@ foreach (var pair in runtimeServices.Catalog.GetMapNames())
         private void FinalizeSelectCharacterFieldEntryHandoff(LoginSelectCharacterResultProfile packetProfile)
         {
             IssuePacketOwnedSelectCharacterDirectConnect(packetProfile);
+            BeginOnlineMigrationFromLoginHandoff(_loginLastIssuedDirectConnect);
             PlayLoginEntryGameInSE();
         }
 
@@ -2362,6 +2366,7 @@ foreach (var pair in runtimeServices.Catalog.GetMapNames())
         private void FinalizeSelectCharacterByVacFieldEntryHandoff(LoginSelectCharacterByVacResultProfile packetProfile)
         {
             IssuePacketOwnedSelectCharacterByVacDirectConnect(packetProfile);
+            BeginOnlineMigrationFromLoginHandoff(_loginLastIssuedDirectConnect);
             PlayLoginEntryGameInSE();
         }
 
@@ -19987,6 +19992,12 @@ foreach (var pair in runtimeServices.Catalog.GetMapNames())
         {
             sessionOptions = options ?? throw new ArgumentNullException(nameof(options));
             runtimeServices = dataServices ?? throw new ArgumentNullException(nameof(dataServices));
+            _onlineSessionOwner = options.Authority is Contracts.GameSessionAuthority.Online
+                ? new Managers.MapleOnlineDirectSessionOwner()
+                : null;
+            _offlineClientMode = _onlineSessionOwner == null;
+            _cookieHousePointInboxEnabled = !_offlineClientMode;
+            _loginPacketInboxEnabled = !_offlineClientMode;
             try
             {
             _engagementProposalController.SetRuntimeAssetCatalog(runtimeServices.Catalog);
@@ -20024,7 +20035,7 @@ foreach (var pair in runtimeServices.Catalog.GetMapNames())
             _partyRaidOfficialSessionBridge = new PartyRaidOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateChannel);
             _tournamentOfficialSessionBridge = new TournamentOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateChannel);
             _cookieHouseOfficialSessionBridge = new CookieHouseOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateChannel);
-            _loginOfficialSessionBridge = new LoginOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateLogin);
+            _loginOfficialSessionBridge = new LoginOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateLogin, _onlineSessionOwner);
             _cashShopOfficialSessionBridge = new CashServiceOfficialSessionBridgeManager(MapleLib.PacketLib.MapleServerRole.CashShop, _officialSessionRoleProxyFactory.CreateCashShop);
             _mtsOfficialSessionBridge = new CashServiceOfficialSessionBridgeManager(MapleLib.PacketLib.MapleServerRole.Mts, _officialSessionRoleProxyFactory.CreateMts);
             _reactorPoolOfficialSessionBridge = new ReactorPoolOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateChannel);
@@ -20049,7 +20060,7 @@ foreach (var pair in runtimeServices.Catalog.GetMapNames())
             _expeditionIntermediaryOfficialSessionBridge = new ExpeditionIntermediaryOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateChannel);
             _fieldMessageBoxOfficialSessionBridge = new FieldMessageBoxOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateChannel);
             _mapTransferOfficialSessionBridge = new MapTransferOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateChannel);
-            _packetFieldOfficialSessionBridge = new PacketFieldOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateChannel);
+            _packetFieldOfficialSessionBridge = new PacketFieldOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateChannel, _onlineSessionOwner);
             _rockPaperScissorsOfficialSessionBridge = new RockPaperScissorsOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateChannel);
             _socialListOfficialSessionBridge = new SocialListOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateChannel);
             _socialListRuntime.PacketOwnedRequestDispatcher = DispatchSocialListPacketOwnedRequest;

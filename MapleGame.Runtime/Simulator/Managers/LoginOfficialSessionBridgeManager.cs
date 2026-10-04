@@ -89,7 +89,7 @@ namespace HaCreator.MapSimulator.Managers
     /// Built-in login bridge that proxies a live Maple login session and mirrors
     /// inbound login packets into the existing login packet inbox seam.
     /// </summary>
-    public sealed class LoginOfficialSessionBridgeManager : IDisposable
+    public sealed class LoginOfficialSessionBridgeManager : IDisposable, IMapleOnlineStageHandler
     {
         public const int DefaultListenPort = 18486;
         public const short OutboundCheckPasswordOpcode = 1;
@@ -116,6 +116,7 @@ namespace HaCreator.MapSimulator.Managers
         private readonly object _sync = new();
 
         private readonly MapleRoleSessionProxy _roleSessionProxy;
+        private readonly MapleOnlineDirectSessionOwner _onlineSessionOwner;
         private LoginCheckPasswordAuthMaterial? _capturedCheckPasswordAuth;
         private LoginSelectCharacterByVacRoundTripEvidence _selectCharacterByVacRoundTripEvidence = new();
 
@@ -124,18 +125,26 @@ namespace HaCreator.MapSimulator.Managers
         public int RemotePort { get; private set; }
         public bool IsRunning => _roleSessionProxy.IsRunning;
         public bool HasAttachedClient => _roleSessionProxy.HasAttachedClient;
-        public bool HasConnectedSession => _roleSessionProxy.HasConnectedSession;
+        public bool HasConnectedSession => IsOnlineDirectSessionConnected || _roleSessionProxy.HasConnectedSession;
         public int ReceivedCount => _roleSessionProxy.ReceivedCount;
         public int SentCount => _roleSessionProxy.SentCount;
         public bool HasCapturedCheckPasswordAuth => _capturedCheckPasswordAuth.HasValue;
         public string LastStatus { get; private set; } = "Login official-session bridge inactive.";
 
-        public LoginOfficialSessionBridgeManager(Func<MapleRoleSessionProxy> roleSessionProxyFactory = null)
+        public LoginOfficialSessionBridgeManager(
+            Func<MapleRoleSessionProxy> roleSessionProxyFactory = null,
+            MapleOnlineDirectSessionOwner onlineSessionOwner = null)
         {
             _roleSessionProxy = (roleSessionProxyFactory ?? (() => MapleRoleSessionProxyFactory.GlobalV95.CreateLogin()))();
+            _onlineSessionOwner = onlineSessionOwner;
+            _onlineSessionOwner?.RegisterStageHandler(this);
             _roleSessionProxy.ServerPacketReceived += OnRoleSessionServerPacketReceived;
             _roleSessionProxy.ClientPacketReceived += OnRoleSessionClientPacketReceived;
         }
+
+        public bool IsOnlineDirectMode => _onlineSessionOwner != null;
+        public bool IsOnlineDirectSessionConnected =>
+            _onlineSessionOwner?.IsRoleConnected(MapleServerRole.Login) == true;
 
         public bool TryConfigurePacketMapping(int opcode, LoginPacketType packetType, out string status)
         {
@@ -914,6 +923,34 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
+        MapleServerRole IMapleOnlineStageHandler.Role => MapleServerRole.Login;
+
+        void IMapleOnlineStageHandler.HandleInboundPacket(MapleOnlineInboundPacket packet)
+        {
+            if (packet == null || packet.Role != MapleServerRole.Login)
+                return;
+
+            if (!TryMapInboundPacket(packet.RawPacket, $"direct-session:{packet.RemoteEndpoint}", out LoginPacketInboxMessage message))
+            {
+                LastStatus = $"Ignored unmapped direct-session login opcode {packet.Opcode} (generation {packet.Generation}).";
+                return;
+            }
+
+            _pendingMessages.Enqueue(message);
+            LastStatus = $"Queued login packet {packet.Opcode} from direct session generation {packet.Generation}.";
+        }
+
+        bool IMapleOnlineStageHandler.TrySendOutboundPacket(byte[] payload, out string status)
+        {
+            if (_onlineSessionOwner == null)
+            {
+                status = "Login direct-session authority is unavailable.";
+                return false;
+            }
+
+            return _onlineSessionOwner.TrySendPacket(MapleServerRole.Login, payload, out status);
+        }
+
         private void OnRoleSessionServerPacketReceived(object sender, MapleSessionPacketEventArgs e)
         {
             if (e == null || e.IsInit)
@@ -948,6 +985,22 @@ namespace HaCreator.MapSimulator.Managers
 
         private bool TrySendPacket(byte[] payload, string successPrefix, out string status)
         {
+            if (_onlineSessionOwner != null)
+            {
+                // The client-owned direct session is the online authority; the
+                // role proxy stays available as a separate capture/relay tool.
+                if (_onlineSessionOwner.TrySendPacket(MapleServerRole.Login, payload, out string directStatus))
+                {
+                    status = $"{successPrefix}. {directStatus}";
+                    LastStatus = status;
+                    return true;
+                }
+
+                status = directStatus;
+                LastStatus = status;
+                return false;
+            }
+
             if (!_roleSessionProxy.TrySendToServer(payload, out string proxyStatus))
             {
                 status = proxyStatus;

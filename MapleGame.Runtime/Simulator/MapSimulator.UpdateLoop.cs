@@ -133,6 +133,11 @@ namespace HaCreator.MapSimulator
             SyncBgmPlaybackToWindowFocus();
             _soundManager?.Update();
 
+            // Direct-session ingress is queued on socket threads; apply it on
+            // the game thread before the stage inbox drains run.
+            _onlineSessionOwner?.DrainPendingInbound();
+            PumpOnlineSessionLifecycle();
+
 
             float frameRate = 1 / (float)gameTime.ElapsedGameTime.TotalSeconds;
             currTickCount = Environment.TickCount;

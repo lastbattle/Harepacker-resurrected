@@ -11,7 +11,7 @@ namespace HaCreator.MapSimulator.Managers
     /// Proxies a live Maple session and forwards supported field-scoped opcodes
     /// into the shared packet-owned field ingress seam.
     /// </summary>
-    public sealed class PacketFieldOfficialSessionBridgeManager : IDisposable
+    public sealed class PacketFieldOfficialSessionBridgeManager : IDisposable, IMapleOnlineStageHandler
     {
         public const int DefaultListenPort = 18499;
         private const string DefaultProcessName = "MapleStory";
@@ -19,6 +19,7 @@ namespace HaCreator.MapSimulator.Managers
         private readonly ConcurrentQueue<ReactorPoolPacketInboxMessage> _pendingMessages = new();
         private readonly object _sync = new();
         private readonly MapleRoleSessionProxy _roleSessionProxy;
+        private readonly MapleOnlineDirectSessionOwner _onlineSessionOwner;
 
         public int ListenPort { get; private set; } = DefaultListenPort;
         public string RemoteHost { get; private set; } = IPAddress.Loopback.ToString();
@@ -29,12 +30,20 @@ namespace HaCreator.MapSimulator.Managers
         public int ReceivedCount => _roleSessionProxy.ReceivedCount;
         public string LastStatus { get; private set; } = "Field-scoped official-session bridge inactive.";
 
-        public PacketFieldOfficialSessionBridgeManager(Func<MapleRoleSessionProxy> roleSessionProxyFactory = null)
+        public PacketFieldOfficialSessionBridgeManager(
+            Func<MapleRoleSessionProxy> roleSessionProxyFactory = null,
+            MapleOnlineDirectSessionOwner onlineSessionOwner = null)
         {
             _roleSessionProxy = (roleSessionProxyFactory ?? (() => MapleRoleSessionProxyFactory.GlobalV95.CreateChannel()))();
+            _onlineSessionOwner = onlineSessionOwner;
+            _onlineSessionOwner?.RegisterStageHandler(this);
             _roleSessionProxy.ServerPacketReceived += OnRoleSessionServerPacketReceived;
             _roleSessionProxy.ClientPacketReceived += OnRoleSessionClientPacketReceived;
         }
+
+        public bool IsOnlineDirectMode => _onlineSessionOwner != null;
+        public bool IsOnlineDirectSessionConnected =>
+            _onlineSessionOwner?.IsRoleConnected(MapleServerRole.Channel) == true;
 
         public string DescribeStatus()
         {
@@ -177,6 +186,34 @@ namespace HaCreator.MapSimulator.Managers
             {
                 StopInternal(clearPending: true);
             }
+        }
+
+        MapleServerRole IMapleOnlineStageHandler.Role => MapleServerRole.Channel;
+
+        void IMapleOnlineStageHandler.HandleInboundPacket(MapleOnlineInboundPacket packet)
+        {
+            if (packet == null || packet.Role != MapleServerRole.Channel)
+                return;
+
+            if (!TryCreateBridgeMessageFromRawPacket(packet.RawPacket, $"direct-session:{packet.RemoteEndpoint}", out ReactorPoolPacketInboxMessage message, out string error))
+            {
+                LastStatus = $"Ignored direct-session field packet opcode {packet.Opcode} (generation {packet.Generation}): {error}";
+                return;
+            }
+
+            _pendingMessages.Enqueue(message);
+            LastStatus = $"Queued {PacketFieldIngressRouter.DescribeFieldScopedPacketType(message.PacketType)} from direct session generation {packet.Generation}.";
+        }
+
+        bool IMapleOnlineStageHandler.TrySendOutboundPacket(byte[] payload, out string status)
+        {
+            if (_onlineSessionOwner == null)
+            {
+                status = "Field direct-session authority is unavailable.";
+                return false;
+            }
+
+            return _onlineSessionOwner.TrySendPacket(MapleServerRole.Channel, payload, out status);
         }
 
         private void OnRoleSessionServerPacketReceived(object sender, MapleSessionPacketEventArgs e)
