@@ -90,6 +90,7 @@ Notes:
 - For commits that include `HaRepacker` changes, prefix the commit subject with `[HaRepacker] ` (example: `[HaRepacker] Fix IMG node rename validation`).
 - For commits that include `MapleGame.Client/` changes, prefix the commit subject with `[MapleGame.Client] ` (example: `[MapleGame.Client] Update client launch dialog`).
 - For commits that include `MapleGame.Runtime/` changes, prefix the commit subject with `[MapleGame.Runtime] ` (example: `[MapleGame.Runtime] Fix game state initialization`).
+- For commits that include `docs/` changes, prefix the commit subject with `[docs] ` (example: `[docs] Update WZ format overview`).
 - For UI behavior changes, include manual verification steps in your summary.
 
 ## High-Risk Areas (Extra Caution)
