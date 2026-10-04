@@ -255,6 +255,12 @@ MapleStory/
 - Converted to `WzFile` for compatibility with existing codebase
 
 **Decryption Flow:**
+MapleLib reads pack version 2 with Snow2 and version 4 with ChaCha20.
+Each immutable `WzMsHeader` precomputes the salt hash used in image-key
+derivation. Entry names and entry keys still contribute separately for each
+image; replacing the header selects the replacement salt hash. Decimal hash
+formatting and the encrypted disk format are unchanged.
+
 ```csharp
 // 1. Open .ms file and decrypt Snowcrypt layer
 var msFile = new WzMsFile(stream, fileName, filePath, leaveOpen: true);
