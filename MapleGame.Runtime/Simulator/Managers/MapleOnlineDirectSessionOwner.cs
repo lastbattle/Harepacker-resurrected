@@ -46,6 +46,7 @@ namespace HaCreator.MapSimulator.Managers
     {
         private const int TraceCapacity = 128;
         private static readonly TimeSpan DefaultHandshakeTimeout = TimeSpan.FromSeconds(10);
+        public const ushort HwidPacketOpcode = 0x001A;
 
         private readonly object _sync = new();
         private readonly Dictionary<MapleServerRole, MapleClientDirectSession> _sessions = new();
@@ -53,6 +54,14 @@ namespace HaCreator.MapSimulator.Managers
         private readonly ConcurrentQueue<MapleOnlineInboundPacket> _pendingInbound = new();
         private readonly Queue<string> _trace = new();
         private bool _disposed;
+
+        /// <summary>
+        /// Hardware-ID blob sent as the native post-connect packet (N05:
+        /// opcode 0x1A + u16 length + blob). The native client reads this from
+        /// a local file and also emits an empty blob when the file is absent;
+        /// a controlled server defines the accepted content.
+        /// </summary>
+        public byte[] HwidBlob { get; set; } = Array.Empty<byte>();
 
         public event EventHandler<string> TraceRecorded;
 
@@ -131,6 +140,7 @@ namespace HaCreator.MapSimulator.Managers
             MapleClientDirectSession session = GetOrCreateSession(role);
             await session.ConnectAsync(host, port, cancellationToken, DefaultHandshakeTimeout).ConfigureAwait(false);
             RecordTrace($"{role} connected to {host}:{port} generation {session.Generation}.");
+            SendPostConnectHandshake(role, session);
         }
 
         /// <summary>
@@ -169,6 +179,7 @@ namespace HaCreator.MapSimulator.Managers
             MapleClientDirectSession target = GetOrCreateSession(targetRole);
             await target.ConnectAsync(address.ToString(), port, cancellationToken, DefaultHandshakeTimeout).ConfigureAwait(false);
             RecordTrace($"Migration complete: {targetRole} generation {target.Generation} at {address}:{port}.");
+            SendPostConnectHandshake(targetRole, target);
             return target.Generation ?? 0;
         }
 
@@ -280,6 +291,28 @@ namespace HaCreator.MapSimulator.Managers
                 _sessions[role] = session;
                 return session;
             }
+        }
+
+        /// <summary>
+        /// Native OnConnect contract (N05): every successful connection emits
+        /// opcode 0x1A with [u16 length][hwid blob]; an empty blob is a valid
+        /// native case when the local hwid file is absent.
+        /// </summary>
+        private void SendPostConnectHandshake(MapleServerRole role, MapleClientDirectSession session)
+        {
+            byte[] blob = HwidBlob ?? Array.Empty<byte>();
+            var packet = new byte[4 + blob.Length];
+            packet[0] = (byte)(HwidPacketOpcode & 0xFF);
+            packet[1] = (byte)(HwidPacketOpcode >> 8);
+            packet[2] = (byte)(blob.Length & 0xFF);
+            packet[3] = (byte)(blob.Length >> 8);
+            if (blob.Length > 0)
+                Buffer.BlockCopy(blob, 0, packet, 4, blob.Length);
+
+            if (session.TrySendPacket(packet, out string status))
+                RecordTrace($"{role} generation {session.Generation} sent post-connect hwid packet (opcode {HwidPacketOpcode}, {blob.Length}-byte blob).");
+            else
+                RecordTrace($"{role} generation {session.Generation} post-connect hwid send failed: {status}");
         }
 
         private void OnSessionPacketReceived(object sender, MapleDirectSessionPacketEventArgs e)

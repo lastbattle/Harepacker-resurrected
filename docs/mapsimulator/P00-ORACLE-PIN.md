@@ -33,13 +33,15 @@ used for the native observations below. All decompilation was read-only.
 | N04b | `0x4add50` | `CClientSocket::OnMigrateCommand` | Success branch ensures an `CInterStage`, decodes a 4-byte address and 2-byte port, then calls `IssueConnect`. Failure branch throws a `CDisconnectException` for non-guests and returns guests to the title path. |
 | N04c | `0x4ae990` | `CClientSocket::Close` | `ClearSendReceiveCtx` (crypto teardown), `closesocket`, handle reset to `-1`. |
 
-## Open native follow-up
+## Resolved native follow-up
 
-`CClientSocket::Connect` and `CClientSocket::OnConnect` are obfuscated
-(VM-style control flow), so the exact packet the client sends after a
-channel-connect handshake is not yet recovered. The transport slice implements
-close/connect/handshake/generations from N04; the post-migration client-to-
-channel request packet remains a scoped P04 follow-up.
+The post-connect request packet is recovered as N05 in
+[NATIVE-EVIDENCE.md](NATIVE-EVIDENCE.md): `CClientSocket::OnConnect` emits
+opcode 0x1A with `[u16 length][hwid blob]` on every successful connection
+(an empty blob is the native case for an absent hwid file), so the channel
+side of a migration receives this as the client's first request. The direct
+session owner sends the same packet after its handshake; the hwid blob source
+for a specific controlled server remains a configuration input.
 
 ## Comparison scenarios (acceptance gates)
 

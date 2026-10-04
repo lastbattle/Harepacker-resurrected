@@ -1,3 +1,4 @@
+using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using MapleLib.MapleCryptoLib;
@@ -56,6 +57,37 @@ namespace UnitTest_MapleGame
         {
             await _ready.Task.WaitAsync(TestTimeout);
             await Task.Run(() => _session.SendPacket(payload));
+        }
+
+        /// <summary>Reads one encrypted client frame and returns its decrypted body.</summary>
+        public async Task<byte[]> ReceivePacketAsync()
+        {
+            await _ready.Task.WaitAsync(TestTimeout);
+            return await Task.Run(async () =>
+            {
+                NetworkStream stream = new(_session.Socket, ownsSocket: false);
+                byte[] header = await ReadExactlyAsync(stream, 4);
+                int packetLength = MapleCrypto.GetPacketLength(BitConverter.ToInt32(header, 0));
+                byte[] body = await ReadExactlyAsync(stream, packetLength);
+                _session.RIV.Crypt(body);
+                MapleCustomEncryption.Decrypt(body);
+                return body;
+            });
+        }
+
+        private static async Task<byte[]> ReadExactlyAsync(NetworkStream stream, int length)
+        {
+            byte[] buffer = new byte[length];
+            int read = 0;
+            while (read < length)
+            {
+                int chunk = await stream.ReadAsync(buffer.AsMemory(read, length - read));
+                if (chunk <= 0)
+                    throw new IOException("The peer closed the socket before the full frame arrived.");
+                read += chunk;
+            }
+
+            return buffer;
         }
 
         public void Dispose()

@@ -93,6 +93,34 @@ tooling, but does not implement this direct-client close/connect transition.
 This inspection does not prove all login, shop, ITC or error branches; verify each
 call site and its request/state contract before implementing P02-P04 or P11.
 
+## N05: the post-connect hardware-ID packet
+
+Fresh disassembly against the same identified v95 input, resolving the open
+question left by N04's obfuscated `CClientSocket::Connect`/`OnConnect`:
+
+- `CClientSocket::OnConnect`, `0x4aef10`: despite VM-style obfuscation, a direct
+  call chain at `0x4af3de`-`0x4af41c` constructs `COutPacket(0x1A)` (opcode 26),
+  calls `COutPacket::Encode2(ushort)` with the blob length and
+  `COutPacket::EncodeBuffer(void const *, uint)` with the blob, then calls
+  `CClientSocket::SendPacket`.
+- The blob is read from a local file through `ZFileStream` (`GetLength`, `Read`,
+  `Close` visible at `0x4af371`-`0x4af3a1`), validated against a version field
+  of `0x5F` (95) at `0x4af1fc` and a format byte of 8 at `0x4af1cf`, with a
+  read size cap of `0x2000`.
+- `CClientSocket::SendPacket`, `0x4af9f0`: sends only when the socket is valid
+  and `m_ctxConnect.lAddr._m_uCount == 0` (connect context resolved); it builds
+  the frame through `COutPacket::MakeBufferList(..., 0x5F, &m_uSeqSnd, ...)`
+  into `m_lpSendBuff`, advances `m_uSeqSnd` via `CIGCipher::innoHash`, and
+  flushes.
+
+Established: on a successful connection the client emits an opcode 0x1A packet
+carrying `[u16 length][hwid blob]`, so the channel side of a login-to-field
+migration receives this as the client's first request. Uncertainty: the exact
+pre-handshake crypto arming order inside the obfuscated body, and whether any
+branch skips the send for specific `bLogin` values. Managed follow-up: the
+direct session should send this packet after its handshake with a configurable
+hwid blob source.
+
 ## Extending this record
 
 Give each future observation a stable ID, executable/data identity, address and

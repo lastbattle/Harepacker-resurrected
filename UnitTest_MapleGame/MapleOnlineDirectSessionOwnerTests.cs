@@ -12,6 +12,20 @@ namespace UnitTest_MapleGame
     public sealed class MapleOnlineDirectSessionOwnerTests
     {
         [Fact]
+        public async Task Owner_SendsPostConnectHwidPacket_AfterHandshake()
+        {
+            using MapleTestFakeServer server = MapleTestFakeServer.Start(95);
+            using var owner = new MapleOnlineDirectSessionOwner();
+
+            await owner.ConnectAsync(MapleServerRole.Login, IPAddress.Loopback.ToString(), server.Port);
+            byte[] body = await server.ReceivePacketAsync();
+
+            // N05: opcode 0x1A + u16 length + blob; the default empty blob is
+            // the native case for an absent hwid file.
+            Assert.Equal(new byte[] { 0x1A, 0x00, 0x00, 0x00 }, body);
+        }
+
+        [Fact]
         public async Task Owner_RoutesDirectSessionPackets_ToRegisteredStageHandler()
         {
             using MapleTestFakeServer server = MapleTestFakeServer.Start(95);
