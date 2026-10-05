@@ -228,7 +228,14 @@ namespace HaCreator.MapSimulator.Managers
 
             // The captured session validates its live handshake state again and
             // closes itself on send failure.
-            return session.TrySendPacket(payload, out status);
+            bool sent = session.TrySendPacket(payload, out status);
+            if (sent)
+            {
+                RecordTrace(
+                    $"{role} generation {session.Generation} outbound opcode 0x{DecodePacketOpcode(payload):X4} ({payload.Length} bytes) to {session.RemoteEndpoint}.");
+            }
+
+            return sent;
         }
 
         /// <summary>
@@ -244,6 +251,19 @@ namespace HaCreator.MapSimulator.Managers
             int applied = 0;
             while (_pendingInbound.TryDequeue(out MapleOnlineInboundPacket packet))
             {
+                bool isCurrentGeneration;
+                lock (_sync)
+                    isCurrentGeneration = !_disposed
+                        && _sessions.TryGetValue(packet.Role, out MapleClientDirectSession currentSession)
+                        && currentSession.Generation == packet.Generation;
+
+                if (!isCurrentGeneration)
+                {
+                    RecordTrace(
+                        $"Rejected stale {packet.Role} opcode {packet.Opcode} generation {packet.Generation}; current authority has changed.");
+                    continue;
+                }
+
                 bool delivered = false;
                 foreach (IMapleOnlineStageHandler handler in handlers)
                 {
@@ -276,9 +296,8 @@ namespace HaCreator.MapSimulator.Managers
 
             foreach (MapleClientDirectSession session in sessions)
             {
-                session.PacketReceived -= OnSessionPacketReceived;
-                session.Disconnected -= OnSessionDisconnected;
                 session.Close("Owner disposed.");
+                RecordTrace($"{session.Role} session retired by owner dispose.");
                 session.Dispose();
             }
 
@@ -341,6 +360,9 @@ namespace HaCreator.MapSimulator.Managers
                     e.RawPacket,
                     e.RemoteEndpoint,
                     DateTime.UtcNow));
+
+            RecordTrace(
+                $"{e.Role} generation {e.Generation} inbound opcode 0x{e.Opcode:X4} ({e.RawPacket.Length} bytes) from {e.RemoteEndpoint}.");
         }
 
         private void OnSessionDisconnected(object sender, MapleDirectSessionDisconnectedEventArgs e)
@@ -370,6 +392,13 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             TraceRecorded?.Invoke(this, entry);
+        }
+
+        private static int DecodePacketOpcode(byte[] payload)
+        {
+            return payload.Length < sizeof(ushort)
+                ? -1
+                : payload[0] | (payload[1] << 8);
         }
 
         private void ThrowIfDisposed()

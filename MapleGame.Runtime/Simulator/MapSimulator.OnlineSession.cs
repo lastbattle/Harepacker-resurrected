@@ -1,6 +1,7 @@
 using MapleLib.PacketLib;
 using System;
 using System.Net;
+using System.Threading;
 using System.Threading.Tasks;
 
 using HaCreator.MapSimulator.Managers;
@@ -48,7 +49,7 @@ namespace HaCreator.MapSimulator
             (string host, int port) = ResolveOnlineConnectEndpoint(onlineAuthority);
             _onlineConnectInFlight = true;
             _onlineNextAttemptUtc = DateTime.UtcNow + OnlineLoginRetryDelay;
-            _ = ConnectOnlineRoleAsync(_onlineTargetStage, host, port);
+            _ = ConnectOnlineRoleAsync(_onlineTargetStage, host, port, hostCancellation);
         }
 
         private (string Host, int Port) ResolveOnlineConnectEndpoint(Contracts.GameSessionAuthority.Online onlineAuthority)
@@ -58,12 +59,12 @@ namespace HaCreator.MapSimulator
             return (onlineAuthority.LoginHost, onlineAuthority.LoginPort);
         }
 
-        private async Task ConnectOnlineRoleAsync(MapleServerRole role, string host, int port)
+        private async Task ConnectOnlineRoleAsync(MapleServerRole role, string host, int port, CancellationToken cancellationToken)
         {
             try
             {
                 _onlineSessionStatus = $"Connecting {role} to {host}:{port}...";
-                await _onlineSessionOwner.ConnectAsync(role, host, port).ConfigureAwait(false);
+                await _onlineSessionOwner.ConnectAsync(role, host, port, cancellationToken).ConfigureAwait(false);
                 _onlineSessionStatus = $"{role} connected to {host}:{port} (generation {_onlineSessionOwner.CurrentGeneration(role)}).";
             }
             catch (OperationCanceledException)
@@ -91,16 +92,20 @@ namespace HaCreator.MapSimulator
             _onlineTargetStage = MapleServerRole.Channel;
             _loginOfficialSessionBridge.DirectChannelInboundEnabled = true;
             _onlineMigrationInProgress = true;
-            _ = MigrateToChannelAsync(endpoint, handoff.CharacterId);
+            _ = MigrateToChannelAsync(endpoint, handoff.CharacterId, hostCancellation);
         }
 
-        private async Task MigrateToChannelAsync(IPEndPoint endpoint, int characterId)
+        private async Task MigrateToChannelAsync(IPEndPoint endpoint, int characterId, CancellationToken cancellationToken)
         {
             try
             {
                 _onlineSessionStatus = $"Migrating to channel {endpoint} for character {characterId} (retiring login connection)...";
-                long generation = await _onlineSessionOwner.MigrateAsync(MapleServerRole.Channel, endpoint.Address, (ushort)endpoint.Port).ConfigureAwait(false);
+                long generation = await _onlineSessionOwner.MigrateAsync(MapleServerRole.Channel, endpoint.Address, (ushort)endpoint.Port, cancellationToken).ConfigureAwait(false);
                 _onlineSessionStatus = $"Channel connection established (generation {generation}); awaiting server-authored field state.";
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                _onlineSessionStatus = "Channel migration cancelled.";
             }
             catch (Exception ex)
             {

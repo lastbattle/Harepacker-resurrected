@@ -59,6 +59,51 @@ namespace UnitTest_MapleGame
             await Task.Run(() => _session.SendPacket(payload));
         }
 
+        public async Task SendRawAsync(byte[] payload)
+        {
+            await _ready.Task.WaitAsync(TestTimeout);
+            await Task.Run(async () =>
+            {
+                NetworkStream stream = new(_session.Socket, ownsSocket: false);
+                await stream.WriteAsync(payload);
+            });
+        }
+
+        public async Task SendPacketFragmentedAsync(byte[] payload, int splitOffset, TimeSpan delay)
+        {
+            await _ready.Task.WaitAsync(TestTimeout);
+            await Task.Run(async () =>
+            {
+                byte[] encrypted = (byte[])payload.Clone();
+                MapleCustomEncryption.Encrypt(encrypted);
+                _session.SIV.Crypt(encrypted);
+                byte[] header = _session.SIV.GetHeaderToClient(encrypted.Length);
+                byte[] frame = new byte[header.Length + encrypted.Length];
+                Buffer.BlockCopy(header, 0, frame, 0, header.Length);
+                Buffer.BlockCopy(encrypted, 0, frame, header.Length, encrypted.Length);
+
+                if (splitOffset <= 0 || splitOffset >= frame.Length)
+                    throw new ArgumentOutOfRangeException(nameof(splitOffset), "The split must divide the frame into two nonempty parts.");
+
+                NetworkStream stream = new(_session.Socket, ownsSocket: false);
+                await stream.WriteAsync(frame.AsMemory(0, splitOffset));
+                await Task.Delay(delay);
+                await stream.WriteAsync(frame.AsMemory(splitOffset));
+            });
+        }
+
+        /// <summary>Closes the accepted client socket to simulate a remote disconnect.</summary>
+        public async Task CloseClientConnectionAsync()
+        {
+            await _ready.Task.WaitAsync(TestTimeout);
+            await Task.Run(() =>
+            {
+                try { _session.Socket.Shutdown(SocketShutdown.Both); }
+                catch { }
+                _session.Socket.Close();
+            });
+        }
+
         /// <summary>Reads one encrypted client frame and returns its decrypted body.</summary>
         public async Task<byte[]> ReceivePacketAsync()
         {

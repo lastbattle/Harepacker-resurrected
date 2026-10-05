@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Sockets;
 using MapleLib.PacketLib;
 
 namespace UnitTest_MapleGame
@@ -46,6 +47,87 @@ namespace UnitTest_MapleGame
                 () => client.ConnectAsync(IPAddress.Loopback.ToString(), server.Port));
 
             Assert.Contains("version mismatch", failure.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.False(client.IsConnected);
+            Assert.Null(client.Generation);
+        }
+
+        [Fact]
+        public async Task ConnectAsync_ReassemblesFragmentedEncryptedPacket()
+        {
+            using MapleTestFakeServer server = MapleTestFakeServer.Start(95);
+            using var client = new MapleClientDirectSession(MapleServerRole.Login);
+            TaskCompletionSource<MapleDirectSessionPacketEventArgs> received = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            client.PacketReceived += (_, args) => received.TrySetResult(args);
+
+            await client.ConnectAsync(IPAddress.Loopback.ToString(), server.Port);
+            byte[] payload = { 0x2B, 0x00, 0x11, 0x22, 0x33 };
+            await server.SendPacketFragmentedAsync(payload, 2, TimeSpan.FromMilliseconds(50));
+            MapleDirectSessionPacketEventArgs args = await received.Task.WaitAsync(MapleTestFakeServer.TestTimeout);
+
+            Assert.Equal(payload, args.RawPacket);
+            Assert.Equal(0x002B, args.Opcode);
+        }
+
+        [Fact]
+        public async Task ConnectAsync_CancellationWhileAwaitingHandshake_RetiresAndAllowsReconnect()
+        {
+            using var listener = new TcpListener(IPAddress.Loopback, 0);
+            listener.Start();
+            int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+            Task<TcpClient> acceptTask = listener.AcceptTcpClientAsync();
+            using var client = new MapleClientDirectSession(MapleServerRole.Login);
+            using var cancellation = new CancellationTokenSource();
+
+            Task connectTask = client.ConnectAsync(IPAddress.Loopback.ToString(), port, cancellation.Token);
+            TcpClient remoteClient = await acceptTask.WaitAsync(MapleTestFakeServer.TestTimeout);
+            using TcpClient acceptedClient = remoteClient;
+            cancellation.Cancel();
+
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => connectTask);
+            Assert.False(client.IsConnected);
+            Assert.Null(client.Generation);
+
+            using MapleTestFakeServer recoveryServer = MapleTestFakeServer.Start(95);
+            await client.ConnectAsync(IPAddress.Loopback.ToString(), recoveryServer.Port);
+            Assert.True(client.IsConnected);
+            Assert.NotNull(client.Generation);
+        }
+
+        [Fact]
+        public async Task RemoteDisconnect_IsNotReportedAsExpectedClose()
+        {
+            using MapleTestFakeServer server = MapleTestFakeServer.Start(95);
+            using var client = new MapleClientDirectSession(MapleServerRole.Login);
+            await client.ConnectAsync(IPAddress.Loopback.ToString(), server.Port);
+            TaskCompletionSource<MapleDirectSessionDisconnectedEventArgs> disconnected = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            client.Disconnected += (_, args) => disconnected.TrySetResult(args);
+
+            await server.CloseClientConnectionAsync();
+            MapleDirectSessionDisconnectedEventArgs args = await disconnected.Task.WaitAsync(MapleTestFakeServer.TestTimeout);
+
+            Assert.False(args.Expected);
+            Assert.Equal("Server closed the connection.", args.Reason);
+            Assert.False(client.IsConnected);
+            Assert.Null(client.Generation);
+
+            using MapleTestFakeServer recoveryServer = MapleTestFakeServer.Start(95);
+            await client.ConnectAsync(IPAddress.Loopback.ToString(), recoveryServer.Port);
+            Assert.True(client.IsConnected);
+        }
+
+        [Fact]
+        public async Task MalformedFrame_DisconnectsActiveSession()
+        {
+            using MapleTestFakeServer server = MapleTestFakeServer.Start(95);
+            using var client = new MapleClientDirectSession(MapleServerRole.Login);
+            await client.ConnectAsync(IPAddress.Loopback.ToString(), server.Port);
+            TaskCompletionSource<MapleDirectSessionDisconnectedEventArgs> disconnected = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            client.Disconnected += (_, args) => disconnected.TrySetResult(args);
+
+            await server.SendRawAsync(new byte[4]);
+            MapleDirectSessionDisconnectedEventArgs args = await disconnected.Task.WaitAsync(MapleTestFakeServer.TestTimeout);
+
+            Assert.False(args.Expected);
             Assert.False(client.IsConnected);
             Assert.Null(client.Generation);
         }

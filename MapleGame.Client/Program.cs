@@ -89,9 +89,14 @@ internal static class Program
                 Authority = authority,
                 Resolution = clientOptions.Resolution
             };
+            // The runtime derives its login scene from the MapLogin title marker;
+            // online authority must enter authentication before any field scene.
+            string gameTitle = authority is GameSessionAuthority.Online
+                ? "MapLogin1:MapLogin1"
+                : $"MapleGame — {map.MapId:D9}";
             if (!GameSessionHost.TryStart(() =>
             {
-                var game = new HaCreator.MapSimulator.MapSimulator(map, $"MapleGame — {map.MapId:D9}", options, services, clientOptions.Portal);
+                var game = new HaCreator.MapSimulator.MapSimulator(map, gameTitle, options, services, clientOptions.Portal);
                 game.SetMapProvider(provider);
                 return game;
             }, out var handle))

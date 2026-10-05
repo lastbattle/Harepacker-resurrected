@@ -20588,6 +20588,10 @@ foreach (var pair in runtimeServices.Catalog.GetMapNames())
             Cleanup(() => _soundManager?.Dispose());
             UIObject.ClientSoundEffectPlayer = null;
 
+            Cleanup(() => _loginOfficialSessionBridge?.Dispose());
+            Cleanup(() => _packetFieldOfficialSessionBridge?.Dispose());
+            Cleanup(() => _reactorPoolOfficialSessionBridge?.Dispose());
+
             Cleanup(() => _snowBallPacketInbox.Dispose());
             Cleanup(() => _snowBallOfficialSessionBridge.Dispose());
             Cleanup(() => _coconutPacketInbox.Dispose());
