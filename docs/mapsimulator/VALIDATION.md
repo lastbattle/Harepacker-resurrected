@@ -55,6 +55,35 @@ Run opt-in checks only after pinning the export identity and recording the
 environment. A skipped real-data or graphics test must remain visible in the
 result summary.
 
+### P00-P04 implementation audit
+
+The slice implementation audit produced the following evidence. These are
+level A-C results; they do not replace the level-E controlled-server run.
+
+```powershell
+dotnet build MapleHaSuite.sln -c Release --no-restore
+# Passed with 0 errors.
+
+dotnet test UnitTest_MapleGame/UnitTest_MapleGame.csproj -c Debug --no-restore --nologo
+# Passed: 158, Skipped: 10, Total: 168.
+
+$env:MAPLEGAME_TEST_EXPORTS = '<pinned export parent>'
+dotnet test UnitTest_MapleGame/UnitTest_MapleGame.csproj -c Debug --no-restore --nologo
+# Passed: 165, Skipped: 7, Total: 172.
+
+$env:MAPLEGAME_GRAPHICS_TESTS = '1'
+dotnet test UnitTest_MapleGame/UnitTest_MapleGame.csproj -c Debug --no-restore --no-build --nologo `
+  --filter "FullyQualifiedName~RuntimeGraphicsLifecycleTests|FullyQualifiedName~FrameworkGraphicsLifecycleTests"
+# Passed: 6, Skipped: 0, Total: 6.
+
+dotnet test UnitTest_MapSimulator/UnitTest_MapSimulator.csproj -c Debug --no-restore --nologo
+# Passed: 190, Skipped: 4, Total: 194.
+```
+
+The direct-session/owner focused set passed 20 tests. The remaining P00-P04
+evidence is level E and requires the controlled compatible v95 server named by
+`P00-ORACLE-PIN.md`.
+
 ## What the existing tests cover
 
 The strongest current managed owners are:
