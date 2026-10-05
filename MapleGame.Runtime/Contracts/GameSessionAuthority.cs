@@ -28,7 +28,7 @@ namespace HaCreator.MapSimulator.Contracts
 
         public sealed record Online : GameSessionAuthority
         {
-            public Online(string loginHost, int loginPort)
+            public Online(string loginHost, int loginPort, byte[] hwidBlob = null)
             {
                 if (string.IsNullOrWhiteSpace(loginHost))
                     throw new ArgumentException("Online authority requires a login host.", nameof(loginHost));
@@ -37,10 +37,12 @@ namespace HaCreator.MapSimulator.Contracts
 
                 LoginHost = loginHost.Trim();
                 LoginPort = loginPort;
+                HwidBlob = (byte[])hwidBlob?.Clone() ?? Array.Empty<byte>();
             }
 
             public string LoginHost { get; }
             public int LoginPort { get; }
+            public byte[] HwidBlob { get; }
 
             public override string ToString() => $"Online (login {LoginHost}:{LoginPort})";
         }

@@ -19,6 +19,8 @@ namespace HaCreator.MapSimulator.Contracts
         /// through a client-owned direct session.
         /// </summary>
         public GameSessionAuthority Authority { get; init; } = GameSessionAuthority.Offline.Instance;
+        /// <summary>Optional append-only sink for the online session acceptance trace.</summary>
+        public string OnlineTracePath { get; init; }
         public RenderResolution Resolution { get; init; } = RenderResolution.Res_1024x768;
         public string ContentRootDirectory { get; init; } = Path.Combine(AppContext.BaseDirectory, "Content");
         /// <summary>MapleStory client screenshot folder mode used by packet-owned anti-macro flows.</summary>

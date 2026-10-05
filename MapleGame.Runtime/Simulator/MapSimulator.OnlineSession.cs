@@ -18,6 +18,7 @@ namespace HaCreator.MapSimulator
         private static readonly TimeSpan OnlineLoginRetryDelay = TimeSpan.FromSeconds(5);
 
         private MapleServerRole _onlineTargetStage = MapleServerRole.Login;
+        private Managers.MapleOnlineSessionTraceLog _onlineTraceLog;
         private bool _onlineConnectInFlight;
         private bool _onlineMigrationInProgress;
         private DateTime _onlineNextAttemptUtc = DateTime.MinValue;
@@ -28,6 +29,27 @@ namespace HaCreator.MapSimulator
 
         public string DescribeOnlineSessionTrace() =>
             _onlineSessionOwner?.DescribeTrace() ?? "Offline session authority is active.";
+
+        private void RecordOnlineLifecycle(string message)
+        {
+            // Owner traces cover transport; this records runtime-owned scene
+            // authority that cannot be inferred from socket packets alone.
+            _onlineTraceLog?.Append($"{DateTime.UtcNow:O} {message}");
+        }
+
+        private void RecordOnlineSceneState()
+        {
+            if (_onlineTraceLog == null)
+                return;
+
+            var playerManager = _playerManager;
+            Microsoft.Xna.Framework.Vector2 position = playerManager?.GetPlayerPosition() ?? default;
+            RecordOnlineLifecycle(
+                $"visible state map={_mapInfo?.id ?? -1} title='{ContentTarget.WindowTitle}' " +
+                $"player=({position.X:0.###},{position.Y:0.###}) " +
+                $"action={playerManager?.Player?.CurrentActionName ?? "none"} " +
+                $"inputEnabled={playerManager?.IsPlayerControlEnabled ?? false}");
+        }
 
         private void PumpOnlineSessionLifecycle()
         {
@@ -90,6 +112,8 @@ namespace HaCreator.MapSimulator
             var endpoint = new IPEndPoint(handoff.ServerAddress, handoff.Port);
             _onlineLastChannelEndpoint = endpoint;
             _onlineTargetStage = MapleServerRole.Channel;
+            RecordOnlineLifecycle(
+                $"stage transition requested: Login -> Channel; characterId={handoff.CharacterId}; endpoint={endpoint}");
             _loginOfficialSessionBridge.DirectChannelInboundEnabled = true;
             _onlineMigrationInProgress = true;
             _ = MigrateToChannelAsync(endpoint, handoff.CharacterId, hostCancellation);

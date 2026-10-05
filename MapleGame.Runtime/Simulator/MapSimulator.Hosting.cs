@@ -90,17 +90,21 @@ namespace HaCreator.MapSimulator
             try { _onlineSessionOwner?.Dispose(); }
             finally
             {
-                try { _stagingContent?.Dispose(); }
+                try { _onlineTraceLog?.Dispose(); }
                 finally
                 {
-                    try { _activeContent?.Dispose(); }
+                    try { _stagingContent?.Dispose(); }
                     finally
                     {
-                        try { _texturePool.Dispose(); }
+                        try { _activeContent?.Dispose(); }
                         finally
                         {
-                            foreach (var metadata in mapMetadata.Values) metadata.Image?.Dispose();
-                            mapMetadata.Clear();
+                            try { _texturePool.Dispose(); }
+                            finally
+                            {
+                                foreach (var metadata in mapMetadata.Values) metadata.Image?.Dispose();
+                                mapMetadata.Clear();
+                            }
                         }
                     }
                 }
@@ -145,6 +149,7 @@ namespace HaCreator.MapSimulator
                 _socialListOfficialSessionBridge,
                 _socialRoomMerchantOfficialSessionBridge,
                 _onlineSessionOwner,
+                _onlineTraceLog,
                 _chatFallbackMeasureGraphics,
                 _chatFallbackFont
             };

@@ -20010,9 +20010,22 @@ foreach (var pair in runtimeServices.Catalog.GetMapNames())
         {
             sessionOptions = options ?? throw new ArgumentNullException(nameof(options));
             runtimeServices = dataServices ?? throw new ArgumentNullException(nameof(dataServices));
-            _onlineSessionOwner = options.Authority is Contracts.GameSessionAuthority.Online
-                ? new Managers.MapleOnlineDirectSessionOwner()
-                : null;
+            _onlineSessionOwner = null;
+            if (options.Authority is Contracts.GameSessionAuthority.Online onlineAuthority)
+            {
+                var onlineSessionOwner = new Managers.MapleOnlineDirectSessionOwner
+                {
+                    HwidBlob = onlineAuthority.HwidBlob
+                };
+                if (!string.IsNullOrWhiteSpace(options.OnlineTracePath))
+                {
+                    _onlineTraceLog = new Managers.MapleOnlineSessionTraceLog(options.OnlineTracePath);
+                    onlineSessionOwner.TraceRecorded += (_, entry) => _onlineTraceLog.Append(entry);
+                }
+
+                _onlineSessionOwner = onlineSessionOwner;
+            }
+
             _offlineClientMode = _onlineSessionOwner == null;
             _cookieHousePointInboxEnabled = !_offlineClientMode;
             _loginPacketInboxEnabled = !_offlineClientMode;

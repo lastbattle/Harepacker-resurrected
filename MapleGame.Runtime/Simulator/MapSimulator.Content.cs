@@ -1634,8 +1634,10 @@ namespace HaCreator.MapSimulator
                 Exit();
                 throw new MapActivationFatalException(
                     message,
-                    failures.Count == 1 ? activationError : new AggregateException(failures));
+                        failures.Count == 1 ? activationError : new AggregateException(failures));
             }
+
+            RecordOnlineSceneState();
 
             if (preparedCleanupError != null)
             {

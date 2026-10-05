@@ -16,7 +16,7 @@ internal static class Program
         ClientPresentation.Initialize();
         if (args.Length == 1 && args[0] is "--help" or "-h")
         {
-            ClientPresentation.ShowHelp("MapleGame.Client (--img <version-directory> | --wz <install-directory> | --hybrid-img <version-directory> --wz <install-directory>) [--map <map-id>] [--wz-version <GMS|EMS|BMS|CLASSIC|CUSTOM>] [--wz-iv <8-hex-digits>] [--portal <name>] [--profile-directory <path>] [--online <login-host[:port]>]");
+            ClientPresentation.ShowHelp("MapleGame.Client (--img <version-directory> | --wz <install-directory> | --hybrid-img <version-directory> --wz <install-directory>) [--map <map-id>] [--wz-version <GMS|EMS|BMS|CLASSIC|CUSTOM>] [--wz-iv <8-hex-digits>] [--portal <name>] [--profile-directory <path>] [--online <login-host[:port]>] [--hwid-file <path>] [--online-trace <path>]");
             return 0;
         }
 
@@ -28,6 +28,8 @@ internal static class Program
             string portal = null;
             string profileDirectory = null;
             string onlineEndpoint = null;
+            string hwidFile = null;
+            string onlineTracePath = null;
             int? mapId = 100000000;
             WzMapleVersion wzVersion = WzMapleVersion.BMS;
             byte[] customIv = null;
@@ -49,6 +51,8 @@ internal static class Program
                     case "--portal": portal = args[i + 1]; break;
                     case "--profile-directory": profileDirectory = args[i + 1]; break;
                     case "--online": onlineEndpoint = args[i + 1]; break;
+                    case "--hwid-file": hwidFile = args[i + 1]; break;
+                    case "--online-trace": onlineTracePath = args[i + 1]; break;
                     default: throw new ArgumentException($"Unknown option {args[i]}.");
                 }
             }
@@ -75,7 +79,7 @@ internal static class Program
             }
             clientOptions.Validate();
 
-            GameSessionAuthority authority = ParseOnlineAuthority(onlineEndpoint);
+            GameSessionAuthority authority = ParseOnlineAuthority(onlineEndpoint, hwidFile);
             using var assets = clientOptions.OpenAssetSource();
             var diagnostics = new ConsoleDiagnostics();
             var services = new RuntimeDataServices(assets, new SourceRuntimeAssetCatalog(assets, diagnostics), diagnostics);
@@ -87,7 +91,8 @@ internal static class Program
             var options = new GameSessionOptions(profile)
             {
                 Authority = authority,
-                Resolution = clientOptions.Resolution
+                Resolution = clientOptions.Resolution,
+                OnlineTracePath = onlineTracePath
             };
             // The runtime derives its login scene from the MapLogin title marker;
             // online authority must enter authentication before any field scene.
@@ -119,7 +124,7 @@ internal static class Program
         public void Report(string message, Exception error = null) => Console.Error.WriteLine(error == null ? message : $"{message}: {error}");
     }
 
-    private static GameSessionAuthority ParseOnlineAuthority(string onlineEndpoint)
+    private static GameSessionAuthority ParseOnlineAuthority(string onlineEndpoint, string hwidFile)
     {
         if (string.IsNullOrWhiteSpace(onlineEndpoint))
             return GameSessionAuthority.Offline.Instance;
@@ -137,7 +142,16 @@ internal static class Program
             port = parsedPort;
         }
 
-        return new GameSessionAuthority.Online(host, port);
+        byte[] hwidBlob = hwidFile == null ? null : ReadHwidBlob(hwidFile);
+        return new GameSessionAuthority.Online(host, port, hwidBlob);
+    }
+
+    private static byte[] ReadHwidBlob(string path)
+    {
+        byte[] blob = File.ReadAllBytes(path);
+        if (blob.Length > 0x2000)
+            throw new ArgumentException($"HWID blob exceeds the native {0x2000}-byte limit.");
+        return blob;
     }
 
     private static byte[] ParseWzIv(string value)
