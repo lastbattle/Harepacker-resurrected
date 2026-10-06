@@ -164,24 +164,36 @@ namespace HaCreator.MapEditor.AI
         public static readonly string[] AvailableModels =
         {
             DefaultModel,
+            "openai/gpt-6.1-sol",
+            "openai/gpt-6-sol",
             "openai/gpt-5.6-sol",
             "openai/gpt-5.6-terra",
+            "openai/gpt-6-luna",
             "openai/gpt-5.6-luna",
+            "anthropic/claude-opus-5.5",
             "anthropic/claude-opus-5",
             "anthropic/claude-opus-4.8",
+            "anthropic/claude-sonnet-5.5",
             "anthropic/claude-sonnet-5",
             "meta/muse-spark-1.2",
+            "x-ai/grok-4.7",
+            "x-ai/grok-4.6",
             "x-ai/grok-4.5",
+            "z-ai/glm-5.3",
             "z-ai/glm-5.2",
             "~deepseek/deepseek-v4-flash-latest",
             "deepseek/deepseek-v4-pro",
+            "google/gemini-3.8-flash",
             "google/gemini-3.6-flash",
+            "qwen/qwen3.8-max-0902",
             "moonshotai/kimi-k3",
         };
 
         public static readonly string[] AvailableImageModels =
         {
             DefaultImageModel,
+            "gpt-image-2.5-sunburst",
+            "gpt-image-2.5-flare",
             "gpt-image-1.5"
         };
 
