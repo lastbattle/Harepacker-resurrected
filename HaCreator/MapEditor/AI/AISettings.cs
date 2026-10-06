@@ -164,6 +164,7 @@ namespace HaCreator.MapEditor.AI
         public static readonly string[] AvailableModels =
         {
             DefaultModel,
+            "openai/gpt-6-astra",
             "openai/gpt-6.1-sol",
             "openai/gpt-6-sol",
             "openai/gpt-5.6-sol",
