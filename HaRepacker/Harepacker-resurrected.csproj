@@ -177,6 +177,9 @@
     <Compile Update="GUI\Input\NameValueInputBox.cs">
       <DependentUpon>NameValueInputBox.xaml</DependentUpon>
     </Compile>
+    <Compile Update="GUI\Input\RawDataInputBox.cs">
+      <DependentUpon>RawDataInputBox.xaml</DependentUpon>
+    </Compile>
     <Compile Update="GUI\Input\RenameInputBox.cs">
       <DependentUpon>RenameInputBox.xaml</DependentUpon>
     </Compile>

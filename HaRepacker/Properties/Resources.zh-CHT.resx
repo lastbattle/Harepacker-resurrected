@@ -296,6 +296,9 @@
   <data name="MainAddNull" xml:space="preserve">
     <value>新增空值</value>
   </data>
+  <data name="MainAddRawData" xml:space="preserve">
+    <value>新增原始資料</value>
+  </data>
   <data name="MainAddShort" xml:space="preserve">
     <value>新增短整數</value>
   </data>

@@ -803,6 +803,9 @@ Copyright (C) 2009-2015 haha01haha01</value>
   <data name="QUEST" xml:space="preserve">
     <value>QUEST</value>
   </data>
+  <data name="RawData" xml:space="preserve">
+    <value>RawData</value>
+  </data>
   <data name="Raw data" xml:space="preserve">
     <value>Raw data</value>
   </data>
@@ -1407,5 +1410,11 @@ Please select a directory containing extracted IMG files with category folders s
   </data>
   <data name="More actions" xml:space="preserve">
     <value>More actions</value>
+  </data>
+  <data name="Select raw data file" xml:space="preserve">
+    <value>Select raw data file</value>
+  </data>
+  <data name="All files (*.*)|*.*" xml:space="preserve">
+    <value>All files (*.*)|*.*</value>
   </data>
 </root>

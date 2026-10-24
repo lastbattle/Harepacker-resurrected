@@ -44,6 +44,7 @@ namespace HaRepacker
         private ToolStripMenuItem AddConvex;
         private ToolStripMenuItem AddDouble;
         private ToolStripMenuItem AddNull;
+        private ToolStripMenuItem AddRawData;
         private ToolStripMenuItem AddSound;
         private ToolStripMenuItem AddString;
         private ToolStripMenuItem AddSub;
@@ -308,6 +309,18 @@ namespace HaRepacker
 
                     haRepackerMainPanel.AddWzNullPropertyToSelectedNode(nodes[0]);
                 }));
+            AddRawData = new ToolStripMenuItem(UiLocalization.Translate("RawData"), null, new EventHandler(
+                delegate (object sender, EventArgs e)
+                {
+                    WzNode[] nodes = GetNodes(sender);
+                    if (nodes.Length != 1)
+                    {
+                        MessageBox.Show(UiLocalization.Translate("Please select only one node."));
+                        return;
+                    }
+
+                    haRepackerMainPanel.AddWzRawDataPropertyToSelectedNode(nodes[0]);
+                }));
             AddSound = new ToolStripMenuItem(UiLocalization.Translate("Sound"), null, new EventHandler(
                 delegate (object sender, EventArgs e)
                 {
@@ -423,7 +436,7 @@ namespace HaRepacker
                 AddDirectory, AddImage);
 
             AddPropsSubMenu = new ToolStripMenuItem(UiLocalization.Translate("Add"), Properties.Resources.add,
-                AddCanvas, AddConvex, AddDouble, AddByteFloat, AddLong, AddInt, AddNull, AddUshort, AddSound, AddString, AddSub, AddUOL, AddVector);
+                AddCanvas, AddConvex, AddDouble, AddByteFloat, AddLong, AddInt, AddNull, AddUshort, AddSound, AddString, AddSub, AddUOL, AddVector, AddRawData);
 
             AddBatchMenu = new ToolStripMenuItem(Properties.Resources.MainContextMenu_Batch, Properties.Resources.batch_edit, 
                 FixInlink, AiUpscaleImage);

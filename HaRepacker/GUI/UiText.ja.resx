@@ -803,6 +803,9 @@
   <data name="QUEST" xml:space="preserve">
     <value>QUEST</value>
   </data>
+  <data name="RawData" xml:space="preserve">
+    <value>生データ</value>
+  </data>
   <data name="Raw data" xml:space="preserve">
     <value>Raw データ</value>
   </data>

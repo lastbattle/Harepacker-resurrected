@@ -587,6 +587,15 @@ namespace HaRepacker.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Add raw data.
+        /// </summary>
+        public static string MainAddRawData {
+            get {
+                return ResourceManager.GetString("MainAddRawData", resourceCulture);
+            }
+        }
+
+        /// <summary>
         ///   Looks up a localized string similar to Add short.
         /// </summary>
         public static string MainAddShort {

@@ -803,6 +803,9 @@ Copyright (C) 2009-2015 haha01haha01</value>
   <data name="QUEST" xml:space="preserve">
     <value>QUEST</value>
   </data>
+  <data name="RawData" xml:space="preserve">
+    <value>原始資料</value>
+  </data>
   <data name="Raw data" xml:space="preserve">
     <value>Raw 資料</value>
   </data>
@@ -1405,5 +1408,11 @@ func_setEncryptionKey = {0}，encryptionKeyLoc = {1}</value>
   </data>
   <data name="More actions" xml:space="preserve">
     <value>更多操作</value>
+  </data>
+  <data name="Select raw data file" xml:space="preserve">
+    <value>選擇原始資料檔案</value>
+  </data>
+  <data name="All files (*.*)|*.*" xml:space="preserve">
+    <value>所有檔案 (*.*)|*.*</value>
   </data>
 </root>

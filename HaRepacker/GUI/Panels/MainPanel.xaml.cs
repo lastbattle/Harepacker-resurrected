@@ -874,6 +874,24 @@ namespace HaRepacker.GUI.Panels
         }
 
         /// <summary>
+        /// WzRawDataProperty
+        /// </summary>
+        /// <param name="target"></param>
+        public void AddWzRawDataPropertyToSelectedNode(System.Windows.Forms.TreeNode target)
+        {
+            string name;
+            byte[] data;
+            if (!(target.Tag is IPropertyContainer))
+            {
+                Warning.Error(Properties.Resources.MainCannotInsertToNode);
+                return;
+            }
+            else if (!RawDataInputBox.Show(Properties.Resources.MainAddRawData, out name, out data))
+                return;
+            ((WzNode)target).AddObject(new WzRawDataProperty(name, 1, data), UndoRedoMan);
+        }
+
+        /// <summary>
         /// WzSoundProperty
         /// </summary>
         /// <param name="target"></param>
