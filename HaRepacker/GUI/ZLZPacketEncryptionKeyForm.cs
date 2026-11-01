@@ -26,6 +26,54 @@ namespace HaRepacker.GUI {
             InitializeComponent();
         }
 
+        /// <summary>
+        /// Reads the PE machine type and mapped image size from a native image
+        /// on disk without loading it.
+        /// </summary>
+        private static bool TryGetNativeImageInfo(string filePath, out ushort machine, out uint sizeOfImage) {
+            machine = 0;
+            sizeOfImage = 0;
+            try {
+                using FileStream stream = File.OpenRead(filePath);
+                using BinaryReader reader = new BinaryReader(stream);
+                if (stream.Length < 0x40) {
+                    return false;
+                }
+
+                stream.Position = 0x3C;
+                int peHeaderOffset = reader.ReadInt32();
+                if (peHeaderOffset <= 0 || peHeaderOffset + 0x58 > stream.Length) {
+                    return false;
+                }
+
+                stream.Position = peHeaderOffset;
+                if (reader.ReadUInt32() != 0x00004550) { // 'PE\0\0'
+                    return false;
+                }
+
+                stream.Position = peHeaderOffset + 4;
+                machine = reader.ReadUInt16();
+
+                stream.Position = peHeaderOffset + 0x18; // optional header magic
+                ushort optionalMagic = reader.ReadUInt16();
+                if (optionalMagic != 0x020B && optionalMagic != 0x010B) {
+                    return false;
+                }
+
+                stream.Position = peHeaderOffset + 0x50; // SizeOfImage, PE32 and PE32+
+                sizeOfImage = reader.ReadUInt32();
+                return sizeOfImage > 0;
+            }
+            catch {
+                return false;
+            }
+        }
+
+        private static bool IsInsideImage(IntPtr address, long moduleBase, uint sizeOfImage) {
+            long offset = address.ToInt64() - moduleBase;
+            return offset >= 0 && offset < sizeOfImage;
+        }
+
         #region 64Bit ZLZ
 
         /// <summary>
@@ -34,8 +82,31 @@ namespace HaRepacker.GUI {
         /// </summary>
         /// <returns></returns>
         public bool OpenZLZDllFile_64Bit(string filePath) {
+            const ushort IMAGE_FILE_MACHINE_AMD64 = 0x8664;
+            if (!TryGetNativeImageInfo(filePath, out ushort imageMachine, out uint sizeOfImage)) {
+                MessageBox.Show(T("Unable to read the DLL PE header. The file may not be a native image."), T("Error"));
+                return false;
+            }
+            if (imageMachine != IMAGE_FILE_MACHINE_AMD64) {
+                MessageBox.Show(T("The selected DLL is not a 64-bit image."), T("Error"));
+                return false;
+            }
+
+            bool dllSearchPathChanged = kernel32.SetDllDirectory(Path.GetDirectoryName(Path.GetFullPath(filePath)));
+            try {
+                return OpenZLZDllFile_64BitCore(filePath, sizeOfImage);
+            }
+            finally {
+                // SetDllDirectory is process-wide; restore the default search
+                // path so later loads do not keep resolving from the DLL folder.
+                if (dllSearchPathChanged) {
+                    kernel32.SetDllDirectory(null);
+                }
+            }
+        }
+
+        private bool OpenZLZDllFile_64BitCore(string filePath, uint sizeOfImage) {
             FileInfo fileinfo = new FileInfo(filePath);
-            bool setDLLDirectory = kernel32.SetDllDirectory(fileinfo.Directory.FullName);
 
             // Flags for LoadLibraryEx
             const uint DONT_RESOLVE_DLL_REFERENCES = 0x00000001;
@@ -60,15 +131,23 @@ namespace HaRepacker.GUI {
                     // 83 3D AD 26 07 00 00 0F 85 4A 01 00 00 C7 05 D9 // MSEA 234
                     // 83 3D ED 45 0D 00 00 0F 85 4A 01 00 00 C7 05 39 // KMS 
                     const string SEARCH_PATTERN_SET_ENC = "83 3D ?? ?? ?? 00 00 0F 85 ?? 01 00 00 C7 ?? ?? ?? ?? ?? ??";
-                    func_setEncryptionKey = MemoryScannerHelper.ScanCurrentProcessMemory(currentProcess, module.ToInt64(), module.ToInt64() + 0x10000, SEARCH_PATTERN_SET_ENC);
+                    long moduleBase = module.ToInt64();
+                    func_setEncryptionKey = MemoryScannerHelper.ScanCurrentProcessMemory(currentProcess, moduleBase, moduleBase + Math.Min(0x10000, (long)sizeOfImage), SEARCH_PATTERN_SET_ENC);
 
                     // The location where the keys are set
                     const string SEARCH_PATTERN_ENC_KEY = "13 00 00 00 52 00 00 00 2A 00 00 00";
-                    encryptionKeyLoc = MemoryScannerHelper.ScanCurrentProcessMemory(currentProcess, module.ToInt64(), module.ToInt64() + 0x100000, SEARCH_PATTERN_ENC_KEY);
+                    encryptionKeyLoc = MemoryScannerHelper.ScanCurrentProcessMemory(currentProcess, moduleBase, moduleBase + Math.Min(0x100000, (long)sizeOfImage), SEARCH_PATTERN_ENC_KEY);
 
                     //MessageBox.Show(func_setEncryptionKey.ToString("X8"));
 
-                    if ((long)func_setEncryptionKey != 0) { // function for setting the encKey
+                    // Both scan hits and the trailing 128-byte key read in
+                    // ShowKey_64Bit are attacker-controlled through the DLL
+                    // and must stay inside the mapped image.
+                    bool generatorInRange = IsInsideImage(func_setEncryptionKey, moduleBase, sizeOfImage);
+                    bool keyTableInRange = (long)encryptionKeyLoc != 0 &&
+                        encryptionKeyLoc.ToInt64() - moduleBase + 0x80 <= sizeOfImage;
+
+                    if ((long)func_setEncryptionKey != 0 && generatorInRange && keyTableInRange) { // function for setting the encKey
                         //System.IntPtr functionAddress = (System.IntPtr)(module.ToInt64() + 0x3A40); // sub_0000000180003A40
 
                         var Method = Marshal.GetDelegateForFunctionPointer((IntPtr)func_setEncryptionKey, typeof(ZLZGenerateKey.GenerateKey)) as ZLZGenerateKey.GenerateKey;
@@ -397,9 +476,32 @@ LABEL_27:
         /// </summary>
         /// <returns></returns>
         public bool OpenZLZDllFile_32Bit(string filePath) {
+            const ushort IMAGE_FILE_MACHINE_I386 = 0x014C;
+            if (!TryGetNativeImageInfo(filePath, out ushort imageMachine, out uint sizeOfImage)) {
+                MessageBox.Show(T("Unable to read the DLL PE header. The file may not be a native image."), T("Error"));
+                return false;
+            }
+            if (imageMachine != IMAGE_FILE_MACHINE_I386) {
+                MessageBox.Show(T("The selected DLL is not a 32-bit image."), T("Error"));
+                return false;
+            }
+
+            bool dllSearchPathChanged = kernel32.SetDllDirectory(Path.GetDirectoryName(Path.GetFullPath(filePath)));
+            try {
+                return OpenZLZDllFile_32BitCore(filePath, sizeOfImage);
+            }
+            finally {
+                // SetDllDirectory is process-wide; restore the default search
+                // path so later loads do not keep resolving from the DLL folder.
+                if (dllSearchPathChanged) {
+                    kernel32.SetDllDirectory(null);
+                }
+            }
+        }
+
+        private bool OpenZLZDllFile_32BitCore(string filePath, uint sizeOfImage) {
             FileInfo fileinfo = new FileInfo(filePath);
 
-            bool setDLLDirectory = kernel32.SetDllDirectory(fileinfo.Directory.FullName);
             IntPtr module;
             if (((int)(module = kernel32.LoadLibrary(fileinfo.FullName))) == 0) {
                 uint lastError = kernel32.GetLastError();
@@ -408,12 +510,20 @@ LABEL_27:
             }
             else {
                 try {
+                    // Fixed offsets from the known 32-bit ZLZ layout; the
+                    // key table read must stay inside the mapped image.
+                    const int KeyTableOffset = 0x14020;
+                    const int KeyReadSpan = 0x80;
+                    if (sizeOfImage < KeyTableOffset + KeyReadSpan) {
+                        throw new InvalidDataException("ZLZ image is smaller than the known 32-bit key layout.");
+                    }
+
                     System.IntPtr functionAddress = (System.IntPtr)(module.ToInt32() + 0x1340); // sub_10001340
 
                     var Method = Marshal.GetDelegateForFunctionPointer(functionAddress, typeof(ZLZGenerateKey.GenerateKey)) as ZLZGenerateKey.GenerateKey;
                     Method();
 
-                    ShowKey_32Bit(module, 0x14020); // 0x1340
+                    ShowKey_32Bit(module, KeyTableOffset); // 0x1340
 
                     return true;
                 }
