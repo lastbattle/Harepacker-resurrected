@@ -502,8 +502,13 @@ LABEL_27:
         private bool OpenZLZDllFile_32BitCore(string filePath, uint sizeOfImage) {
             FileInfo fileinfo = new FileInfo(filePath);
 
+            // Resolve dependencies from the key DLL's own directory, the
+            // same altered-search guarantee the 64-bit loader relies on,
+            // instead of letting them resolve from the application
+            // directory first.
+            const uint LOAD_WITH_ALTERED_SEARCH_PATH = 0x00000008;
             IntPtr module;
-            if (((int)(module = kernel32.LoadLibrary(fileinfo.FullName))) == 0) {
+            if (((int)(module = kernel32.LoadLibraryEx(fileinfo.FullName, IntPtr.Zero, LOAD_WITH_ALTERED_SEARCH_PATH))) == 0) {
                 uint lastError = kernel32.GetLastError();
 
                 MessageBox.Show(TF("Unable to load DLL library. Kernel32 GetLastError(): {0}", lastError), T("Error"));
