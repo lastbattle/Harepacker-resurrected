@@ -182,6 +182,12 @@ The internal _Canvas structure often differs significantly from outlink paths:
 
 The resolver handles this through multiple fallback strategies.
 
+### Link Property Typing
+`_inlink`/`_outlink` are expected to be string properties, but crafted images
+may write them with another property type. Resolution treats a non-string link
+as absent and falls back to the canvas's own bitmap instead of throwing, so a
+hostile canvas cannot abort an entire extraction or export run.
+
 ## Related Classes
 
 - `WzLinkResolver` - Resolves _inlink/_outlink references
