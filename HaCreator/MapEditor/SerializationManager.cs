@@ -80,7 +80,21 @@ namespace HaCreator.MapEditor
                 string typeName = serData2.type;
                 string data = serData2.data;
                 string dataTypeName = serData2.dataType;
-                Type dataType = Type.GetType(dataTypeName);
+                // Validate the whole item/data pair before any constructor
+                // runs: the data deserializer below executes the data type's
+                // own constructor, so it must wait until the item type and
+                // its (Board, data) constructor are known good. This mirrors
+                // the template ConstructObject enforces below.
+                Type itemType = Type.GetType(typeName, throwOnError: false);
+                if (itemType == null || !typeof(ISerializable).IsAssignableFrom(itemType))
+                    throw new System.Runtime.Serialization.SerializationException($"Unknown serializable type '{typeName}'.");
+
+                Type dataType = Type.GetType(dataTypeName, throwOnError: false);
+                if (dataType == null)
+                    throw new System.Runtime.Serialization.SerializationException($"Unknown data type '{dataTypeName}' in serialized item.");
+                if (itemType.GetConstructor(new[] { typeof(Board), dataType }) == null)
+                    throw new System.Runtime.Serialization.SerializationException($"Type '{itemType.FullName}' has no constructor matching the serialized data.");
+
                 object dataObject = JsonConvert.DeserializeObject(data, dataType);
                 ISerializable item = (ISerializable)ConstructObject(typeName, new object[] { board, dataObject }, new[] { typeof(Board), dataType });
                 items.Add(item);
@@ -205,8 +219,20 @@ namespace HaCreator.MapEditor
 
         private object ConstructObject(string typeName, object[] args, Type[] ctorTemplate)
         {
-            Type type = Type.GetType(typeName);
+            if (string.IsNullOrWhiteSpace(typeName))
+                throw new System.Runtime.Serialization.SerializationException("Serialized item is missing a type name.");
+
+            // Clipboard, backup and project content is untrusted: only known
+            // map-editor serializables may be constructed, and the whole
+            // resolution chain is validated before any constructor runs.
+            Type type = Type.GetType(typeName, throwOnError: false);
+            if (type == null || !typeof(ISerializable).IsAssignableFrom(type))
+                throw new System.Runtime.Serialization.SerializationException($"Unknown serializable type '{typeName}'.");
+
             ConstructorInfo ctorInfo = type.GetConstructor(ctorTemplate);
+            if (ctorInfo == null)
+                throw new System.Runtime.Serialization.SerializationException($"Type '{type.FullName}' has no constructor matching the serialized data.");
+
             return ctorInfo.Invoke(args);
         }
     }
