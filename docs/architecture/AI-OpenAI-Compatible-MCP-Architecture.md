@@ -56,6 +56,8 @@ Single-element move, remove and flip tools require complete current-origin coord
 
 ### Model discovery in AI Settings
 
+The built-in catalog includes `openai/gpt-6.1-terra`, using the `gpt-6.1-terra` slug from the [Codex model list](https://github.com/openai/codex/blob/main/codex-rs/models-manager/models.json) with the catalog's existing `openai/` prefix.
+
 The AI Settings dialog presents one merged **Model catalog**. Built-in entries are labeled `Built-in`, endpoint entries are labeled `Endpoint`, and duplicates are labeled `Built-in + endpoint`; custom model IDs can still be typed directly. When the dialog opens, when the base URL or API key loses focus, or when the user presses **Refresh**, it calls the configured OpenAI-compatible `GET /models` endpoint and merges the result into the catalog.
 
 Reasoning Effort is model-aware. The client consumes optional reasoning metadata from `/models`; when a standard endpoint only returns model IDs, the dialog safely infers the common levels for known reasoning-model families and otherwise offers `Auto (model default)` only. This avoids sending unsupported `reasoning_effort` values to general-purpose models.
