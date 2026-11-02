@@ -278,7 +278,9 @@ namespace HaCreator.GUI
 
             foreach (var img in Program.WzManager.WzUpdatedImageList)
             {
-                var xmlPath = Path.Combine(dirs.XMLDir, img.FullPath);
+                // FullPath is parser data; bind it to the XML root so a
+                // crafted image path cannot climb out of the repack tree.
+                var xmlPath = ProgressingWzSerializer.GetBoundOutputPath(dirs.XMLDir, img.FullPath);
                 var xmlPathDir = Path.GetDirectoryName(xmlPath);
 
                 Directory.CreateDirectory(xmlPathDir!);
