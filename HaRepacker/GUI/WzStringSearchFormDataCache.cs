@@ -553,8 +553,8 @@ namespace HaRepacker.GUI
                 {
                     int Id = int.Parse(Map.Name);
 
-                    string MapName = ((WzStringProperty)Map["mapName"]).ReadString("");
-                    string StreetName = ((WzStringProperty)Map["streetName"]).ReadString("");
+                    string MapName = Map["mapName"].ReadString("");
+                    string StreetName = Map["streetName"].ReadString("");
 
                     if (!MapNameCache.ContainsKey(Id))
                         MapNameCache.Add(Id, new Tuple<string, string, string>(RegionName, MapName, StreetName));

@@ -163,8 +163,8 @@ namespace HaRepacker.FHMapper
                     int x = ((WzIntProperty)p["x"]).Value + center.X;
                     int y = ((WzIntProperty)p["y"]).Value + center.Y;
                     int pt = ((WzIntProperty)p["pt"]).Value;
-                    string pn = ((WzStringProperty)p["pn"]).ReadString(string.Empty);
-                    int tm = ((WzIntProperty)p["tm"]).ReadValue(999999999);
+                    string pn = p["pn"].ReadString(string.Empty);
+                    int tm = p["tm"].ReadValue(999999999);
 
                     Color pColor = Color.Red;
                     if (pt == 0)
@@ -225,7 +225,7 @@ namespace HaRepacker.FHMapper
                                 int y = ((WzIntProperty)sp["y"]).Value + center.Y;
                                 int x_text = x - 15;
                                 int y_text = y - 15;
-                                bool facingLeft = ((WzIntProperty)sp["f"]).ReadValue(0) == 0; // This value is optional. If its not stated in the WZ, its assumed to be 0
+                                bool facingLeft = sp["f"].ReadValue(0) == 0; // This value is optional. If its not stated in the WZ, its assumed to be 0
 
                                 SpawnPoint.Spawnpoint MSP = new SpawnPoint.Spawnpoint();
                                 MSP.Shape = new Rectangle(x_text, y_text, 30, 30);
@@ -361,7 +361,7 @@ namespace HaRepacker.FHMapper
                         int cx = ((WzIntProperty)bgItem["cx"]).Value;
                         int cy = ((WzIntProperty)bgItem["cy"]).Value;
                         int a = ((WzIntProperty)bgItem["a"]).Value;
-                        bool facingLeft = ((WzIntProperty)bgItem["f"]).ReadValue(0) == 0;
+                        bool facingLeft = bgItem["f"].ReadValue(0) == 0;
 
                         if (bS == string.Empty)
                             continue;
@@ -577,12 +577,12 @@ namespace HaRepacker.FHMapper
                                 }
                             case "end":
                                 {
-                                    end = ((WzIntProperty)nodeInfoImg).ReadValue();
+                                    end = nodeInfoImg.ReadValue();
                                     break;
                                 }
                             case "start":
                                 {
-                                    start = ((WzIntProperty)nodeInfoImg).ReadValue();
+                                    start = nodeInfoImg.ReadValue();
                                     break;
                                 }
                             default:
@@ -590,10 +590,10 @@ namespace HaRepacker.FHMapper
                                     int nodeInfoImgFileName = -1;
                                     if (int.TryParse(nodeInfoImg.Name, out nodeInfoImgFileName))
                                     {
-                                        int attr = ((WzIntProperty)nodeInfoImg["attr"]).ReadValue();
-                                        int key = ((WzIntProperty)nodeInfoImg["key"]).ReadValue();
-                                        int x = ((WzIntProperty)nodeInfoImg["x"]).ReadValue() + center.X;
-                                        int y = ((WzIntProperty)nodeInfoImg["y"]).ReadValue() + center.Y;
+                                        int attr = nodeInfoImg["attr"].ReadValue();
+                                        int key = nodeInfoImg["key"].ReadValue();
+                                        int x = nodeInfoImg["x"].ReadValue() + center.X;
+                                        int y = nodeInfoImg["y"].ReadValue() + center.Y;
 
                                         List<int> edges = new List<int>();
                                         foreach (WzImageProperty edge in nodeInfoImg["edge"].WzProperties)
