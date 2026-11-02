@@ -12,6 +12,13 @@ namespace HaRepacker
     /// </summary>
     public static class AnimationBuilder
     {
+        /// <summary>
+        /// Size of the static frame table inside libapng (apng.cpp). The
+        /// native CreateFrame export indexes it with the running frame
+        /// number and never bounds-checks the index.
+        /// </summary>
+        private const int NativeFrameTableLimit = 100000;
+
         #region Extras
         /// <summary>
         /// Is an animation object (it could either be WzSubProperty, or a whole bunch of WzCanvasProperty)
@@ -123,6 +130,14 @@ namespace HaRepacker
 
                 delayList.Add((int) delay);
             }
+            // Every frame lands in the native table through CreateFrame,
+            // the compatibility frame included; keep the batch inside it.
+            if (bmpList.Count + (apngFirstFrame ? 1 : 0) > NativeFrameTableLimit)
+            {
+                Warning.Error($"The animation exceeds the native encoder frame table of {NativeFrameTableLimit} entries.");
+                return;
+            }
+
             SharpApng apngBuilder = new SharpApng();
             if (apngFirstFrame)
             {
@@ -139,7 +154,7 @@ namespace HaRepacker
         {
             int num = delay;
             int den = 1000;
-            while (num % 10 == 0 && num != 0)
+            while (num % 10 == 0 && num != 0 && den > 1)
             {
                 num /= 10;
                 den /= 10;
@@ -151,7 +166,7 @@ namespace HaRepacker
         {
             int num = delay;
             int den = 1000;
-            while (num % 10 == 0 && num != 0)
+            while (num % 10 == 0 && num != 0 && den > 1)
             {
                 num /= 10;
                 den /= 10;
