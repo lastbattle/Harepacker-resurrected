@@ -1,6 +1,7 @@
 ﻿using Footholds;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
+using MapleLib.WzLib.Serializer;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -42,6 +43,45 @@ namespace HaRepacker.FHMapper
         public FHMapper(MainPanel MainPanel)
         {
             this.MainPanel = MainPanel;
+        }
+
+        // The Renders root is resolved once; every artifact path is bound below it.
+        private static readonly string RendersRootPath = Path.GetFullPath("Renders");
+
+        /// <summary>
+        /// Strips the .img extension from a parsed image name.  The previous
+        /// blind four character chop threw on short names and mangled
+        /// extension-less ones.
+        /// </summary>
+        internal static string GetRenderMapId(string imageFileName)
+        {
+            string imageTitle = imageFileName ?? string.Empty;
+            return imageTitle.EndsWith(".img", StringComparison.OrdinalIgnoreCase) && imageTitle.Length > 4
+                ? imageTitle[..^4]
+                : imageTitle;
+        }
+
+        /// <summary>
+        /// Creates the bound render directory for a parsed image name before
+        /// any artifact is written.
+        /// </summary>
+        internal static void EnsureRenderDirectory(string imageFileName)
+        {
+            string segment = ProgressingWzSerializer.EscapeInvalidFilePathNames(GetRenderMapId(imageFileName));
+            Directory.CreateDirectory(ProgressingWzSerializer.GetBoundOutputPath(RendersRootPath, segment));
+        }
+
+        /// <summary>
+        /// Composes a render artifact path from the parsed map id.  The name
+        /// is attacker controlled, so it is escaped to a single segment and
+        /// bound below the Renders root, matching the export serializers.
+        /// </summary>
+        private static string GetBoundRenderArtifactPath(string mapIdName, string artifactSuffix)
+        {
+            string segment = ProgressingWzSerializer.EscapeInvalidFilePathNames(mapIdName);
+            string artifactDirectory = ProgressingWzSerializer.GetBoundOutputPath(RendersRootPath, segment);
+            Directory.CreateDirectory(artifactDirectory);
+            return ProgressingWzSerializer.GetBoundOutputPath(RendersRootPath, segment + "\\" + segment + artifactSuffix);
         }
 
         #region Renders
@@ -97,7 +137,7 @@ namespace HaRepacker.FHMapper
                     drawBuf.DrawString("Minimap not availible", FONT_DISPLAY_MINIMAP_NOT_AVAILABLE, new SolidBrush(Color.Black), new PointF(10, 45));
                 }
             }
-            minimapRender.Save("Renders\\" + mapIdName + "\\" + mapIdName + "_miniMapRender.bmp");
+            minimapRender.Save(GetBoundRenderArtifactPath(mapIdName, "_miniMapRender.bmp"));
             return minimapRender;
         }
         #endregion
@@ -110,7 +150,7 @@ namespace HaRepacker.FHMapper
         /// <param name="errorList"></param>
         public bool TryRenderMapAndSave(WzImage img, double zoom, ref List<string> errorList)
         {
-            string mapIdName = img.Name.Substring(0, img.Name.Length - 4);
+            string mapIdName = GetRenderMapId(img.Name);
 
             node = MainPanel.DataTree.SelectedNode;
             WzFile wzFile = ((WzObject)node.Tag).WzFileParent;
@@ -339,7 +379,7 @@ namespace HaRepacker.FHMapper
                     }
                 }
             }
-            mapRender.Save("Renders\\" + mapIdName + "\\" + mapIdName + "_footholdRender.bmp");
+            mapRender.Save(GetBoundRenderArtifactPath(mapIdName, "_footholdRender.bmp"));
 
             Bitmap backgroundRender = new Bitmap(bmpSize.Width, bmpSize.Height);
             using (Graphics tileBuf = Graphics.FromImage(backgroundRender))
@@ -387,7 +427,7 @@ namespace HaRepacker.FHMapper
                     }
                 }
             }
-            backgroundRender.Save("Renders\\" + mapIdName + "\\" + mapIdName + "_backgroundRender.bmp");
+            backgroundRender.Save(GetBoundRenderArtifactPath(mapIdName, "_backgroundRender.bmp"));
 
 
             // Render tooltip
@@ -433,7 +473,7 @@ namespace HaRepacker.FHMapper
                         toolTipBuf.DrawString(string.Format("{0}\n{1}", title, desc == null ? string.Empty : desc), FONT_GAME_TOOLTIP, new SolidBrush(Color.Black), new PointF(x1 + center.X, y1 + center.Y));
                     }
                 }
-                toolTip.Save("Renders\\" + mapIdName + "\\" + mapIdName + "_tooltip.bmp");
+                toolTip.Save(GetBoundRenderArtifactPath(mapIdName, "_tooltip.bmp"));
             }
 
             // Render Tiles
@@ -554,7 +594,7 @@ namespace HaRepacker.FHMapper
                     }
                 }
             }
-            tileRender.Save("Renders\\" + mapIdName + "\\" + mapIdName + "_tileRender.bmp");
+            tileRender.Save(GetBoundRenderArtifactPath(mapIdName, "_tileRender.bmp"));
 
             // Render nodeInfo
             Bitmap nodeInfoRender = null;
@@ -615,7 +655,7 @@ namespace HaRepacker.FHMapper
                         }
                     }
                 }
-                nodeInfoRender.Save("Renders\\" + mapIdName + "\\" + mapIdName + "_nodeInfoRender.bmp");
+                nodeInfoRender.Save(GetBoundRenderArtifactPath(mapIdName, "_nodeInfoRender.bmp"));
             }
 
 
@@ -638,7 +678,7 @@ namespace HaRepacker.FHMapper
                 fullBuf.DrawImage(minimapRender, 0, 0);
             }
             //pbx_Foothold_Render.Image = fullBmp;
-            fullBmp.Save("Renders\\" + mapIdName + "\\" + mapIdName + "_fullRender.bmp");
+            fullBmp.Save(GetBoundRenderArtifactPath(mapIdName, "_fullRender.bmp"));
 
             // Cleanup resources
             backgroundRender.Dispose();

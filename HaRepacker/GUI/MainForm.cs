@@ -1494,12 +1494,7 @@ namespace HaRepacker.GUI
             {
             double zoomLevel = double.Parse(zoomTextBox.Text);
                 WzImage img = (WzImage)MainPanel.DataTree.SelectedNode.Tag;
-                string mapName = img.Name.Substring(0, img.Name.Length - 4);
-
-                if (!Directory.Exists("Renders\\" + mapName))
-                {
-                    Directory.CreateDirectory("Renders\\" + mapName);
-                }
+                FHMapper.FHMapper.EnsureRenderDirectory(img.Name);
                 try
                 {
                     List<string> renderErrorList = new List<string>();
