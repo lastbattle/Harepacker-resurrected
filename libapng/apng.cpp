@@ -181,9 +181,13 @@ unsigned char dispose(int a, int b, unsigned char * pPrev, int n, int xres, int 
 __declspec(dllexport) void CreateFrame(unsigned char * pdata, int num, int den, int i, int len)
 {
 	LPDWORD resu = 0;
+	if (pdata == NULL || len <= 0 || i < 0 || i >= (int)(sizeof(Frame) / sizeof(Frame[0])))
+		return;
 	Frame[i].num = num;
 	Frame[i].den = den;
 	Frame[i].p = (unsigned char *)malloc(len);
+	if (Frame[i].p == NULL)
+		return;
 	memcpy(Frame[i].p, pdata, len);
 }
 

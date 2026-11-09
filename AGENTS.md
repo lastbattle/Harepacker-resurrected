@@ -83,6 +83,24 @@ Notes:
   - Text search: `Get-ChildItem -Recurse -File | Where-Object { $_.FullName -notmatch '\\(bin|obj)\\' -and $_.Extension -notin '.dll', '.exe', '.pdb', '.cache', '.resources' } | Select-String -Pattern <text>`
 - Do not change framework/runtime targets or package baselines unless requested.
 
+## MapleLib Safety Contracts
+
+MapleLib enforces library-wide safety contracts; read
+`MapleLib/docs/safety-contracts.md` before changing its parsers, serializers
+or tree walkers.
+
+- Consume trees through the tolerant surface (`GetChildOrDefault`,
+  `GetChildrenOrDefault`, `GetBytesOrEmpty`) instead of casting nodes or
+  dereferencing `WzProperties` directly.
+- Public parse entry points raise only the documented exception families;
+  `MapleLib.Tests/WzMutationContractTests.cs` pins them, so extend it when
+  adding an entry point.
+- Parse content numbers culture-invariantly through `WzParse` and compose
+  export paths only through the escaping helpers. Archive data is data, never
+  a command.
+- New `WzLib` files start with `#nullable enable`; widen existing files as
+  they are touched. The rollout state is tracked in the contracts doc.
+
 ## Git
 - When committing, include only files added or modified by the agent in this task; do not include unrelated pre-existing uncommitted changes. Every commit must include a detailed commit message body in addition to the title/subject line. The body should explain what changed, why it changed, and important implementation details or tradeoffs. Mention validation or manual verification only when it adds useful context; do not add boilerplate lines such as a build command succeeding with existing warnings or manual UI verification not being run.
 - For commits that include `HaCreator/MapSimulator/` changes, prefix the commit subject with `[HaCreator] [MapSimulator] ` (example: `[HaCreator] [MapSimulator] Update minimap render bounds`).
